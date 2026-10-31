@@ -45,7 +45,8 @@ details and what is left.
   meshes sorted, fog, mipmaps, levels of detail, the 2D layers, AIRTRIX's
   skinning; the drawing on a thread of its own; widescreen 3D, the screen's
   shape for CRT super resolutions, a smooth scaling filter, a longer draw
-  distance.
+  distance; the enhancements: the 3D at 2x to 4x, MSAA, FXAA, anisotropic
+  filtering, textures enlarged by Scale2x, bloom, a CRT filter.
 - Speed: the MIE's and the ARM7s' idle loops run at once, exactly; the
   sound chips' registers and DSP program kept decoded (`SOUND_CORE`).
 - The tools: a Lua shell with breakpoints, watchpoints and hooks, an agent
@@ -209,14 +210,18 @@ in the front buffer, the next frame's back, so the old pictures fade out
 over several frames (front = back x factor + front x (1 - factor), the
 factor the old picture's share): the motion blur of PHARRIER's intro and of
 BRAVEFF's party scene, as on the real board; FF holds the picture. The 2D
-layers now go over the scene by their alpha bit (SGNASCAR's attract texts),
-layer 1 over layer 2 (AIRTRIX's logos over a white layer 2). Their ABGR1555
-pixels go two to a 32-bit word, the left one in the high half (BRAVEFF's
-and SWRACER's WARNING screens, SGNASCAR's attract texts). A layer shows when
-enabled (1A0001B4) and either drawn directly (1A0001B8) or bit 2 of
-1A0001BC is clear: a rule that fits the five games (AIRTRIX's logos show,
-PHARRIER's SEGA screen goes), the bits' meaning unknown; how a layer not
-drawn directly blends with the scene (181, 781) is still a guess. The
+layers' ABGR1555 pixels go two to a 32-bit word, the left one in the high
+half (BRAVEFF's and SWRACER's WARNING screens, SGNASCAR's attract texts). A
+layer shows when enabled (1A0001B4). The 3D and the layers are stacked in
+the order of 1A0001B8 & 3, bottom to top: 0 layer 2, layer 1, 3D; 1 layer
+2, 3D, layer 1; 2 layer 1, 3D, layer 2; 3 3D, layer 2, layer 1. From the
+top down the first there gives the pixel, the bottom one otherwise;
+1A0001BC bits 0-2 (3D, layer 1, layer 2) say whether a pixel is there by
+its alpha (1) or by a colour not black (0), the scene's alpha being 1
+wherever a mesh drew. This fixed SGNASCAR's HOW TO PLAY and DRIVING TIPS
+(order 1: the 3D over a white layer 2, under the texts) and SWRACER's SEGA
+logo, both white before; AIRTRIX's INSERT COIN goes under its skate scenes
+(order 0), BRAVEFF's "I/O Board is Initializing" now shows. The
 translucent meshes are drawn back to front (AIRTRIX's OHOSOHO sign: its
 magenta behind a panel with the letters cut out). Done in Hikaruloader: the
 meshes of poly types 5 and 6 blend by their material's mode (A81): by
@@ -282,6 +287,16 @@ SCALE_FILTER = LINEAR averages the rows down to 240. DRAW_DISTANCE divides
 561's LOD distance (the CP's choice of levels of detail, 055 and 005) and
 the fog's 1/z (621) by its factor; the renderer already draws to 1e5, past
 the viewports' far plane. Left: what each game gains, to see.
+
+GL errors that abort a game, now and then (October 2026, Intel UHD): AIRTRIX
+at frame 2633 on the HL_ASSERT_NO_GL_ERROR at the end of upload_layer (agent
+mode, THREADED_RENDERING off; other runs go past 9000), BRAVEFF at 8177 on
+the one after glClear in on_end_frame's threaded branch; with two instances
+at once, crashes instead (AIRTRIX about 2400-2700 and 900, BRAVEFF about
+6000-6300). Likely an error made earlier and read there, glGetError keeping
+it until read: the NVIDIA cabinet logged GL_INVALID_ENUM after the interface
+(ImGui). Next: KHR_debug's synchronous callback on the main context through
+an AIRTRIX run to 2700, for the call that makes it.
 
 
 AIRTRIX

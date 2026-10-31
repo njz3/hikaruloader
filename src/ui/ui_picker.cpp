@@ -20,6 +20,7 @@
 // of each, until one is launched.
 
 #include "ui/ui.h"
+#include "ui/ui_artwork.h"
 #include "ui/ui_common.h"
 
 #include <algorithm>
@@ -33,6 +34,7 @@
 #include "hl/config.h"
 #include "hl/input.h"
 #include "hl/renderer.h"
+#include "hl/romset.h"
 #include "hl/window.h"
 
 namespace
@@ -49,6 +51,8 @@ struct Picker
     hl::GameList *list = nullptr;
     std::vector<Entry> entries;
     std::string gamesDir;
+    // Its folders, one or several (';')
+    std::vector<std::string> gamesFolders;
     std::string message;
     int selected = 0;
     bool scrollToSelected = true;
@@ -58,9 +62,10 @@ struct Picker
 
     void scan()
     {
-        char dir[512];
+        char dir[2048];
         hl::Config::get ()->games_dir_in_use (dir, sizeof(dir));
         gamesDir = dir;
+        gamesFolders = hl::RomSet::split_folders(dir);
         entries.clear();
         for (unsigned i = 0; i < list->entries.size (); i++)
         {
@@ -69,6 +74,24 @@ struct Picker
             list->check (i, dir, &entry.found, &entry.total);
             entries.push_back(entry);
         }
+        // The pictures of the games found, when the setting downloads them
+        std::vector<std::string> sets;
+        for (const Entry &entry : entries)
+            if (entry.found)
+                sets.push_back(game(entry).name);
+        ui::artworkStart(sets);
+    }
+
+    // The picture fitted in the box, its proportions kept, centred
+    static void drawFitted(ImDrawList *draw, const ui::ArtworkImage &image, ImVec2 p0, ImVec2 p1)
+    {
+        const float w = p1.x - p0.x, h = p1.y - p0.y;
+        if (w <= 0.0f || h <= 0.0f || image.width <= 0 || image.height <= 0)
+            return;
+        const float s = std::min(w / image.width, h / image.height);
+        const ImVec2 size(image.width * s, image.height * s);
+        const ImVec2 q0(p0.x + (w - size.x) * 0.5f, p0.y + (h - size.y) * 0.5f);
+        draw->AddImage(ImTextureRef(image.texture), q0, ImVec2(q0.x + size.x, q0.y + size.y));
     }
 
     const hl::GameEntry &game(const Entry &entry) const { return list->entries[entry.index]; }
@@ -85,6 +108,7 @@ struct Picker
 
     void draw()
     {
+        ui::artworkPoll();
         const ImGuiViewport *viewport = ImGui::GetMainViewport();
         ImGui::SetNextWindowPos(viewport->WorkPos);
         ImGui::SetNextWindowSize(viewport->WorkSize);
@@ -109,7 +133,10 @@ struct Picker
         int ready = 0;
         for (const Entry &entry : entries)
             ready += entry.ready();
-        ImGui::TextDisabled(ui::tr("%d of %d games ready in %s"), ready, (int)entries.size(), gamesDir.c_str());
+        if (gamesFolders.size() > 1)
+            ImGui::TextDisabled(ui::tr("%d of %d games ready in %d folders"), ready, (int)entries.size(), (int)gamesFolders.size());
+        else
+            ImGui::TextDisabled(ui::tr("%d of %d games ready in %s"), ready, (int)entries.size(), gamesDir.c_str());
         if (!message.empty())
         {
             ImGui::PushTextWrapPos(0.0f);
@@ -189,6 +216,14 @@ struct Picker
             draw->AddRectFilled(p0, p1, IM_COL32(28, 30, 36, 255));
             draw->PushClipRect(p0, p1, true);
             draw->AddText(nullptr, 0.0f, ImVec2(p0.x + 8.0f * scale, p0.y + 8.0f * scale), text, g.description, nullptr, tile.x - 16.0f * scale);
+            // Its picture, between the title and the footer
+            ui::ArtworkImage picture;
+            if (ui::artworkGet(g.name, g.parent, 0, &picture))
+            {
+                const float titleH = ImGui::CalcTextSize(g.description, nullptr, false, tile.x - 16.0f * scale).y;
+                drawFitted(draw, picture, ImVec2(p0.x + 6.0f * scale, p0.y + 12.0f * scale + titleH),
+                           ImVec2(p1.x - 6.0f * scale, p1.y - ImGui::GetTextLineHeight() - 12.0f * scale));
+            }
             char footer[64];
             snprintf(footer, sizeof(footer), "%s  [%s]", g.year, g.name);
             draw->AddText(ImVec2(p0.x + 8.0f * scale, p1.y - ImGui::GetTextLineHeight() - 8.0f * scale), IM_COL32(130, 136, 150, 255), footer);
@@ -206,6 +241,18 @@ struct Picker
         ImGui::BeginChild("##pane", ImVec2(paneW, 0.0f), true);
         const Entry &cur = entries[selected];
         const hl::GameEntry &g = game(cur);
+        // Its pictures, one after the other every 2 s
+        const int pictures = ui::artworkCount(g.name, g.parent);
+        if (pictures > 0)
+        {
+            ui::ArtworkImage picture;
+            const int shown = (int)(ImGui::GetTime() / 2.0) % pictures;
+            const float w = ImGui::GetContentRegionAvail().x;
+            const ImVec2 p0 = ImGui::GetCursorScreenPos(), p1(p0.x + w, p0.y + w * 0.75f);
+            if (ui::artworkGet(g.name, g.parent, shown, &picture) || ui::artworkGet(g.name, g.parent, 0, &picture))
+                drawFitted(ImGui::GetWindowDrawList(), picture, p0, p1);
+            ImGui::Dummy(ImVec2(w, w * 0.75f));
+        }
         ImGui::TextWrapped("%s", g.description);
         ImGui::TextDisabled("%s  %s", g.manufacturer, g.year);
         ImGui::Separator();
@@ -230,8 +277,9 @@ struct Picker
             ImGui::TextUnformatted(g.bios);
         }
         ImGui::Spacing();
-        ImGui::TextDisabled("%s", ui::tr("Games folder"));
-        ImGui::TextUnformatted(gamesDir.c_str());
+        ImGui::TextDisabled("%s", gamesFolders.size() > 1 ? ui::tr("Games folders") : ui::tr("Games folder"));
+        for (const std::string &folder : gamesFolders)
+            ImGui::TextUnformatted(folder.c_str());
         ImGui::PopTextWrapPos();
         ImGui::EndChild();
 

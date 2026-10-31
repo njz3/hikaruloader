@@ -573,30 +573,35 @@ hikaru_gpu_raise_irq (Gpu *gpu, uint32_t _15, uint32_t _1A)
  *
  *			See PH:@0C01A124, PH:@0C01A142.
  *
- * 1A0001B8  RW		Draw directly
+ * 1A0001B8  RW		Stacking Order
  *
- *			-------- -------- -------- ------21
+ *			-------- -------- -------- ------oo
  *
- *			n = layer n is drawn directly if 1, blended with
- *			    the 3D framebuffer (according to commands 181 and
- *			    781) if 0.
+ *			o = the order of the 3D and the layers, bottom to top:
+ *			    0 = layer 2, layer 1, 3D
+ *			    1 = layer 2, 3D, layer 1
+ *			    2 = layer 1, 3D, layer 2
+ *			    3 = 3D, layer 2, layer 1
  *
- * 1A0001BC  RW		Unknown Control
+ * 1A0001BC  RW		Presence Tests
  *
- *			-------- -------- -------- -----???
+ *			-------- -------- -------- -----21S
  *
- *			Bitfield: 3 in SGNASCAR and AIRTRIX, 2 then 6 in
- *			SWRACER, 6 in BRAVEFF, 7 in PHARRIER. Not the layers'
- *			pixel order (see below).
+ *			S, n = a pixel of the 3D, of layer n is there where
+ *			its alpha is set if 1, where its colour is not black
+ *			if 0.
+ *
+ *			3 in SGNASCAR and AIRTRIX, 2 then 6 in SWRACER, 6 in
+ *			BRAVEFF, 7 in PHARRIER.
  *
  *			See PH:@0C01A162, PH:@0C01A171.
  *
- * A layer is shown when enabled (1A0001B4) and either drawn directly
- * (1A0001B8) or bit 2 of 1A0001BC is clear: a rule that fits the games, the
- * bits' meaning unknown. AIRTRIX's logos (1A0001B8 = 0, 1A0001BC = 3) show,
- * PHARRIER's SEGA screen (layer 2 not direct, 1A0001BC = 7) is gone once its
- * 3D attract begins. Layer 1 goes over layer 2 (AIRTRIX's logos over the
- * white of layer 2).
+ * A layer is shown when enabled (1A0001B4). From the top of the stack down,
+ * the first of the 3D and the shown layers there at a pixel gives its colour,
+ * the bottom one otherwise. SGNASCAR's HOW TO PLAY and DRIVING TIPS (order 1)
+ * put the 3D over a white layer 2, under the texts of layer 1; its title
+ * (order 0) has the picture on layer 2, the texts on layer 1, an empty 3D
+ * over them. SWRACER's SEGA logo goes over a white layer 2 alike.
  *
  * The layers' ABGR1555 pixels go two to a 32-bit word of the FB, the left
  * one in its high half: the games write them so (BRAVEFF's and SWRACER's
@@ -630,11 +635,9 @@ hikaru_gpu_fill_layer_info (Gpu *gpu)
 			hikaru_layer_t *layer =
 				&LAYERS.layer[unit][bank-2];
 	
-			/* Is the layer enabled? See 1A0001B4-BC */
+			/* Is the layer enabled? See 1A0001B4 */
 			layer->enabled =
-				((REG1AUNIT (unit, 0x34) >> (bank - 2)) & 1) &&
-				(((REG1AUNIT (unit, 0x38) >> (bank - 2)) & 1) ||
-				 !(REG1AUNIT (unit, 0x3C) & 4));
+				(REG1AUNIT (unit, 0x34) >> (bank - 2)) & 1;
 
 			/* Get the layer format. */
 			format = (REG1AUNIT (unit, 0x30) >> (bank - 1)) & 1;

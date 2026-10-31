@@ -116,8 +116,16 @@ Config::set_defaults ()
 	cfg->screen_shape = SCREEN_AUTO;
 	cfg->scale_filter = FILTER_NEAREST;
 	cfg->draw_distance = 1.0f;
+	cfg->render_scale = 1;
+	cfg->msaa = 0;
+	cfg->anisotropy = 1;
+	cfg->texture_scale = 1;
+	cfg->fxaa = false;
+	cfg->bloom = 0;
+	cfg->crt_filter = 0;
 	strcpy (cfg->language, "auto");
 	cfg->log_file = true;
+	cfg->artwork_download = false;
 	/* The MIE's Z80 runs, and drives the JVS bus */
 	cfg->mie_hack = false;
 	cfg->dynarec = true;
@@ -217,6 +225,20 @@ parse_name (const char *value, const char **names, int count, int fallback)
 	return fallback;
 }
 
+/* The power of two at most value's, from min to max; below min, none (0,
+ * or the anisotropy's 1) */
+static int
+parse_pow2 (const char *value, int none, int min, int max)
+{
+	int v = atoi (value), p = min;
+
+	if (v < min)
+		return none;
+	while (p * 2 <= MIN2 (v, max))
+		p *= 2;
+	return p;
+}
+
 void
 Config::set_value (const char *section, const char *key, const char *value)
 {
@@ -256,6 +278,21 @@ Config::set_value (const char *section, const char *key, const char *value)
 			cfg->scale_filter = parse_name (value, filter_names, NUM_FILTERS, cfg->scale_filter);
 		else if (!strcasecmp (key, "DRAW_DISTANCE"))
 			cfg->draw_distance = MAX2 (1.0f, MIN2 (4.0f, (float) atof (value)));
+	} else if (!strcasecmp (section, "Enhancements")) {
+		if (!strcasecmp (key, "RENDER_SCALE"))
+			cfg->render_scale = MAX2 (1, MIN2 (4, atoi (value)));
+		else if (!strcasecmp (key, "MSAA"))
+			cfg->msaa = parse_pow2 (value, 0, 2, 8);
+		else if (!strcasecmp (key, "ANISOTROPY"))
+			cfg->anisotropy = parse_pow2 (value, 1, 1, 16);
+		else if (!strcasecmp (key, "TEXTURE_SCALE"))
+			cfg->texture_scale = parse_pow2 (value, 1, 1, 4);
+		else if (!strcasecmp (key, "FXAA"))
+			cfg->fxaa = parse_bool (value);
+		else if (!strcasecmp (key, "BLOOM"))
+			cfg->bloom = MAX2 (0, MIN2 (100, atoi (value)));
+		else if (!strcasecmp (key, "CRT_FILTER"))
+			cfg->crt_filter = MAX2 (0, MIN2 (100, atoi (value)));
 	} else if (!strcasecmp (section, "Picker")) {
 		if (!strcasecmp (key, "GAMES_DIR"))
 			snprintf (cfg->games_dir, sizeof (cfg->games_dir), "%s", value);
@@ -265,6 +302,8 @@ Config::set_value (const char *section, const char *key, const char *value)
 			snprintf (cfg->language, sizeof (cfg->language), "%s", value);
 		else if (!strcasecmp (key, "LOG_FILE"))
 			cfg->log_file = parse_bool (value);
+		else if (!strcasecmp (key, "ARTWORK_DOWNLOAD"))
+			cfg->artwork_download = parse_bool (value);
 		else if (!strcasecmp (key, "LAST_GAME"))
 			snprintf (cfg->last_game, sizeof (cfg->last_game), "%s", value);
 	} else if (!strcasecmp (section, "Emulation")) {
@@ -451,9 +490,43 @@ Config::save () const
 	         "# out). Default: %.1f\n", def.draw_distance);
 	fprintf (fp, "DRAW_DISTANCE = %.1f\n", cfg->draw_distance);
 
+	fprintf (fp, "\n[Enhancements]\n");
+	fprintf (fp,
+	         "\n# Beyond the board's own picture, all off by default, each taken at\n"
+	         "# once. The 3D drawn at 1 to 4 times its size, 640x480 (854x480 in\n"
+	         "# widescreen): 2 gives 1280x960, then fitted to the window. The 2D\n"
+	         "# layers (texts, logos) keep theirs. Default: %d\n", def.render_scale);
+	fprintf (fp, "RENDER_SCALE = %d\n", cfg->render_scale);
+	fprintf (fp,
+	         "\n# The 3D's edges antialiased, by multisampling: 0 (none), 2, 4 or 8\n"
+	         "# samples a pixel (the graphics card's most at most). Default: %d\n", def.msaa);
+	fprintf (fp, "MSAA = %d\n", cfg->msaa);
+	fprintf (fp,
+	         "\n# The textures seen at a slant (roads, floors) kept sharp, anisotropic\n"
+	         "# filtering: 1 (none), 2, 4, 8 or 16. Default: %d\n", def.anisotropy);
+	fprintf (fp, "ANISOTROPY = %d\n", cfg->anisotropy);
+	fprintf (fp,
+	         "\n# The textures enlarged by Scale2x, the edges of their flat colours\n"
+	         "# (texts, signs) kept sharp: 1 (none), 2 or 4 times. More memory, slower\n"
+	         "# uploads. Default: %d\n", def.texture_scale);
+	fprintf (fp, "TEXTURE_SCALE = %d\n", cfg->texture_scale);
+	fprintf (fp,
+	         "\n# The 3D's edges smoothed once drawn (FXAA): cheaper than MSAA, a little\n"
+	         "# blurrier. true or false. Default: %s\n", bool_name (def.fxaa));
+	fprintf (fp, "FXAA = %s\n", bool_name (cfg->fxaa));
+	fprintf (fp,
+	         "\n# A glow around the 3D's bright parts (bloom): 0 (none) to 100 %%.\n"
+	         "# Default: %d\n", def.bloom);
+	fprintf (fp, "BLOOM = %d\n", cfg->bloom);
+	fprintf (fp,
+	         "\n# A CRT's look on a flat screen, its scanlines and its phosphors' mask:\n"
+	         "# 0 (none) to 100 %%; best from 960 rows up. Default: %d\n", def.crt_filter);
+	fprintf (fp, "CRT_FILTER = %d\n", cfg->crt_filter);
+
 	fprintf (fp, "\n[Picker]\n");
 	fprintf (fp,
-	         "\n# The folder of the MAME romsets (<game>.zip, its parent's, hikaru.zip).\n"
+	         "\n# The folder of the MAME romsets (<game>.zip, its parent's, hikaru.zip),\n"
+	         "# or several separated by ';', looked in in that order (D:\\roms;E:\\mame\\roms).\n"
 	         "# Default: empty, the roms folder beside the program\n");
 	fprintf (fp, "GAMES_DIR = %s\n", cfg->games_dir);
 	fprintf (fp,
@@ -476,6 +549,13 @@ Config::save () const
 	         "# one; the previous start's kept as hikaruloader.old.log. Taken at the\n"
 	         "# next start: true or false. Default: %s\n", def.log_file ? "true" : "false");
 	fprintf (fp, "LOG_FILE = %s\n", cfg->log_file ? "true" : "false");
+	fprintf (fp,
+	         "\n# The picker's pictures downloaded from the Arcade Database\n"
+	         "# (adb.arcadeitalia.net, by motoschifo) into cache/artwork, one game at a\n"
+	         "# time, those of the games found; yours in artwork/ beside the program\n"
+	         "# (<set>.png or .jpg, or MAME's titles/, snap/, flyers/, marquees/) show\n"
+	         "# either way: true or false. Default: %s\n", def.artwork_download ? "true" : "false");
+	fprintf (fp, "ARTWORK_DOWNLOAD = %s\n", cfg->artwork_download ? "true" : "false");
 	fprintf (fp,
 	         "\n# The game last started, selected when the picker opens. Default: empty\n");
 	fprintf (fp, "LAST_GAME = %s\n", cfg->last_game);

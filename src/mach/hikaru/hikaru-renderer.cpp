@@ -24,6 +24,7 @@
 #include <mutex>
 #include <string>
 #include <thread>
+#include <vector>
 
 #include "hl/config.h"
 #include "hl/input.h"
@@ -226,6 +227,139 @@ set_texture_wrap (hikaru_texhead_t *th)
 	HL_ASSERT_NO_GL_ERROR ();
 }
 
+/* TEXTURE_SCALE: a level as RGBA8, the bytes R, G, B, A in a word, as the
+ * GL calls of upload_texture read it: w x h texels, 2w x 2h for ABGR1111 */
+static bool
+decode_level_rgba8 (hl::Buffer *texram, unsigned format, uint32_t w, uint32_t h,
+                    uint32_t basex, uint32_t basey, std::vector<uint32_t> &out,
+                    uint32_t *out_w, uint32_t *out_h)
+{
+	auto expand4 = [] (uint32_t v) { return (v & 15) * 17; };
+	auto expand5 = [] (uint32_t v) { v &= 31; return (v << 3) | (v >> 2); };
+	auto from4444 = [&] (uint32_t t) {
+		return expand4 (t) | (expand4 (t >> 4) << 8) |
+		       (expand4 (t >> 8) << 16) | (expand4 (t >> 12) << 24);
+	};
+	const uint8_t *base = (const uint8_t *) texram->ptr (0);
+	uint32_t x, y, i;
+
+	if (format == HIKARU_FORMAT_ABGR1111) {
+		uint16_t *data = (uint16_t *) decode_texture_abgr1111 (texram, w, h, basex, basey);
+		if (!data)
+			return false;
+		out.resize ((size_t) w * h * 4);
+		for (i = 0; i < w * h * 4; i++)
+			out[i] = from4444 (data[i]);
+		free (data);
+		*out_w = w * 2;
+		*out_h = h * 2;
+		return true;
+	}
+
+	out.resize ((size_t) w * h);
+	for (y = 0; y < h; y++)
+		for (x = 0; x < w; x++) {
+			uint16_t t;
+			uint32_t c;
+
+			memcpy (&t, base + (basey + y) * 4096 + (basex + x) * 2, 2);
+			switch (format) {
+			case HIKARU_FORMAT_ABGR1555:
+				c = expand5 (t) | (expand5 (t >> 5) << 8) | (expand5 (t >> 10) << 16) |
+				    ((t & 0x8000) ? 0xFF000000u : 0);
+				break;
+			case HIKARU_FORMAT_ABGR4444:
+				c = from4444 (t);
+				break;
+			case HIKARU_FORMAT_LA8:
+				/* GL_RG's swizzle: L, L, L, A */
+				c = (t & 0xFF) * 0x010101u | ((uint32_t) (t >> 8) << 24);
+				break;
+			default:
+				return false;
+			}
+			out[y * w + x] = c;
+		}
+	*out_w = w;
+	*out_h = h;
+	return true;
+}
+
+/* Scale2x (AdvMAME2x): each texel four, those at an edge between flat
+ * colours taking its neighbours' colour, the edge left sharp, not blurred;
+ * the borders clamped */
+static void
+scale2x (const std::vector<uint32_t> &src, uint32_t w, uint32_t h,
+         std::vector<uint32_t> &dst)
+{
+	uint32_t x, y;
+
+	dst.resize ((size_t) w * h * 4);
+	for (y = 0; y < h; y++)
+		for (x = 0; x < w; x++) {
+			uint32_t b = src[(y ? y - 1 : 0) * w + x];
+			uint32_t d = src[y * w + (x ? x - 1 : 0)];
+			uint32_t e = src[y * w + x];
+			uint32_t f = src[y * w + MIN2 (x + 1, w - 1)];
+			uint32_t hh = src[MIN2 (y + 1, h - 1) * w + x];
+			uint32_t *o = &dst[(size_t) y * 2 * w * 2 + x * 2];
+
+			if (b != hh && d != f) {
+				o[0] = (d == b) ? d : e;
+				o[1] = (b == f) ? f : e;
+				o[w * 2] = (d == hh) ? d : e;
+				o[w * 2 + 1] = (hh == f) ? f : e;
+			} else
+				o[0] = o[1] = o[w * 2] = o[w * 2 + 1] = e;
+		}
+}
+
+/* TEXTURE_SCALE: the bound texture's levels, enlarged s times. Level 0 is
+ * the game's level 0 through Scale2x log2 (s) times, the levels below it
+ * fewer times; then the game's levels, s times smaller than the texture
+ * now: the same level of detail at each distance as without */
+static bool
+upload_scaled_levels (Renderer *hr, hikaru_texhead_t *th, uint32_t w, uint32_t h,
+                      uint32_t num_levels, uint32_t basex, uint32_t basey,
+                      uint32_t bank)
+{
+	const uint32_t log2s = (hr->view.texture_scale >= 4) ? 2 : 1;
+	std::vector<uint32_t> pix, up[2];
+	uint32_t level, pw, ph, j;
+
+	glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, num_levels - 1 + log2s);
+	glPixelStorei (GL_UNPACK_ALIGNMENT, 4);
+	for (level = 0; level < num_levels; level++) {
+		if (!decode_level_rgba8 (hr->texram_src[bank], th->format, w, h,
+		                         basex, basey, pix, &pw, &ph))
+			return false;
+		if (level == 0) {
+			scale2x (pix, pw, ph, up[0]);
+			if (log2s == 2)
+				scale2x (up[0], pw * 2, ph * 2, up[1]);
+			for (j = 0; j < log2s; j++) {
+				uint32_t k = log2s - 1 - j;	/* up[k]: 2 << k times */
+				glTexImage2D (GL_TEXTURE_2D, j, GL_RGBA8,
+				              pw << (k + 1), ph << (k + 1), 0,
+				              GL_RGBA, GL_UNSIGNED_BYTE, up[k].data ());
+			}
+		}
+		glTexImage2D (GL_TEXTURE_2D, level + log2s, GL_RGBA8, pw, ph, 0,
+		              GL_RGBA, GL_UNSIGNED_BYTE, pix.data ());
+		HL_ASSERT_NO_GL_ERROR ();
+
+		w >>= 1;
+		h >>= 1;
+		HL_ASSERT (w && h);
+
+		basex += (2048 - basex) / 2;
+		basey += (1024 - basey) / 2;
+		bank ^= 1;
+	}
+	glPixelStorei (GL_UNPACK_ALIGNMENT, 1);
+	return true;
+}
+
 static GLuint
 upload_texture (Renderer *hr, hikaru_texhead_t *th)
 {
@@ -287,6 +421,13 @@ upload_texture (Renderer *hr, hikaru_texhead_t *th)
 
 	glPixelStorei (GL_UNPACK_ALIGNMENT, 1);
 	HL_ASSERT_NO_GL_ERROR ();
+
+	/* TEXTURE_SCALE: its levels decoded, enlarged by Scale2x */
+	if (hr->view.texture_scale > 1) {
+		if (!upload_scaled_levels (hr, th, w, h, num_levels, basex, basey, bank))
+			goto fail;
+		return id;
+	}
 
 	for (level = 0; level < num_levels; level++) {
 		void *data = hr->texram_src[bank]->ptr (0);
@@ -436,7 +577,8 @@ get_texture (Renderer *hr, hikaru_texhead_t *th)
 
 	writes = get_texture_writes (hr, th);
 	cached = &hr->textures.cache[bank][sloty][slotx];
-	if (is_texhead_eq (hr, th, &cached->th) && cached->gen == writes)
+	if (is_texhead_eq (hr, th, &cached->th) && cached->gen == writes &&
+	    cached->scale == hr->view.texture_scale)
 		return cached;
 
 	destroy_texture (cached);
@@ -450,6 +592,7 @@ get_texture (Renderer *hr, hikaru_texhead_t *th)
 	cached->th = *th;
 	cached->id = id;
 	cached->gen = writes;
+	cached->scale = hr->view.texture_scale;
 
 	hr->textures.is_clear[bank] = false;
 	return cached;
@@ -1047,10 +1190,12 @@ upload_viewport (Renderer *hr, hikaru_mesh_t *mesh)
 	glUniformMatrix4fv (hr->meshes.locs.u_projection, 1, GL_FALSE,
 	                    (const GLfloat *) projection);
 
-	glViewport (vp->clip.l + margin - extra,
-	            clip_b,
-	            vp->clip.r - vp->clip.l + 2.0f * extra,
-	            clip_t - clip_b);
+	/* In the scene's buffers, RENDER_SCALE times its pixels */
+	const float s = (float) hr->framebuffer.scale;
+	glViewport ((vp->clip.l + margin - extra) * s,
+	            clip_b * s,
+	            (vp->clip.r - vp->clip.l + 2.0f * extra) * s,
+	            (clip_t - clip_b) * s);
 
 	if (hr->meshes.variant.has_fog) {
 		vec2f_t fog;
@@ -1130,6 +1275,14 @@ upload_material_texhead (Renderer *hr, hikaru_mesh_t *mesh)
 	/* The texhead's wrap: textures of the same slot share a GL one */
 	if (tex)
 		set_texture_wrap (&hr->tex_list[mesh->tex_index]);
+
+	/* ANISOTROPY, when the card has it: set again when it changes */
+	if (tex && tex->aniso != hr->view.anisotropy && hr->framebuffer.max_aniso > 1.0f) {
+		glTexParameterf (GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY_EXT,
+		                 MIN2 ((float) hr->view.anisotropy, hr->framebuffer.max_aniso));
+		HL_ASSERT_NO_GL_ERROR ();
+		tex->aniso = hr->view.anisotropy;
+	}
 
 	glUniform1i (hr->meshes.locs.u_texture, 0);
 	HL_ASSERT_NO_GL_ERROR ();
@@ -1784,7 +1937,8 @@ Renderer::split_mesh (uint32_t addr)
 }
 
 /* How a mesh of poly type 5 or 6 blends with the scene: its material's
- * blending mode (A81). The scene's alpha is not blended. */
+ * blending mode (A81). The scene's alpha says where a mesh was drawn (the
+ * layers' presence test, 1A0001BC): 1 there, whatever the mesh's own. */
 static void
 set_blending (Renderer *hr, hikaru_mesh_t *mesh)
 {
@@ -1796,17 +1950,17 @@ set_blending (Renderer *hr, hikaru_mesh_t *mesh)
 	switch (mode) {
 	case 0:	/* by its alpha */
 		glBlendFuncSeparate (GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA,
-		                     GL_ONE, GL_ZERO);
+		                     GL_CONSTANT_ALPHA, GL_ONE);
 		break;
 	case 1:	/* times the scene */
-		glBlendFuncSeparate (GL_DST_COLOR, GL_ZERO, GL_ONE, GL_ZERO);
+		glBlendFuncSeparate (GL_DST_COLOR, GL_ZERO, GL_CONSTANT_ALPHA, GL_ONE);
 		break;
 	case 2:	/* added, by its alpha: AIRTRIX's trick trails, lights */
-		glBlendFuncSeparate (GL_SRC_ALPHA, GL_ONE, GL_ONE, GL_ZERO);
+		glBlendFuncSeparate (GL_SRC_ALPHA, GL_ONE, GL_CONSTANT_ALPHA, GL_ONE);
 		break;
 	case 3:	/* added, the scene dimmed by its alpha */
 		glBlendFuncSeparate (GL_ONE, GL_ONE_MINUS_SRC_ALPHA,
-		                     GL_ONE, GL_ZERO);
+		                     GL_CONSTANT_ALPHA, GL_ONE);
 		break;
 	}
 }
@@ -1827,10 +1981,14 @@ draw_meshes_for_polytype (Renderer *hr, unsigned vpi, int polytype)
 
 	LOG (" ==== DRAWING VP %u, POLYTYPE %d ====", vpi, polytype);
 
+	/* The constant alpha of 1 the scene's alpha takes (set_blending) */
+	glBlendColor (0.0f, 0.0f, 0.0f, 1.0f);
+
 	switch (polytype) {
 	case HIKARU_POLYTYPE_TRANSPARENT:
 		/* Punch-through: alpha-tested in the shader, opaque */
-		glDisable (GL_BLEND);
+		glEnable (GL_BLEND);
+		glBlendFuncSeparate (GL_ONE, GL_ZERO, GL_CONSTANT_ALPHA, GL_ONE);
 		glDepthMask (GL_TRUE);
 		glEnable (GL_POLYGON_OFFSET_FILL);
 		break;
@@ -1845,7 +2003,9 @@ draw_meshes_for_polytype (Renderer *hr, unsigned vpi, int polytype)
 		glDisable (GL_POLYGON_OFFSET_FILL);
 		break;
 	default:
-		glDisable (GL_BLEND);
+		/* Opaque: blended only for the scene's alpha */
+		glEnable (GL_BLEND);
+		glBlendFuncSeparate (GL_ONE, GL_ZERO, GL_CONSTANT_ALPHA, GL_ONE);
 		glDepthMask (GL_TRUE);
 		glDisable (GL_POLYGON_OFFSET_FILL);
 		break;
@@ -1921,11 +2081,11 @@ draw_scene (Renderer *hr)
 	              hr->frame_gpu.fb_config.clear[3] * INV255);
 	glClear (GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-	/* The scene's 640x480 (854 in widescreen): the box a context starts
-	 * with is its first window's, 16x16 for the drawing thread's
-	 * (THREADED_RENDERING) */
+	/* The scene's 640x480 (854 in widescreen), times RENDER_SCALE: the
+	 * box a context starts with is its first window's, 16x16 for the
+	 * drawing thread's (THREADED_RENDERING) */
 	glEnable (GL_SCISSOR_TEST);
-	glScissor (0, 0, hr->scene_w, 480);
+	glScissor (0, 0, hr->framebuffer.w, hr->framebuffer.h);
 
 	glEnable (GL_DEPTH_TEST);
 	glDepthFunc (GL_LEQUAL);
@@ -1945,7 +2105,7 @@ draw_scene (Renderer *hr)
 	glDepthMask (GL_TRUE);
 
 	glDisable (GL_SCISSOR_TEST);
-	glViewport (0, 0, hr->scene_w, 480);
+	glViewport (0, 0, hr->framebuffer.w, hr->framebuffer.h);
 }
 
 static void
@@ -2054,13 +2214,34 @@ static const char *fb_fs_source =
 "uniform float u_mult_b = 1.0;							\n"
 "uniform float u_mult_1 = 1.0;							\n"
 "uniform float u_mult_2 = 1.0;							\n"
+"uniform int u_order = 0;							\n"
+"uniform int u_test = 0;							\n"
 "uniform int u_invert_f = 0;							\n"
 "uniform int u_invert_b = 0;							\n"
 "/* Where the 2D layers are across the scene: their left edge, their width	\n"
 " * (widescreen: 4:3 in the middle, or stretched) */				\n"
 "uniform vec2 u_layer_x = vec2 (0.0, 1.0);					\n"
+"/* RENDER_SCALE: the scene's texels a pixel of the picture covers, a	\n"
+" * texel's size; BLOOM's glow and its strength; CRT_FILTER's strength, the	\n"
+" * picture's size in pixels */							\n"
+"uniform vec2 u_down = vec2 (1.0);						\n"
+"uniform vec2 u_texel = vec2 (0.0);						\n"
+"uniform sampler2D u_bloom;							\n"
+"uniform float u_bloom_k = 0.0;							\n"
+"uniform float u_crt = 0.0;							\n"
+"uniform vec2 u_out = vec2 (640.0, 480.0);					\n"
 "										\n"
 "in vec2 p_texcoords;								\n"
+"										\n"
+"%BOX%										\n"
+"										\n"
+"/* A scene's buffer, larger than the picture: the mean of its texels	\n"
+" * there */									\n"
+"vec4 scene (sampler2D s, vec2 uv) {						\n"
+"	if (u_down.x <= 1.0 && u_down.y <= 1.0)					\n"
+"		return texture (s, uv);						\n"
+"	return box (s, uv, u_texel, u_down);					\n"
+"}										\n"
 "										\n"
 "void main (void) {								\n"
 "	vec2 p_texcoords_inv = vec2 ((p_texcoords.s - u_layer_x.x) / u_layer_x.y,	\n"
@@ -2070,13 +2251,13 @@ static const char *fb_fs_source =
 "	vec4 texel_f, texel_b;							\n"
 "										\n"
 "	if (u_invert_f == 0)							\n"
-"		texel_f = texture (u_front, p_texcoords);			\n"
+"		texel_f = scene (u_front, p_texcoords);				\n"
 "	else									\n"
 "		texel_f = texture (u_front, p_texcoords_inv) * inside;		\n"
 "	texel_f = texel_f * u_mult_f;						\n"
 "										\n"
 "	if (u_invert_b == 0)							\n"
-"		texel_b = texture (u_back,  p_texcoords);			\n"
+"		texel_b = scene (u_back,  p_texcoords);				\n"
 "	else									\n"
 "		texel_b = texture (u_back,  p_texcoords_inv) * inside;		\n"
 "	texel_b = texel_b * u_mult_b;						\n"
@@ -2084,34 +2265,350 @@ static const char *fb_fs_source =
 "	vec4 texel_1 = texture (u_layer1, p_texcoords_inv) * inside;		\n"
 "	vec4 texel_2 = texture (u_layer2, p_texcoords_inv) * inside;		\n"
 "										\n"
-"	/* The layers go over the scene where their alpha is set: elsewhere	\n"
-"	 * they are transparent, whatever their colour (SGNASCAR's texts). The	\n"
-"	 * multiplier scales the alpha too (A2BGR10: PHARRIER's warning). A	\n"
-"	 * multiplier of 0 means no layer there. Layer 1 over layer 2:		\n"
-"	 * AIRTRIX's logos, on layer 1, over the white of layer 2. */		\n"
-"	frag_color = mix (texel_f, texel_b, u_factor);				\n"
-"	if (u_mult_2 > 0.0)							\n"
-"		frag_color.rgb = mix (frag_color.rgb, texel_2.rgb * u_mult_2,	\n"
-"		                      clamp (texel_2.a * u_mult_2, 0.0, 1.0));	\n"
-"	if (u_mult_1 > 0.0)							\n"
-"		frag_color.rgb = mix (frag_color.rgb, texel_1.rgb * u_mult_1,	\n"
-"		                      clamp (texel_1.a * u_mult_1, 0.0, 1.0));	\n"
+"	/* The 3D and the shown layers (multiplier > 0) stacked in the order	\n"
+"	 * of 1A0001B8, bottom to top: from the top down, the first there	\n"
+"	 * (1A0001BC: by its alpha or its colour) gives the pixel, the bottom	\n"
+"	 * one otherwise (see hikaru-gpu.cpp). The multiplier scales the	\n"
+"	 * colour (A2BGR10: PHARRIER's warning). The glow is the scene's	\n"
+"	 * alone. The scene tested by its alpha goes over what is under it	\n"
+"	 * by that alpha, its colour already weighted by it (cleared to 0):	\n"
+"	 * the same where it is 0 or 1, smooth on the edges of MSAA and	\n"
+"	 * RENDER_SCALE. The scene's alpha goes on: the blending of the	\n"
+"	 * frames writes it back to the scene. */				\n"
+"	vec4 src[3];								\n"
+"	bool on[3], there[3];							\n"
+"	src[0] = mix (texel_f, texel_b, u_factor);				\n"
+"	if (u_bloom_k > 0.0)							\n"
+"		src[0].rgb += texture (u_bloom, p_texcoords).rgb * u_bloom_k;	\n"
+"	src[1] = clamp (texel_1 * u_mult_1, 0.0, 1.0);				\n"
+"	src[2] = clamp (texel_2 * u_mult_2, 0.0, 1.0);				\n"
+"	on[0] = true;								\n"
+"	on[1] = u_mult_1 > 0.0;							\n"
+"	on[2] = u_mult_2 > 0.0;							\n"
+"	for (int n = 0; n < 3; n++)						\n"
+"		there[n] = (u_test & (1 << n)) != 0 ? src[n].a > 0.0 :		\n"
+"		           any (greaterThan (src[n].rgb, vec3 (0.0)));		\n"
+"	int order[12] = int[12] (2, 1, 0,  2, 0, 1,  1, 0, 2,  0, 2, 1);	\n"
+"	bool bottom = true;							\n"
+"	frag_color = vec4 (0.0);						\n"
+"	for (int k = 0; k < 3; k++) {						\n"
+"		int n = order[u_order * 3 + k];					\n"
+"		if (!on[n])							\n"
+"			continue;						\n"
+"		if (bottom)							\n"
+"			frag_color = src[n];					\n"
+"		else if (n == 0 && there[0] && (u_test & 1) != 0)		\n"
+"			frag_color = vec4 (src[0].rgb +				\n"
+"			                   frag_color.rgb * (1.0 - src[0].a),	\n"
+"			                   1.0);				\n"
+"		else if (there[n])						\n"
+"			frag_color = src[n];					\n"
+"		bottom = false;							\n"
+"	}									\n"
+"										\n"
+"	/* A CRT's 480 scanlines, dark between, and its aperture grille's	\n"
+"	 * stripes, a pixel each: none below twice the rows, where they would	\n"
+"	 * beat with the pixels; brighter, for the light they take */		\n"
+"	if (u_crt > 0.0) {							\n"
+"		float k = u_crt * clamp (u_out.y / 480.0 - 1.0, 0.0, 1.0);	\n"
+"		float phase = fract ((1.0 - p_texcoords.t) * 480.0);		\n"
+"		float beam = 0.5 + 0.5 * cos (6.2831853 * (phase - 0.5));	\n"
+"		int m = int (mod (gl_FragCoord.x, 3.0));			\n"
+"		vec3 mask = vec3 (m == 0 ? 1.0 : 0.7, m == 1 ? 1.0 : 0.7,	\n"
+"		                  m == 2 ? 1.0 : 0.7);				\n"
+"		frag_color.rgb *= mix (1.0, 0.3 + 0.7 * beam, k) * (1.0 + 0.4 * k);	\n"
+"		frag_color.rgb *= mix (vec3 (1.0), mask, 0.6 * k);		\n"
+"	}									\n"
 "}\n";
+
+/* The texels of s under a pixel down times smaller than them: up to 8x8
+ * taps, each the mean of 2x2 texels (LINEAR), at the texels' centres when
+ * down is whole (an exact box) */
+static const char *box_source =
+"vec4 box (sampler2D s, vec2 uv, vec2 texel, vec2 down) {			\n"
+"	ivec2 n = clamp (ivec2 (ceil (down * 0.5 - 0.001)), ivec2 (1), ivec2 (8));	\n"
+"	vec2 step = down / vec2 (n) * texel;					\n"
+"	vec2 first = uv - 0.5 * down * texel + 0.5 * step;			\n"
+"	vec4 sum = vec4 (0.0);							\n"
+"	for (int y = 0; y < n.y; y++)						\n"
+"		for (int x = 0; x < n.x; x++)					\n"
+"			sum += texture (s, first + vec2 (x, y) * step);		\n"
+"	return sum / float (n.x * n.y);						\n"
+"}										\n";
+
+/* FXAA: the edges' steps blurred along the edge, where the luma changes
+ * across it; the rest left alone */
+static const char *fxaa_fs_source =
+"#version 140									\n"
+"										\n"
+"out vec4 frag_color;								\n"
+"uniform sampler2D u_texture;							\n"
+"uniform vec2 u_texel;								\n"
+"in vec2 p_texcoords;								\n"
+"										\n"
+"void main (void) {								\n"
+"	const vec3 to_luma = vec3 (0.299, 0.587, 0.114);			\n"
+"	vec2 uv = p_texcoords;							\n"
+"	vec4 m = texture (u_texture, uv);					\n"
+"	/* The four corners' luma, the texture's rows going up */		\n"
+"	float bl = dot (texture (u_texture, uv + vec2 (-1.0, -1.0) * u_texel).rgb, to_luma);	\n"
+"	float br = dot (texture (u_texture, uv + vec2 ( 1.0, -1.0) * u_texel).rgb, to_luma);	\n"
+"	float tl = dot (texture (u_texture, uv + vec2 (-1.0,  1.0) * u_texel).rgb, to_luma);	\n"
+"	float tr = dot (texture (u_texture, uv + vec2 ( 1.0,  1.0) * u_texel).rgb, to_luma);	\n"
+"	float lm = dot (m.rgb, to_luma);					\n"
+"	float lmin = min (lm, min (min (bl, br), min (tl, tr)));		\n"
+"	float lmax = max (lm, max (max (bl, br), max (tl, tr)));		\n"
+"										\n"
+"	/* The luma's change turned a quarter: along the edge, blurred */	\n"
+"	vec2 dir = vec2 ((tl + tr) - (bl + br), (bl + tl) - (br + tr));		\n"
+"	float reduce = max ((bl + br + tl + tr) * (0.25 / 8.0), 1.0 / 128.0);	\n"
+"	float scale = 1.0 / (min (abs (dir.x), abs (dir.y)) + reduce);		\n"
+"	dir = clamp (dir * scale, vec2 (-8.0), vec2 (8.0)) * u_texel;		\n"
+"										\n"
+"	vec3 a = 0.5 * (texture (u_texture, uv - dir / 6.0).rgb +		\n"
+"	                texture (u_texture, uv + dir / 6.0).rgb);		\n"
+"	vec3 b = 0.5 * a + 0.25 * (texture (u_texture, uv - dir * 0.5).rgb +	\n"
+"	                           texture (u_texture, uv + dir * 0.5).rgb);	\n"
+"	float lb = dot (b, to_luma);						\n"
+"	frag_color = vec4 ((lb < lmin || lb > lmax) ? a : b, m.a);		\n"
+"}\n";
+
+/* BLOOM's bright parts, a quarter of the scene's size */
+static const char *bright_fs_source =
+"#version 140									\n"
+"										\n"
+"out vec4 frag_color;								\n"
+"uniform sampler2D u_texture;							\n"
+"uniform vec2 u_texel;								\n"
+"uniform vec2 u_down;								\n"
+"in vec2 p_texcoords;								\n"
+"										\n"
+"%BOX%										\n"
+"										\n"
+"void main (void) {								\n"
+"	/* By the luma: a blue sky is not a light */				\n"
+"	vec3 c = box (u_texture, p_texcoords, u_texel, u_down).rgb;		\n"
+"	float l = dot (c, vec3 (0.299, 0.587, 0.114));				\n"
+"	frag_color = vec4 (c * smoothstep (0.6, 0.95, l), 1.0);			\n"
+"}\n";
+
+/* BLOOM's blur, along u_texel (one texel across, or down): nine texels'
+ * gaussian in five LINEAR taps */
+static const char *blur_fs_source =
+"#version 140									\n"
+"										\n"
+"out vec4 frag_color;								\n"
+"uniform sampler2D u_texture;							\n"
+"uniform vec2 u_texel;								\n"
+"in vec2 p_texcoords;								\n"
+"										\n"
+"void main (void) {								\n"
+"	vec2 d1 = 1.3846154 * u_texel, d2 = 3.2307692 * u_texel;		\n"
+"	vec3 c = texture (u_texture, p_texcoords).rgb * 0.2270270;		\n"
+"	c += (texture (u_texture, p_texcoords + d1).rgb +			\n"
+"	      texture (u_texture, p_texcoords - d1).rgb) * 0.3162162;		\n"
+"	c += (texture (u_texture, p_texcoords + d2).rgb +			\n"
+"	      texture (u_texture, p_texcoords - d2).rgb) * 0.0702703;		\n"
+"	frag_color = vec4 (c, 1.0);						\n"
+"}\n";
+
+/* A shader's source with box_source in place of its %BOX% */
+static std::string
+with_box (const char *source)
+{
+	std::string s = source;
+	size_t at = s.find ("%BOX%");
+
+	if (at != std::string::npos)
+		s.replace (at, 5, box_source);
+	return s;
+}
 
 #define NUM_FRAMEBUFFERS 2
 
 #define OFFSET(member_) \
 	((const GLvoid *) offsetof (std::remove_reference_t<decltype (fb_vbo_data[0])>, member_))
 
+/* An RGBA8 texture of w x h, clamped, cleared to 0: the scene's buffers'
+ * (NEAREST, for the blending of the next frame), the post effects'
+ * (LINEAR). Cleared by glClear, not glTexSubImage2D: with no unpack buffer
+ * bound, that one reads its data pointer, and NVIDIA's driver read address
+ * 0 when it was NULL */
+static GLuint
+make_color_texture (unsigned w, unsigned h, GLint filter)
+{
+	GLuint id, fbo;
+
+	glGenTextures (1, &id);
+	glBindTexture (GL_TEXTURE_2D, id);
+	glTexStorage2D (GL_TEXTURE_2D, 1, GL_RGBA8, w, h);
+	glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filter);
+	glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, filter);
+	glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	HL_ASSERT_NO_GL_ERROR ();
+
+	glGenFramebuffers (1, &fbo);
+	glBindFramebuffer (GL_FRAMEBUFFER, fbo);
+	glFramebufferTexture2D (GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+	                        GL_TEXTURE_2D, id, 0);
+	glDisable (GL_SCISSOR_TEST);
+	glClearColor (0.0f, 0.0f, 0.0f, 0.0f);
+	glClear (GL_COLOR_BUFFER_BIT);
+	glDeleteFramebuffers (1, &fbo);
+	HL_ASSERT_NO_GL_ERROR ();
+	return id;
+}
+
+/* A post effect's picture, w x h, and its framebuffer object: made, or made
+ * again at another size */
+static void
+make_post_target (hikaru_target_t &t, unsigned w, unsigned h)
+{
+	if (t.fb && t.w == w && t.h == h)
+		return;
+	if (!t.fb)
+		glGenFramebuffers (1, &t.fb);
+	if (t.tex)
+		glDeleteTextures (1, &t.tex);
+	t.tex = make_color_texture (w, h, GL_LINEAR);
+	glBindFramebuffer (GL_FRAMEBUFFER, t.fb);
+	glFramebufferTexture2D (GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+	                        GL_TEXTURE_2D, t.tex, 0);
+	HL_ASSERT_NO_GL_ERROR ();
+	t.w = w;
+	t.h = h;
+}
+
+static void
+destroy_post_target (hikaru_target_t &t)
+{
+	if (t.fb)
+		glDeleteFramebuffers (1, &t.fb);
+	if (t.tex)
+		glDeleteTextures (1, &t.tex);
+	memset ((void *) &t, 0, sizeof (t));
+}
+
+/* The scene's two buffers at RENDER_SCALE's size, and MSAA's: built, or
+ * built again when they change, their pictures kept (scaled), for the
+ * blending of the next frame and for a frame that draws none */
+static int
+build_scene_buffers (Renderer *hr)
+{
+	static const GLenum targets[1] = { GL_COLOR_ATTACHMENT0 };
+	auto &fb = hr->framebuffer;
+	unsigned scale = MAX2 (1u, MIN2 (4u, hr->view.scale));
+	unsigned samples = MIN2 (hr->view.msaa, (unsigned) MAX2 (0, fb.max_samples));
+	unsigned w = hr->scene_w * scale, h = 480 * scale, i;
+	bool resized = !fb.cb[0] || fb.w != w || fb.h != h;
+	GLuint old_fb = 0;
+
+	if (samples < 2)
+		samples = 0;
+	if (!resized && fb.samples == samples)
+		return 0;
+
+	if (resized && fb.cb[0])
+		glGenFramebuffers (1, &old_fb);
+
+	for (i = 0; i < NUM_FRAMEBUFFERS && resized; i++) {
+		GLuint cb = make_color_texture (w, h, GL_NEAREST), db;
+
+		glGenRenderbuffers (1, &db);
+		glBindRenderbuffer (GL_RENDERBUFFER, db);
+		glRenderbufferStorage (GL_RENDERBUFFER, GL_DEPTH_COMPONENT, w, h);
+		HL_ASSERT_NO_GL_ERROR ();
+
+		glBindFramebuffer (GL_FRAMEBUFFER, fb.fb[i]);
+		glFramebufferTexture2D (GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+		                        GL_TEXTURE_2D, cb, 0);
+		glFramebufferRenderbuffer (GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
+		                           GL_RENDERBUFFER, db);
+		glDrawBuffers (1, targets);
+		HL_ASSERT_NO_GL_ERROR ();
+		if (glCheckFramebufferStatus (GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+			return -1;
+
+		/* The old picture, scaled to the new size */
+		if (old_fb) {
+			glBindFramebuffer (GL_READ_FRAMEBUFFER, old_fb);
+			glFramebufferTexture2D (GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+			                        GL_TEXTURE_2D, fb.cb[i], 0);
+			glBlitFramebuffer (0, 0, fb.w, fb.h, 0, 0, w, h,
+			                   GL_COLOR_BUFFER_BIT, GL_LINEAR);
+			glDeleteTextures (1, &fb.cb[i]);
+			glDeleteRenderbuffers (1, &fb.db[i]);
+			HL_ASSERT_NO_GL_ERROR ();
+		}
+		fb.cb[i] = cb;
+		fb.db[i] = db;
+	}
+	if (old_fb)
+		glDeleteFramebuffers (1, &old_fb);
+
+	/* MSAA: the scene drawn there, resolved into the buffer */
+	if (fb.ms_fb) {
+		glDeleteFramebuffers (1, &fb.ms_fb);
+		glDeleteRenderbuffers (1, &fb.ms_cb);
+		glDeleteRenderbuffers (1, &fb.ms_db);
+		fb.ms_fb = fb.ms_cb = fb.ms_db = 0;
+	}
+	if (samples) {
+		glGenFramebuffers (1, &fb.ms_fb);
+		glGenRenderbuffers (1, &fb.ms_cb);
+		glGenRenderbuffers (1, &fb.ms_db);
+		glBindRenderbuffer (GL_RENDERBUFFER, fb.ms_cb);
+		glRenderbufferStorageMultisample (GL_RENDERBUFFER, samples, GL_RGBA8, w, h);
+		glBindRenderbuffer (GL_RENDERBUFFER, fb.ms_db);
+		glRenderbufferStorageMultisample (GL_RENDERBUFFER, samples,
+		                                  GL_DEPTH_COMPONENT24, w, h);
+		glBindFramebuffer (GL_FRAMEBUFFER, fb.ms_fb);
+		glFramebufferRenderbuffer (GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+		                           GL_RENDERBUFFER, fb.ms_cb);
+		glFramebufferRenderbuffer (GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
+		                           GL_RENDERBUFFER, fb.ms_db);
+		glDrawBuffers (1, targets);
+		HL_ASSERT_NO_GL_ERROR ();
+		if (glCheckFramebufferStatus (GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+			HL_ERROR ("MSAA x%u not available: drawn without", samples);
+			glDeleteFramebuffers (1, &fb.ms_fb);
+			glDeleteRenderbuffers (1, &fb.ms_cb);
+			glDeleteRenderbuffers (1, &fb.ms_db);
+			fb.ms_fb = fb.ms_cb = fb.ms_db = 0;
+		}
+	}
+	glBindRenderbuffer (GL_RENDERBUFFER, 0);
+	glBindFramebuffer (GL_FRAMEBUFFER, hr->target_fb);
+	HL_ASSERT_NO_GL_ERROR ();
+
+	if (fb.w)
+		HL_PRINT ("HR the scene drawn at %ux%u, MSAA x%u", w, h, samples);
+	fb.w = w;
+	fb.h = h;
+	fb.scale = scale;
+	/* What was asked, within the card's: asked again when it changes */
+	fb.samples = samples;
+	return 0;
+}
+
+/* A post effect's program, with its uniforms */
+template <typename P> static void
+build_post_program (P &p, const char *fs_source)
+{
+	p.program = hl::gl::compile_program (fb_vs_source, with_box (fs_source).c_str ());
+	p.u_texture = glGetUniformLocation (p.program, "u_texture");
+	p.u_texel = glGetUniformLocation (p.program, "u_texel");
+	p.u_down = glGetUniformLocation (p.program, "u_down");
+	HL_ASSERT_NO_GL_ERROR ();
+}
+
 static int
 build_fb_state (Renderer *hr)
 {
-	static const GLenum targets[1] = { GL_COLOR_ATTACHMENT0 };
-	unsigned i;
-
 	/* Compile the framebuffer GLSL program and retrieve the uniforms. */
 	hr->framebuffer.program =
-		hl::gl::compile_program (fb_vs_source, fb_fs_source);
+		hl::gl::compile_program (fb_vs_source, with_box (fb_fs_source).c_str ());
 	HL_ASSERT_NO_GL_ERROR ();
 
 	hr->framebuffer.locs.u_front =
@@ -2132,59 +2629,48 @@ build_fb_state (Renderer *hr)
 		get_uniform_loc (hr->framebuffer.program, "u_mult_1");
 	hr->framebuffer.locs.u_mult_2 =
 		get_uniform_loc (hr->framebuffer.program, "u_mult_2");
+	hr->framebuffer.locs.u_order =
+		get_uniform_loc (hr->framebuffer.program, "u_order");
+	hr->framebuffer.locs.u_test =
+		get_uniform_loc (hr->framebuffer.program, "u_test");
 	hr->framebuffer.locs.u_invert_f =
 		get_uniform_loc (hr->framebuffer.program, "u_invert_f");
 	hr->framebuffer.locs.u_invert_b =
 		get_uniform_loc (hr->framebuffer.program, "u_invert_b");
 	hr->framebuffer.locs.u_layer_x =
 		get_uniform_loc (hr->framebuffer.program, "u_layer_x");
+	/* [Enhancements]': -1 if the compiler dropped one, ignored then */
+	hr->framebuffer.locs.u_down =
+		glGetUniformLocation (hr->framebuffer.program, "u_down");
+	hr->framebuffer.locs.u_texel =
+		glGetUniformLocation (hr->framebuffer.program, "u_texel");
+	hr->framebuffer.locs.u_bloom =
+		glGetUniformLocation (hr->framebuffer.program, "u_bloom");
+	hr->framebuffer.locs.u_bloom_k =
+		glGetUniformLocation (hr->framebuffer.program, "u_bloom_k");
+	hr->framebuffer.locs.u_crt =
+		glGetUniformLocation (hr->framebuffer.program, "u_crt");
+	hr->framebuffer.locs.u_out =
+		glGetUniformLocation (hr->framebuffer.program, "u_out");
 
-	/* Generate two framebuffers (the front and the back buffers), each
-	 * associated with a colorbuffer (texture) and a depth buffer
-	 * (renderbuffer). */
-	glGenFramebuffers (NUM_FRAMEBUFFERS, hr->framebuffer.fb);
-	glGenTextures (NUM_FRAMEBUFFERS, hr->framebuffer.cb);
-	glGenRenderbuffers (NUM_FRAMEBUFFERS, hr->framebuffer.db);
+	build_post_program (hr->framebuffer.fxaa, fxaa_fs_source);
+	build_post_program (hr->framebuffer.bright, bright_fs_source);
+	build_post_program (hr->framebuffer.blur, blur_fs_source);
+
+	/* What the card can: MSAA's samples, the anisotropy */
+	glGetIntegerv (GL_MAX_SAMPLES, &hr->framebuffer.max_samples);
+	hr->framebuffer.max_aniso = 1.0f;
+	if (GLEW_EXT_texture_filter_anisotropic || GLEW_ARB_texture_filter_anisotropic)
+		glGetFloatv (GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT, &hr->framebuffer.max_aniso);
 	HL_ASSERT_NO_GL_ERROR ();
 
-	for (i = 0; i < NUM_FRAMEBUFFERS; i++) {
-
-		/* Bind the i'th framebuffer */
-		glBindFramebuffer (GL_FRAMEBUFFER, hr->framebuffer.fb[i]);
-		HL_ASSERT_NO_GL_ERROR ();
-
-		/* Create and attach a texture as color buffer. */
-		glBindTexture (GL_TEXTURE_2D, hr->framebuffer.cb[i]);
-		HL_ASSERT_NO_GL_ERROR ();
-		glTexStorage2D (GL_TEXTURE_2D, 1, GL_RGBA8, hr->scene_w, 480);
-		HL_ASSERT_NO_GL_ERROR ();
-		glTexSubImage2D (GL_TEXTURE_2D, 0, 0, 0, hr->scene_w, 480,
-		                 GL_RGBA, GL_UNSIGNED_BYTE, NULL);
-		HL_ASSERT_NO_GL_ERROR ();
-		glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-		HL_ASSERT_NO_GL_ERROR ();
-		glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-		HL_ASSERT_NO_GL_ERROR ();
-
-		glFramebufferTexture2D (GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
-		                        GL_TEXTURE_2D, hr->framebuffer.cb[i], 0);
-		HL_ASSERT_NO_GL_ERROR ();
-
-		glDrawBuffers (1, targets);
-		HL_ASSERT_NO_GL_ERROR ();
-
-		/* Create and attach a renderbuffer as depth buffer. */
-		glBindRenderbuffer (GL_RENDERBUFFER, hr->framebuffer.db[i]);
-		glRenderbufferStorage (GL_RENDERBUFFER, GL_DEPTH_COMPONENT, hr->scene_w, 480);
-		HL_ASSERT_NO_GL_ERROR ();
-
-		glFramebufferRenderbuffer (GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
-		                           GL_RENDERBUFFER, hr->framebuffer.db[i]);
-		HL_ASSERT_NO_GL_ERROR ();
-
-		if (glCheckFramebufferStatus (GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
-			return -1;
-	}
+	/* Two framebuffers (the front and the back buffers), each with a
+	 * colorbuffer (texture) and a depth buffer (renderbuffer), at
+	 * RENDER_SCALE's size */
+	glGenFramebuffers (NUM_FRAMEBUFFERS, hr->framebuffer.fb);
+	HL_ASSERT_NO_GL_ERROR ();
+	if (build_scene_buffers (hr))
+		return -1;
 
 	glBindFramebuffer (GL_FRAMEBUFFER, 0);
 	HL_ASSERT_NO_GL_ERROR ();
@@ -2228,6 +2714,17 @@ destroy_fb_state (Renderer *hr)
 	glDeleteTextures (NUM_FRAMEBUFFERS, hr->framebuffer.cb);
 	glDeleteRenderbuffers (NUM_FRAMEBUFFERS, hr->framebuffer.db);
 	glDeleteTextures (2, hr->framebuffer.layers);
+	if (hr->framebuffer.ms_fb) {
+		glDeleteFramebuffers (1, &hr->framebuffer.ms_fb);
+		glDeleteRenderbuffers (1, &hr->framebuffer.ms_cb);
+		glDeleteRenderbuffers (1, &hr->framebuffer.ms_db);
+	}
+	destroy_post_target (hr->framebuffer.post);
+	destroy_post_target (hr->framebuffer.bloom[0]);
+	destroy_post_target (hr->framebuffer.bloom[1]);
+	hl::gl::destroy_program (hr->framebuffer.fxaa.program);
+	hl::gl::destroy_program (hr->framebuffer.bright.program);
+	hl::gl::destroy_program (hr->framebuffer.blur.program);
 	HL_ASSERT_NO_GL_ERROR ();
 
 	hl::gl::destroy_program (hr->framebuffer.program);
@@ -2359,6 +2856,83 @@ copy_view (Renderer *hr)
 	hr->view.stretch_2d = cfg->widescreen_2d == hl::WIDESCREEN_2D_STRETCHED;
 	hr->view.linear = cfg->scale_filter == hl::FILTER_LINEAR;
 	hr->view.distance = MAX2 (1.0f, cfg->draw_distance);
+	hr->view.scale = cfg->render_scale;
+	hr->view.msaa = cfg->msaa;
+	hr->view.anisotropy = cfg->anisotropy;
+	hr->view.texture_scale = cfg->texture_scale;
+	hr->view.fxaa = cfg->fxaa;
+	hr->view.bloom = cfg->bloom * 0.01f;
+	hr->view.crt = cfg->crt_filter * 0.01f;
+}
+
+/* A post effect's pass: its program on src, into dst; LINEAR on src while
+ * it reads it */
+template <typename P> static void
+draw_post_pass (Renderer *hr, P &p, GLuint src, unsigned sw, unsigned sh,
+                hikaru_target_t &dst, float dx, float dy)
+{
+	glBindFramebuffer (GL_FRAMEBUFFER, dst.fb);
+	glViewport (0, 0, dst.w, dst.h);
+	glUseProgram (p.program);
+	glActiveTexture (GL_TEXTURE0 + 0);
+	glBindTexture (GL_TEXTURE_2D, src);
+	set_filter (0, GL_LINEAR);
+	glUniform1i (p.u_texture, 0);
+	if (dx || dy)	/* the blur's: along its direction */
+		glUniform2f (p.u_texel, dx, dy);
+	else
+		glUniform2f (p.u_texel, 1.0f / sw, 1.0f / sh);
+	if (p.u_down != (GLuint) -1)
+		glUniform2f (p.u_down, (float) sw / dst.w, (float) sh / dst.h);
+	glBindVertexArray (hr->framebuffer.vao);
+	glDrawArrays (GL_TRIANGLE_STRIP, 0, 4);
+	glBindVertexArray (0);
+	HL_ASSERT_NO_GL_ERROR ();
+}
+
+/* FXAA, BLOOM: the scene's picture smoothed, its glow drawn apart. Returns
+ * the picture to show, the glow's texture in *bloom (0: none) */
+static GLuint
+draw_post_effects (Renderer *hr, GLuint scene, GLuint *bloom)
+{
+	auto &fb = hr->framebuffer;
+	GLuint picture = scene;
+
+	glDisable (GL_SCISSOR_TEST);
+	glDisable (GL_BLEND);
+
+	if (hr->view.fxaa) {
+		make_post_target (fb.post, fb.w, fb.h);
+		draw_post_pass (hr, fb.fxaa, scene, fb.w, fb.h, fb.post, 0.0f, 0.0f);
+		picture = fb.post.tex;
+	}
+
+	/* The bright parts at a quarter of the scene's size, whatever
+	 * RENDER_SCALE's: the same glow at each; blurred twice across, twice
+	 * down */
+	if (hr->view.bloom > 0.0f) {
+		unsigned i;
+
+		make_post_target (fb.bloom[0], hr->scene_w / 4, 480 / 4);
+		make_post_target (fb.bloom[1], hr->scene_w / 4, 480 / 4);
+		draw_post_pass (hr, fb.bright, picture, fb.w, fb.h, fb.bloom[0], 0.0f, 0.0f);
+		for (i = 0; i < 2; i++) {
+			draw_post_pass (hr, fb.blur, fb.bloom[0].tex, fb.bloom[0].w, fb.bloom[0].h,
+			                fb.bloom[1], 1.0f / fb.bloom[0].w, 0.0f);
+			draw_post_pass (hr, fb.blur, fb.bloom[1].tex, fb.bloom[1].w, fb.bloom[1].h,
+			                fb.bloom[0], 0.0f, 1.0f / fb.bloom[1].h);
+		}
+		*bloom = fb.bloom[0].tex;
+	}
+
+	/* The scene's buffer back to NEAREST, for the blending of the next
+	 * frame */
+	glActiveTexture (GL_TEXTURE0 + 0);
+	glBindTexture (GL_TEXTURE_2D, scene);
+	set_filter (0, GL_NEAREST);
+	glBindFramebuffer (GL_FRAMEBUFFER, hr->target_fb);
+	HL_ASSERT_NO_GL_ERROR ();
+	return picture;
 }
 
 /* What draw () reads of the GPU's, at the frame's end */
@@ -2367,6 +2941,8 @@ copy_frame_gpu (Renderer *hr, Gpu *gpu)
 {
 	hr->frame_gpu.fb_config = gpu->fb_config;
 	hr->frame_gpu.layers = LAYERS;
+	hr->frame_gpu.layer_order = REG1AUNIT (0, 0x38) & 3;
+	hr->frame_gpu.layer_test = REG1AUNIT (0, 0x3C) & 7;
 	hr->frame_gpu.lists_begun = gpu->lists_begun;
 }
 
@@ -2374,9 +2950,14 @@ static void
 draw (Renderer *hr)
 {
 	auto *gpu = &hr->frame_gpu;
-	GLuint n1, n2, f, b, layer1 = 0, layer2 = 0;
+	GLuint n1, n2, f, b, layer1 = 0, layer2 = 0, bloom = 0;
 	float factor, mult1 = 0.0f, mult2 = 0.0f;
-	bool on1, on2, drawn = false;
+	bool on1, on2, drawn = false, minified;
+	GLint out[4], filter, scene_filter;
+
+	/* RENDER_SCALE, MSAA: the scene's buffers at their size */
+	if (build_scene_buffers (hr))
+		HL_ABORT ("could not build the scene's buffers");
 
 	/* Figure out the GPU framebuffer assignments */
 	HL_PRINT ("FRAMEBUFFER 781=%08X 181=%08X", gpu->fb_config._781, gpu->fb_config._181);
@@ -2412,15 +2993,33 @@ draw (Renderer *hr)
 	 * in two (PHARRIER's demo, at 30 frames a second) shows its last
 	 * picture in between, not a cleared buffer (a blue flicker) */
 	if (gpu->lists_begun != hr->framebuffer.lists_drawn || n1 >= 2) {
+		/* MSAA: the scene drawn there, resolved into the front buffer */
+		bool ms = hr->framebuffer.ms_fb && n1 < 2;
+
 		hr->framebuffer.lists_drawn = gpu->lists_begun;
 
 		glBindFramebuffer (GL_FRAMEBUFFER,
+		                   ms ? hr->framebuffer.ms_fb :
 		                   (n1 < 2) ? hr->framebuffer.fb[n1] : hr->target_fb);
 		HL_ASSERT_NO_GL_ERROR ();
 
+		/* The windows' contexts have it off (hl::Window): on, or each
+		 * pixel's samples would all take the same value */
+		if (ms)
+			glEnable (GL_MULTISAMPLE);
 		draw_scene (hr);
 		HL_ASSERT_NO_GL_ERROR ();
 		drawn = true;
+
+		if (ms) {
+			glDisable (GL_MULTISAMPLE);
+			glBindFramebuffer (GL_READ_FRAMEBUFFER, hr->framebuffer.ms_fb);
+			glBindFramebuffer (GL_DRAW_FRAMEBUFFER, hr->framebuffer.fb[n1]);
+			glBlitFramebuffer (0, 0, hr->framebuffer.w, hr->framebuffer.h,
+			                   0, 0, hr->framebuffer.w, hr->framebuffer.h,
+			                   GL_COLOR_BUFFER_BIT, GL_NEAREST);
+			HL_ASSERT_NO_GL_ERROR ();
+		}
 
 		glBindFramebuffer (GL_FRAMEBUFFER, hr->target_fb);
 		HL_ASSERT_NO_GL_ERROR ();
@@ -2447,7 +3046,7 @@ draw (Renderer *hr)
 	if (factor > 0.0f && n1 < 2 && n2 < 2 && n1 != n2) {
 		if (drawn) {
 			glBindFramebuffer (GL_FRAMEBUFFER, hr->framebuffer.fb[n1]);
-			glViewport (0, 0, hr->scene_w, 480);
+			glViewport (0, 0, hr->framebuffer.w, hr->framebuffer.h);
 			HL_ASSERT_NO_GL_ERROR ();
 
 			glActiveTexture (GL_TEXTURE0 + 0);
@@ -2463,6 +3062,9 @@ draw (Renderer *hr)
 			glUniform1f (hr->framebuffer.locs.u_mult_2, 0.0f);
 			glUniform1i (hr->framebuffer.locs.u_invert_f, 0);
 			glUniform1i (hr->framebuffer.locs.u_invert_b, 0);
+			glUniform2f (hr->framebuffer.locs.u_down, 1.0f, 1.0f);
+			glUniform1f (hr->framebuffer.locs.u_bloom_k, 0.0f);
+			glUniform1f (hr->framebuffer.locs.u_crt, 0.0f);
 			HL_ASSERT_NO_GL_ERROR ();
 
 			/* front = back * factor + front * (1 - factor) */
@@ -2481,8 +3083,16 @@ draw (Renderer *hr)
 		factor = 0.0f;
 	}
 
+	/* FXAA, BLOOM: on the scene alone, at its buffers' size */
+	if (n1 < 2 && (hr->view.fxaa || hr->view.bloom > 0.0f)) {
+		f = draw_post_effects (hr, f, &bloom);
+		glUseProgram (hr->framebuffer.program);
+		HL_ASSERT_NO_GL_ERROR ();
+	}
+
 	/* Where the picture goes in the window, after the aspect ratio */
 	set_output_viewport (hr);
+	glGetIntegerv (GL_VIEWPORT, out);
 
 	/* Figure out the GPU framebuffer assignments. */
 	glActiveTexture (GL_TEXTURE0 + 0);
@@ -2518,6 +3128,8 @@ draw (Renderer *hr)
 	             (n2 == 2) ? mult1 : (n2 == 3) ? mult2 : 1.0f);
 	glUniform1f (hr->framebuffer.locs.u_mult_1, on1 ? mult1 : 0.0f);
 	glUniform1f (hr->framebuffer.locs.u_mult_2, on2 ? mult2 : 0.0f);
+	glUniform1i (hr->framebuffer.locs.u_order, gpu->layer_order);
+	glUniform1i (hr->framebuffer.locs.u_test, gpu->layer_test);
 	glUniform1i (hr->framebuffer.locs.u_invert_f, n1 >= 2);
 	glUniform1i (hr->framebuffer.locs.u_invert_b, n2 >= 2);
 	if (hr->scene_w == 640 || hr->view.stretch_2d)
@@ -2527,12 +3139,38 @@ draw (Renderer *hr)
 		             (hr->scene_w - 640) * 0.5f / hr->scene_w, 640.0f / hr->scene_w);
 	HL_ASSERT_NO_GL_ERROR ();
 
-	/* The scaling filter, on the four: the scene's buffers go back to
-	 * NEAREST after, for the blending of the next frame */
-	set_filter (0, hr->view.linear ? GL_LINEAR : GL_NEAREST);
-	set_filter (1, hr->view.linear ? GL_LINEAR : GL_NEAREST);
-	set_filter (2, hr->view.linear ? GL_LINEAR : GL_NEAREST);
-	set_filter (3, hr->view.linear ? GL_LINEAR : GL_NEAREST);
+	/* RENDER_SCALE: the scene's buffers larger than the picture, the
+	 * mean of their texels under each pixel. BLOOM's glow; CRT_FILTER at
+	 * the picture's size */
+	minified = hr->framebuffer.scale > 1 &&
+	           (hr->framebuffer.w > (unsigned) out[2] || hr->framebuffer.h > (unsigned) out[3]);
+	if (minified)
+		glUniform2f (hr->framebuffer.locs.u_down,
+		             (float) hr->framebuffer.w / MAX2 (1, out[2]),
+		             (float) hr->framebuffer.h / MAX2 (1, out[3]));
+	else
+		glUniform2f (hr->framebuffer.locs.u_down, 1.0f, 1.0f);
+	glUniform2f (hr->framebuffer.locs.u_texel,
+	             1.0f / hr->framebuffer.w, 1.0f / hr->framebuffer.h);
+	if (bloom) {
+		glActiveTexture (GL_TEXTURE0 + 4);
+		glBindTexture (GL_TEXTURE_2D, bloom);
+		glUniform1i (hr->framebuffer.locs.u_bloom, 4);
+	}
+	glUniform1f (hr->framebuffer.locs.u_bloom_k, bloom ? hr->view.bloom : 0.0f);
+	glUniform1f (hr->framebuffer.locs.u_crt, hr->view.crt);
+	glUniform2f (hr->framebuffer.locs.u_out, (float) out[2], (float) out[3]);
+	HL_ASSERT_NO_GL_ERROR ();
+
+	/* The scaling filter, on the four; LINEAR on the scene's buffers
+	 * when larger, for their mean. They go back to NEAREST after, for the
+	 * blending of the next frame */
+	filter = hr->view.linear ? GL_LINEAR : GL_NEAREST;
+	scene_filter = minified ? GL_LINEAR : filter;
+	set_filter (0, (n1 < 2) ? scene_filter : filter);
+	set_filter (1, (n2 < 2) ? scene_filter : filter);
+	set_filter (2, filter);
+	set_filter (3, filter);
 
 	glBindVertexArray (hr->framebuffer.vao);
 	HL_ASSERT_NO_GL_ERROR ();
@@ -2540,7 +3178,13 @@ draw (Renderer *hr)
 	glDrawArrays (GL_TRIANGLE_STRIP, 0, 4);
 	HL_ASSERT_NO_GL_ERROR ();
 
-	if (hr->view.linear) {
+	/* Not left bound: drawn into again at the next frame */
+	if (bloom) {
+		glActiveTexture (GL_TEXTURE0 + 4);
+		glBindTexture (GL_TEXTURE_2D, 0);
+		glActiveTexture (GL_TEXTURE0 + 3);
+	}
+	if (hr->view.linear || minified) {
 		set_filter (0, GL_NEAREST);
 		set_filter (1, GL_NEAREST);
 	}

@@ -204,6 +204,70 @@ msgid "The 3D scenery's detailed models and its fog that much farther; what the 
 msgstr ""
 
 #: src/ui/ui_common.cpp
+msgid "Enhancements"
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "x%d (%d x %d), the board's"
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "3D resolution"
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "The 3D drawn larger, then fitted to the window: sharper edges and textures, more work for the graphics card. The 2D (texts, logos) keeps its size. Above the window's size, the picture is averaged down (supersampling)."
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "Antialiasing (MSAA)"
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "The 3D's edges smoothed by several samples a pixel. The textures' own edges (fences, leaves) stay as they are."
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "Edge smoothing (FXAA)"
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "The 3D's edges smoothed once drawn: cheaper than MSAA, a little blurrier; the 2D left alone."
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "Anisotropic filtering"
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "The textures seen at a slant (roads, floors, walls) kept sharp into the distance."
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "Texture upscaling"
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "The textures enlarged, the edges of their flat colours (texts, signs, markings) kept sharp; the photographic ones change little. More memory, and the textures take longer to load."
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "Bloom"
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "A glow around the 3D's bright parts (lights, sky, explosions). 0: none."
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "CRT filter"
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "A CRT's look on a flat screen: its scanlines and its phosphors' stripes, over the whole picture. From 960 rows up (a window of x2 or more, full screen); none on a CRT itself. 0: none."
+msgstr ""
+
+#: src/ui/ui_common.cpp
 msgid "The sound card's own"
 msgstr ""
 
@@ -384,11 +448,23 @@ msgid "Games folder"
 msgstr ""
 
 #: src/ui/ui_common.cpp
-msgid "Empty: the roms folder next to the program."
+msgid "Add a folder..."
 msgstr ""
 
 #: src/ui/ui_common.cpp
-msgid "In use: %s"
+msgid "Add a games folder"
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "Empty: the roms folder next to the program. Several folders: separate them with ';', looked in in that order (the BIOS can be in one, the games in another)."
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "In use:"
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "%s (not found)"
 msgstr ""
 
 #: src/ui/ui_common.cpp
@@ -420,6 +496,15 @@ msgid "hikaruloader.log, next to the program (in the write folder when there is 
 msgstr ""
 
 #: src/ui/ui_common.cpp
+msgid "Download the games' pictures"
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "From the Arcade Database (adb.arcadeitalia.net, by motoschifo), into cache/artwork: one game at a time, those found, each asked once. Your own pictures show either way: artwork/ next to the program, <set>.png or .jpg, or MAME's titles/, snap/, flyers/ and marquees/ folders."
+msgstr ""
+
+
+#: src/ui/ui_common.cpp
 msgid "Hikaru Loader, a SEGA Hikaru emulator."
 msgstr ""
 
@@ -442,6 +527,11 @@ msgstr ""
 #: src/ui/ui_common.cpp
 msgid "Romsets read as sm2-emu does: by CRC32, with miniz."
 msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "Games' pictures, when downloaded: scraping using Arcade Database by motoschifo, as sm2-emu does; their copyrights belong to their owners. Pictures read with stb_image, by Sean Barrett (public domain)."
+msgstr ""
+
 
 #: src/ui/ui_common.cpp
 msgid "Settings"
@@ -748,7 +838,15 @@ msgid "Enter: launch   Tab: settings   Esc: quit"
 msgstr ""
 
 #: src/ui/ui_picker.cpp
+msgid "%d of %d games ready in %d folders"
+msgstr ""
+
+#: src/ui/ui_picker.cpp
 msgid "%d of %d games ready in %s"
+msgstr ""
+
+#: src/ui/ui_picker.cpp
+msgid "Games folders"
 msgstr ""
 
 #: src/ui/ui_picker.cpp

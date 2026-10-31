@@ -207,6 +207,70 @@ msgid "The 3D scenery's detailed models and its fog that much farther; what the 
 msgstr "Les modèles détaillés du décor 3D et son brouillard d'autant plus loin ; ce que le jeu omet lui-même n'est pas dessiné. x1.0 : tel que le jeu le dessine."
 
 #: src/ui/ui_common.cpp
+msgid "Enhancements"
+msgstr "Améliorations"
+
+#: src/ui/ui_common.cpp
+msgid "x%d (%d x %d), the board's"
+msgstr "x%d (%d x %d), celle de la carte"
+
+#: src/ui/ui_common.cpp
+msgid "3D resolution"
+msgstr "Résolution de la 3D"
+
+#: src/ui/ui_common.cpp
+msgid "The 3D drawn larger, then fitted to the window: sharper edges and textures, more work for the graphics card. The 2D (texts, logos) keeps its size. Above the window's size, the picture is averaged down (supersampling)."
+msgstr "La 3D dessinée plus grande, puis ajustée à la fenêtre : des bords et des textures plus nets, plus de travail pour la carte graphique. La 2D (textes, logos) garde sa taille. Au-delà de la taille de la fenêtre, l'image est moyennée (suréchantillonnage)."
+
+#: src/ui/ui_common.cpp
+msgid "Antialiasing (MSAA)"
+msgstr "Anticrénelage (MSAA)"
+
+#: src/ui/ui_common.cpp
+msgid "The 3D's edges smoothed by several samples a pixel. The textures' own edges (fences, leaves) stay as they are."
+msgstr "Les bords de la 3D lissés par plusieurs échantillons par pixel. Les bords propres aux textures (grillages, feuillages) restent tels quels."
+
+#: src/ui/ui_common.cpp
+msgid "Edge smoothing (FXAA)"
+msgstr "Lissage des bords (FXAA)"
+
+#: src/ui/ui_common.cpp
+msgid "The 3D's edges smoothed once drawn: cheaper than MSAA, a little blurrier; the 2D left alone."
+msgstr "Les bords de la 3D lissés une fois dessinée : moins coûteux que le MSAA, un peu plus flou ; la 2D n'est pas touchée."
+
+#: src/ui/ui_common.cpp
+msgid "Anisotropic filtering"
+msgstr "Filtrage anisotrope"
+
+#: src/ui/ui_common.cpp
+msgid "The textures seen at a slant (roads, floors, walls) kept sharp into the distance."
+msgstr "Les textures vues en biais (routes, sols, murs) restent nettes au loin."
+
+#: src/ui/ui_common.cpp
+msgid "Texture upscaling"
+msgstr "Agrandissement des textures"
+
+#: src/ui/ui_common.cpp
+msgid "The textures enlarged, the edges of their flat colours (texts, signs, markings) kept sharp; the photographic ones change little. More memory, and the textures take longer to load."
+msgstr "Les textures agrandies, les bords de leurs aplats (textes, panneaux, marquages) restant nets ; les photographiques changent peu. Plus de mémoire, et les textures sont plus longues à charger."
+
+#: src/ui/ui_common.cpp
+msgid "Bloom"
+msgstr "Halo lumineux (bloom)"
+
+#: src/ui/ui_common.cpp
+msgid "A glow around the 3D's bright parts (lights, sky, explosions). 0: none."
+msgstr "Un halo autour des parties claires de la 3D (lumières, ciel, explosions). 0 : aucun."
+
+#: src/ui/ui_common.cpp
+msgid "CRT filter"
+msgstr "Filtre CRT"
+
+#: src/ui/ui_common.cpp
+msgid "A CRT's look on a flat screen: its scanlines and its phosphors' stripes, over the whole picture. From 960 rows up (a window of x2 or more, full screen); none on a CRT itself. 0: none."
+msgstr "L'aspect d'un écran cathodique sur un écran plat : ses lignes de balayage et les bandes de ses luminophores, sur toute l'image. À partir de 960 lignes (une fenêtre x2 ou plus, le plein écran) ; aucun sur un écran cathodique. 0 : aucun."
+
+#: src/ui/ui_common.cpp
 msgid "The sound card's own"
 msgstr "Ceux de la carte son"
 
@@ -387,12 +451,24 @@ msgid "Games folder"
 msgstr "Dossier des jeux"
 
 #: src/ui/ui_common.cpp
-msgid "Empty: the roms folder next to the program."
-msgstr "Vide : le dossier roms à côté du programme."
+msgid "Add a folder..."
+msgstr "Ajouter un dossier..."
 
 #: src/ui/ui_common.cpp
-msgid "In use: %s"
-msgstr "Utilisé : %s"
+msgid "Add a games folder"
+msgstr "Ajouter un dossier de jeux"
+
+#: src/ui/ui_common.cpp
+msgid "Empty: the roms folder next to the program. Several folders: separate them with ';', looked in in that order (the BIOS can be in one, the games in another)."
+msgstr "Vide : le dossier roms à côté du programme. Plusieurs dossiers : séparez-les par ';', ils sont parcourus dans cet ordre (le BIOS peut être dans l'un, les jeux dans un autre)."
+
+#: src/ui/ui_common.cpp
+msgid "In use:"
+msgstr "Utilisés :"
+
+#: src/ui/ui_common.cpp
+msgid "%s (not found)"
+msgstr "%s (introuvable)"
 
 #: src/ui/ui_common.cpp
 msgid "MAME romsets (merged, split or non-merged zips): <game>.zip, its parent's zip and hikaru.zip for the BIOS. Folders <game>/ with the files unpacked still work."
@@ -423,6 +499,15 @@ msgid "hikaruloader.log, next to the program (in the write folder when there is 
 msgstr "hikaruloader.log, à côté du programme (dans le dossier d'écriture s'il y en a un), celui du lancement précédent gardé en hikaruloader.old.log : à joindre à un signalement de problème. Pris en compte au prochain lancement."
 
 #: src/ui/ui_common.cpp
+msgid "Download the games' pictures"
+msgstr "Télécharger les images des jeux"
+
+#: src/ui/ui_common.cpp
+msgid "From the Arcade Database (adb.arcadeitalia.net, by motoschifo), into cache/artwork: one game at a time, those found, each asked once. Your own pictures show either way: artwork/ next to the program, <set>.png or .jpg, or MAME's titles/, snap/, flyers/ and marquees/ folders."
+msgstr "Depuis l'Arcade Database (adb.arcadeitalia.net, par motoschifo), dans cache/artwork : un jeu à la fois, ceux trouvés, chacun demandé une seule fois. Vos propres images s'affichent de toute façon : artwork/ à côté du programme, <set>.png ou .jpg, ou les dossiers titles/, snap/, flyers/ et marquees/ de MAME."
+
+
+#: src/ui/ui_common.cpp
 msgid "Hikaru Loader, a SEGA Hikaru emulator."
 msgstr "Hikaru Loader, un émulateur du SEGA Hikaru."
 
@@ -445,6 +530,11 @@ msgstr "Interface reprise de celle de linuxloader, elle-même une version modifi
 #: src/ui/ui_common.cpp
 msgid "Romsets read as sm2-emu does: by CRC32, with miniz."
 msgstr "Romsets lus comme le fait sm2-emu : par CRC32, avec miniz."
+
+#: src/ui/ui_common.cpp
+msgid "Games' pictures, when downloaded: scraping using Arcade Database by motoschifo, as sm2-emu does; their copyrights belong to their owners. Pictures read with stb_image, by Sean Barrett (public domain)."
+msgstr "Images des jeux, quand elles sont téléchargées : scraping using Arcade Database by motoschifo, comme le fait sm2-emu ; leurs droits appartiennent à leurs propriétaires. Images lues avec stb_image, de Sean Barrett (domaine public)."
+
 
 #: src/ui/ui_common.cpp
 msgid "Settings"
@@ -751,8 +841,16 @@ msgid "Enter: launch   Tab: settings   Esc: quit"
 msgstr "Entrée : lancer   Tab : paramètres   Échap : quitter"
 
 #: src/ui/ui_picker.cpp
+msgid "%d of %d games ready in %d folders"
+msgstr "%d jeux prêts sur %d dans %d dossiers"
+
+#: src/ui/ui_picker.cpp
 msgid "%d of %d games ready in %s"
 msgstr "%d jeux prêts sur %d dans %s"
+
+#: src/ui/ui_picker.cpp
+msgid "Games folders"
+msgstr "Dossiers des jeux"
 
 #: src/ui/ui_picker.cpp
 msgid "No game is defined in data/games.json."

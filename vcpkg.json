@@ -9,6 +9,7 @@
     },
     "jansson",
     "miniz",
-    "sdl2"
+    "sdl2",
+    "stb"
   ]
 }

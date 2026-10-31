@@ -8,6 +8,7 @@
 "Making a release archive"; DEVELOPMENT.md, "Versions and releases"):
 dist/hikaruloader-<version>-win64.zip, its folder hikaruloader-<version>/
 holding the program, its data/ and the documents, and its SHA-256 beside it.
+The README's pictures, left out, are taken from GitHub at the release's tag.
 
 It checks first that the build is a release (a tag vX.Y.Z on a clean commit,
 or HL_FORCE_VERSION for a trial), that the program carries that version, and
@@ -27,6 +28,17 @@ import zipfile
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # The documents for those who play (TODO.md stays in the sources)
 DOCS = ["README.md", "INSTALL.md", "CHANGELOG.md", "LICENSE"]
+# The README's pictures stay out of the archive (docs/media/): their paths
+# there point to GitHub, at the release's tag (main for a snapshot), shown
+# once the repository is public
+MEDIA_URL = "https://raw.githubusercontent.com/njz3/hikaruloader/%s/docs/media/"
+
+
+def readme_for_archive(path, ref):
+    """README.md, its pictures' relative paths made GitHub's"""
+    text = open(path, encoding="utf-8").read()
+    url = MEDIA_URL % ref
+    return text.replace('src="docs/media/', 'src="' + url).replace("](docs/media/", "](" + url)
 
 # Windows' own DLLs, which every Windows has; anything else is not static
 SYSTEM_DLLS = {
@@ -35,6 +47,7 @@ SYSTEM_DLLS = {
     "advapi32.dll", "setupapi.dll", "shell32.dll", "cfgmgr32.dll",
     "dinput8.dll", "xinput1_4.dll", "hid.dll", "dwmapi.dll", "uxtheme.dll",
     "comdlg32.dll", "shlwapi.dll", "dbghelp.dll", "bcrypt.dll",
+    "wininet.dll",
 }
 
 
@@ -146,7 +159,11 @@ def main():
     files += [(os.path.join(ROOT, doc), doc) for doc in DOCS]
     with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as z:
         for path, arcname in files:
-            z.write(path, name + "/" + arcname)
+            if arcname == "README.md":
+                z.writestr(name + "/" + arcname,
+                           readme_for_archive(path, "main" if dev else "v" + version))
+            else:
+                z.write(path, name + "/" + arcname)
 
     digest = hashlib.sha256(open(archive, "rb").read()).hexdigest()
     with open(archive + ".sha256", "w", encoding="ascii", newline="\n") as f:

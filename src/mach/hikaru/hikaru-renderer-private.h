@@ -92,7 +92,16 @@ typedef struct {
 	GLuint id;
 	hikaru_texhead_t th;
 	uint32_t gen;		/* its slots' writes when uploaded */
+	/* TEXTURE_SCALE's factor it was uploaded at; ANISOTROPY's, set on
+	 * it */
+	uint8_t scale, aniso;
 } hikaru_texture_t;
+
+/* A post effect's picture and its framebuffer object */
+typedef struct {
+	GLuint fb, tex;
+	unsigned w, h;
+} hikaru_target_t;
 
 typedef struct {
 	uint32_t		first;	/* its first vertex in meshes.verts */
@@ -155,6 +164,9 @@ public:
 	struct {
 		decltype (Gpu::fb_config) fb_config;
 		decltype (Gpu::state.layers) layers;
+		/* 1A0001B8 & 3, 1A0001BC & 7: the stacking order of the 3D
+		 * and the layers, how each is tested (see hikaru-gpu.cpp) */
+		unsigned layer_order, layer_test;
 		uint32_t lists_begun;
 	} frame_gpu;
 	/* The TEXRAM and the framebuffer draw () reads: the GPU's, or the
@@ -169,10 +181,14 @@ public:
 	unsigned scene_w;
 	/* The settings draw () follows, taken at the frame's end: the 2D
 	 * layers stretched to the scene's width, the scaling filter, the draw
-	 * distance's factor (on the fog) */
+	 * distance's factor (on the fog); [Enhancements]', the bloom and the
+	 * CRT filter from 0 to 1 */
 	struct {
 		bool stretch_2d, linear;
 		float distance;
+		unsigned scale, msaa, anisotropy, texture_scale;
+		bool fxaa;
+		float bloom, crt;
 	} view;
 
 	hikaru_viewport_t	*vp_list;
@@ -247,6 +263,21 @@ public:
 	struct {
 		GLuint program;
 		GLuint fb[2], cb[2], db[2];
+		/* The scene's buffers: scene_w x 480 times RENDER_SCALE, built
+		 * again when it or MSAA changes; with MSAA, the scene drawn in
+		 * ms_fb, then resolved into fb[] */
+		unsigned w, h, scale, samples;
+		GLuint ms_fb, ms_cb, ms_db;
+		/* What the graphics card can: MSAA's samples, the anisotropy */
+		int max_samples;
+		float max_aniso;
+		/* The post effects: FXAA's picture, the buffers' size; the
+		 * bloom's two, a quarter of the scene's */
+		hikaru_target_t post, bloom[2];
+		struct {
+			GLuint program;
+			GLuint u_texture, u_texel, u_down;
+		} fxaa, bright, blur;
 		GLuint vao, vbo;
 		/* The layers' textures, kept from frame to frame */
 		GLuint layers[2];
@@ -263,9 +294,17 @@ public:
 			GLuint u_mult_b;
 			GLuint u_mult_1;
 			GLuint u_mult_2;
+			GLuint u_order;
+			GLuint u_test;
 			GLuint u_invert_f;
 			GLuint u_invert_b;
 			GLuint u_layer_x;
+			GLuint u_down;
+			GLuint u_texel;
+			GLuint u_bloom;
+			GLuint u_bloom_k;
+			GLuint u_crt;
+			GLuint u_out;
 		} locs;
 	} framebuffer;
 

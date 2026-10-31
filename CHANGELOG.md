@@ -5,6 +5,25 @@ What each version brings, for those who play. How the versions are numbered
 and released: [DEVELOPMENT.md](DEVELOPMENT.md), "Versions and releases".
 
 
+Next version (not released yet)
+-------------------------------
+
+- Fixed: on NVIDIA graphics cards, 0.1.0 crashed when a game started.
+- Fixed: NASCAR Arcade's HOW TO PLAY and DRIVING TIPS screens, and Star
+  Wars Racer Arcade's SEGA logo, were all white: the 2D layers and the 3D
+  now go in the order the game asks for.
+- Several games folders, separated by `;` (`D:\roms;E:\mame\roms`), looked
+  in in that order: the BIOS can be in one, the games in another. The
+  settings' Picker tab adds one with Windows' folder dialog and marks those
+  not found.
+- The games' pictures in the picker: yours, in `artwork\` beside the
+  program; and, when the Picker tab says so (off by default), the Arcade
+  Database's flyers and marquees, downloaded once into `cache\artwork\`.
+- Enhancements, all off by default, in a settings tab of their own: the 3D
+  drawn at 2 to 4 times its size, MSAA, FXAA, anisotropic filtering,
+  textures enlarged by Scale2x, bloom, a CRT filter.
+
+
 0.1.0 (2026-10-31)
 ------------------
 

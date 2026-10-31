@@ -20,6 +20,7 @@
 // notice of a write directory that could not be written to.
 
 #include "ui/ui.h"
+#include "ui/ui_artwork.h"
 #include "ui/ui_common.h"
 
 #include <cstdio>
@@ -94,6 +95,8 @@ bool ui::Interface::init (SDL_Window *window)
 
 void ui::Interface::shutdown ()
 {
+    // The download stopped and the pictures freed while OpenGL is there
+    ui::artworkShutdown();
     ui::shutdownContext();
     g_ready = false;
 }

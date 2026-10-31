@@ -104,7 +104,8 @@ public:
 	bool		 load ();
 	bool		 save () const;
 
-	/* The games folder in use: games_dir, or "roms" beside the program */
+	/* The games folders in use: games_dir (one, or several separated by
+	 * ';'), or "roms" beside the program */
 	void		 games_dir_in_use (char *dst, size_t size) const;
 
 	/* [Display] */
@@ -131,8 +132,20 @@ public:
 	 * detail and its fog that much farther */
 	float		draw_distance;
 
+	/* [Enhancements]: beyond the board's own picture, all off by default,
+	 * taken at once */
+	int		render_scale;	/* the 3D drawn at 1 ... 4 times its size */
+	int		msaa;		/* its samples a pixel: 0 (none), 2, 4 or 8 */
+	int		anisotropy;	/* the textures' filtering: 1 (none) ... 16 */
+	int		texture_scale;	/* 1, or 2 and 4 by Scale2x */
+	bool		fxaa;		/* the 3D's edges smoothed */
+	int		bloom;		/* 0 ... 100 %: a glow around the bright */
+	int		crt_filter;	/* 0 ... 100 %: a CRT's scanlines and mask */
+
 	/* [Picker] */
-	char		games_dir[512];	/* empty: "roms" beside the program */
+	/* Empty: "roms" beside the program; several separated by ';', looked
+	 * in in that order (hl::RomSet) */
+	char		games_dir[2048];
 	/* All that is written goes there (hl::Paths); empty: none. The
 	 * hikaruloader.ini beside the program's alone counts */
 	char		write_dir[512];
@@ -140,6 +153,9 @@ public:
 	/* hikaruloader.log written, at the next start: beside the program,
 	 * or at the write directory's root; replaced at each start */
 	bool		log_file;
+	/* The picker's pictures downloaded from the Arcade Database
+	 * (ui/ui_artwork.h); off, the artwork folder's alone */
+	bool		artwork_download;
 	char		last_game[32];
 
 	/* [Emulation] */

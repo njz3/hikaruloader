@@ -31,7 +31,8 @@ command line are in [README.md](README.md).
 
 2. Put the games' zips in a folder: a `roms` folder beside the program is
    found by itself. Any other folder: give it in the settings (Tab, Picker
-   tab, Games folder), or with `-R` on the command line.
+   tab, Games folder, or *Add a folder...*), or with `-R` on the command
+   line. Several folders, separated by `;`, are looked in in that order.
 3. Start `hikaruloader.exe`. The picker lists the games, Ready when all their
    files are there; Enter launches the one chosen. The keys are in
    [README.md](README.md), "Keys and controllers".
@@ -55,6 +56,7 @@ Beside `hikaruloader.exe`:
 | `hikaruloader.log`, `hikaruloader.old.log` | The messages of the last start and of the one before (the Picker tab turns them off) |
 | `nvram\<game>.nvram` | Each game's EEPROM and battery-backed RAM: its settings, records and bookkeeping |
 | `<game>.hlstate` | Each game's save state (F4 saves, F1 loads) |
+| `artwork\`, `cache\artwork\` | The picker's pictures: yours, and those downloaded when the Picker tab says so (README.md, "Settings") |
 
 With a write directory (`--write-dir=<folder>`, or `WRITE_DIR` in the
 `[Picker]` section of the `hikaruloader.ini` beside the program), they all go

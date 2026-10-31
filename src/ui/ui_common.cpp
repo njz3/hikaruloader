@@ -26,6 +26,7 @@
 // adapted to Hikaruloader; the About tab says so.
 
 #include "ui/ui_common.h"
+#include "ui/ui_folder.h"
 #include "ui/ui_po.h"
 
 #include <algorithm>
@@ -44,6 +45,7 @@
 #include "hl/audio.h"
 #include "hl/config.h"
 #include "hl/renderer.h"
+#include "hl/romset.h"
 #include "hl/window.h"
 
 #ifdef _WIN32
@@ -265,6 +267,77 @@ void drawDisplayTab()
         hl::Window::apply_display ();
 }
 
+// A setting among a few values, shown by their labels
+void comboValue(const char *label, int *value, const int *values, const char *const *labels, int count)
+{
+    int index = 0;
+    for (int i = 0; i < count; i++)
+        if (values[i] == *value)
+            index = i;
+    if (ImGui::BeginCombo(label, labels[index]))
+    {
+        for (int i = 0; i < count; i++)
+            if (ImGui::Selectable(labels[i], i == index))
+                *value = values[i];
+        ImGui::EndCombo();
+    }
+}
+
+void wrappedNote(const char *text)
+{
+    ImGui::PushTextWrapPos(0.0f);
+    ImGui::TextDisabled("%s", text);
+    ImGui::PopTextWrapPos();
+}
+
+// [Enhancements]: beyond the board's picture, taken at once (hikaru::Renderer's draw ())
+void drawEnhancementsTab()
+{
+    hl::Config *cfg = hl::Config::get ();
+    const int width = cfg->widescreen ? 854 : 640;
+
+    static char scaleLabels[4][48];
+    const char *scaleNames[4];
+    const int scales[] = {1, 2, 3, 4};
+    for (int i = 0; i < 4; i++)
+    {
+        snprintf(scaleLabels[i], sizeof(scaleLabels[i]), i ? "x%d (%d x %d)" : tr("x%d (%d x %d), the board's"),
+                 i + 1, width * (i + 1), 480 * (i + 1));
+        scaleNames[i] = scaleLabels[i];
+    }
+    comboValue(tr("3D resolution"), &cfg->render_scale, scales, scaleNames, 4);
+    wrappedNote(tr("The 3D drawn larger, then fitted to the window: sharper edges and textures, more work for the graphics card. "
+                   "The 2D (texts, logos) keeps its size. Above the window's size, the picture is averaged down (supersampling)."));
+
+    const int samples[] = {0, 2, 4, 8};
+    const char *sampleLabels[] = {tr("Off"), "x2", "x4", "x8"};
+    comboValue(tr("Antialiasing (MSAA)"), &cfg->msaa, samples, sampleLabels, IM_ARRAYSIZE(samples));
+    wrappedNote(tr("The 3D's edges smoothed by several samples a pixel. The textures' own edges (fences, leaves) stay as they are."));
+
+    ImGui::Checkbox(tr("Edge smoothing (FXAA)"), &cfg->fxaa);
+    wrappedNote(tr("The 3D's edges smoothed once drawn: cheaper than MSAA, a little blurrier; the 2D left alone."));
+
+    ImGui::Separator();
+    const int levels[] = {1, 2, 4, 8, 16};
+    const char *levelLabels[] = {tr("Off"), "x2", "x4", "x8", "x16"};
+    comboValue(tr("Anisotropic filtering"), &cfg->anisotropy, levels, levelLabels, IM_ARRAYSIZE(levels));
+    wrappedNote(tr("The textures seen at a slant (roads, floors, walls) kept sharp into the distance."));
+
+    const int factors[] = {1, 2, 4};
+    const char *factorLabels[] = {tr("Off"), "x2 (Scale2x)", "x4 (Scale4x)"};
+    comboValue(tr("Texture upscaling"), &cfg->texture_scale, factors, factorLabels, IM_ARRAYSIZE(factors));
+    wrappedNote(tr("The textures enlarged, the edges of their flat colours (texts, signs, markings) kept sharp; the photographic ones change little. "
+                   "More memory, and the textures take longer to load."));
+
+    ImGui::Separator();
+    ImGui::SliderInt(tr("Bloom"), &cfg->bloom, 0, 100, "%d %%");
+    wrappedNote(tr("A glow around the 3D's bright parts (lights, sky, explosions). 0: none."));
+
+    ImGui::SliderInt(tr("CRT filter"), &cfg->crt_filter, 0, 100, "%d %%");
+    wrappedNote(tr("A CRT's look on a flat screen: its scanlines and its phosphors' stripes, over the whole picture. "
+                   "From 960 rows up (a window of x2 or more, full screen); none on a CRT itself. 0: none."));
+}
+
 void drawSoundTab(bool inGame)
 {
     hl::Config *cfg = hl::Config::get ();
@@ -412,16 +485,45 @@ void drawPickerTab()
     hl::Config *cfg = hl::Config::get ();
     if (ImGui::InputText(tr("Games folder"), cfg->games_dir, sizeof(cfg->games_dir)))
         g_rescan = true;
-    ImGui::TextDisabled("%s", tr("Empty: the roms folder next to the program."));
-    char used[512];
+    char used[2048];
     hl::Config::get ()->games_dir_in_use (used, sizeof(used));
+    std::vector<std::string> folders = hl::RomSet::split_folders(used);
+    // Windows' dialog: the folder chosen added at the end of the list
+    if (canPickFolder())
+    {
+        if (ImGui::Button(tr("Add a folder...")))
+        {
+            std::string folder;
+            if (pickFolder(tr("Add a games folder"), folders.empty() ? nullptr : folders.back().c_str(), folder))
+            {
+                std::string list = cfg->games_dir;
+                if (!list.empty() && list.back() != ';')
+                    list += ';';
+                list += folder;
+                if (list.size() < sizeof(cfg->games_dir))
+                    snprintf(cfg->games_dir, sizeof(cfg->games_dir), "%s", list.c_str());
+                g_rescan = true;
+            }
+        }
+        ImGui::SameLine();
+    }
+    if (ImGui::Button(tr("Scan again")))
+        g_rescan = true;
     ImGui::PushTextWrapPos(0.0f);
-    ImGui::TextDisabled(tr("In use: %s"), used);
+    ImGui::TextDisabled("%s", tr("Empty: the roms folder next to the program. Several folders: separate them with ';', looked in in that order "
+                                 "(the BIOS can be in one, the games in another)."));
+    ImGui::TextDisabled("%s", tr("In use:"));
+    for (const std::string &folder : folders)
+    {
+        std::error_code error;
+        if (std::filesystem::is_directory(folder, error))
+            ImGui::BulletText("%s", folder.c_str());
+        else
+            ImGui::BulletText(tr("%s (not found)"), folder.c_str());
+    }
     ImGui::TextDisabled("%s", tr("MAME romsets (merged, split or non-merged zips): <game>.zip, its parent's zip and hikaru.zip for the BIOS. Folders <game>/ "
                                  "with the files unpacked still work."));
     ImGui::PopTextWrapPos();
-    if (ImGui::Button(tr("Scan again")))
-        g_rescan = true;
 
     ImGui::Separator();
     // Automatic, English, then the language files found, each by its own name
@@ -453,6 +555,15 @@ void drawPickerTab()
     ImGui::TextDisabled("%s", tr("hikaruloader.log, next to the program (in the write folder when there is one), the previous "
                                  "start's kept as hikaruloader.old.log: what to send with a problem report. Taken at the next start."));
     ImGui::PopTextWrapPos();
+
+    ImGui::Separator();
+    if (ImGui::Checkbox(tr("Download the games' pictures"), &cfg->artwork_download))
+        g_rescan = true;
+    ImGui::PushTextWrapPos(0.0f);
+    ImGui::TextDisabled("%s", tr("From the Arcade Database (adb.arcadeitalia.net, by motoschifo), into cache/artwork: one game at a time, "
+                                 "those found, each asked once. Your own pictures show either way: artwork/ next to the program, "
+                                 "<set>.png or .jpg, or MAME's titles/, snap/, flyers/ and marquees/ folders."));
+    ImGui::PopTextWrapPos();
 }
 
 void drawAboutTab()
@@ -476,6 +587,10 @@ void drawAboutTab()
     ImGui::TextUnformatted("https://github.com/dmanlfc/sm2-emu");
     ImGui::Spacing();
     ImGui::TextUnformatted(tr("Romsets read as sm2-emu does: by CRC32, with miniz."));
+    ImGui::Spacing();
+    ImGui::TextUnformatted(tr("Games' pictures, when downloaded: scraping using Arcade Database by motoschifo, as sm2-emu does; their copyrights "
+                              "belong to their owners. Pictures read with stb_image, by Sean Barrett (public domain)."));
+    ImGui::TextUnformatted("https://adb.arcadeitalia.net");
     ImGui::PopTextWrapPos();
 }
 } // namespace
@@ -612,6 +727,11 @@ void drawSettings(bool *open, bool inGame)
         if (ImGui::BeginTabItem(tr("Display")))
         {
             drawDisplayTab();
+            ImGui::EndTabItem();
+        }
+        if (ImGui::BeginTabItem(tr("Enhancements")))
+        {
+            drawEnhancementsTab();
             ImGui::EndTabItem();
         }
         if (ImGui::BeginTabItem(tr("Controls")))

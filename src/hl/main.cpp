@@ -27,7 +27,7 @@
 #include "ui/ui.h"
 
 static struct {
-	char rom_path[256];
+	char rom_path[2048];
 	char rom_name[256];
 	int num_frames;
 	int start_state;
@@ -42,7 +42,8 @@ static hl::Emulator *emulator;
 
 static const char global_opts[] = "R:r:n:l:s:x:Lvh?";
 static const char global_help[] = "Usage: %s [options]\n"
-"	-R <path>	Path to the ROM directory (MAME zips, or a folder per game)\n"
+"	-R <path>	Path to the ROM directory (MAME zips, or a folder per game);\n"
+"			several separated by ';', looked in in that order\n"
 "	-r <string>	Name of the game to run (MAME set name); none: the picker\n"
 "	-n <num>	Only run for num frames\n"
 "	-l <num|file>	Load state num (<game>.hlstate), or a state file, at startup:\n"
@@ -180,7 +181,7 @@ int
 main (const int argc, char **argv)
 {
 	char *base = SDL_GetBasePath ();
-	char path[1024], old_path[1024], rom_path[512];
+	char path[1024], old_path[1024], rom_path[2048];
 	std::string write_dir, ini_path, init_path;
 	bool has_write_dir, loaded;
 	hl::Config *cfg;

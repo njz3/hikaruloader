@@ -74,7 +74,9 @@ games folder, each marked Ready, Incomplete (some files missing) or Not
 found. The arrows (or a controller's D-pad) choose, Enter (a controller's A,
 or a double click) launches, Tab opens the settings, Escape quits. The games
 folder is the one of the settings (Picker tab), else `roms` beside the
-program.
+program. There can be several, separated by `;`
+(`D:\roms;E:\mame\roms`), looked in in that order: the BIOS can be in one,
+the games in another.
 
 In a game, Escape goes back to the picker; when the game was started from
 the command line, it quits. F9 quits at once.
@@ -89,7 +91,7 @@ hikaruloader.exe [options]
 
 | Option | What it does |
 |---|---|
-| `-R <folder>` | The games folder for this start: the MAME zips, or a folder per game |
+| `-R <folder>` | The games folder for this start: the MAME zips, or a folder per game; several separated by `;` (`-R "D:\roms;E:\mame\roms"`) |
 | `-r <set>` | Starts that game at once, by its MAME set name (`-r sgnascar`), without the picker |
 | `-l <file>` | Loads that save state at the start: the game goes on from its frame. `-l 0` (any number) loads the game's own state, the one F4 saves |
 | `-n <frames>` | Quits after that many frames |
@@ -166,6 +168,28 @@ frame number in the title (to report a glitch), the mouse pointer hidden.
 - *Draw distance* (x1 to x4): the scenery's detailed models and its fog go
   that many times farther. What a game leaves out itself is not drawn.
 
+**Enhancements.** Beyond the board's own picture, all off by default; each
+takes effect at once (`[Enhancements]` in `hikaruloader.ini`).
+
+- *3D resolution* (x1 to x4, the size shown: x2 is 1280x960, 1708x960 in
+  widescreen): the 3D drawn larger, then fitted to the window. Sharper edges
+  and textures, more work for the graphics card. The 2D keeps its size.
+  Larger than the window, the picture is averaged down (supersampling): x2
+  smooths the edges even in a 640x480 window.
+- *Antialiasing (MSAA)* (x2, x4, x8): the 3D's edges smoothed by several
+  samples a pixel; the edges inside the textures (fences, leaves) stay.
+- *Edge smoothing (FXAA)*: the 3D's edges smoothed once drawn, cheaper than
+  MSAA, a little blurrier. The 2D is left alone.
+- *Anisotropic filtering* (x2 to x16): the textures seen at a slant (roads,
+  floors) stay sharp into the distance.
+- *Texture upscaling* (Scale2x, Scale4x): the textures enlarged, the edges
+  of their flat colours (texts, signs, markings) kept sharp; photographic
+  textures change little. More memory, slower texture loads.
+- *Bloom* (0 to 100 %): a glow around the 3D's bright parts.
+- *CRT filter* (0 to 100 %): a CRT's scanlines and its phosphors' stripes on
+  a flat screen, over the whole picture. It needs 960 rows or more (a window
+  of x2 or more, full screen); on a CRT itself, leave it at 0.
+
 **Sound.** The speakers: the sound card's, or mono, stereo, 2.1, quad, 5.1,
 7.1. The games with four speakers play their front on the main sound board
 and their rear on the second one; on two speakers the rear comes at the
@@ -194,8 +218,22 @@ front, 3 dB lower. Also the front/rear balance and the volume.
 - *Fake the MIE*: Valkyrie's old shortcut, without the I/O board. Leave it
   off.
 
-**Picker.** The games folder, the language (English, French; Automatic
-follows Windows), the log file.
+**Picker.** The games folders (typed, separated by `;`, or each added with
+*Add a folder...*, Windows' folder dialog; a folder not found is marked so),
+the language (English, French; Automatic follows Windows), the log file,
+the games' pictures.
+
+The picker shows each game's pictures, by MAME set name (a clone without
+its own takes its parent's):
+
+- Your own, in `artwork\` beside the program: `<set>.png` or `.jpg`, or the
+  folders of MAME's packs, `titles\`, `snap\`, `flyers\` and `marquees\`,
+  with `<set>.png` or `.jpg` in them.
+- Downloaded, when the Picker tab's *Download the games' pictures* is on
+  (off by default): from the Arcade Database (adb.arcadeitalia.net, by
+  motoschifo) into `cache\artwork\`, in the background, one game at a time,
+  those of the games found; a game asked once is not asked again. The
+  pictures' copyrights belong to their owners.
 
 
 Saves and files

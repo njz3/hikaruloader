@@ -180,7 +180,8 @@ In the environment:
 
 The unit tests run with `ctest -C RelWithDebInfo` in `build` (the SH-4's
 MMU, the Z80, the ARM7, the AICA's arithmetic, the sound output, the EEPROM,
-the nvram file, the write directory, the drive board, the translations).
+the nvram file, the write directory, the games folders, the drive board,
+the translations).
 `driveboardz80test` is not among them: it needs EPR-20512 (`epr-20512.bin`),
 a script and a journal of Supermodel's, and is run by hand.
 

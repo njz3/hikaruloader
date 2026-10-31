@@ -17,6 +17,8 @@
  */
 
 #include <algorithm>
+#include <cctype>
+#include <cstring>
 
 #include "hl/romset.h"
 
@@ -34,25 +36,51 @@ base_name (const char *path)
 	return slash ? slash + 1 : path;
 }
 
+std::vector<std::string>
+RomSet::split_folders (const char *path)
+{
+	std::vector<std::string> folders;
+	const char *p = path;
+
+	while (p && *p) {
+		const char *end = strchr (p, ';');
+		const char *last = end ? end : p + strlen (p);
+		const char *first = p;
+
+		while (first < last && isspace ((unsigned char) *first))
+			first++;
+		while (last > first && isspace ((unsigned char) last[-1]))
+			last--;
+		if (last > first)
+			folders.push_back (std::string (first, last));
+		p = end ? end + 1 : NULL;
+	}
+	return folders;
+}
+
 RomSet::RomSet (const char *path, const char * const *names, unsigned num_names) :
-	path (path),
+	roots (split_folders (path)),
 	num_zips (0)
 {
 	unsigned i;
 
 	memset (zips, 0, sizeof (zips));
 	for (i = 0; i < num_names && dirs.size () < MAX_DIRS; i++) {
-		std::string zip_path;
-
 		if (!names[i] || !names[i][0])
 			continue;
 		if (std::find (dirs.begin (), dirs.end (), names[i]) != dirs.end ())
 			continue;
 		dirs.push_back (names[i]);
 
-		zip_path = std::string (path) + "/" + names[i] + ".zip";
-		if (mz_zip_reader_init_file (&zips[num_zips], zip_path.c_str (), 0))
-			zip_names[num_zips++] = zip_path;
+		/* In each folder that has it, the first folders first */
+		for (const std::string &root : roots) {
+			std::string zip_path = root + "/" + names[i] + ".zip";
+
+			if (num_zips == MAX_ZIPS)
+				break;
+			if (mz_zip_reader_init_file (&zips[num_zips], zip_path.c_str (), 0))
+				zip_names[num_zips++] = zip_path;
+		}
 	}
 }
 
@@ -99,13 +127,14 @@ RomSet::find_in_dirs (const char *name, const char *alias, unsigned size,
 	unsigned k;
 
 	for (const std::string &dir : dirs)
+		for (const std::string &root : roots)
 		for (k = 0; k < 2; k++) {
 			FILE *fp;
 			long len;
 
 			if (!candidates[k])
 				continue;
-			snprintf (found, found_size, "%s/%s/%s", path.c_str (), dir.c_str (), candidates[k]);
+			snprintf (found, found_size, "%s/%s/%s", root.c_str (), dir.c_str (), candidates[k]);
 			fp = fopen (found, "rb");
 			if (!fp)
 				continue;

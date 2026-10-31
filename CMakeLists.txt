@@ -29,6 +29,8 @@ find_package (SDL2 CONFIG REQUIRED)
 find_package (jansson CONFIG REQUIRED)
 find_package (miniz CONFIG REQUIRED)
 find_package (imgui CONFIG REQUIRED)
+# stb_image, the picker's pictures (src/ui/ui_artwork.cpp)
+find_path (STB_INCLUDE_DIRS "stb_image.h" REQUIRED)
 
 set (HL_SRC
 	src/hl/core.cpp
@@ -83,8 +85,10 @@ endif ()
 # The ImGui interface: the picker and the Tab settings. imgui_impl_sdl2 comes
 # from Dear ImGui 1.92.6, as vcpkg's imgui no longer builds it.
 set (UI_SRC
+	src/ui/ui_artwork.cpp
 	src/ui/ui_common.cpp
 	src/ui/ui_controls.cpp
+	src/ui/ui_folder.cpp
 	src/ui/ui_picker.cpp
 	src/ui/ui_overlay.cpp
 	src/ui/ui_po.cpp
@@ -139,7 +143,7 @@ endif ()
 add_executable (hikaruloader ${HIKARU_SRC} ${UI_SRC}
 	src/hl/emulator.cpp src/hl/server.cpp src/hl/ringlink.cpp src/hl/shell.cpp src/hl/agent.cpp
 	src/hl/main.cpp)
-target_include_directories (hikaruloader PRIVATE 3rdparty/imgui_backends)
+target_include_directories (hikaruloader PRIVATE 3rdparty/imgui_backends ${STB_INCLUDE_DIRS})
 target_link_libraries (hikaruloader PRIVATE hl imgui::imgui lua)
 if (WIN32)
 	target_link_libraries (hikaruloader PRIVATE ws2_32)
@@ -225,6 +229,12 @@ if (TARGET SDL2::SDL2main)
 	target_link_libraries (pathstest PRIVATE SDL2::SDL2main)
 endif ()
 add_test (NAME paths COMMAND pathstest)
+add_executable (romsettest tests/romset_test.cpp)
+target_link_libraries (romsettest PRIVATE hl)
+if (TARGET SDL2::SDL2main)
+	target_link_libraries (romsettest PRIVATE SDL2::SDL2main)
+endif ()
+add_test (NAME romset COMMAND romsettest)
 add_executable (driveboardtest tests/driveboard_test.cpp)
 target_link_libraries (driveboardtest PRIVATE hl)
 if (TARGET SDL2::SDL2main)
