@@ -1,0 +1,184 @@
+/*
+ * Hikaruloader (formerly Valkyrie)
+ * Copyright (C) 2026, Benjamin Maurin (njz3)
+ *
+ * Hikaruloader is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * Hikaruloader is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with Hikaruloader.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
+// The Tab settings window over a running game, the frame rate (F12), and the
+// notice of a write directory that could not be written to.
+
+#include "ui/ui.h"
+#include "ui/ui_common.h"
+
+#include <cstdio>
+
+#include <imgui.h>
+
+#include "hl/config.h"
+#include "hl/input.h"
+#include "hl/paths.h"
+#include "hl/renderer.h"
+#include "hl/window.h"
+
+namespace
+{
+bool g_ready = false;
+bool g_open = false;
+
+// The write directory's notice, as Flycast's and Supermodel's: 20 s from the
+// game's first frame, when it could not be written to (hl::Paths)
+const Uint32 kNoticeMs = 20000;
+bool g_noticeStarted = false;
+Uint32 g_noticeStart = 0;
+
+bool noticeShown()
+{
+    if (hl::Paths::unusable_write_dir ().empty ())
+        return false;
+    if (!g_noticeStarted)
+    {
+        g_noticeStarted = true;
+        g_noticeStart = SDL_GetTicks();
+    }
+    return SDL_GetTicks() - g_noticeStart < kNoticeMs;
+}
+
+void drawNotice()
+{
+    const ImGuiViewport *viewport = ImGui::GetMainViewport();
+    ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x + viewport->WorkSize.x * 0.5f,
+                                   viewport->WorkPos.y + viewport->WorkSize.y - 16.0f),
+                            ImGuiCond_Always, ImVec2(0.5f, 1.0f));
+    ImGui::SetNextWindowBgAlpha(0.85f);
+    ImGui::Begin("##write_dir_notice", nullptr,
+                 ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoInputs |
+                 ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav);
+    ImGui::PushTextWrapPos(viewport->WorkSize.x * 0.8f);
+    ImGui::TextColored(ImVec4(1.0f, 0.75f, 0.3f, 1.0f), "%s", ui::tr("Cannot write to the write folder"));
+    ImGui::TextUnformatted(hl::Paths::unusable_write_dir ().c_str ());
+    ImGui::TextUnformatted(ui::tr("Nothing is saved: the settings and the game saves are read from the usual folders and not written."));
+    ImGui::PopTextWrapPos();
+    ImGui::End();
+}
+
+void setOpen(bool open)
+{
+    g_open = open;
+    // The settings need the pointer, the game may hide it
+    SDL_ShowCursor(open || !hl::Config::get ()->hide_cursor ? SDL_ENABLE : SDL_DISABLE);
+    // The inputs held when the settings opened would stay down in the game,
+    // and the game sees none while they are open
+    hl::Input::release_all ();
+    hl::Input::suspend (open);
+    ImGui::GetIO().ClearInputKeys();
+}
+} // namespace
+
+bool ui::Interface::init (SDL_Window *window)
+{
+    g_ready = ui::initContext(window);
+    return g_ready;
+}
+
+void ui::Interface::shutdown ()
+{
+    ui::shutdownContext();
+    g_ready = false;
+}
+
+bool ui::Interface::settings_open ()
+{
+    return g_open;
+}
+
+const char *ui::Interface::tr (const char *text)
+{
+    return ui::tr(text);
+}
+
+bool ui::Interface::process_event (const SDL_Event *event)
+{
+    if (!g_ready)
+        return false;
+
+    if (ui::controlsCaptureEvent(event)) // an input being bound: not for the game nor the menu
+        return true;
+    if (hl::Input::event_action (event) == hl::ACTION_SETTINGS)
+    {
+        setOpen(!g_open);
+        return true;
+    }
+    if (!g_open)
+        return false;
+
+    if (event->type == SDL_KEYDOWN && event->key.keysym.sym == SDLK_ESCAPE)
+    {
+        setOpen(false);
+        return true;
+    }
+    ui::processEvent(event);
+    switch (event->type)
+    {
+        case SDL_KEYDOWN:
+        case SDL_KEYUP:
+        case SDL_TEXTINPUT:
+        case SDL_MOUSEMOTION:
+        case SDL_MOUSEBUTTONDOWN:
+        case SDL_MOUSEBUTTONUP:
+        case SDL_MOUSEWHEEL:
+        case SDL_CONTROLLERBUTTONDOWN:
+        case SDL_CONTROLLERBUTTONUP:
+        case SDL_CONTROLLERAXISMOTION:
+            return true;
+        default:
+            return false;
+    }
+}
+
+void ui::Interface::draw_overlay (int width, int height)
+{
+    hl::Config *cfg = hl::Config::get ();
+    const bool notice = noticeShown();
+    if (!g_ready || (!g_open && !cfg->fps_overlay && !notice))
+        return;
+
+    ui::newFrame();
+    if (notice)
+        drawNotice();
+    if (cfg->fps_overlay)
+    {
+        char text[300];
+        const char *message = hl::Window::renderer_message ();
+        int len = snprintf(text, sizeof(text), ui::tr("%.1f FPS"), hl::Window::fps ());
+        if (message[0] && len > 0 && len < (int)sizeof(text))
+            snprintf(text + len, sizeof(text) - len, "  [%s]", message);
+        const ImVec2 size = ImGui::CalcTextSize(text);
+        const ImVec2 pos(ImGui::GetMainViewport()->WorkSize.x - size.x - 10.0f, 8.0f);
+        ImDrawList *draw = ImGui::GetForegroundDrawList();
+        draw->AddRectFilled(ImVec2(pos.x - 4.0f, pos.y - 2.0f), ImVec2(pos.x + size.x + 4.0f, pos.y + size.y + 2.0f), IM_COL32(0, 0, 0, 160));
+        draw->AddText(pos, IM_COL32(230, 235, 240, 255), text);
+    }
+    if (g_open)
+    {
+        bool open = true;
+        ui::drawSettings(&open, true);
+        // Behind the windows
+        ImGui::GetBackgroundDrawList()->AddText(ImVec2(8.0f, 8.0f), IM_COL32(220, 225, 235, 255),
+                                                ui::tr("Game paused - Tab: close the settings"));
+        if (!open)
+            setOpen(false);
+    }
+    ui::renderFrame(width, height);
+}

@@ -1,0 +1,44 @@
+/* 
+ * Hikaruloader (formerly Valkyrie)
+ * Copyright (C) 2026, Benjamin Maurin (njz3)
+ *
+ * Derived from src/mach/hikaru/hikaru-mscomm.h, Copyright (C) 2011, Stefano Teso (released under the GNU GPL version 2 or later).
+ * 
+ * Hikaruloader is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * Hikaruloader is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with Hikaruloader.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
+#ifndef __HL_HIKARU_MSCOMM_H__
+#define __HL_HIKARU_MSCOMM_H__
+
+#include "hl/device.h"
+#include "hl/buffer.h"
+#include "hl/machine.h"
+
+namespace hikaru {
+
+/* The master/slave communication box; see hikaru-mscomm.cpp. */
+class Mscomm : public hl::Device {
+public:
+	Mscomm (hl::Machine *mach);
+
+	int get (unsigned size, uint32_t addr, void *val) override;
+	int put (unsigned size, uint32_t addr, uint64_t val) override;
+	void reset (hl::ResetType type) override;
+
+	hl::Buffer *regs;
+};
+
+} /* namespace hikaru */
+
+#endif /* __HL_HIKARU_MSCOMM_H__ */

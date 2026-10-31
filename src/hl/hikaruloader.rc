@@ -1,0 +1,62 @@
+/*
+ * Hikaruloader
+ * Copyright (C) 2026, Benjamin Maurin (njz3)
+ *
+ * Hikaruloader is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * Hikaruloader is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with Hikaruloader.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
+#include <winver.h>
+#include "hl_version.h"
+
+/* The program's icon (tools/make_icon.py): the file's in the Explorer, and,
+ * the first of the program, the window's and the taskbar's (SDL takes it
+ * for its window class) */
+1 ICON "../../data/hikaruloader.ico"
+
+/* Its version, from git's tags (cmake/version.cmake): the file's Properties,
+ * Details tab, in the Explorer; a development snapshot marked prerelease */
+#if HL_VERSION_DEV
+#define HL_FILE_FLAGS VS_FF_PRERELEASE
+#else
+#define HL_FILE_FLAGS 0
+#endif
+
+VS_VERSION_INFO VERSIONINFO
+ FILEVERSION HL_VERSION_RC
+ PRODUCTVERSION HL_VERSION_RC
+ FILEFLAGSMASK VS_FFI_FILEFLAGSMASK
+ FILEFLAGS HL_FILE_FLAGS
+ FILEOS VOS_NT_WINDOWS32
+ FILETYPE VFT_APP
+ FILESUBTYPE VFT2_UNKNOWN
+BEGIN
+	BLOCK "StringFileInfo"
+	BEGIN
+		BLOCK "040904B0"
+		BEGIN
+			VALUE "CompanyName", "Benjamin Maurin (njz3)"
+			VALUE "FileDescription", "Hikaruloader, a SEGA Hikaru emulator"
+			VALUE "FileVersion", HL_VERSION
+			VALUE "InternalName", "hikaruloader"
+			VALUE "LegalCopyright", "Copyright (C) 2026 Benjamin Maurin (njz3); Valkyrie (C) 2011-2013 Stefano Teso. GNU GPL v3 or later"
+			VALUE "OriginalFilename", "hikaruloader.exe"
+			VALUE "ProductName", "Hikaruloader"
+			VALUE "ProductVersion", HL_VERSION
+		END
+	END
+	BLOCK "VarFileInfo"
+	BEGIN
+		VALUE "Translation", 0x409, 1200
+	END
+END

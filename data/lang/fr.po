@@ -1,0 +1,847 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: Hikaru Loader\n"
+"Language: fr\n"
+"X-Language-Name: Français\n"
+"Last-Translator: Benjamin Maurin (njz3)\n"
+"Language-Team: French\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+
+#: src/hl/controls.cpp
+msgid " (half)"
+msgstr " (moitié)"
+
+#: src/hl/controls.cpp
+msgid " (pedal)"
+msgstr " (pédale)"
+
+#: src/hl/controls.cpp
+msgid " (inverted)"
+msgstr " (inversé)"
+
+#: src/hl/controls.cpp
+msgid "Button %d"
+msgstr "Bouton %d"
+
+#: src/hl/controls.cpp
+msgid "Axis %d"
+msgstr "Axe %d"
+
+#: src/hl/controls.cpp
+msgid "up"
+msgstr "haut"
+
+#: src/hl/controls.cpp
+msgid "down"
+msgstr "bas"
+
+#: src/hl/controls.cpp
+msgid "left"
+msgstr "gauche"
+
+#: src/hl/controls.cpp
+msgid "right"
+msgstr "droite"
+
+#: src/hl/controls.cpp
+msgid "Hat %d"
+msgstr "Chapeau %d"
+
+#: src/hl/emulator.cpp
+msgid "%s could not be loaded; see %s."
+msgstr "%s n'a pas pu être chargé ; voir %s."
+
+#: src/hl/emulator.cpp
+msgid "%s needs a machine Hikaruloader does not emulate."
+msgstr "%s demande une machine que Hikaruloader n'émule pas."
+
+#: src/ui/ui_common.cpp
+msgid "Takes effect at the next start."
+msgstr "Prise en compte au prochain lancement."
+
+#: src/ui/ui_common.cpp
+msgid "Vulkan 1.3 (to come)"
+msgstr "Vulkan 1.3 (à venir)"
+
+#: src/ui/ui_common.cpp
+msgid "Direct3D 11 (to come)"
+msgstr "Direct3D 11 (à venir)"
+
+#: src/ui/ui_common.cpp
+msgid "Graphics API"
+msgstr "API graphique"
+
+#: src/ui/ui_common.cpp
+msgid "Window"
+msgstr "Fenêtre"
+
+#: src/ui/ui_common.cpp
+msgid "Full screen"
+msgstr "Plein écran"
+
+#: src/ui/ui_common.cpp
+msgid "Borderless fullscreen window"
+msgstr "Plein écran fenêtré (sans bordure)"
+
+#: src/ui/ui_common.cpp
+msgid "Display mode"
+msgstr "Mode d'affichage"
+
+#: src/ui/ui_common.cpp
+msgid "Window size"
+msgstr "Taille de la fenêtre"
+
+#: src/ui/ui_common.cpp
+msgid "The window can also be resized with the mouse."
+msgstr "La fenêtre peut aussi être redimensionnée à la souris."
+
+#: src/ui/ui_common.cpp
+msgid "Its shape, black bars"
+msgstr "Sa forme, bandes noires"
+
+#: src/ui/ui_common.cpp
+msgid "Its shape, whole multiples"
+msgstr "Sa forme, multiples entiers"
+
+#: src/ui/ui_common.cpp
+msgid "Stretched"
+msgstr "Étiré"
+
+#: src/ui/ui_common.cpp
+msgid "Aspect ratio"
+msgstr "Rapport d'aspect"
+
+#: src/ui/ui_common.cpp
+msgid "The Hikaru draws 640x480 pictures (854x480 in widescreen). Black bars: the whole picture in its shape, with black bars where the screen's shape differs. Whole multiples: the same, at 1x, 2x, 3x... the native size only, for sharp pixels. Stretched: the picture fills the window, deformed."
+msgstr "Le Hikaru dessine des images de 640x480 (854x480 en grand écran). Bandes noires : l'image entière dans sa forme, avec des bandes noires là où la forme de l'écran diffère. Multiples entiers : pareil, mais seulement à 1x, 2x, 3x... la taille native, pour des pixels nets. Étiré : l'image remplit la fenêtre, déformée."
+
+#: src/ui/ui_common.cpp
+msgid "Vertical sync"
+msgstr "Synchronisation verticale"
+
+#: src/ui/ui_common.cpp
+msgid "Limit the frame rate"
+msgstr "Limiter la fréquence d'images"
+
+#: src/ui/ui_common.cpp
+msgid "Target frame rate"
+msgstr "Fréquence visée"
+
+#: src/ui/ui_common.cpp
+msgid "Show the frame rate (F12)"
+msgstr "Afficher la fréquence d'images (F12)"
+
+#: src/ui/ui_common.cpp
+msgid "Show the frame number in the title bar"
+msgstr "Afficher le numéro d'image dans la barre de titre"
+
+#: src/ui/ui_common.cpp
+msgid "Hide the mouse pointer"
+msgstr "Masquer le pointeur de la souris"
+
+#: src/ui/ui_common.cpp
+msgid "Draw on a thread of its own"
+msgstr "Dessiner dans un thread à part"
+
+#: src/ui/ui_common.cpp
+msgid "Each frame drawn while the next one is emulated: faster when the drawing slows the game, but the picture comes a frame later. Takes effect at the game's next start."
+msgstr "Chaque image est dessinée pendant que la suivante est émulée : plus rapide quand le dessin ralentit le jeu, mais l'image arrive une image plus tard. Prend effet au prochain lancement du jeu."
+
+#: src/ui/ui_common.cpp
+msgid "Its resolution's (square pixels)"
+msgstr "Celle de sa résolution (pixels carrés)"
+
+#: src/ui/ui_common.cpp
+msgid "Screen shape"
+msgstr "Forme de l'écran"
+
+#: src/ui/ui_common.cpp
+msgid "The picture is placed by the screen's shape: that of its resolution, or 4:3 or 16:9 whatever its resolution, for a CRT's super resolutions (1920x240): the black bars right, and stretched from 4:3 to 16:9 no more."
+msgstr "L'image est placée d'après la forme de l'écran : celle de sa résolution, ou 4:3 ou 16:9 quelle que soit sa résolution, pour les super-résolutions d'un CRT (1920x240) : les bandes noires justes, et plus d'étirement du 4:3 vers le 16:9."
+
+#: src/ui/ui_common.cpp
+msgid "Sharp"
+msgstr "Net"
+
+#: src/ui/ui_common.cpp
+msgid "Smooth"
+msgstr "Lissé"
+
+#: src/ui/ui_common.cpp
+msgid "Scaling filter"
+msgstr "Filtre de mise à l'échelle"
+
+#: src/ui/ui_common.cpp
+msgid "Smooth: down to 240 rows (a CRT), each one the mean of two, where Sharp drops one in two (thin lines, small texts)."
+msgstr "Lissé : réduite à 240 lignes (un CRT), chacune est la moyenne de deux, là où Net en saute une sur deux (traits fins, petits textes)."
+
+#: src/ui/ui_common.cpp
+msgid "Widescreen 3D (16:9)"
+msgstr "3D en grand écran (16:9)"
+
+#: src/ui/ui_common.cpp
+msgid "4:3, in the middle"
+msgstr "4:3, au milieu"
+
+#: src/ui/ui_common.cpp
+msgid "Stretched to 16:9"
+msgstr "Étirée en 16:9"
+
+#: src/ui/ui_common.cpp
+msgid "2D in widescreen"
+msgstr "2D en grand écran"
+
+#: src/ui/ui_common.cpp
+msgid "The 3D seen wider, at 16:9, its middle as the game draws it; the 2D (texts, logos) at 4:3 in the middle, or stretched for a game that needs it. The game may leave objects out at the sides, made for 4:3. Takes effect at the game's next start."
+msgstr "La 3D vue plus large, en 16:9, son milieu tel que le jeu le dessine ; la 2D (textes, logos) en 4:3 au milieu, ou étirée pour un jeu qui le demande. Le jeu, fait pour le 4:3, peut omettre des objets sur les côtés. Prend effet au prochain lancement du jeu."
+
+#: src/ui/ui_common.cpp
+msgid "Draw distance"
+msgstr "Profondeur de vue"
+
+#: src/ui/ui_common.cpp
+msgid "The 3D scenery's detailed models and its fog that much farther; what the game itself leaves out is not drawn. x1.0: as the game draws it."
+msgstr "Les modèles détaillés du décor 3D et son brouillard d'autant plus loin ; ce que le jeu omet lui-même n'est pas dessiné. x1.0 : tel que le jeu le dessine."
+
+#: src/ui/ui_common.cpp
+msgid "The sound card's own"
+msgstr "Ceux de la carte son"
+
+#: src/ui/ui_common.cpp
+msgid "Mono"
+msgstr "Mono"
+
+#: src/ui/ui_common.cpp
+msgid "Stereo"
+msgstr "Stéréo"
+
+#: src/ui/ui_common.cpp
+msgid "2.1 (stereo and subwoofer)"
+msgstr "2.1 (stéréo et caisson de basses)"
+
+#: src/ui/ui_common.cpp
+msgid "Quad (front and rear)"
+msgstr "Quadriphonie (avant et arrière)"
+
+#: src/ui/ui_common.cpp
+msgid "Speakers"
+msgstr "Haut-parleurs"
+
+#: src/ui/ui_common.cpp
+msgid "The game's sound is its cabinet's: the front speakers', and the rear's when it has some. The rear goes to the rear speakers (quad, 5.1, 7.1), or into the front without; the subwoofer gets all of the sound, low-passed; the center speaker none. The sound card's own: the speakers Windows has set for it."
+msgstr "Le son du jeu est celui de sa borne : les haut-parleurs avant, et arrière quand elle en a. L'arrière va aux haut-parleurs arrière (quadriphonie, 5.1, 7.1), ou à l'avant sans eux ; le caisson de basses reçoit tout le son, filtré ; le haut-parleur central, rien. Ceux de la carte son : les haut-parleurs que Windows lui a configurés."
+
+#: src/ui/ui_common.cpp
+msgid "Front / rear balance"
+msgstr "Balance avant / arrière"
+
+#: src/ui/ui_common.cpp
+msgid "Front at %d %%, rear at %d %%; 50 for both at their full level."
+msgstr "Avant à %d %%, arrière à %d %% ; 50 pour les deux à plein niveau."
+
+#: src/ui/ui_common.cpp
+msgid "Volume"
+msgstr "Volume"
+
+#: src/ui/ui_common.cpp
+msgid "The changes take effect as soon as the game goes on."
+msgstr "Les changements s'appliquent dès que le jeu reprend."
+
+#: src/ui/ui_common.cpp
+msgid "The board's setting"
+msgstr "Le réglage de la carte"
+
+#: src/ui/ui_common.cpp
+msgid "Off"
+msgstr "Désactivé"
+
+#: src/ui/ui_common.cpp
+msgid "On"
+msgstr "Activé"
+
+#: src/ui/ui_common.cpp
+msgid "Attract sound"
+msgstr "Son de la démo"
+
+#: src/ui/ui_common.cpp
+msgid "The sound of the game's attract, while nobody plays. Written to the game's EEPROM at its start; the board's setting: as its BIOS menu set it (ADVERTISE SOUND, off on a new board)."
+msgstr "Le son de la démo du jeu (attract mode), quand personne ne joue. Écrit dans l'EEPROM du jeu à son démarrage ; le réglage de la carte : celui de son menu BIOS (ADVERTISE SOUND, désactivé sur une carte neuve)."
+
+#: src/ui/ui_common.cpp
+msgid "Latency"
+msgstr "Latence"
+
+#: src/ui/ui_common.cpp
+msgid "The sound kept ahead in the output: less, the sound closer to the picture, but gaps when a frame comes late; more, safer on a slow PC. The output opens again with it."
+msgstr "Le son gardé d'avance dans la sortie : moins, le son colle mieux à l'image, mais il peut couper quand une image prend du retard ; plus, c'est plus sûr sur un PC lent. La sortie son se rouvre avec la nouvelle valeur."
+
+#: src/ui/ui_common.cpp
+msgid "Optimized"
+msgstr "Optimisée"
+
+#: src/ui/ui_common.cpp
+msgid "Interpreted"
+msgstr "Interprétée"
+
+#: src/ui/ui_common.cpp
+msgid "Sound emulation"
+msgstr "Émulation du son"
+
+#: src/ui/ui_common.cpp
+msgid "Optimized keeps the sound chips' channel registers and effects program decoded until the game writes them; interpreted decodes them at each sample, slower, as the reference. The same sound either way; the change takes effect at once."
+msgstr "Optimisée : les registres des voies et le programme d'effets des puces son restent décodés jusqu'à ce que le jeu les réécrive ; interprétée : ils sont décodés à chaque échantillon, plus lentement, comme référence. Le son est le même dans les deux cas ; le changement s'applique tout de suite."
+
+#: src/ui/ui_common.cpp
+msgid "Fake the MIE (Valkyrie's hack)"
+msgstr "Simuler le MIE (hack de Valkyrie)"
+
+#: src/ui/ui_common.cpp
+msgid "Off, the MIE's Z80 runs the game's program and drives the JVS bus, where the I/O board has the controls. On, Valkyrie's hack fakes its answers, with the Test and Service switches alone. The MIE_HACK environment variable, when set, wins over this setting."
+msgstr "Désactivé, le Z80 du MIE exécute le programme du jeu et pilote le bus JVS, où la carte d'entrées-sorties porte les commandes. Activé, le hack de Valkyrie simule ses réponses, avec seulement les boutons Test et Service. La variable d'environnement MIE_HACK, si elle est définie, l'emporte sur ce réglage."
+
+#: src/ui/ui_common.cpp
+msgid "The board's own"
+msgstr "Celle de la carte"
+
+#: src/ui/ui_common.cpp
+msgid "Japan"
+msgstr "Japon"
+
+#: src/ui/ui_common.cpp
+msgid "USA"
+msgstr "États-Unis"
+
+#: src/ui/ui_common.cpp
+msgid "Export"
+msgstr "Export"
+
+#: src/ui/ui_common.cpp
+msgid "Australia"
+msgstr "Australie"
+
+#: src/ui/ui_common.cpp
+msgid "Korea"
+msgstr "Corée"
+
+#: src/ui/ui_common.cpp
+msgid "Region"
+msgstr "Région"
+
+#: src/ui/ui_common.cpp
+msgid "The board's country, which the games read for their language and texts (Brave Firefighters in English outside Japan). Written to the game's EEPROM at its start; the board's own: the country its BIOS menu set."
+msgstr "Le pays de la carte, que les jeux lisent pour leur langue et leurs textes (Brave Firefighters en anglais hors du Japon). Écrit dans l'EEPROM du jeu à son démarrage ; celle de la carte : le pays réglé dans le menu de son BIOS."
+
+#: src/ui/ui_common.cpp
+msgid "Dynamic recompiler (dynarec)"
+msgstr "Recompilateur dynamique (dynarec)"
+
+#: src/ui/ui_common.cpp
+msgid "Interpreter"
+msgstr "Interpréteur"
+
+#: src/ui/ui_common.cpp
+msgid "SH-4 processors"
+msgstr "Processeurs SH-4"
+
+#: src/ui/ui_common.cpp
+msgid "The dynarec runs their code translated to x86-64; the interpreter, one instruction at a time, as the debugger does. Both give the same machine: the change takes effect at the next frame."
+msgstr "Le dynarec exécute leur code traduit en x86-64 ; l'interpréteur, une instruction à la fois, comme le débogueur. Les deux donnent la même machine : le changement prend effet à l'image suivante."
+
+#: src/ui/ui_common.cpp
+msgid "Regions, one after the other"
+msgstr "Régions, l'une après l'autre"
+
+#: src/ui/ui_common.cpp
+msgid "Page table"
+msgstr "Table de pages"
+
+#: src/ui/ui_common.cpp
+msgid "Fastmem"
+msgstr "Fastmem"
+
+#: src/ui/ui_common.cpp
+msgid "Fastmem takes much more memory: 512 MB of address space reserved for each SH-4, their RAM and ROM mapped there a second time. For no significant gain in emulation speed."
+msgstr "Le fastmem demande beaucoup plus de mémoire : 512 Mo d'espace d'adressage réservés pour chaque SH-4, leur RAM et leur ROM projetées une seconde fois. Pour un gain de vitesse d'émulation non significatif."
+
+#: src/ui/ui_common.cpp
+msgid "Memory access"
+msgstr "Accès mémoire"
+
+#: src/ui/ui_common.cpp
+msgid "How the CPUs find their RAM and ROM: the page table at once, the regions searched one after the other (the first way), fastmem at their own addresses in the PC's address space. The same machine either way: the change takes effect at the next frame."
+msgstr "Comment les processeurs trouvent leur RAM et leur ROM : la table de pages d'un coup, les régions parcourues l'une après l'autre (la première méthode), le fastmem à leurs propres adresses dans l'espace d'adressage du PC. La même machine dans tous les cas : le changement prend effet à l'image suivante."
+
+#: src/ui/ui_common.cpp
+msgid "SH-4 clock"
+msgstr "Horloge des SH-4"
+
+#: src/ui/ui_common.cpp
+msgid "The SH-4s' clock: 200 MHz is the board's. Their timers, the MIE and the sound keep real time at any clock; the faster, the more of the PC the waits the games poll take (at 200 MHz, the games' boots run below 60 frames a second on this PC). 57 MHz by default."
+msgstr "L'horloge des SH-4 : 200 MHz est celle de la carte. Leurs minuteries, le MIE et le son gardent le temps réel à toute horloge ; plus elle est rapide, plus les attentes que les jeux font en boucle prennent de PC (à 200 MHz, les démarrages des jeux tournent sous 60 images par seconde sur ce PC). 57 MHz par défaut."
+
+#: src/ui/ui_common.cpp src/ui/ui_picker.cpp
+msgid "Games folder"
+msgstr "Dossier des jeux"
+
+#: src/ui/ui_common.cpp
+msgid "Empty: the roms folder next to the program."
+msgstr "Vide : le dossier roms à côté du programme."
+
+#: src/ui/ui_common.cpp
+msgid "In use: %s"
+msgstr "Utilisé : %s"
+
+#: src/ui/ui_common.cpp
+msgid "MAME romsets (merged, split or non-merged zips): <game>.zip, its parent's zip and hikaru.zip for the BIOS. Folders <game>/ with the files unpacked still work."
+msgstr "Romsets MAME (zips merged, split ou non-merged) : <jeu>.zip, le zip de son parent et hikaru.zip pour le BIOS. Les dossiers <jeu>/ avec les fichiers décompressés marchent toujours."
+
+#: src/ui/ui_common.cpp
+msgid "Scan again"
+msgstr "Rechercher à nouveau"
+
+#: src/ui/ui_common.cpp
+msgid "Automatic"
+msgstr "Automatique"
+
+#: src/ui/ui_common.cpp
+msgid "Language"
+msgstr "Langue"
+
+#: src/ui/ui_common.cpp
+msgid "Other languages: a file in data/lang, see README.md."
+msgstr "Autres langues : un fichier dans data/lang, voir README.md."
+
+#: src/ui/ui_common.cpp
+msgid "Write a log file"
+msgstr "Écrire un fichier journal"
+
+#: src/ui/ui_common.cpp
+msgid "hikaruloader.log, next to the program (in the write folder when there is one), the previous start's kept as hikaruloader.old.log: what to send with a problem report. Taken at the next start."
+msgstr "hikaruloader.log, à côté du programme (dans le dossier d'écriture s'il y en a un), celui du lancement précédent gardé en hikaruloader.old.log : à joindre à un signalement de problème. Pris en compte au prochain lancement."
+
+#: src/ui/ui_common.cpp
+msgid "Hikaru Loader, a SEGA Hikaru emulator."
+msgstr "Hikaru Loader, un émulateur du SEGA Hikaru."
+
+#: src/ui/ui_common.cpp
+msgid "Released under the GNU GPL, version 3 or later."
+msgstr "Publié sous licence GNU GPL, version 3 ou ultérieure."
+
+#: src/ui/ui_common.cpp
+msgid "A work derived from Valkyrie, by Stefano Teso, Copyright (C) 2011-2013."
+msgstr "Logiciel dérivé de Valkyrie, de Stefano Teso, Copyright (C) 2011-2013."
+
+#: src/ui/ui_common.cpp
+msgid "Source code:"
+msgstr "Code source :"
+
+#: src/ui/ui_common.cpp
+msgid "Interface based on linuxloader's, itself a modified work based on sm2-emu's, by Daniel Martin (dmanlfc) and the sm2-emu contributors; modified for Hikaru Loader:"
+msgstr "Interface reprise de celle de linuxloader, elle-même une version modifiée de celle de sm2-emu, par Daniel Martin (dmanlfc) et les contributeurs de sm2-emu ; modifiée pour Hikaru Loader :"
+
+#: src/ui/ui_common.cpp
+msgid "Romsets read as sm2-emu does: by CRC32, with miniz."
+msgstr "Romsets lus comme le fait sm2-emu : par CRC32, avec miniz."
+
+#: src/ui/ui_common.cpp
+msgid "Settings"
+msgstr "Paramètres"
+
+#: src/ui/ui_common.cpp
+msgid "Display"
+msgstr "Affichage"
+
+#: src/ui/ui_common.cpp
+msgid "Controls"
+msgstr "Contrôles"
+
+#: src/ui/ui_common.cpp
+msgid "Sound"
+msgstr "Son"
+
+#: src/ui/ui_common.cpp
+msgid "Emulation"
+msgstr "Émulation"
+
+#: src/ui/ui_common.cpp
+msgid "Picker"
+msgstr "Catalogue"
+
+#: src/ui/ui_common.cpp
+msgid "About"
+msgstr "À propos"
+
+#: src/ui/ui_common.cpp
+msgid "Save"
+msgstr "Sauvegarder"
+
+#: src/ui/ui_common.cpp
+msgid "Saved to %s"
+msgstr "Sauvegardé dans %s"
+
+#: src/ui/ui_common.cpp
+msgid "Cannot write %s"
+msgstr "Impossible d'écrire %s"
+
+#: src/ui/ui_common.cpp src/ui/ui_controls.cpp
+msgid "Close"
+msgstr "Fermer"
+
+#: src/ui/ui_controls.cpp
+msgid "All games"
+msgstr "Tous les jeux"
+
+#: src/ui/ui_controls.cpp
+msgid "Stick and buttons"
+msgstr "Manette et boutons"
+
+#: src/ui/ui_controls.cpp
+msgid "Driving"
+msgstr "Conduite"
+
+#: src/ui/ui_controls.cpp
+msgid "Emulator"
+msgstr "Émulateur"
+
+#: src/ui/ui_controls.cpp
+msgid "Test button"
+msgstr "Bouton Test"
+
+#: src/ui/ui_controls.cpp
+msgid "Service button"
+msgstr "Bouton Service"
+
+#: src/ui/ui_controls.cpp
+msgid "Coin 1"
+msgstr "Pièce 1"
+
+#: src/ui/ui_controls.cpp
+msgid "Coin 2"
+msgstr "Pièce 2"
+
+#: src/ui/ui_controls.cpp
+msgid "Start"
+msgstr "Start"
+
+#: src/ui/ui_controls.cpp
+msgid "Quit"
+msgstr "Quitter"
+
+#: src/ui/ui_controls.cpp
+msgid "Up"
+msgstr "Haut"
+
+#: src/ui/ui_controls.cpp
+msgid "Down"
+msgstr "Bas"
+
+#: src/ui/ui_controls.cpp
+msgid "Left"
+msgstr "Gauche"
+
+#: src/ui/ui_controls.cpp
+msgid "Right"
+msgstr "Droite"
+
+#: src/ui/ui_controls.cpp
+msgid "Button 1"
+msgstr "Bouton 1"
+
+#: src/ui/ui_controls.cpp
+msgid "Button 2"
+msgstr "Bouton 2"
+
+#: src/ui/ui_controls.cpp
+msgid "Button 3"
+msgstr "Bouton 3"
+
+#: src/ui/ui_controls.cpp
+msgid "Button 4"
+msgstr "Bouton 4"
+
+#: src/ui/ui_controls.cpp
+msgid "Steering wheel"
+msgstr "Volant"
+
+#: src/ui/ui_controls.cpp
+msgid "Accelerator"
+msgstr "Accélérateur"
+
+#: src/ui/ui_controls.cpp
+msgid "Brake"
+msgstr "Frein"
+
+#: src/ui/ui_controls.cpp
+msgid "Steer left (all the way)"
+msgstr "Volant à gauche (à fond)"
+
+#: src/ui/ui_controls.cpp
+msgid "Steer right (all the way)"
+msgstr "Volant à droite (à fond)"
+
+#: src/ui/ui_controls.cpp
+msgid "Accelerator (all the way)"
+msgstr "Accélérateur (à fond)"
+
+#: src/ui/ui_controls.cpp
+msgid "Brake (all the way)"
+msgstr "Frein (à fond)"
+
+#: src/ui/ui_controls.cpp
+msgid "Pause"
+msgstr "Pause"
+
+#: src/ui/ui_controls.cpp
+msgid "Save the state"
+msgstr "Sauvegarder l'état"
+
+#: src/ui/ui_controls.cpp
+msgid "Load the state"
+msgstr "Charger l'état"
+
+#: src/ui/ui_controls.cpp
+msgid "Settings (this window)"
+msgstr "Paramètres (cette fenêtre)"
+
+#: src/ui/ui_controls.cpp
+msgid "Show the frame rate"
+msgstr "Afficher la fréquence d'images"
+
+#: src/ui/ui_controls.cpp
+msgid "Keyboard"
+msgstr "Clavier"
+
+#: src/ui/ui_controls.cpp
+msgid "Bind"
+msgstr "Assigner"
+
+#: src/ui/ui_controls.cpp
+msgid "Add"
+msgstr "Ajouter"
+
+#: src/ui/ui_controls.cpp
+msgid "Unbind"
+msgstr "Retirer"
+
+#: src/ui/ui_controls.cpp
+msgid "Default"
+msgstr "Défaut"
+
+#: src/ui/ui_controls.cpp
+msgid "Default: %s"
+msgstr "Par défaut : %s"
+
+#: src/ui/ui_controls.cpp
+msgid "Press an input of %s for: %s"
+msgstr "Appuyez sur une entrée de %s pour : %s"
+
+#: src/ui/ui_controls.cpp
+msgid "Turn to the left."
+msgstr "Tournez vers la gauche."
+
+#: src/ui/ui_controls.cpp
+msgid "Press the pedal."
+msgstr "Appuyez sur la pédale."
+
+#: src/ui/ui_controls.cpp
+msgid "Escape: cancel"
+msgstr "Échap : annuler"
+
+#: src/ui/ui_controls.cpp
+msgid "Cancel"
+msgstr "Annuler"
+
+#: src/ui/ui_controls.cpp
+msgid "Bindings: %s"
+msgstr "Assignations : %s"
+
+#: src/ui/ui_controls.cpp
+msgid "Reset..."
+msgstr "Réinitialiser..."
+
+#: src/ui/ui_controls.cpp
+msgid "Put this device's bindings back to the defaults?"
+msgstr "Remettre les assignations de ce périphérique par défaut ?"
+
+#: src/ui/ui_controls.cpp
+msgid "Yes"
+msgstr "Oui"
+
+#: src/ui/ui_controls.cpp
+msgid "No"
+msgstr "Non"
+
+#: src/ui/ui_controls.cpp
+msgid "The agent drives the game: the keyboard and the controllers are not read."
+msgstr "L'agent pilote le jeu : le clavier et les manettes ne sont pas lus."
+
+#: src/ui/ui_controls.cpp
+msgid "Devices"
+msgstr "Périphériques"
+
+#: src/ui/ui_controls.cpp
+msgid "Name"
+msgstr "Nom"
+
+#: src/ui/ui_controls.cpp
+msgid "In controls.ini"
+msgstr "Dans controls.ini"
+
+#: src/ui/ui_controls.cpp
+msgid "No controller connected."
+msgstr "Aucune manette branchée."
+
+#: src/ui/ui_controls.cpp
+msgid "Number the buttons from 1 (as Windows and vJoy do)"
+msgstr "Numéroter les boutons à partir de 1 (comme Windows et vJoy)"
+
+#: src/ui/ui_controls.cpp
+msgid "controls.ini keeps SDL's numbers, which start at 0: \"Button 1\" is JOY0_BUTTON_0 there."
+msgstr "controls.ini garde les numéros de SDL, qui commencent à 0 : « Bouton 1 » y est JOY0_BUTTON_0."
+
+#: src/ui/ui_controls.cpp
+msgid "The bindings are in %s, apart from the emulator's settings."
+msgstr "Les assignations sont dans %s, à part des réglages de l'émulateur."
+
+#: src/ui/ui_controls.cpp
+msgid "What the game receives"
+msgstr "Ce que le jeu reçoit"
+
+#: src/ui/ui_controls.cpp
+msgid "Dead zones and options"
+msgstr "Zones mortes et options"
+
+#: src/ui/ui_overlay.cpp
+msgid "%.1f FPS"
+msgstr "%.1f i/s"
+
+#: src/ui/ui_overlay.cpp
+msgid "Game paused - Tab: close the settings"
+msgstr "Jeu en pause - Tab : fermer les paramètres"
+
+#: src/ui/ui_overlay.cpp
+msgid "Cannot write to the write folder"
+msgstr "Impossible d'écrire dans le dossier d'écriture"
+
+#: src/ui/ui_overlay.cpp
+msgid "Nothing is saved: the settings and the game saves are read from the usual folders and not written."
+msgstr "Rien n'est sauvegardé : les réglages et les sauvegardes des jeux sont lus dans les dossiers habituels et ne sont pas écrits."
+
+#: src/ui/ui_picker.cpp
+msgid "Ready"
+msgstr "Prêt"
+
+#: src/ui/ui_picker.cpp
+msgid "Not found"
+msgstr "Introuvable"
+
+#: src/ui/ui_picker.cpp
+msgid "Incomplete: %u of %u files found"
+msgstr "Incomplet : %u fichiers trouvés sur %u"
+
+#: src/ui/ui_picker.cpp
+msgid "Select a game"
+msgstr "Choisissez un jeu"
+
+#: src/ui/ui_picker.cpp
+msgid "Enter: launch   Tab: settings   Esc: quit"
+msgstr "Entrée : lancer   Tab : paramètres   Échap : quitter"
+
+#: src/ui/ui_picker.cpp
+msgid "%d of %d games ready in %s"
+msgstr "%d jeux prêts sur %d dans %s"
+
+#: src/ui/ui_picker.cpp
+msgid "No game is defined in data/games.json."
+msgstr "Aucun jeu n'est défini dans data/games.json."
+
+#: src/ui/ui_picker.cpp
+msgid "%s: %s"
+msgstr "%s : %s"
+
+#: src/ui/ui_picker.cpp
+msgid "Status"
+msgstr "État"
+
+#: src/ui/ui_picker.cpp
+msgid "Cabinet"
+msgstr "Borne"
+
+#: src/ui/ui_picker.cpp
+msgid "Link"
+msgstr "Liaison"
+
+#: src/ui/ui_picker.cpp
+msgid "yes (communication board, emulated: [Network] in hikaruloader.ini)"
+msgstr "oui (carte de communication, émulée : [Network] dans hikaruloader.ini)"
+
+#: src/ui/ui_picker.cpp
+msgid "no"
+msgstr "non"
+
+#: src/ui/ui_picker.cpp
+msgid "Force feedback"
+msgstr "Retour de force"
+
+#: src/ui/ui_picker.cpp
+msgid "yes (drive board: its EPROM from srally2.zip, simulated without)"
+msgstr "oui (drive board : son EPROM prise dans srally2.zip, simulée sans)"
+
+#: src/ui/ui_picker.cpp
+msgid "MAME set"
+msgstr "Set MAME"
+
+#: src/ui/ui_picker.cpp
+msgid "Clone of %s"
+msgstr "Clone de %s"
+
+#: src/ui/ui_picker.cpp
+msgid "BIOS"
+msgstr "BIOS"
+
+#: src/ui/ui_picker.cpp
+msgid "%s cannot start: some of its files are missing."
+msgstr "%s ne peut pas démarrer : il manque des fichiers."
+
+#: src/ui/ui_picker.cpp
+msgid "Loading %s..."
+msgstr "Chargement de %s..."
+
+#~ msgid "None"
+#~ msgstr "Aucune"
+
+#~ msgid "Click a binding, then press the key or the button to use. Escape: cancel, Delete: clear."
+#~ msgstr "Cliquez une affectation, puis appuyez sur la touche ou le bouton à utiliser. Échap : annuler, Suppr : effacer."
+
+#~ msgid "Action"
+#~ msgstr "Action"
+
+#~ msgid "Controller"
+#~ msgstr "Manette"
+
+#~ msgid "Press a key for: %s"
+#~ msgstr "Appuyez sur une touche pour : %s"
+
+#~ msgid "Press a controller button for: %s"
+#~ msgstr "Appuyez sur un bouton de la manette pour : %s"
+
+#~ msgid "Escape: cancel   Delete: clear"
+#~ msgstr "Échap : annuler   Suppr : effacer"
+
+#~ msgid "Default bindings"
+#~ msgstr "Affectations par défaut"
+
+#~ msgid "Controllers connected:"
+#~ msgstr "Manettes branchées :"
+
+#~ msgid "The cabinet's controls go to the JVS I/O board (Sega 837-13551) the game reads through the MIE; with the MIE hack, only Test and Service. The wheel and the pedals are not bound yet: the Lua shell and the agent set them."
+#~ msgstr "Les commandes de la borne passent par la carte d'entrées-sorties JVS (Sega 837-13551), que le jeu lit à travers le MIE ; avec le hack du MIE, seuls Test et Service. Le volant et les pédales ne sont pas encore assignables : le shell Lua et l'agent les règlent."
+
+#~ msgid "The changes take effect at once."
+#~ msgstr "Les changements s'appliquent tout de suite."
+
+#~ msgid "Enter: launch   Tab: settings   F9: quit"
+#~ msgstr "Entrée : lancer   Tab : paramètres   F9 : quitter"

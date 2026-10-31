@@ -1,0 +1,14 @@
+{
+  "name": "hikaruloader",
+  "version-string": "0.0",
+  "dependencies": [
+    "glew",
+    {
+      "name": "imgui",
+      "features": [ "opengl3-binding" ]
+    },
+    "jansson",
+    "miniz",
+    "sdl2"
+  ]
+}
