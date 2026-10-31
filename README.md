@@ -9,14 +9,14 @@ Stefano Teso's Hikaru emulator, whose own notes close this file.
 
 <table>
 <tr>
-<td align="center"><img src="https://raw.githubusercontent.com/njz3/hikaruloader/main/docs/media/airtrix.gif" width="240" alt="Air Trix"><br>Air Trix</td>
-<td align="center"><img src="https://raw.githubusercontent.com/njz3/hikaruloader/main/docs/media/braveff.gif" width="240" alt="Brave Firefighters"><br>Brave Firefighters</td>
-<td align="center"><img src="https://raw.githubusercontent.com/njz3/hikaruloader/main/docs/media/pharrier.gif" width="240" alt="Planet Harriers"><br>Planet Harriers</td>
+<td align="center"><img src="docs/media/airtrix.gif" width="240" alt="Air Trix"><br>Air Trix</td>
+<td align="center"><img src="docs/media/braveff.gif" width="240" alt="Brave Firefighters"><br>Brave Firefighters</td>
+<td align="center"><img src="docs/media/pharrier.gif" width="240" alt="Planet Harriers"><br>Planet Harriers</td>
 </tr>
 <tr>
-<td align="center"><img src="https://raw.githubusercontent.com/njz3/hikaruloader/main/docs/media/sgnascar.gif" width="240" alt="NASCAR Arcade"><br>NASCAR Arcade</td>
-<td align="center"><img src="https://raw.githubusercontent.com/njz3/hikaruloader/main/docs/media/swracer.gif" width="240" alt="Star Wars: Racer Arcade"><br>Star Wars: Racer Arcade</td>
-<td align="center"><img src="https://raw.githubusercontent.com/njz3/hikaruloader/main/docs/media/von4.gif" width="240" alt="Cyber Troopers Virtual-On 4"><br>Cyber Troopers Virtual-On 4</td>
+<td align="center"><img src="docs/media/sgnascar.gif" width="240" alt="NASCAR Arcade"><br>NASCAR Arcade</td>
+<td align="center"><img src="docs/media/swracer.gif" width="240" alt="Star Wars: Racer Arcade"><br>Star Wars: Racer Arcade</td>
+<td align="center"><img src="docs/media/von4.gif" width="240" alt="Cyber Troopers Virtual-On 4"><br>Cyber Troopers Virtual-On 4</td>
 </tr>
 </table>
 
