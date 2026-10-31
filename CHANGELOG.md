@@ -5,8 +5,8 @@ What each version brings, for those who play. How the versions are numbered
 and released: [DEVELOPMENT.md](DEVELOPMENT.md), "Versions and releases".
 
 
-0.1.0 (not released yet)
-------------------------
+0.1.0 (2026-10-31)
+------------------
 
 The first version of Hikaruloader, the njz3 fork of Stefano Teso's Valkyrie.
 
