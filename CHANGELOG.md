@@ -5,8 +5,8 @@ What each version brings, for those who play. How the versions are numbered
 and released: [DEVELOPMENT.md](DEVELOPMENT.md), "Versions and releases".
 
 
-Next version (not released yet)
--------------------------------
+0.2.2 (2026-11-01)
+------------------
 
 - The log no longer gets 800 to 2300 "ROMBD out-of-bounds" errors as a
   game starts: the game measuring its ROM board's chips, banks the board
