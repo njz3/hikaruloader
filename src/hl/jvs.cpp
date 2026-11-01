@@ -22,6 +22,7 @@
 #include "hl/input.h"
 #include "hl/controls.h"
 #include "hl/state.h"
+#include "hl/outputs.h"
 
 namespace hl {
 
@@ -429,6 +430,7 @@ SegaIoBoard::SegaIoBoard (Machine *mach, JvsBus *bus) :
 	JvsDevice (mach, bus)
 {
 	reset (RESET_HARD);
+	Outputs::get ()->board (6, false);
 }
 
 const char *
@@ -557,6 +559,7 @@ SegaIoBoard::outputs (unsigned bytes, const uint8_t *data)
 	if (bytes != 1)
 		return false;
 	output = data[0] & 0xFC;
+	Outputs::get ()->jvs (&output, 1);
 	return true;
 }
 
@@ -640,6 +643,8 @@ SegaIoBoard13844::SegaIoBoard13844 (Machine *mach, JvsBus *bus, DriveBoard *driv
 	drive (drive)
 {
 	output2 = 0;
+	/* Outputs 15 to 22 are the drive board's */
+	Outputs::get ()->board (14, drive != NULL);
 }
 
 const char *
@@ -681,6 +686,8 @@ SegaIoBoard13844::switches (unsigned players, unsigned bytes, std::vector<uint8_
 		return true;
 	drive->set_wheel ((uint8_t) (analog[0] >> 8));
 	reply = drive->read ();
+	/* A real drive board's, from the outputs' client (m3ffb_rx) */
+	Outputs::get ()->drive_reply (&reply);
 	for (k = 0; k < 4; k++) {
 		if (!(reply & (1 << k)))
 			p1 |= 0x80 >> k;
@@ -703,9 +710,13 @@ SegaIoBoard13844::outputs (unsigned bytes, const uint8_t *data)
 	output = data[0];
 	output2 = (bytes >= 2) ? (uint8_t) (data[1] & 0xFC) : 0;
 	if (bytes == 3 && drive) {
+		uint8_t command = (uint8_t) ~reverse8 ((uint8_t) ((data[1] << 6) | (data[2] >> 2)));
 		drive->set_wheel ((uint8_t) (analog[0] >> 8));
-		drive->write ((uint8_t) ~reverse8 ((uint8_t) ((data[1] << 6) | (data[2] >> 2))));
+		drive->write (command);
+		Outputs::get ()->drive_command (command);
 	}
+	uint8_t lamps[2] = { output, output2 };
+	Outputs::get ()->jvs (lamps, 2);
 	return true;
 }
 

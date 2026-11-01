@@ -231,6 +231,15 @@ channel n at 2n), checked in the game's JVS TEST screen.
   `machine.devices.card_reader:option ('log', 1)` logs its frames,
   `('insert', 1)` and `('take', 1)` move the card; `:info ()` where the
   card is. The agent's input `Card` is the F7 key.
+- The outputs (`src/hl/outputs.cpp`, README's "Cabinet outputs"): the I/O
+  boards declare their general outputs as the machine is built
+  (`Outputs::board`), report the bytes of each outputs command (`jvs`) and
+  the drive board's commands (`drive_command`); the 837-13844 takes a
+  client's `m3ffb_rx` as the drive board's reply (`drive_reply`). The
+  emulator starts and stops the game's names and polls the server between
+  frames. The games' names (`game_outputs`) were read in their OUTPUT TEST
+  through the agent, a TCP client printing each line: each item turned on,
+  the output that changed.
 - The setting "Fake the MIE" (MIE_HACK) brings back Valkyrie's hack: no Z80,
   no JVS, Test and Service alone.
 - The Z80 runs at 16 MHz, as in MAME: 1600 / the SH-4 clock in MHz T-states

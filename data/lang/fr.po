@@ -58,6 +58,118 @@ msgstr "%s n'a pas pu être chargé ; voir %s."
 msgid "%s needs a machine Hikaruloader does not emulate."
 msgstr "%s demande une machine que Hikaruloader n'émule pas."
 
+#: src/hl/outputs.cpp
+msgid "Start button lamp"
+msgstr "Lampe du bouton Start"
+
+#: src/hl/outputs.cpp
+msgid "Left upper lamp"
+msgstr "Lampe en haut à gauche"
+
+#: src/hl/outputs.cpp
+msgid "Right lower lamp"
+msgstr "Lampe en bas à droite"
+
+#: src/hl/outputs.cpp
+msgid "The board's lock (LOCK MECHA.), released at 1"
+msgstr "Le verrou de la planche (LOCK MECHA.), libérée à 1"
+
+#: src/hl/outputs.cpp
+msgid "Left lower lamp"
+msgstr "Lampe en bas à gauche"
+
+#: src/hl/outputs.cpp
+msgid "Right upper lamp"
+msgstr "Lampe en haut à droite"
+
+#: src/hl/outputs.cpp
+msgid "Player 1's start button lamp"
+msgstr "Lampe du bouton Start du joueur 1"
+
+#: src/hl/outputs.cpp
+msgid "Player 1's nozzle vibration"
+msgstr "Vibration de la lance du joueur 1"
+
+#: src/hl/outputs.cpp
+msgid "Player 2's start button lamp"
+msgstr "Lampe du bouton Start du joueur 2"
+
+#: src/hl/outputs.cpp
+msgid "VR R button lamp"
+msgstr "Lampe du bouton VR R"
+
+#: src/hl/outputs.cpp
+msgid "VR L button lamp"
+msgstr "Lampe du bouton VR L"
+
+#: src/hl/outputs.cpp
+msgid "Bomb button lamp"
+msgstr "Lampe du bouton Bomb"
+
+#: src/hl/outputs.cpp
+msgid "Billboard lamp"
+msgstr "Lampe de l'enseigne"
+
+#: src/hl/outputs.cpp
+msgid "View change button lamp"
+msgstr "Lampe du bouton de changement de vue"
+
+#: src/hl/outputs.cpp
+msgid "Boost button lamp"
+msgstr "Lampe du bouton Boost"
+
+#: src/hl/outputs.cpp
+msgid "Boost lever lock"
+msgstr "Verrou du levier de boost"
+
+#: src/hl/outputs.cpp
+msgid "Winner lamp"
+msgstr "Lampe du vainqueur"
+
+#: src/hl/outputs.cpp
+msgid "text"
+msgstr "texte"
+
+#: src/hl/outputs.cpp
+msgid "The game's name, the first line a client gets"
+msgstr "Le nom du jeu, la première ligne que reçoit un client"
+
+#: src/hl/outputs.cpp
+msgid "0 or 1"
+msgstr "0 ou 1"
+
+#: src/hl/outputs.cpp
+msgid "1 while the game is paused"
+msgstr "À 1 tant que le jeu est en pause"
+
+#: src/hl/outputs.cpp
+msgid "%s (JVS output %u)"
+msgstr "%s (sortie JVS %u)"
+
+#: src/hl/outputs.cpp
+msgid "JVS output %u"
+msgstr "Sortie JVS %u"
+
+#: src/hl/outputs.cpp
+msgid "%s: lamp%d under the game's name"
+msgstr "%s : lamp%d sous le nom du jeu"
+
+#: src/hl/outputs.cpp
+msgid "byte in hex, 00 to FF"
+msgstr "octet en hexadécimal, 00 à FF"
+
+#: src/hl/outputs.cpp
+msgid "Each command the game writes to its drive board, as the board reads it"
+msgstr "Chaque commande que le jeu écrit à sa carte de pilotage, telle que la carte la lit"
+
+#: src/hl/outputs.cpp
+msgid "Received from a client (BackForceFeeder): a real drive board's reply, which the game reads instead of the emulated one"
+msgstr "Reçu d'un client (BackForceFeeder) : la réponse d'une vraie carte de pilotage, que le jeu lit au lieu de celle émulée"
+
+#: src/hl/outputs.cpp
+msgid "When the game ends"
+msgstr "Quand le jeu se termine"
+
 #: src/ui/ui_common.cpp
 msgid "Takes effect at the next start."
 msgstr "Prise en compte au prochain lancement."
@@ -75,16 +187,104 @@ msgid "Graphics API"
 msgstr "API graphique"
 
 #: src/ui/ui_common.cpp
-msgid "Window"
-msgstr "Fenêtre"
+msgid "%d x %d (native)"
+msgstr "%d x %d (natif)"
+
+#: src/ui/ui_common.cpp
+msgid "Internal resolution"
+msgstr "Résolution interne"
+
+#: src/ui/ui_common.cpp
+msgid "The 3D drawn larger, then fitted to the aspect ratio and the window: sharper edges and textures, more work for the graphics card. The 2D (texts, logos) keeps its size. Above the window's size, the picture is averaged down (supersampling)."
+msgstr "La 3D dessinée plus grande, puis ajustée au rapport d'aspect et à la fenêtre : bords et textures plus nets, plus de travail pour la carte graphique. La 2D (textes, logos) garde sa taille. Au-delà de la taille de la fenêtre, l'image est moyennée (suréchantillonnage)."
+
+#: src/ui/ui_common.cpp
+msgid "Original"
+msgstr "Original"
+
+#: src/ui/ui_common.cpp
+msgid "4:3, black bars"
+msgstr "4:3, bandes noires"
+
+#: src/ui/ui_common.cpp
+msgid "16:9, black bars"
+msgstr "16:9, bandes noires"
+
+#: src/ui/ui_common.cpp
+msgid "4:3, stretched"
+msgstr "4:3, étiré"
+
+#: src/ui/ui_common.cpp
+msgid "16:9, stretched"
+msgstr "16:9, étiré"
+
+#: src/ui/ui_common.cpp
+msgid "4:3, cropped"
+msgstr "4:3, recadré"
+
+#: src/ui/ui_common.cpp
+msgid "16:9, cropped"
+msgstr "16:9, recadré"
+
+#: src/ui/ui_common.cpp
+msgid "Aspect ratio"
+msgstr "Rapport d'aspect"
+
+#: src/ui/ui_common.cpp
+msgid "Crop position"
+msgstr "Position du recadrage"
+
+#: src/ui/ui_common.cpp
+msgid "-100: left or top, 0: the middle, 100: right or bottom."
+msgstr "-100 : à gauche ou en haut, 0 : au milieu, 100 : à droite ou en bas."
+
+#: src/ui/ui_common.cpp
+msgid "Bend the cut parts onto the edges"
+msgstr "Courber les parties coupées sur les bords"
+
+#: src/ui/ui_common.cpp
+msgid "Undistorted middle"
+msgstr "Milieu non déformé"
+
+#: src/ui/ui_common.cpp
+msgid "Curvature radius"
+msgstr "Rayon de courbure"
+
+#: src/ui/ui_common.cpp
+msgid "The whole picture stays visible: the middle (in % of the frame) as cropped, the parts the crop would cut squeezed onto the edges as on a cylinder seen from the front. A small radius bends hard at the edge, a large one squeezes evenly."
+msgstr "L'image reste entière : le milieu (en % du cadre) comme recadré, les parties que le recadrage couperait comprimées sur les bords comme sur un cylindre vu de face. Un petit rayon courbe fort au bord, un grand comprime uniformément."
+
+#: src/ui/ui_common.cpp
+msgid "Original: the picture's own shape, 4:3 (16:9 in widescreen)."
+msgstr "Original : la forme de l'image, 4:3 (16:9 en grand écran)."
+
+#: src/ui/ui_common.cpp
+msgid "Black bars: the frame's shape, with the whole picture inside at its own shape and black bars where the shapes differ. Stretched: the picture fills the frame, deformed. Cropped: the picture fills the frame at its own shape, cut on the sides (or above and below); the crop position moves the part kept. The display mode then fits the frame to the window or the screen, or stretches it."
+msgstr "Bandes noires : la forme du cadre, avec l'image entière dedans à ses propres proportions et des bandes noires là où les formes diffèrent. Étiré : l'image remplit le cadre, déformée. Recadré : l'image remplit le cadre à ses proportions, coupée sur les côtés (ou en haut et en bas) ; la position du recadrage déplace la partie gardée. Le mode d'affichage ajuste ensuite le cadre à la fenêtre ou à l'écran, ou l'étire."
+
+#: src/ui/ui_common.cpp
+msgid "Window, square pixels"
+msgstr "Fenêtre, pixels carrés"
+
+#: src/ui/ui_common.cpp
+msgid "Window, stretched"
+msgstr "Fenêtre étirée"
 
 #: src/ui/ui_common.cpp
 msgid "Full screen"
 msgstr "Plein écran"
 
 #: src/ui/ui_common.cpp
+msgid "Full screen, stretched"
+msgstr "Plein écran étiré"
+
+#: src/ui/ui_common.cpp
 msgid "Borderless fullscreen window"
 msgstr "Plein écran fenêtré (sans bordure)"
+
+#: src/ui/ui_common.cpp
+msgid "Borderless fullscreen window, stretched"
+msgstr "Plein écran fenêtré étiré"
 
 #: src/ui/ui_common.cpp
 msgid "Display mode"
@@ -99,24 +299,40 @@ msgid "The window can also be resized with the mouse."
 msgstr "La fenêtre peut aussi être redimensionnée à la souris."
 
 #: src/ui/ui_common.cpp
-msgid "Its shape, black bars"
-msgstr "Sa forme, bandes noires"
+msgid "Whole multiples only (integer scaling)"
+msgstr "Multiples entiers seulement (mise à l'échelle entière)"
 
 #: src/ui/ui_common.cpp
-msgid "Its shape, whole multiples"
-msgstr "Sa forme, multiples entiers"
+msgid "The picture at 1x, 2x, 3x... its size only, for even pixels, with larger black bars. Not with a stretched or cropped picture, nor a screen shape of its own."
+msgstr "L'image à 1x, 2x, 3x... sa taille seulement, pour des pixels réguliers, avec des bandes noires plus larges. Pas avec une image étirée ou recadrée, ni une forme d'écran choisie."
 
 #: src/ui/ui_common.cpp
-msgid "Stretched"
-msgstr "Étiré"
+msgid "Its resolution's (square pixels)"
+msgstr "Celle de sa résolution (pixels carrés)"
 
 #: src/ui/ui_common.cpp
-msgid "Aspect ratio"
-msgstr "Rapport d'aspect"
+msgid "Screen shape"
+msgstr "Forme de l'écran"
 
 #: src/ui/ui_common.cpp
-msgid "The Hikaru draws 640x480 pictures (854x480 in widescreen). Black bars: the whole picture in its shape, with black bars where the screen's shape differs. Whole multiples: the same, at 1x, 2x, 3x... the native size only, for sharp pixels. Stretched: the picture fills the window, deformed."
-msgstr "Le Hikaru dessine des images de 640x480 (854x480 en grand écran). Bandes noires : l'image entière dans sa forme, avec des bandes noires là où la forme de l'écran diffère. Multiples entiers : pareil, mais seulement à 1x, 2x, 3x... la taille native, pour des pixels nets. Étiré : l'image remplit la fenêtre, déformée."
+msgid "The picture is placed by the screen's shape: that of its resolution, or 4:3 or 16:9 whatever its resolution, for a CRT's super resolutions (1920x240): the black bars right, and stretched from 4:3 to 16:9 no more."
+msgstr "L'image est placée d'après la forme de l'écran : celle de sa résolution, ou 4:3 ou 16:9 quelle que soit sa résolution, pour les super-résolutions d'un CRT (1920x240) : les bandes noires justes, et plus d'étirement du 4:3 vers le 16:9."
+
+#: src/ui/ui_common.cpp
+msgid "Smooth"
+msgstr "Lissé"
+
+#: src/ui/ui_common.cpp
+msgid "Sharp pixels"
+msgstr "Pixels nets"
+
+#: src/ui/ui_common.cpp
+msgid "Scaling filter"
+msgstr "Filtre de mise à l'échelle"
+
+#: src/ui/ui_common.cpp
+msgid "Sharp pixels: square and crisp, but uneven unless the picture is enlarged a whole number of times. Smooth: down to 240 rows (a CRT), each one the mean of two, where Sharp pixels drops one in two (thin lines, small texts)."
+msgstr "Pixels nets : carrés et francs, mais inégaux sauf si l'image est agrandie un nombre entier de fois. Lissé : réduite à 240 lignes (un CRT), chacune est la moyenne de deux, là où Pixels nets en saute une sur deux (traits fins, petits textes)."
 
 #: src/ui/ui_common.cpp
 msgid "Vertical sync"
@@ -151,34 +367,6 @@ msgid "Each frame drawn while the next one is emulated: faster when the drawing 
 msgstr "Chaque image est dessinée pendant que la suivante est émulée : plus rapide quand le dessin ralentit le jeu, mais l'image arrive une image plus tard. Prend effet au prochain lancement du jeu."
 
 #: src/ui/ui_common.cpp
-msgid "Its resolution's (square pixels)"
-msgstr "Celle de sa résolution (pixels carrés)"
-
-#: src/ui/ui_common.cpp
-msgid "Screen shape"
-msgstr "Forme de l'écran"
-
-#: src/ui/ui_common.cpp
-msgid "The picture is placed by the screen's shape: that of its resolution, or 4:3 or 16:9 whatever its resolution, for a CRT's super resolutions (1920x240): the black bars right, and stretched from 4:3 to 16:9 no more."
-msgstr "L'image est placée d'après la forme de l'écran : celle de sa résolution, ou 4:3 ou 16:9 quelle que soit sa résolution, pour les super-résolutions d'un CRT (1920x240) : les bandes noires justes, et plus d'étirement du 4:3 vers le 16:9."
-
-#: src/ui/ui_common.cpp
-msgid "Sharp"
-msgstr "Net"
-
-#: src/ui/ui_common.cpp
-msgid "Smooth"
-msgstr "Lissé"
-
-#: src/ui/ui_common.cpp
-msgid "Scaling filter"
-msgstr "Filtre de mise à l'échelle"
-
-#: src/ui/ui_common.cpp
-msgid "Smooth: down to 240 rows (a CRT), each one the mean of two, where Sharp drops one in two (thin lines, small texts)."
-msgstr "Lissé : réduite à 240 lignes (un CRT), chacune est la moyenne de deux, là où Net en saute une sur deux (traits fins, petits textes)."
-
-#: src/ui/ui_common.cpp
 msgid "Widescreen 3D (16:9)"
 msgstr "3D en grand écran (16:9)"
 
@@ -207,20 +395,8 @@ msgid "The 3D scenery's detailed models and its fog that much farther; what the 
 msgstr "Les modèles détaillés du décor 3D et son brouillard d'autant plus loin ; ce que le jeu omet lui-même n'est pas dessiné. x1.0 : tel que le jeu le dessine."
 
 #: src/ui/ui_common.cpp
-msgid "Enhancements"
-msgstr "Améliorations"
-
-#: src/ui/ui_common.cpp
-msgid "x%d (%d x %d), the board's"
-msgstr "x%d (%d x %d), celle de la carte"
-
-#: src/ui/ui_common.cpp
-msgid "3D resolution"
-msgstr "Résolution de la 3D"
-
-#: src/ui/ui_common.cpp
-msgid "The 3D drawn larger, then fitted to the window: sharper edges and textures, more work for the graphics card. The 2D (texts, logos) keeps its size. Above the window's size, the picture is averaged down (supersampling)."
-msgstr "La 3D dessinée plus grande, puis ajustée à la fenêtre : des bords et des textures plus nets, plus de travail pour la carte graphique. La 2D (textes, logos) garde sa taille. Au-delà de la taille de la fenêtre, l'image est moyennée (suréchantillonnage)."
+msgid "Off"
+msgstr "Désactivé"
 
 #: src/ui/ui_common.cpp
 msgid "Antialiasing (MSAA)"
@@ -317,10 +493,6 @@ msgstr "Les changements s'appliquent dès que le jeu reprend."
 #: src/ui/ui_common.cpp
 msgid "The board's setting"
 msgstr "Le réglage de la carte"
-
-#: src/ui/ui_common.cpp
-msgid "Off"
-msgstr "Désactivé"
 
 #: src/ui/ui_common.cpp
 msgid "On"
@@ -446,6 +618,82 @@ msgstr "Horloge des SH-4"
 msgid "The SH-4s' clock: 200 MHz is the board's. Their timers, the MIE and the sound keep real time at any clock; the faster, the more of the PC the waits the games poll take (at 200 MHz, the games' boots run below 60 frames a second on this PC). 100 MHz by default; below, Air Trix's skater loses his body."
 msgstr "L'horloge des SH-4 : 200 MHz est celle de la carte. Leurs minuteries, le MIE et le son gardent le temps réel à toute horloge ; plus elle est rapide, plus les attentes que les jeux font en boucle prennent de PC (à 200 MHz, les démarrages des jeux tournent sous 60 images par seconde sur ce PC). 100 MHz par défaut ; en dessous, le skateur d'Air Trix perd son corps."
 
+#: src/ui/ui_common.cpp
+msgid "Network outputs (MAME protocol)"
+msgstr "Sorties réseau (protocole de MAME)"
+
+#: src/ui/ui_common.cpp
+msgid "The cabinet's lamps and NASCAR Arcade's drive board commands, sent as MAME's network output sends them, as Supermodel, Flycast and sm2-emu do: for MAMEHooker, BackForceFeeder, DOFLinx and the like. Taken at once."
+msgstr "Les lampes de la borne et les commandes de la carte de pilotage de NASCAR Arcade, envoyées comme la sortie réseau de MAME les envoie, comme le font Supermodel, Flycast et sm2-emu : pour MAMEHooker, BackForceFeeder, DOFLinx et les autres. Pris en compte aussitôt."
+
+#: src/ui/ui_common.cpp
+msgid "TCP port"
+msgstr "Port TCP"
+
+#: src/ui/ui_common.cpp
+msgid "The server's port, on all of this PC's addresses: 8000 as in MAME; another one for a second instance."
+msgstr "Le port du serveur, sur toutes les adresses de ce PC : 8000 comme dans MAME ; un autre pour une deuxième instance."
+
+#: src/ui/ui_common.cpp
+msgid "Announcement port (UDP)"
+msgstr "Port d'annonce (UDP)"
+
+#: src/ui/ui_common.cpp
+msgid "When a game starts, its name and the TCP port go once to this port on this PC, as Supermodel sends them (8001, where BackForceFeeder listens). 0: none."
+msgstr "Quand un jeu démarre, son nom et le port TCP partent une fois vers ce port de ce PC, comme Supermodel les envoie (8001, où BackForceFeeder écoute). 0 : aucune annonce."
+
+#: src/ui/ui_common.cpp
+msgid "Network outputs off."
+msgstr "Sorties réseau désactivées."
+
+#: src/ui/ui_common.cpp
+msgid "The server listens while a game runs."
+msgstr "Le serveur écoute pendant qu'un jeu tourne."
+
+#: src/ui/ui_common.cpp
+msgid "Not listening: %s"
+msgstr "N'écoute pas : %s"
+
+#: src/ui/ui_common.cpp
+msgid "Not listening yet."
+msgstr "N'écoute pas encore."
+
+#: src/ui/ui_common.cpp
+msgid "Listening on port %u; no client connected."
+msgstr "À l'écoute sur le port %u ; aucun client connecté."
+
+#: src/ui/ui_common.cpp
+msgid "Listening on port %u; clients connected: %u."
+msgstr "À l'écoute sur le port %u ; clients connectés : %u."
+
+#: src/ui/ui_common.cpp
+msgid "What the game sends shows here while it runs (Tab in a game): each name, its type, its meaning and its value. README.md lists them for every game."
+msgstr "Ce que le jeu envoie s'affiche ici pendant qu'il tourne (Tab dans un jeu) : chaque nom, son type, son sens et sa valeur. README.md les liste pour chaque jeu."
+
+#: src/ui/ui_common.cpp
+msgid "What this game sends"
+msgstr "Ce que ce jeu envoie"
+
+#: src/ui/ui_common.cpp src/ui/ui_controls.cpp
+msgid "Name"
+msgstr "Nom"
+
+#: src/ui/ui_common.cpp
+msgid "Type"
+msgstr "Type"
+
+#: src/ui/ui_common.cpp
+msgid "Meaning"
+msgstr "Sens"
+
+#: src/ui/ui_common.cpp
+msgid "Value"
+msgstr "Valeur"
+
+#: src/ui/ui_common.cpp
+msgid "Each line goes as \"name = value\" at each change, the drive board's in hexadecimal, the others in decimal; a client that connects gets the game's name first, then every value known. Value: the last one, with the outputs off too."
+msgstr "Chaque ligne part sous la forme « nom = valeur » à chaque changement, celles de la carte de pilotage en hexadécimal, les autres en décimal ; un client qui se connecte reçoit d'abord le nom du jeu, puis toutes les valeurs connues. Valeur : la dernière, sorties désactivées aussi."
+
 #: src/ui/ui_common.cpp src/ui/ui_picker.cpp
 msgid "Games folder"
 msgstr "Dossier des jeux"
@@ -457,6 +705,10 @@ msgstr "Ajouter un dossier..."
 #: src/ui/ui_common.cpp
 msgid "Add a games folder"
 msgstr "Ajouter un dossier de jeux"
+
+#: src/ui/ui_common.cpp
+msgid "Scan again"
+msgstr "Rechercher à nouveau"
 
 #: src/ui/ui_common.cpp
 msgid "Empty: the roms folder next to the program. Several folders: separate them with ';', looked in in that order (the BIOS can be in one, the games in another)."
@@ -473,10 +725,6 @@ msgstr "%s (introuvable)"
 #: src/ui/ui_common.cpp
 msgid "MAME romsets (merged, split or non-merged zips): <game>.zip, its parent's zip and hikaru.zip for the BIOS. Folders <game>/ with the files unpacked still work."
 msgstr "Romsets MAME (zips merged, split ou non-merged) : <jeu>.zip, le zip de son parent et hikaru.zip pour le BIOS. Les dossiers <jeu>/ avec les fichiers décompressés marchent toujours."
-
-#: src/ui/ui_common.cpp
-msgid "Scan again"
-msgstr "Rechercher à nouveau"
 
 #: src/ui/ui_common.cpp
 msgid "Automatic"
@@ -506,7 +754,6 @@ msgstr "Télécharger les images des jeux"
 msgid "From the Arcade Database (adb.arcadeitalia.net, by motoschifo), into cache/artwork: one game at a time, those found, each asked once. Your own pictures show either way: artwork/ next to the program, <set>.png or .jpg, or MAME's titles/, snap/, flyers/ and marquees/ folders."
 msgstr "Depuis l'Arcade Database (adb.arcadeitalia.net, par motoschifo), dans cache/artwork : un jeu à la fois, ceux trouvés, chacun demandé une seule fois. Vos propres images s'affichent de toute façon : artwork/ à côté du programme, <set>.png ou .jpg, ou les dossiers titles/, snap/, flyers/ et marquees/ de MAME."
 
-
 #: src/ui/ui_common.cpp
 msgid "Hikaru Loader, a SEGA Hikaru emulator."
 msgstr "Hikaru Loader, un émulateur du SEGA Hikaru."
@@ -535,7 +782,6 @@ msgstr "Romsets lus comme le fait sm2-emu : par CRC32, avec miniz."
 msgid "Games' pictures, when downloaded: scraping using Arcade Database by motoschifo, as sm2-emu does; their copyrights belong to their owners. Pictures read with stb_image, by Sean Barrett (public domain)."
 msgstr "Images des jeux, quand elles sont téléchargées : scraping using Arcade Database by motoschifo, comme le fait sm2-emu ; leurs droits appartiennent à leurs propriétaires. Images lues avec stb_image, de Sean Barrett (domaine public)."
 
-
 #: src/ui/ui_common.cpp
 msgid "Settings"
 msgstr "Paramètres"
@@ -543,6 +789,10 @@ msgstr "Paramètres"
 #: src/ui/ui_common.cpp
 msgid "Display"
 msgstr "Affichage"
+
+#: src/ui/ui_common.cpp
+msgid "Enhancements"
+msgstr "Améliorations"
 
 #: src/ui/ui_common.cpp
 msgid "Controls"
@@ -555,6 +805,10 @@ msgstr "Son"
 #: src/ui/ui_common.cpp
 msgid "Emulation"
 msgstr "Émulation"
+
+#: src/ui/ui_common.cpp
+msgid "Outputs"
+msgstr "Sorties"
 
 #: src/ui/ui_common.cpp
 msgid "Picker"
@@ -777,10 +1031,6 @@ msgid "Devices"
 msgstr "Périphériques"
 
 #: src/ui/ui_controls.cpp
-msgid "Name"
-msgstr "Nom"
-
-#: src/ui/ui_controls.cpp
 msgid "In controls.ini"
 msgstr "Dans controls.ini"
 
@@ -809,20 +1059,20 @@ msgid "Dead zones and options"
 msgstr "Zones mortes et options"
 
 #: src/ui/ui_overlay.cpp
-msgid "%.1f FPS"
-msgstr "%.1f i/s"
-
-#: src/ui/ui_overlay.cpp
-msgid "Game paused - Tab: close the settings"
-msgstr "Jeu en pause - Tab : fermer les paramètres"
-
-#: src/ui/ui_overlay.cpp
 msgid "Cannot write to the write folder"
 msgstr "Impossible d'écrire dans le dossier d'écriture"
 
 #: src/ui/ui_overlay.cpp
 msgid "Nothing is saved: the settings and the game saves are read from the usual folders and not written."
 msgstr "Rien n'est sauvegardé : les réglages et les sauvegardes des jeux sont lus dans les dossiers habituels et ne sont pas écrits."
+
+#: src/ui/ui_overlay.cpp
+msgid "%.1f FPS"
+msgstr "%.1f i/s"
+
+#: src/ui/ui_overlay.cpp
+msgid "Game paused - Tab: close the settings"
+msgstr "Jeu en pause - Tab : fermer les paramètres"
 
 #: src/ui/ui_picker.cpp
 msgid "Ready"
@@ -851,10 +1101,6 @@ msgstr "%d jeux prêts sur %d dans %d dossiers"
 #: src/ui/ui_picker.cpp
 msgid "%d of %d games ready in %s"
 msgstr "%d jeux prêts sur %d dans %s"
-
-#: src/ui/ui_picker.cpp
-msgid "Games folders"
-msgstr "Dossiers des jeux"
 
 #: src/ui/ui_picker.cpp
 msgid "No game is defined in data/games.json."
@@ -905,6 +1151,10 @@ msgid "BIOS"
 msgstr "BIOS"
 
 #: src/ui/ui_picker.cpp
+msgid "Games folders"
+msgstr "Dossiers des jeux"
+
+#: src/ui/ui_picker.cpp
 msgid "%s cannot start: some of its files are missing."
 msgstr "%s ne peut pas démarrer : il manque des fichiers."
 
@@ -947,3 +1197,33 @@ msgstr "Chargement de %s..."
 
 #~ msgid "Enter: launch   Tab: settings   F9: quit"
 #~ msgstr "Entrée : lancer   Tab : paramètres   F9 : quitter"
+
+#~ msgid "Window"
+#~ msgstr "Fenêtre"
+
+#~ msgid "Its shape, black bars"
+#~ msgstr "Sa forme, bandes noires"
+
+#~ msgid "Its shape, whole multiples"
+#~ msgstr "Sa forme, multiples entiers"
+
+#~ msgid "Stretched"
+#~ msgstr "Étiré"
+
+#~ msgid "The Hikaru draws 640x480 pictures (854x480 in widescreen). Black bars: the whole picture in its shape, with black bars where the screen's shape differs. Whole multiples: the same, at 1x, 2x, 3x... the native size only, for sharp pixels. Stretched: the picture fills the window, deformed."
+#~ msgstr "Le Hikaru dessine des images de 640x480 (854x480 en grand écran). Bandes noires : l'image entière dans sa forme, avec des bandes noires là où la forme de l'écran diffère. Multiples entiers : pareil, mais seulement à 1x, 2x, 3x... la taille native, pour des pixels nets. Étiré : l'image remplit la fenêtre, déformée."
+
+#~ msgid "Sharp"
+#~ msgstr "Net"
+
+#~ msgid "Smooth: down to 240 rows (a CRT), each one the mean of two, where Sharp drops one in two (thin lines, small texts)."
+#~ msgstr "Lissé : réduite à 240 lignes (un CRT), chacune est la moyenne de deux, là où Net en saute une sur deux (traits fins, petits textes)."
+
+#~ msgid "x%d (%d x %d), the board's"
+#~ msgstr "x%d (%d x %d), celle de la carte"
+
+#~ msgid "3D resolution"
+#~ msgstr "Résolution de la 3D"
+
+#~ msgid "The 3D drawn larger, then fitted to the window: sharper edges and textures, more work for the graphics card. The 2D (texts, logos) keeps its size. Above the window's size, the picture is averaged down (supersampling)."
+#~ msgstr "La 3D dessinée plus grande, puis ajustée à la fenêtre : des bords et des textures plus nets, plus de travail pour la carte graphique. La 2D (textes, logos) garde sa taille. Au-delà de la taille de la fenêtre, l'image est moyennée (suréchantillonnage)."

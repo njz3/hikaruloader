@@ -55,6 +55,118 @@ msgstr ""
 msgid "%s needs a machine Hikaruloader does not emulate."
 msgstr ""
 
+#: src/hl/outputs.cpp
+msgid "Start button lamp"
+msgstr ""
+
+#: src/hl/outputs.cpp
+msgid "Left upper lamp"
+msgstr ""
+
+#: src/hl/outputs.cpp
+msgid "Right lower lamp"
+msgstr ""
+
+#: src/hl/outputs.cpp
+msgid "The board's lock (LOCK MECHA.), released at 1"
+msgstr ""
+
+#: src/hl/outputs.cpp
+msgid "Left lower lamp"
+msgstr ""
+
+#: src/hl/outputs.cpp
+msgid "Right upper lamp"
+msgstr ""
+
+#: src/hl/outputs.cpp
+msgid "Player 1's start button lamp"
+msgstr ""
+
+#: src/hl/outputs.cpp
+msgid "Player 1's nozzle vibration"
+msgstr ""
+
+#: src/hl/outputs.cpp
+msgid "Player 2's start button lamp"
+msgstr ""
+
+#: src/hl/outputs.cpp
+msgid "VR R button lamp"
+msgstr ""
+
+#: src/hl/outputs.cpp
+msgid "VR L button lamp"
+msgstr ""
+
+#: src/hl/outputs.cpp
+msgid "Bomb button lamp"
+msgstr ""
+
+#: src/hl/outputs.cpp
+msgid "Billboard lamp"
+msgstr ""
+
+#: src/hl/outputs.cpp
+msgid "View change button lamp"
+msgstr ""
+
+#: src/hl/outputs.cpp
+msgid "Boost button lamp"
+msgstr ""
+
+#: src/hl/outputs.cpp
+msgid "Boost lever lock"
+msgstr ""
+
+#: src/hl/outputs.cpp
+msgid "Winner lamp"
+msgstr ""
+
+#: src/hl/outputs.cpp
+msgid "text"
+msgstr ""
+
+#: src/hl/outputs.cpp
+msgid "The game's name, the first line a client gets"
+msgstr ""
+
+#: src/hl/outputs.cpp
+msgid "0 or 1"
+msgstr ""
+
+#: src/hl/outputs.cpp
+msgid "1 while the game is paused"
+msgstr ""
+
+#: src/hl/outputs.cpp
+msgid "%s (JVS output %u)"
+msgstr ""
+
+#: src/hl/outputs.cpp
+msgid "JVS output %u"
+msgstr ""
+
+#: src/hl/outputs.cpp
+msgid "%s: lamp%d under the game's name"
+msgstr ""
+
+#: src/hl/outputs.cpp
+msgid "byte in hex, 00 to FF"
+msgstr ""
+
+#: src/hl/outputs.cpp
+msgid "Each command the game writes to its drive board, as the board reads it"
+msgstr ""
+
+#: src/hl/outputs.cpp
+msgid "Received from a client (BackForceFeeder): a real drive board's reply, which the game reads instead of the emulated one"
+msgstr ""
+
+#: src/hl/outputs.cpp
+msgid "When the game ends"
+msgstr ""
+
 #: src/ui/ui_common.cpp
 msgid "Takes effect at the next start."
 msgstr ""
@@ -72,7 +184,87 @@ msgid "Graphics API"
 msgstr ""
 
 #: src/ui/ui_common.cpp
-msgid "Window"
+msgid "%d x %d (native)"
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "Internal resolution"
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "The 3D drawn larger, then fitted to the aspect ratio and the window: sharper edges and textures, more work for the graphics card. The 2D (texts, logos) keeps its size. Above the window's size, the picture is averaged down (supersampling)."
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "Original"
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "4:3, black bars"
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "16:9, black bars"
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "4:3, stretched"
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "16:9, stretched"
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "4:3, cropped"
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "16:9, cropped"
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "Aspect ratio"
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "Crop position"
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "-100: left or top, 0: the middle, 100: right or bottom."
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "Bend the cut parts onto the edges"
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "Undistorted middle"
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "Curvature radius"
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "The whole picture stays visible: the middle (in % of the frame) as cropped, the parts the crop would cut squeezed onto the edges as on a cylinder seen from the front. A small radius bends hard at the edge, a large one squeezes evenly."
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "Original: the picture's own shape, 4:3 (16:9 in widescreen)."
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "Black bars: the frame's shape, with the whole picture inside at its own shape and black bars where the shapes differ. Stretched: the picture fills the frame, deformed. Cropped: the picture fills the frame at its own shape, cut on the sides (or above and below); the crop position moves the part kept. The display mode then fits the frame to the window or the screen, or stretches it."
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "Window, square pixels"
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "Window, stretched"
 msgstr ""
 
 #: src/ui/ui_common.cpp
@@ -80,7 +272,15 @@ msgid "Full screen"
 msgstr ""
 
 #: src/ui/ui_common.cpp
+msgid "Full screen, stretched"
+msgstr ""
+
+#: src/ui/ui_common.cpp
 msgid "Borderless fullscreen window"
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "Borderless fullscreen window, stretched"
 msgstr ""
 
 #: src/ui/ui_common.cpp
@@ -96,23 +296,39 @@ msgid "The window can also be resized with the mouse."
 msgstr ""
 
 #: src/ui/ui_common.cpp
-msgid "Its shape, black bars"
+msgid "Whole multiples only (integer scaling)"
 msgstr ""
 
 #: src/ui/ui_common.cpp
-msgid "Its shape, whole multiples"
+msgid "The picture at 1x, 2x, 3x... its size only, for even pixels, with larger black bars. Not with a stretched or cropped picture, nor a screen shape of its own."
 msgstr ""
 
 #: src/ui/ui_common.cpp
-msgid "Stretched"
+msgid "Its resolution's (square pixels)"
 msgstr ""
 
 #: src/ui/ui_common.cpp
-msgid "Aspect ratio"
+msgid "Screen shape"
 msgstr ""
 
 #: src/ui/ui_common.cpp
-msgid "The Hikaru draws 640x480 pictures (854x480 in widescreen). Black bars: the whole picture in its shape, with black bars where the screen's shape differs. Whole multiples: the same, at 1x, 2x, 3x... the native size only, for sharp pixels. Stretched: the picture fills the window, deformed."
+msgid "The picture is placed by the screen's shape: that of its resolution, or 4:3 or 16:9 whatever its resolution, for a CRT's super resolutions (1920x240): the black bars right, and stretched from 4:3 to 16:9 no more."
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "Smooth"
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "Sharp pixels"
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "Scaling filter"
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "Sharp pixels: square and crisp, but uneven unless the picture is enlarged a whole number of times. Smooth: down to 240 rows (a CRT), each one the mean of two, where Sharp pixels drops one in two (thin lines, small texts)."
 msgstr ""
 
 #: src/ui/ui_common.cpp
@@ -148,34 +364,6 @@ msgid "Each frame drawn while the next one is emulated: faster when the drawing 
 msgstr ""
 
 #: src/ui/ui_common.cpp
-msgid "Its resolution's (square pixels)"
-msgstr ""
-
-#: src/ui/ui_common.cpp
-msgid "Screen shape"
-msgstr ""
-
-#: src/ui/ui_common.cpp
-msgid "The picture is placed by the screen's shape: that of its resolution, or 4:3 or 16:9 whatever its resolution, for a CRT's super resolutions (1920x240): the black bars right, and stretched from 4:3 to 16:9 no more."
-msgstr ""
-
-#: src/ui/ui_common.cpp
-msgid "Sharp"
-msgstr ""
-
-#: src/ui/ui_common.cpp
-msgid "Smooth"
-msgstr ""
-
-#: src/ui/ui_common.cpp
-msgid "Scaling filter"
-msgstr ""
-
-#: src/ui/ui_common.cpp
-msgid "Smooth: down to 240 rows (a CRT), each one the mean of two, where Sharp drops one in two (thin lines, small texts)."
-msgstr ""
-
-#: src/ui/ui_common.cpp
 msgid "Widescreen 3D (16:9)"
 msgstr ""
 
@@ -204,19 +392,7 @@ msgid "The 3D scenery's detailed models and its fog that much farther; what the 
 msgstr ""
 
 #: src/ui/ui_common.cpp
-msgid "Enhancements"
-msgstr ""
-
-#: src/ui/ui_common.cpp
-msgid "x%d (%d x %d), the board's"
-msgstr ""
-
-#: src/ui/ui_common.cpp
-msgid "3D resolution"
-msgstr ""
-
-#: src/ui/ui_common.cpp
-msgid "The 3D drawn larger, then fitted to the window: sharper edges and textures, more work for the graphics card. The 2D (texts, logos) keeps its size. Above the window's size, the picture is averaged down (supersampling)."
+msgid "Off"
 msgstr ""
 
 #: src/ui/ui_common.cpp
@@ -313,10 +489,6 @@ msgstr ""
 
 #: src/ui/ui_common.cpp
 msgid "The board's setting"
-msgstr ""
-
-#: src/ui/ui_common.cpp
-msgid "Off"
 msgstr ""
 
 #: src/ui/ui_common.cpp
@@ -443,6 +615,82 @@ msgstr ""
 msgid "The SH-4s' clock: 200 MHz is the board's. Their timers, the MIE and the sound keep real time at any clock; the faster, the more of the PC the waits the games poll take (at 200 MHz, the games' boots run below 60 frames a second on this PC). 100 MHz by default; below, Air Trix's skater loses his body."
 msgstr ""
 
+#: src/ui/ui_common.cpp
+msgid "Network outputs (MAME protocol)"
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "The cabinet's lamps and NASCAR Arcade's drive board commands, sent as MAME's network output sends them, as Supermodel, Flycast and sm2-emu do: for MAMEHooker, BackForceFeeder, DOFLinx and the like. Taken at once."
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "TCP port"
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "The server's port, on all of this PC's addresses: 8000 as in MAME; another one for a second instance."
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "Announcement port (UDP)"
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "When a game starts, its name and the TCP port go once to this port on this PC, as Supermodel sends them (8001, where BackForceFeeder listens). 0: none."
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "Network outputs off."
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "The server listens while a game runs."
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "Not listening: %s"
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "Not listening yet."
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "Listening on port %u; no client connected."
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "Listening on port %u; clients connected: %u."
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "What the game sends shows here while it runs (Tab in a game): each name, its type, its meaning and its value. README.md lists them for every game."
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "What this game sends"
+msgstr ""
+
+#: src/ui/ui_common.cpp src/ui/ui_controls.cpp
+msgid "Name"
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "Type"
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "Meaning"
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "Value"
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "Each line goes as \"name = value\" at each change, the drive board's in hexadecimal, the others in decimal; a client that connects gets the game's name first, then every value known. Value: the last one, with the outputs off too."
+msgstr ""
+
 #: src/ui/ui_common.cpp src/ui/ui_picker.cpp
 msgid "Games folder"
 msgstr ""
@@ -453,6 +701,10 @@ msgstr ""
 
 #: src/ui/ui_common.cpp
 msgid "Add a games folder"
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "Scan again"
 msgstr ""
 
 #: src/ui/ui_common.cpp
@@ -469,10 +721,6 @@ msgstr ""
 
 #: src/ui/ui_common.cpp
 msgid "MAME romsets (merged, split or non-merged zips): <game>.zip, its parent's zip and hikaru.zip for the BIOS. Folders <game>/ with the files unpacked still work."
-msgstr ""
-
-#: src/ui/ui_common.cpp
-msgid "Scan again"
 msgstr ""
 
 #: src/ui/ui_common.cpp
@@ -503,7 +751,6 @@ msgstr ""
 msgid "From the Arcade Database (adb.arcadeitalia.net, by motoschifo), into cache/artwork: one game at a time, those found, each asked once. Your own pictures show either way: artwork/ next to the program, <set>.png or .jpg, or MAME's titles/, snap/, flyers/ and marquees/ folders."
 msgstr ""
 
-
 #: src/ui/ui_common.cpp
 msgid "Hikaru Loader, a SEGA Hikaru emulator."
 msgstr ""
@@ -532,13 +779,16 @@ msgstr ""
 msgid "Games' pictures, when downloaded: scraping using Arcade Database by motoschifo, as sm2-emu does; their copyrights belong to their owners. Pictures read with stb_image, by Sean Barrett (public domain)."
 msgstr ""
 
-
 #: src/ui/ui_common.cpp
 msgid "Settings"
 msgstr ""
 
 #: src/ui/ui_common.cpp
 msgid "Display"
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "Enhancements"
 msgstr ""
 
 #: src/ui/ui_common.cpp
@@ -551,6 +801,10 @@ msgstr ""
 
 #: src/ui/ui_common.cpp
 msgid "Emulation"
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "Outputs"
 msgstr ""
 
 #: src/ui/ui_common.cpp
@@ -774,10 +1028,6 @@ msgid "Devices"
 msgstr ""
 
 #: src/ui/ui_controls.cpp
-msgid "Name"
-msgstr ""
-
-#: src/ui/ui_controls.cpp
 msgid "In controls.ini"
 msgstr ""
 
@@ -806,19 +1056,19 @@ msgid "Dead zones and options"
 msgstr ""
 
 #: src/ui/ui_overlay.cpp
-msgid "%.1f FPS"
-msgstr ""
-
-#: src/ui/ui_overlay.cpp
-msgid "Game paused - Tab: close the settings"
-msgstr ""
-
-#: src/ui/ui_overlay.cpp
 msgid "Cannot write to the write folder"
 msgstr ""
 
 #: src/ui/ui_overlay.cpp
 msgid "Nothing is saved: the settings and the game saves are read from the usual folders and not written."
+msgstr ""
+
+#: src/ui/ui_overlay.cpp
+msgid "%.1f FPS"
+msgstr ""
+
+#: src/ui/ui_overlay.cpp
+msgid "Game paused - Tab: close the settings"
 msgstr ""
 
 #: src/ui/ui_picker.cpp
@@ -847,10 +1097,6 @@ msgstr ""
 
 #: src/ui/ui_picker.cpp
 msgid "%d of %d games ready in %s"
-msgstr ""
-
-#: src/ui/ui_picker.cpp
-msgid "Games folders"
 msgstr ""
 
 #: src/ui/ui_picker.cpp
@@ -899,6 +1145,10 @@ msgstr ""
 
 #: src/ui/ui_picker.cpp
 msgid "BIOS"
+msgstr ""
+
+#: src/ui/ui_picker.cpp
+msgid "Games folders"
 msgstr ""
 
 #: src/ui/ui_picker.cpp

@@ -2293,10 +2293,39 @@ static const char *fb_fs_source =
 "uniform float u_bloom_k = 0.0;							\n"
 "uniform float u_crt = 0.0;							\n"
 "uniform vec2 u_out = vec2 (640.0, 480.0);					\n"
+"/* CROP_BARREL (hl/aspect.cpp): the parts a crop cuts bent onto the frame's	\n"
+" * edges along an axis (0 across, 1 up and down, -1 none); the frame in the	\n"
+" * target's pixels, the viewport then; edge, middle, start, scale; the	\n"
+" * picture each edge shows, the arc each covers */				\n"
+"uniform int u_barrel = -1;							\n"
+"uniform vec4 u_frame;								\n"
+"uniform vec4 u_barrel1;							\n"
+"uniform vec4 u_barrel2;							\n"
 "										\n"
 "in vec2 p_texcoords;								\n"
 "										\n"
 "%BOX%										\n"
+"										\n"
+"/* Along the bent axis: q in the frame (0..1 from its left or top) to the	\n"
+" * picture (the same way); a cylinder seen from the front on each edge */	\n"
+"float edge_arc (float x, float len, float angle, float edge) {		\n"
+"	if (len <= edge * 1.0001 || angle < 1e-4)				\n"
+"		return len * x / edge;						\n"
+"	return len * asin (sin (angle) * x / edge) / angle;			\n"
+"}										\n"
+"										\n"
+"float barrel (float q) {							\n"
+"	float u;								\n"
+"	if (q < u_barrel1.x)							\n"
+"		u = u_barrel1.z - edge_arc (u_barrel1.x - q, u_barrel2.x,	\n"
+"		                            u_barrel2.z, u_barrel1.x);		\n"
+"	else if (q > u_barrel1.x + u_barrel1.y)				\n"
+"		u = u_barrel1.z + u_barrel1.y + edge_arc (q - u_barrel1.x - u_barrel1.y,	\n"
+"		                                          u_barrel2.y, u_barrel2.w, u_barrel1.x);	\n"
+"	else									\n"
+"		u = u_barrel1.z + q - u_barrel1.x;				\n"
+"	return u * u_barrel1.w;							\n"
+"}										\n"
 "										\n"
 "/* A scene's buffer, larger than the picture: the mean of its texels	\n"
 " * there */									\n"
@@ -2307,20 +2336,29 @@ static const char *fb_fs_source =
 "}										\n"
 "										\n"
 "void main (void) {								\n"
-"	vec2 p_texcoords_inv = vec2 ((p_texcoords.s - u_layer_x.x) / u_layer_x.y,	\n"
-"	                             1 - p_texcoords.t);				\n"
+"	/* The picture's point here: the viewport's, or bent */		\n"
+"	vec2 tc = p_texcoords;							\n"
+"	if (u_barrel >= 0) {							\n"
+"		vec2 q = (gl_FragCoord.xy - u_frame.xy) / u_frame.zw;		\n"
+"		if (u_barrel == 0)						\n"
+"			tc.x = barrel (q.x);					\n"
+"		else								\n"
+"			tc.y = 1.0 - barrel (1.0 - q.y);			\n"
+"	}									\n"
+"	vec2 p_texcoords_inv = vec2 ((tc.s - u_layer_x.x) / u_layer_x.y,	\n"
+"	                             1 - tc.t);					\n"
 "	float inside = (p_texcoords_inv.s >= 0.0 && p_texcoords_inv.s <= 1.0) ?	\n"
 "	               1.0 : 0.0;							\n"
 "	vec4 texel_f, texel_b;							\n"
 "										\n"
 "	if (u_invert_f == 0)							\n"
-"		texel_f = scene (u_front, p_texcoords);				\n"
+"		texel_f = scene (u_front, tc);					\n"
 "	else									\n"
 "		texel_f = texture (u_front, p_texcoords_inv) * inside;		\n"
 "	texel_f = texel_f * u_mult_f;						\n"
 "										\n"
 "	if (u_invert_b == 0)							\n"
-"		texel_b = scene (u_back,  p_texcoords);				\n"
+"		texel_b = scene (u_back,  tc);					\n"
 "	else									\n"
 "		texel_b = texture (u_back,  p_texcoords_inv) * inside;		\n"
 "	texel_b = texel_b * u_mult_b;						\n"
@@ -2342,7 +2380,7 @@ static const char *fb_fs_source =
 "	bool on[3], there[3];							\n"
 "	src[0] = mix (texel_f, texel_b, u_factor);				\n"
 "	if (u_bloom_k > 0.0)							\n"
-"		src[0].rgb += texture (u_bloom, p_texcoords).rgb * u_bloom_k;	\n"
+"		src[0].rgb += texture (u_bloom, tc).rgb * u_bloom_k;		\n"
 "	src[1] = clamp (texel_1 * u_mult_1, 0.0, 1.0);				\n"
 "	src[2] = clamp (texel_2 * u_mult_2, 0.0, 1.0);				\n"
 "	on[0] = true;								\n"
@@ -2374,7 +2412,7 @@ static const char *fb_fs_source =
 "	 * beat with the pixels; brighter, for the light they take */		\n"
 "	if (u_crt > 0.0) {							\n"
 "		float k = u_crt * clamp (u_out.y / 480.0 - 1.0, 0.0, 1.0);	\n"
-"		float phase = fract ((1.0 - p_texcoords.t) * 480.0);		\n"
+"		float phase = fract ((1.0 - tc.t) * 480.0);			\n"
 "		float beam = 0.5 + 0.5 * cos (6.2831853 * (phase - 0.5));	\n"
 "		int m = int (mod (gl_FragCoord.x, 3.0));			\n"
 "		vec3 mask = vec3 (m == 0 ? 1.0 : 0.7, m == 1 ? 1.0 : 0.7,	\n"
@@ -2561,7 +2599,7 @@ build_scene_buffers (Renderer *hr)
 {
 	static const GLenum targets[1] = { GL_COLOR_ATTACHMENT0 };
 	auto &fb = hr->framebuffer;
-	unsigned scale = MAX2 (1u, MIN2 (4u, hr->view.scale));
+	unsigned scale = MAX2 (1u, MIN2 ((unsigned) hl::MAX_RENDER_SCALE, hr->view.scale));
 	unsigned samples = MIN2 (hr->view.msaa, (unsigned) MAX2 (0, fb.max_samples));
 	unsigned w = hr->scene_w * scale, h = 480 * scale, i;
 	bool resized = !fb.cb[0] || fb.w != w || fb.h != h;
@@ -2715,6 +2753,14 @@ build_fb_state (Renderer *hr)
 		glGetUniformLocation (hr->framebuffer.program, "u_crt");
 	hr->framebuffer.locs.u_out =
 		glGetUniformLocation (hr->framebuffer.program, "u_out");
+	hr->framebuffer.locs.u_barrel =
+		glGetUniformLocation (hr->framebuffer.program, "u_barrel");
+	hr->framebuffer.locs.u_frame =
+		glGetUniformLocation (hr->framebuffer.program, "u_frame");
+	hr->framebuffer.locs.u_barrel1 =
+		glGetUniformLocation (hr->framebuffer.program, "u_barrel1");
+	hr->framebuffer.locs.u_barrel2 =
+		glGetUniformLocation (hr->framebuffer.program, "u_barrel2");
 
 	build_post_program (hr->framebuffer.fxaa, fxaa_fs_source);
 	build_post_program (hr->framebuffer.bright, bright_fs_source);
@@ -2893,16 +2939,11 @@ static void
 set_output_viewport (Renderer *hr)
 {
 	if (!hr->target_fb) {
-		hl::Window::set_output_viewport ();
-		return;
+		hl::Window::drawable_size (&hr->target_width, &hr->target_height);
+		hl::Window::layout (&hr->target_layout);
 	}
 	glBindFramebuffer (GL_FRAMEBUFFER, hr->target_fb);
-	glDisable (GL_SCISSOR_TEST);
-	glViewport (0, 0, hr->target_width, hr->target_height);
-	glClearColor (0.0f, 0.0f, 0.0f, 1.0f);
-	glClear (GL_COLOR_BUFFER_BIT);
-	glViewport (hr->target_rect[0], hr->target_rect[1],
-	            hr->target_rect[2], hr->target_rect[3]);
+	hl::Window::set_output_viewport (hr->target_layout, hr->target_width, hr->target_height);
 }
 
 /* The texture on a unit, if any, sampled so */
@@ -3137,6 +3178,7 @@ draw (Renderer *hr)
 			glUniform2f (hr->framebuffer.locs.u_down, 1.0f, 1.0f);
 			glUniform1f (hr->framebuffer.locs.u_bloom_k, 0.0f);
 			glUniform1f (hr->framebuffer.locs.u_crt, 0.0f);
+			glUniform1i (hr->framebuffer.locs.u_barrel, -1);
 			HL_ASSERT_NO_GL_ERROR ();
 
 			/* front = back * factor + front * (1 - factor) */
@@ -3162,9 +3204,10 @@ draw (Renderer *hr)
 		HL_ASSERT_NO_GL_ERROR ();
 	}
 
-	/* Where the picture goes in the window, after the aspect ratio */
+	/* Where the picture goes in the window, after the aspect ratio; out,
+	 * its whole size there (larger than the window where cropped) */
 	set_output_viewport (hr);
-	glGetIntegerv (GL_VIEWPORT, out);
+	memcpy (out, hr->target_layout.image, sizeof (out));
 
 	/* Figure out the GPU framebuffer assignments. */
 	glActiveTexture (GL_TEXTURE0 + 0);
@@ -3232,6 +3275,15 @@ draw (Renderer *hr)
 	glUniform1f (hr->framebuffer.locs.u_bloom_k, bloom ? hr->view.bloom : 0.0f);
 	glUniform1f (hr->framebuffer.locs.u_crt, hr->view.crt);
 	glUniform2f (hr->framebuffer.locs.u_out, (float) out[2], (float) out[3]);
+	{
+		const hl::ScreenLayout &l = hr->target_layout;
+		glUniform1i (hr->framebuffer.locs.u_barrel, l.barrel_axis);
+		glUniform4f (hr->framebuffer.locs.u_frame, (float) l.frame[0], (float) l.frame[1],
+		             (float) l.frame[2], (float) l.frame[3]);
+		glUniform4f (hr->framebuffer.locs.u_barrel1, l.edge, l.center, l.start, l.scale);
+		glUniform4f (hr->framebuffer.locs.u_barrel2, l.length[0], l.length[1],
+		             l.angle[0], l.angle[1]);
+	}
 	HL_ASSERT_NO_GL_ERROR ();
 
 	/* The scaling filter, on the four; LINEAR on the scene's buffers
@@ -3249,6 +3301,8 @@ draw (Renderer *hr)
 
 	glDrawArrays (GL_TRIANGLE_STRIP, 0, 4);
 	HL_ASSERT_NO_GL_ERROR ();
+	/* The crop's cut (set_output_viewport) */
+	glDisable (GL_SCISSOR_TEST);
 
 	/* Not left bound: drawn into again at the next frame */
 	if (bloom) {
@@ -3543,8 +3597,7 @@ Renderer::hand_over ()
 
 	/* The window's size, the picture's place in it */
 	hl::Window::drawable_size (&d->target_width, &d->target_height);
-	hl::Window::output_rect (&d->target_rect[0], &d->target_rect[1],
-	                         &d->target_rect[2], &d->target_rect[3]);
+	hl::Window::layout (&d->target_layout);
 }
 
 /* On the thread: the frame handed over, drawn into out[last] */

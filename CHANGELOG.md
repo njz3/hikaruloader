@@ -5,6 +5,25 @@ What each version brings, for those who play. How the versions are numbered
 and released: [DEVELOPMENT.md](DEVELOPMENT.md), "Versions and releases".
 
 
+0.3.0 (not released yet)
+------------------------
+
+- The cabinet's outputs, for the programs that drive real lamps, motors and
+  wheels (MAMEHooker, BackForceFeeder, DOFLinx...), in MAME's network
+  protocol as Supermodel, Flycast and sm2-emu send them: each game's lamps,
+  under the names of its test menu, and NASCAR Arcade's drive board
+  commands, which a real drive board can answer. Off by default: the
+  settings' new Outputs tab, which also lists what the game sends, with the
+  values.
+- The picture's settings as in the other emulators (linuxloader,
+  Supermodel, Flycast, sm2-emu), in the Display tab: the internal
+  resolution, native to 6 times (3840x2880, 4K's class); the aspect ratio,
+  original, 4:3 or 16:9 with black bars, stretched or cropped (the crop's
+  position chosen, the cut parts possibly bent onto the edges); the display
+  modes each also stretched; whole multiples only as a box of its own. A
+  settings file from before keeps its choices.
+
+
 0.2.2 (2026-11-01)
 ------------------
 

@@ -174,9 +174,11 @@ public:
 	 * drawing thread's copies */
 	hl::Buffer *texram_src[2], *fb_src;
 	/* Where draw () puts the picture: the window (0), or the drawing
-	 * thread's texture, with the window's size and the picture's place */
+	 * thread's texture, with the window's size and the picture's place
+	 * (the aspect ratio's, hl/aspect.h) */
 	GLuint target_fb;
-	int target_width, target_height, target_rect[4];
+	int target_width, target_height;
+	hl::ScreenLayout target_layout;
 	/* The scene's width: 640, 854 in widescreen (hl::Renderer::width,
 	 * taken at the game's start); the 2D layers' 640 in its middle */
 	unsigned scene_w;
@@ -311,6 +313,10 @@ public:
 			GLuint u_bloom_k;
 			GLuint u_crt;
 			GLuint u_out;
+			GLuint u_barrel;
+			GLuint u_frame;
+			GLuint u_barrel1;
+			GLuint u_barrel2;
 		} locs;
 	} framebuffer;
 

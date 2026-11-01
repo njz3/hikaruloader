@@ -39,8 +39,9 @@ static const char *memory_names[NUM_MEMORY_ACCESSES] = {
 	"REGIONS", "PAGE_TABLE", "FASTMEM"
 };
 
+/* Linuxloader's, Supermodel's, Flycast's and sm2-emu's */
 static const char *aspect_names[NUM_ASPECTS] = {
-	"ORIGINAL", "INTEGER", "STRETCH"
+	"ORIGINAL", "4:3", "16:9", "4:3_STRETCH", "16:9_STRETCH", "4:3_CROP", "16:9_CROP"
 };
 
 static const char *screen_shape_names[NUM_SCREEN_SHAPES] = {
@@ -101,8 +102,15 @@ Config::set_defaults ()
 
 	memset (cfg, 0, sizeof (*cfg));
 	cfg->display_mode = DISPLAY_WINDOW;
+	cfg->display_stretch = false;
 	cfg->window_scale = 1;	/* the Hikaru's own 640 x 480 */
 	cfg->aspect = ASPECT_ORIGINAL;
+	cfg->crop_position = 0;
+	cfg->crop_barrel = false;
+	/* As linuxloader's */
+	cfg->barrel_center = 60;
+	cfg->barrel_radius = 50;
+	cfg->integer_scale = false;
 	cfg->graphics_api = GRAPHICS_OPENGL;
 	cfg->vsync = false;
 	cfg->fps_limiter = true;
@@ -149,6 +157,11 @@ Config::set_defaults ()
 	cfg->port_in = 1970;
 	strcpy (cfg->address_out, "127.0.0.1");
 	cfg->port_out = 1970;
+	/* Off, as in MAME, Supermodel and Flycast: a server on the PC's
+	 * addresses; their ports */
+	cfg->outputs_network = false;
+	cfg->outputs_port = 8000;
+	cfg->outputs_announce_port = 8001;
 	/* As windowsloader and linuxloader */
 	cfg->buttons_from_one = true;
 	for (i = 0; i < NUM_ACTIONS; i++)
@@ -247,12 +260,44 @@ Config::set_value (const char *section, const char *key, const char *value)
 	unsigned i;
 
 	if (!strcasecmp (section, "Display")) {
-		if (!strcasecmp (key, "DISPLAY_MODE"))
-			cfg->display_mode = parse_name (value, display_names, NUM_DISPLAY_MODES, cfg->display_mode);
-		else if (!strcasecmp (key, "WINDOW_SCALE"))
+		if (!strcasecmp (key, "DISPLAY_MODE")) {
+			/* WINDOW, FULLSCREEN or BORDERLESS, each also _STRETCH */
+			char mode[32];
+			size_t len = strlen (value);
+			snprintf (mode, sizeof (mode), "%s", value);
+			cfg->display_stretch = len > 8 && len < sizeof (mode) &&
+			                       !strcasecmp (mode + len - 8, "_STRETCH");
+			if (cfg->display_stretch)
+				mode[len - 8] = '\0';
+			cfg->display_mode = parse_name (mode, display_names, NUM_DISPLAY_MODES, cfg->display_mode);
+		} else if (!strcasecmp (key, "WINDOW_SCALE"))
 			cfg->window_scale = MAX2 (1, MIN2 (4, atoi (value)));
-		else if (!strcasecmp (key, "ASPECT_RATIO"))
-			cfg->aspect = parse_name (value, aspect_names, NUM_ASPECTS, cfg->aspect);
+		else if (!strcasecmp (key, "ASPECT_RATIO")) {
+			/* Before November 2026: INTEGER (whole multiples) and
+			 * STRETCH (the picture filling the window); 4:3_LETTERBOX
+			 * is 4:3, as in linuxloader */
+			if (!strcasecmp (value, "INTEGER")) {
+				cfg->aspect = ASPECT_ORIGINAL;
+				cfg->integer_scale = true;
+			} else if (!strcasecmp (value, "STRETCH")) {
+				cfg->aspect = ASPECT_ORIGINAL;
+				cfg->display_stretch = true;
+			} else if (!strcasecmp (value, "4:3_LETTERBOX"))
+				cfg->aspect = ASPECT_4_3;
+			else
+				cfg->aspect = parse_name (value, aspect_names, NUM_ASPECTS, cfg->aspect);
+		} else if (!strcasecmp (key, "CROP_POSITION"))
+			cfg->crop_position = MAX2 (-100, MIN2 (100, atoi (value)));
+		else if (!strcasecmp (key, "CROP_BARREL"))
+			cfg->crop_barrel = parse_bool (value);
+		else if (!strcasecmp (key, "BARREL_CENTER"))
+			cfg->barrel_center = MAX2 (0, MIN2 (100, atoi (value)));
+		else if (!strcasecmp (key, "BARREL_RADIUS"))
+			cfg->barrel_radius = MAX2 (1, MIN2 (1000, atoi (value)));
+		else if (!strcasecmp (key, "INTEGER_SCALE"))
+			cfg->integer_scale = parse_bool (value);
+		else if (!strcasecmp (key, "RENDER_SCALE"))
+			cfg->render_scale = MAX2 (1, MIN2 (MAX_RENDER_SCALE, atoi (value)));
 		else if (!strcasecmp (key, "GRAPHICS_API"))
 			cfg->graphics_api = parse_name (value, graphics_names, NUM_GRAPHICS_APIS, cfg->graphics_api);
 		else if (!strcasecmp (key, "VSYNC"))
@@ -275,13 +320,15 @@ Config::set_value (const char *section, const char *key, const char *value)
 			cfg->widescreen_2d = parse_name (value, widescreen_2d_names, NUM_WIDESCREEN_2D, cfg->widescreen_2d);
 		else if (!strcasecmp (key, "SCREEN_SHAPE"))
 			cfg->screen_shape = parse_name (value, screen_shape_names, NUM_SCREEN_SHAPES, cfg->screen_shape);
-		else if (!strcasecmp (key, "SCALE_FILTER"))
+		/* Linuxloader's name; SCALE_FILTER before November 2026 */
+		else if (!strcasecmp (key, "SCALING_FILTER") || !strcasecmp (key, "SCALE_FILTER"))
 			cfg->scale_filter = parse_name (value, filter_names, NUM_FILTERS, cfg->scale_filter);
 		else if (!strcasecmp (key, "DRAW_DISTANCE"))
 			cfg->draw_distance = MAX2 (1.0f, MIN2 (4.0f, (float) atof (value)));
 	} else if (!strcasecmp (section, "Enhancements")) {
+		/* In [Display] since November 2026 */
 		if (!strcasecmp (key, "RENDER_SCALE"))
-			cfg->render_scale = MAX2 (1, MIN2 (4, atoi (value)));
+			cfg->render_scale = MAX2 (1, MIN2 (MAX_RENDER_SCALE, atoi (value)));
 		else if (!strcasecmp (key, "MSAA"))
 			cfg->msaa = parse_pow2 (value, 0, 2, 8);
 		else if (!strcasecmp (key, "ANISOTROPY"))
@@ -342,6 +389,13 @@ Config::set_value (const char *section, const char *key, const char *value)
 			snprintf (cfg->address_out, sizeof (cfg->address_out), "%s", value);
 		else if (!strcasecmp (key, "PORT_OUT"))
 			cfg->port_out = (unsigned) MAX2 (1, MIN2 (65535, atoi (value)));
+	} else if (!strcasecmp (section, "Outputs")) {
+		if (!strcasecmp (key, "NETWORK"))
+			cfg->outputs_network = parse_bool (value);
+		else if (!strcasecmp (key, "PORT"))
+			cfg->outputs_port = (unsigned) MAX2 (1, MIN2 (65535, atoi (value)));
+		else if (!strcasecmp (key, "ANNOUNCE_PORT"))
+			cfg->outputs_announce_port = (unsigned) MAX2 (0, MIN2 (65535, atoi (value)));
 	} else if (!strcasecmp (section, "Input")) {
 		if (!strcasecmp (key, "BUTTONS_FROM_ONE"))
 			cfg->buttons_from_one = parse_bool (value);
@@ -419,20 +473,55 @@ Config::save () const
 
 	fprintf (fp, "\n[Display]\n");
 	fprintf (fp,
+	         "\n# The 3D drawn at 1 to %d times the board's 640x480 (854x480 in\n"
+	         "# widescreen): 2 gives 1280x960, then fitted to the window. The 2D\n"
+	         "# layers (texts, logos) keep theirs. Taken at once. Default: %d\n",
+	         MAX_RENDER_SCALE, def.render_scale);
+	fprintf (fp, "RENDER_SCALE = %d\n", cfg->render_scale);
+	fprintf (fp,
+	         "\n# The frame the picture is shown in, and how the picture fills it, as in\n"
+	         "# linuxloader, Supermodel, Flycast and sm2-emu: ORIGINAL, the picture's own\n"
+	         "# shape (4:3, 16:9 in widescreen); 4:3 or 16:9, that frame with the whole\n"
+	         "# picture in it, black bars where the shapes differ; 4:3_STRETCH or\n"
+	         "# 16:9_STRETCH, the picture fills the frame, deformed; 4:3_CROP or\n"
+	         "# 16:9_CROP, it fills it at its own shape, cut at the sides or above and\n"
+	         "# below. DISPLAY_MODE then fits the frame to the window or the screen,\n"
+	         "# or stretches it. Taken at once. Default: %s\n", aspect_names[def.aspect]);
+	fprintf (fp, "ASPECT_RATIO = %s\n", aspect_names[cfg->aspect]);
+	fprintf (fp,
+	         "\n# The part a cropped ASPECT_RATIO keeps: -100 (left or top) to 100 (right\n"
+	         "# or bottom), 0 the middle. Default: %d\n", def.crop_position);
+	fprintf (fp, "CROP_POSITION = %d\n", cfg->crop_position);
+	fprintf (fp,
+	         "\n# A cropped ASPECT_RATIO: true bends the parts it would cut onto the\n"
+	         "# frame's edges, as on a cylinder seen from the front, so the whole\n"
+	         "# picture stays visible. Default: %s\n", bool_name (def.crop_barrel));
+	fprintf (fp, "CROP_BARREL = %s\n", bool_name (cfg->crop_barrel));
+	fprintf (fp,
+	         "\n# With CROP_BARREL: the middle shown undistorted, in %% of the frame.\n"
+	         "# Default: %d\n", def.barrel_center);
+	fprintf (fp, "BARREL_CENTER = %d\n", cfg->barrel_center);
+	fprintf (fp,
+	         "\n# With CROP_BARREL: the cylinder's radius in %% of the frame (small bends\n"
+	         "# hard at the edge, large compresses evenly). Default: %d\n", def.barrel_radius);
+	fprintf (fp, "BARREL_RADIUS = %d\n", cfg->barrel_radius);
+	fprintf (fp,
 	         "\n# WINDOW; FULLSCREEN, the whole screen at the desktop's resolution;\n"
-	         "# BORDERLESS, a window without borders covering the screen.\n"
-	         "# Default: %s\n", display_names[def.display_mode]);
-	fprintf (fp, "DISPLAY_MODE = %s\n", display_names[cfg->display_mode]);
+	         "# BORDERLESS, a window without borders covering the screen: the frame\n"
+	         "# at its shape in the middle. Each also _STRETCH (WINDOW_STRETCH...): the\n"
+	         "# frame fills the window or the screen. Default: %s\n", display_names[def.display_mode]);
+	fprintf (fp, "DISPLAY_MODE = %s%s\n", display_names[cfg->display_mode],
+	         cfg->display_stretch ? "_STRETCH" : "");
 	fprintf (fp,
 	         "\n# The window's size, 1 to 4 times the Hikaru's 640x480 (it can also be\n"
 	         "# resized with the mouse). Default: %d\n", def.window_scale);
 	fprintf (fp, "WINDOW_SCALE = %d\n", cfg->window_scale);
 	fprintf (fp,
-	         "\n# ORIGINAL, the whole picture at 4:3 with black bars where the window's\n"
-	         "# shape differs; INTEGER, the same at whole multiples of 640x480 only, for\n"
-	         "# sharp pixels; STRETCH, the picture fills the window, deformed.\n"
-	         "# Default: %s\n", aspect_names[def.aspect]);
-	fprintf (fp, "ASPECT_RATIO = %s\n", aspect_names[cfg->aspect]);
+	         "\n# The picture at whole multiples of its size only (1x, 2x, 3x...), for\n"
+	         "# even pixels, the frame's bars larger: true or false. Not with a\n"
+	         "# stretched or cropped picture, nor SCREEN_SHAPE. Default: %s\n",
+	         bool_name (def.integer_scale));
+	fprintf (fp, "INTEGER_SCALE = %s\n", bool_name (cfg->integer_scale));
 	fprintf (fp,
 	         "\n# OPENGL (3.1); VULKAN and D3D11 are to come. Read at the start.\n"
 	         "# Default: %s\n", graphics_names[def.graphics_api]);
@@ -481,10 +570,10 @@ Config::save () const
 	         "# resolutions (1920x240). Default: %s\n", screen_shape_names[def.screen_shape]);
 	fprintf (fp, "SCREEN_SHAPE = %s\n", screen_shape_names[cfg->screen_shape]);
 	fprintf (fp,
-	         "\n# The picture scaled to the window: NEAREST, sharp; LINEAR, smooth (down\n"
-	         "# to 240 rows, each the mean of two instead of one in two dropped).\n"
-	         "# Default: %s\n", filter_names[def.scale_filter]);
-	fprintf (fp, "SCALE_FILTER = %s\n", filter_names[cfg->scale_filter]);
+	         "\n# The picture scaled to the window: NEAREST, sharp pixels (even at whole\n"
+	         "# multiples only); LINEAR, smooth (down to 240 rows, each the mean of two\n"
+	         "# instead of one in two dropped). Default: %s\n", filter_names[def.scale_filter]);
+	fprintf (fp, "SCALING_FILTER = %s\n", filter_names[cfg->scale_filter]);
 	fprintf (fp,
 	         "\n# The 3D scenery's distance, 1.0 to 4.0 times the game's: the detailed\n"
 	         "# models and the fog that much farther (not what the game itself leaves\n"
@@ -494,12 +583,7 @@ Config::save () const
 	fprintf (fp, "\n[Enhancements]\n");
 	fprintf (fp,
 	         "\n# Beyond the board's own picture, all off by default, each taken at\n"
-	         "# once. The 3D drawn at 1 to 4 times its size, 640x480 (854x480 in\n"
-	         "# widescreen): 2 gives 1280x960, then fitted to the window. The 2D\n"
-	         "# layers (texts, logos) keep theirs. Default: %d\n", def.render_scale);
-	fprintf (fp, "RENDER_SCALE = %d\n", cfg->render_scale);
-	fprintf (fp,
-	         "\n# The 3D's edges antialiased, by multisampling: 0 (none), 2, 4 or 8\n"
+	         "# once. The 3D's edges antialiased, by multisampling: 0 (none), 2, 4 or 8\n"
 	         "# samples a pixel (the graphics card's most at most). Default: %d\n", def.msaa);
 	fprintf (fp, "MSAA = %d\n", cfg->msaa);
 	fprintf (fp,
@@ -643,6 +727,24 @@ Config::save () const
 	fprintf (fp, "PORT_IN = %u\n", cfg->port_in);
 	fprintf (fp, "ADDRESS_OUT = %s\n", cfg->address_out);
 	fprintf (fp, "PORT_OUT = %u\n", cfg->port_out);
+
+	fprintf (fp, "\n[Outputs]\n");
+	fprintf (fp,
+	         "\n# The cabinet's lamps and NASCAR Arcade's drive board commands, sent to the\n"
+	         "# tools that drive real ones (MAMEHooker, BackForceFeeder, DOFLinx...) in\n"
+	         "# MAME's network protocol, as Supermodel and sm2-emu send them: a TCP\n"
+	         "# server on PORT, one \"name = value\" line at each change. Default: %s\n",
+	         bool_name (def.outputs_network));
+	fprintf (fp, "NETWORK = %s\n", bool_name (cfg->outputs_network));
+	fprintf (fp,
+	         "\n# The server's TCP port (MAME's 8000; another one for a second instance).\n"
+	         "# Default: %u\n", def.outputs_port);
+	fprintf (fp, "PORT = %u\n", cfg->outputs_port);
+	fprintf (fp,
+	         "\n# When a game starts, \"mame_start = <set>\" and the TCP port go once in a\n"
+	         "# UDP datagram to this port on 127.0.0.1, as Supermodel sends them\n"
+	         "# (BackForceFeeder waits for it); 0 sends none. Default: %u\n", def.outputs_announce_port);
+	fprintf (fp, "ANNOUNCE_PORT = %u\n", cfg->outputs_announce_port);
 
 	fprintf (fp, "\n[Input]\n");
 	fprintf (fp,

@@ -35,6 +35,18 @@ details and what is left.
   837-13844 for SGNASCAR, with its Model 3 drive board and the force
   feedback); VON4's card reader; the EEPROM's system settings (region,
   attract sound, link mode) from the settings.
+- The outputs (November 2026, `src/hl/outputs.cpp`): the I/O board's lamps
+  and SGNASCAR's drive board commands in MAME's network protocol, as
+  Supermodel, Flycast and sm2-emu send them (TCP 8000, the UDP announcement
+  on 8001, `m3ffb` and its `m3ffb_rx` answer); each game's names from its
+  OUTPUT TEST, the item turned on and the output that changed; the
+  settings' Outputs tab lists them with their values.
+- The picture's settings as linuxloader, Supermodel, Flycast and sm2-emu
+  have them (November 2026, `src/hl/aspect.cpp`, from Supermodel's
+  AspectRatio): RENDER_SCALE up to 6 in the Display tab, ASPECT_RATIO's
+  seven frames with CROP_POSITION and the bent edges (CROP_BARREL, in the
+  final pass's shader), DISPLAY_MODE's _STRETCH, INTEGER_SCALE,
+  SCALING_FILTER; the old values read.
 - The sound: both AICAs, their ARM7s, voices, DSP effects, to the PC's
   speakers (from mono to 7.1), resampled, the sound card's clock followed.
 - The linked cabinets: the communication board emulated, the instances in a
@@ -70,6 +82,24 @@ SH-4s' idle loops, and their loops reading the timer, sh4.cpp).
 
 I'm seriously thinking about slowling "porting" valkyrie to C++... Mmm.
 Done in Hikaruloader: all of it is C++20 now.
+
+The outputs (`src/hl/outputs.cpp`), what is left:
+
+- Brave Firefighters' menu (Test, in the attract or at the start) is the
+  developers' one, with no OUTPUT TEST: outputs 1 and 4 (the start lamps)
+  and 2 (player 1's nozzle, as it sprays) seen in a game; 3, 5 and 6,
+  likely player 2's nozzle and the revolving lights, not seen (no player 2
+  in the agent). The game's own B.F.F. TEST MENU not reached.
+- NASCAR Arcade's OUTPUT TEST lights START BUTTON and VIEW CHANGE BUTTON in
+  turn (outputs 1 and 4), whatever the cursor: which is which taken from the
+  other games (start on 1). Output 14 stays on, unnamed.
+- Virtual-On 4's program has LAMP and COIN SHUTTER items too, not in its
+  OUTPUT TEST here (the VO4 terminal's, likely).
+- Air Trix's LOCK MECHA. reads OFF in the test with output 4 at 1; it stays
+  at 0 in the attract and after Start.
+- MAME's Windows messages (MAMEOutput, as sm2-emu and Supermodel have them),
+  and the outputs in the agent protocol (shared with Supermodel and
+  sm2-emu), not done.
 
 
 HIKARU

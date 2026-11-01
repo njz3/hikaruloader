@@ -32,13 +32,22 @@ enum DisplayMode {
 	NUM_DISPLAY_MODES
 };
 
+/* ASPECT_RATIO, as linuxloader, Supermodel, Flycast and sm2-emu name it
+ * (hl/aspect.h): the frame the picture is shown in, and how it fills it */
 enum Aspect {
-	ASPECT_ORIGINAL,	/* 4:3, black bars */
-	ASPECT_INTEGER,		/* 4:3, whole multiples of 640x480 */
-	ASPECT_STRETCH,		/* fills the window */
+	ASPECT_ORIGINAL,	/* the picture's own shape */
+	ASPECT_4_3,		/* the whole picture, black bars */
+	ASPECT_16_9,
+	ASPECT_4_3_STRETCH,	/* the picture fills it, deformed */
+	ASPECT_16_9_STRETCH,
+	ASPECT_4_3_CROP,	/* the picture fills it at its shape, cut */
+	ASPECT_16_9_CROP,
 
 	NUM_ASPECTS
 };
+
+/* RENDER_SCALE's most: 3840x2880, 4K's class */
+static const int MAX_RENDER_SCALE = 6;
 
 /* The screen's own shape, which the aspect ratio places the picture by:
  * AUTO, square pixels (its resolution's shape); 4:3 or 16:9 whatever its
@@ -110,8 +119,22 @@ public:
 
 	/* [Display] */
 	int		display_mode;
+	bool		display_stretch; /* DISPLAY_MODE's _STRETCH: the frame
+					  * fills the window or the screen */
 	int		window_scale;	/* 1 ... 4 times 640x480 */
 	int		aspect;
+	int		crop_position;	/* the part a crop keeps: -100 left or
+					 * top, 0 the middle, 100 right or
+					 * bottom */
+	bool		crop_barrel;	/* the parts a crop cuts bent onto the
+					 * edges */
+	int		barrel_center;	/* the middle undistorted, % of the
+					 * frame */
+	int		barrel_radius;	/* the cylinder's radius, % of the
+					 * frame */
+	bool		integer_scale;	/* whole multiples of the picture */
+	/* The 3D drawn at 1 ... MAX_RENDER_SCALE times its size, at once */
+	int		render_scale;
 	int		graphics_api;	/* takes effect at the next start */
 	bool		vsync;
 	bool		fps_limiter;
@@ -134,7 +157,6 @@ public:
 
 	/* [Enhancements]: beyond the board's own picture, all off by default,
 	 * taken at once */
-	int		render_scale;	/* the 3D drawn at 1 ... 4 times its size */
 	int		msaa;		/* its samples a pixel: 0 (none), 2, 4 or 8 */
 	int		anisotropy;	/* the textures' filtering: 1 (none) ... 16 */
 	int		texture_scale;	/* 1, or 2 and 4 by Scale2x */
@@ -197,6 +219,13 @@ public:
 	unsigned	port_in;	/* the previous cabinet comes in there */
 	char		address_out[64];/* the next cabinet, and its port */
 	unsigned	port_out;
+
+	/* [Outputs]: the lamps and the drive board's commands, for the tools
+	 * that drive real ones (hl::Outputs); at once */
+	bool		outputs_network;	/* MAME's network protocol */
+	unsigned	outputs_port;		/* its TCP port */
+	unsigned	outputs_announce_port;	/* the UDP announcement's, 0
+						 * none */
 
 	/* [Input] */
 	bool		buttons_from_one; /* a joystick's buttons shown from 1,

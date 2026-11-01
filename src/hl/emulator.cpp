@@ -29,6 +29,7 @@
 #include "hl/audio.h"
 #include "hl/cpu.h"
 #include "hl/input.h"
+#include "hl/outputs.h"
 #include "hl/renderer.h"
 #include "hl/window.h"
 #include "hl/config.h"
@@ -68,6 +69,8 @@ Emulator::Emulator () :
 
 Emulator::~Emulator ()
 {
+	/* mame_stop, the game's last line */
+	Outputs::get ()->stop ();
 	destroy (audio);
 	destroy (agent);
 	destroy (shell);
@@ -156,6 +159,8 @@ Emulator::load_game (const char *rom_path, const char *name, const char *log_pat
 			snprintf (message, sizeof (message), ui::Interface::tr ("%s could not be loaded; see %s."),
 			          entry ? entry->description : rom_name, log_path);
 		} else {
+			/* The machine's I/O board declares its outputs */
+			Outputs::get ()->stop ();
 			mach = create_machine ();
 			cpu_core = -1;
 			memory_access = -1;
@@ -164,6 +169,7 @@ Emulator::load_game (const char *rom_path, const char *name, const char *log_pat
 				snprintf (title, sizeof (title), "%s [%s]",
 				          entry ? entry->description : game->name, game->name);
 				Window::set_title (title);
+				Outputs::get ()->start (game->name, game->parent);
 				return true;
 			}
 			HL_ERROR ("failed to load '%s': game name not in game list", rom_name);
@@ -179,6 +185,7 @@ Emulator::load_game (const char *rom_path, const char *name, const char *log_pat
 void
 Emulator::unload_game ()
 {
+	Outputs::get ()->stop ();
 	destroy (mach);
 	destroy (game);
 	/* The next output opens with the next game */
@@ -552,6 +559,10 @@ Emulator::run (int num_frames)
 			shell->poll ();
 		if (quit)
 			break;
+		/* The outputs' clients; paused, the settings open too (not for
+		 * the agent, whose frames run on its steps) */
+		Outputs::get ()->set_paused (!agent && (paused || ui::Interface::settings_open ()));
+		Outputs::get ()->poll ();
 		/* The agent's: frames run on its steps only, as fast as they can;
 		 * the window is redrawn while it waits */
 		if (agent) {

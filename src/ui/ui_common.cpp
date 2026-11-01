@@ -44,6 +44,7 @@
 
 #include "hl/audio.h"
 #include "hl/config.h"
+#include "hl/outputs.h"
 #include "hl/renderer.h"
 #include "hl/romset.h"
 #include "hl/window.h"
@@ -172,6 +173,8 @@ void restartNote(bool inGame)
         ImGui::TextDisabled("%s", tr("Takes effect at the next start."));
 }
 
+void wrappedNote(const char *text);
+
 void drawDisplayTab()
 {
     hl::Config *cfg = hl::Config::get ();
@@ -191,8 +194,65 @@ void drawDisplayTab()
         ImGui::EndCombo();
     }
 
-    const char *modeLabels[] = {tr("Window"), tr("Full screen"), tr("Borderless fullscreen window")};
-    changed |= ImGui::Combo(tr("Display mode"), &cfg->display_mode, modeLabels, IM_ARRAYSIZE(modeLabels));
+    // RENDER_SCALE: the 3D's internal resolution, as Flycast and sm2-emu list it
+    {
+        const int width = cfg->widescreen ? 854 : 640;
+        auto resolution = [&](int scale) {
+            static char text[64];
+            snprintf(text, sizeof(text), scale == 1 ? tr("%d x %d (native)") : "%d x %d (x%d)", width * scale, 480 * scale, scale);
+            return (const char *)text;
+        };
+        std::string current = resolution(cfg->render_scale);
+        if (ImGui::BeginCombo(tr("Internal resolution"), current.c_str()))
+        {
+            for (int scale = 1; scale <= hl::MAX_RENDER_SCALE; scale++)
+                if (ImGui::Selectable(resolution(scale), scale == cfg->render_scale))
+                    cfg->render_scale = scale;
+            ImGui::EndCombo();
+        }
+        wrappedNote(tr("The 3D drawn larger, then fitted to the aspect ratio and the window: sharper edges and textures, more work for "
+                       "the graphics card. The 2D (texts, logos) keeps its size. Above the window's size, the picture is averaged down "
+                       "(supersampling)."));
+    }
+
+    // ASPECT_RATIO and its companions, as linuxloader's (hl/aspect.h): read at each frame
+    ImGui::Separator();
+    const char *aspectLabels[] = {tr("Original"),        tr("4:3, black bars"), tr("16:9, black bars"), tr("4:3, stretched"),
+                                  tr("16:9, stretched"), tr("4:3, cropped"),    tr("16:9, cropped")};
+    ImGui::Combo(tr("Aspect ratio"), &cfg->aspect, aspectLabels, IM_ARRAYSIZE(aspectLabels));
+    if (cfg->aspect == hl::ASPECT_4_3_CROP || cfg->aspect == hl::ASPECT_16_9_CROP)
+    {
+        ImGui::SliderInt(tr("Crop position"), &cfg->crop_position, -100, 100);
+        ImGui::TextDisabled("%s", tr("-100: left or top, 0: the middle, 100: right or bottom."));
+        ImGui::Checkbox(tr("Bend the cut parts onto the edges"), &cfg->crop_barrel);
+        if (cfg->crop_barrel)
+        {
+            ImGui::SliderInt(tr("Undistorted middle"), &cfg->barrel_center, 0, 100, "%d %%");
+            ImGui::SliderInt(tr("Curvature radius"), &cfg->barrel_radius, 10, 300, "%d %%");
+            // xgettext:no-c-format (shown as it is)
+            wrappedNote(tr("The whole picture stays visible: the middle (in % of the frame) as cropped, the parts the crop would cut "
+                           "squeezed onto the edges as on a cylinder seen from the front. A small radius bends hard at the edge, a large "
+                           "one squeezes evenly."));
+        }
+    }
+    ImGui::TextDisabled("%s", tr("Original: the picture's own shape, 4:3 (16:9 in widescreen)."));
+    wrappedNote(tr("Black bars: the frame's shape, with the whole picture inside at its own shape and black bars where the shapes differ. "
+                   "Stretched: the picture fills the frame, deformed. Cropped: the picture fills the frame at its own shape, cut on the sides "
+                   "(or above and below); the crop position moves the part kept. The display mode then fits the frame to the window or "
+                   "the screen, or stretches it."));
+
+    // DISPLAY_MODE, each also _STRETCH: the frame fills the window or the screen
+    ImGui::Separator();
+    const char *modeLabels[] = {tr("Window, square pixels"),        tr("Window, stretched"),
+                                tr("Full screen"),                  tr("Full screen, stretched"),
+                                tr("Borderless fullscreen window"), tr("Borderless fullscreen window, stretched")};
+    int mode = cfg->display_mode * 2 + (cfg->display_stretch ? 1 : 0);
+    if (ImGui::Combo(tr("Display mode"), &mode, modeLabels, IM_ARRAYSIZE(modeLabels)))
+    {
+        cfg->display_mode = mode / 2;
+        cfg->display_stretch = mode % 2;
+        changed = true;
+    }
 
     ImGui::BeginDisabled(cfg->display_mode != hl::DISPLAY_WINDOW);
     if (ImGui::BeginCombo(tr("Window size"), windowSizeLabel(cfg->window_scale)))
@@ -208,25 +268,25 @@ void drawDisplayTab()
     ImGui::EndDisabled();
     ImGui::TextDisabled("%s", tr("The window can also be resized with the mouse."));
 
-    const char *aspectLabels[] = {tr("Its shape, black bars"), tr("Its shape, whole multiples"), tr("Stretched")};
-    ImGui::Combo(tr("Aspect ratio"), &cfg->aspect, aspectLabels, IM_ARRAYSIZE(aspectLabels));
-    ImGui::PushTextWrapPos(0.0f);
-    ImGui::TextDisabled("%s", tr("The Hikaru draws 640x480 pictures (854x480 in widescreen). Black bars: the whole picture in its shape, with black bars where the screen's shape differs. "
-                                 "Whole multiples: the same, at 1x, 2x, 3x... the native size only, for sharp pixels. Stretched: the picture fills the window, deformed."));
-    ImGui::PopTextWrapPos();
+    // INTEGER_SCALE, as Flycast's "Integer Scaling"
+    ImGui::Checkbox(tr("Whole multiples only (integer scaling)"), &cfg->integer_scale);
+    wrappedNote(tr("The picture at 1x, 2x, 3x... its size only, for even pixels, with larger black bars. Not with a stretched or cropped "
+                   "picture, nor a screen shape of its own."));
 
-    // The screen's own shape, for a CRT's super resolutions (hl::Window::output_rect)
+    // The screen's own shape, for a CRT's super resolutions (hl/aspect.cpp)
     const char *shapeLabels[] = {tr("Its resolution's (square pixels)"), "4:3", "16:9"};
     ImGui::Combo(tr("Screen shape"), &cfg->screen_shape, shapeLabels, IM_ARRAYSIZE(shapeLabels));
     ImGui::PushTextWrapPos(0.0f);
     ImGui::TextDisabled("%s", tr("The picture is placed by the screen's shape: that of its resolution, or 4:3 or 16:9 whatever its "
                                  "resolution, for a CRT's super resolutions (1920x240): the black bars right, and stretched from 4:3 to 16:9 no more."));
     ImGui::PopTextWrapPos();
-    const char *filterLabels[] = {tr("Sharp"), tr("Smooth")};
-    ImGui::Combo(tr("Scaling filter"), &cfg->scale_filter, filterLabels, IM_ARRAYSIZE(filterLabels));
-    ImGui::PushTextWrapPos(0.0f);
-    ImGui::TextDisabled("%s", tr("Smooth: down to 240 rows (a CRT), each one the mean of two, where Sharp drops one in two (thin lines, small texts)."));
-    ImGui::PopTextWrapPos();
+    // SCALING_FILTER, as linuxloader lists it: read at each frame
+    const char *filterLabels[] = {tr("Smooth"), tr("Sharp pixels")};
+    int filter = cfg->scale_filter == hl::FILTER_LINEAR ? 0 : 1;
+    if (ImGui::Combo(tr("Scaling filter"), &filter, filterLabels, IM_ARRAYSIZE(filterLabels)))
+        cfg->scale_filter = filter == 0 ? hl::FILTER_LINEAR : hl::FILTER_NEAREST;
+    wrappedNote(tr("Sharp pixels: square and crisp, but uneven unless the picture is enlarged a whole number of times. Smooth: down to "
+                   "240 rows (a CRT), each one the mean of two, where Sharp pixels drops one in two (thin lines, small texts)."));
 
     ImGui::Separator();
     changed |= ImGui::Checkbox(tr("Vertical sync"), &cfg->vsync);
@@ -294,21 +354,8 @@ void wrappedNote(const char *text)
 void drawEnhancementsTab()
 {
     hl::Config *cfg = hl::Config::get ();
-    const int width = cfg->widescreen ? 854 : 640;
 
-    static char scaleLabels[4][48];
-    const char *scaleNames[4];
-    const int scales[] = {1, 2, 3, 4};
-    for (int i = 0; i < 4; i++)
-    {
-        snprintf(scaleLabels[i], sizeof(scaleLabels[i]), i ? "x%d (%d x %d)" : tr("x%d (%d x %d), the board's"),
-                 i + 1, width * (i + 1), 480 * (i + 1));
-        scaleNames[i] = scaleLabels[i];
-    }
-    comboValue(tr("3D resolution"), &cfg->render_scale, scales, scaleNames, 4);
-    wrappedNote(tr("The 3D drawn larger, then fitted to the window: sharper edges and textures, more work for the graphics card. "
-                   "The 2D (texts, logos) keeps its size. Above the window's size, the picture is averaged down (supersampling)."));
-
+    // The internal resolution (RENDER_SCALE) is the Display tab's, as in the other emulators
     const int samples[] = {0, 2, 4, 8};
     const char *sampleLabels[] = {tr("Off"), "x2", "x4", "x8"};
     comboValue(tr("Antialiasing (MSAA)"), &cfg->msaa, samples, sampleLabels, IM_ARRAYSIZE(samples));
@@ -479,6 +526,92 @@ void drawEmulationTab(bool inGame)
                                  "run below 60 frames a second on this PC). 100 MHz by default; below, Air Trix's "
                                  "skater loses his body."));
     ImGui::PopTextWrapPos();
+}
+
+// A port typed in, taken once the field is left: not each digit, which
+// would open the server on each number on the way
+void portField(const char *label, unsigned *port, int lowest, int *edit, bool *editing)
+{
+    if (!*editing)
+        *edit = (int)*port;
+    ImGui::SetNextItemWidth(ImGui::GetFontSize() * 6.0f);
+    ImGui::InputInt(label, edit, 0, 0);
+    *editing = ImGui::IsItemActive();
+    if (ImGui::IsItemDeactivatedAfterEdit())
+        *port = (unsigned)std::clamp(*edit, lowest, 65535);
+}
+
+// [Outputs]: the lamps and the drive board's commands (hl::Outputs), taken at once. The list of what the game sends,
+// laid out as sm2-emu's and Flycast's
+void drawOutputsTab(bool inGame)
+{
+    hl::Config *cfg = hl::Config::get ();
+    ImGui::Checkbox(tr("Network outputs (MAME protocol)"), &cfg->outputs_network);
+    wrappedNote(tr("The cabinet's lamps and NASCAR Arcade's drive board commands, sent as MAME's network output sends them, "
+                   "as Supermodel, Flycast and sm2-emu do: for MAMEHooker, BackForceFeeder, DOFLinx and the like. Taken at once."));
+
+    static int portEdit = 0, announceEdit = 0;
+    static bool portEditing = false, announceEditing = false;
+    ImGui::BeginDisabled(!cfg->outputs_network);
+    portField(tr("TCP port"), &cfg->outputs_port, 1, &portEdit, &portEditing);
+    wrappedNote(tr("The server's port, on all of this PC's addresses: 8000 as in MAME; another one for a second instance."));
+    portField(tr("Announcement port (UDP)"), &cfg->outputs_announce_port, 0, &announceEdit, &announceEditing);
+    wrappedNote(tr("When a game starts, its name and the TCP port go once to this port on this PC, as Supermodel sends them "
+                   "(8001, where BackForceFeeder listens). 0: none."));
+    ImGui::EndDisabled();
+
+    const hl::Outputs::Status status = hl::Outputs::get ()->status ();
+    if (!cfg->outputs_network)
+        ImGui::TextDisabled("%s", tr("Network outputs off."));
+    else if (!inGame)
+        ImGui::TextDisabled("%s", tr("The server listens while a game runs."));
+    else if (!status.error.empty())
+        ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), tr("Not listening: %s"), status.error.c_str());
+    else if (!status.listening)
+        ImGui::TextDisabled("%s", tr("Not listening yet."));
+    else if (status.clients == 0)
+        ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.2f, 1.0f), tr("Listening on port %u; no client connected."), cfg->outputs_port);
+    else
+        ImGui::TextColored(ImVec4(0.4f, 1.0f, 0.4f, 1.0f), tr("Listening on port %u; clients connected: %u."), cfg->outputs_port,
+                           status.clients);
+
+    ImGui::Separator();
+    const std::vector<hl::Outputs::Row> rows = hl::Outputs::get ()->rows (tr);
+    if (!inGame || rows.empty())
+    {
+        wrappedNote(tr("What the game sends shows here while it runs (Tab in a game): each name, its type, its meaning and its "
+                       "value. README.md lists them for every game."));
+        return;
+    }
+    ImGui::TextUnformatted(tr("What this game sends"));
+    const ImGuiTableFlags flags = ImGuiTableFlags_ScrollY | ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersOuter |
+                                  ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_Resizable;
+    if (ImGui::BeginTable("##outputs", 4, flags, ImVec2(0.0f, ImGui::GetTextLineHeightWithSpacing() * 10.5f)))
+    {
+        ImGui::TableSetupScrollFreeze(0, 1); // the header stays
+        ImGui::TableSetupColumn(tr("Name"), ImGuiTableColumnFlags_WidthFixed);
+        ImGui::TableSetupColumn(tr("Type"), ImGuiTableColumnFlags_WidthFixed);
+        ImGui::TableSetupColumn(tr("Meaning"), ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableSetupColumn(tr("Value"), ImGuiTableColumnFlags_WidthFixed);
+        ImGui::TableHeadersRow();
+        for (const hl::Outputs::Row &row : rows)
+        {
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            ImGui::TextUnformatted(row.name.c_str());
+            ImGui::TableSetColumnIndex(1);
+            ImGui::TextUnformatted(row.type.c_str());
+            ImGui::TableSetColumnIndex(2);
+            ImGui::TextUnformatted(row.meaning.c_str());
+            ImGui::SetItemTooltip("%s", row.meaning.c_str()); // whole, when the column cuts it
+            ImGui::TableSetColumnIndex(3);
+            ImGui::TextUnformatted(row.value.c_str());
+        }
+        ImGui::EndTable();
+    }
+    wrappedNote(tr("Each line goes as \"name = value\" at each change, the drive board's in hexadecimal, the others in decimal; "
+                   "a client that connects gets the game's name first, then every value known. Value: the last one, "
+                   "with the outputs off too."));
 }
 
 void drawPickerTab()
@@ -748,6 +881,11 @@ void drawSettings(bool *open, bool inGame)
         if (ImGui::BeginTabItem(tr("Emulation")))
         {
             drawEmulationTab(inGame);
+            ImGui::EndTabItem();
+        }
+        if (ImGui::BeginTabItem(tr("Outputs")))
+        {
+            drawOutputsTab(inGame);
             ImGui::EndTabItem();
         }
         if (ImGui::BeginTabItem(tr("Picker")))

@@ -24,6 +24,7 @@
 #include <vector>
 
 #include "hl/core.h"
+#include "hl/aspect.h"
 
 namespace hl {
 
@@ -43,11 +44,16 @@ public:
 	/* The machine's picture, 640x480 (854x480 in widescreen): the
 	 * window's size and the aspect ratio follow it. From the main thread */
 	static void		 set_native_size (int width, int height);
-	/* Where the machine's picture goes after the aspect ratio setting and
-	 * the screen's shape; set_output_viewport clears the bars and sets the
-	 * viewport there */
+	/* Where the machine's picture goes in the window, after the aspect
+	 * ratio's settings (hl/aspect.h); output_rect, what shows of it, the
+	 * bars left out, origin at the bottom left */
+	static void		 layout (ScreenLayout *l);
 	static void		 output_rect (int *x, int *y, int *w, int *h);
-	static void		 set_output_viewport ();
+	/* In the bound framebuffer, width x height: the bars cleared, the
+	 * viewport on the picture (on its frame with bent edges, the final
+	 * pass bending it), what falls outside the frame cut by the scissor:
+	 * disable GL_SCISSOR_TEST after the draw */
+	static void		 set_output_viewport (const ScreenLayout &l, int width, int height);
 
 	/* Called after each frame, before the buffers are swapped: the
 	 * interface */

@@ -8,7 +8,7 @@ cmake_minimum_required (VERSION 3.21)
 
 # The version in preparation, until git has a tag vX.Y.Z (cmake/version.cmake;
 # DEVELOPMENT.md, "Versions and releases")
-project (hikaruloader VERSION 0.2.3 LANGUAGES CXX)
+project (hikaruloader VERSION 0.3.0 LANGUAGES CXX)
 
 # A release's version given by hand, for a trial release without a commit
 # nor a tag: cmake -DHL_FORCE_VERSION=0.1.0 (empty: git's tags)
@@ -45,6 +45,7 @@ set (HL_SRC
 	src/hl/controls.cpp
 	src/hl/renderer.cpp
 	src/hl/window.cpp
+	src/hl/aspect.cpp
 	src/hl/compat.cpp
 	src/hl/jvs.cpp
 	src/hl/eeprom.cpp
@@ -54,6 +55,7 @@ set (HL_SRC
 	src/hl/ffb.cpp
 	src/hl/driveboard.cpp
 	src/hl/cardreader.cpp
+	src/hl/outputs.cpp
 	src/hl/audio.cpp)
 
 set (HIKARU_SRC
@@ -130,6 +132,10 @@ target_include_directories (hl PUBLIC src ${HL_GENERATED})
 target_compile_definitions (hl PUBLIC HL_HAVE_HIKARU)
 target_link_libraries (hl PUBLIC
 	OpenGL::GL GLEW::GLEW SDL2::SDL2 jansson::jansson miniz::miniz)
+if (WIN32)
+	# The outputs' server (src/hl/outputs.cpp)
+	target_link_libraries (hl PUBLIC ws2_32)
+endif ()
 
 if (MSVC)
 	# The sources are UTF-8 (the interface's French texts).

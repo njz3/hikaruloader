@@ -85,79 +85,44 @@ Window::set_native_size (int width, int height)
 }
 
 void
-Window::output_rect (int *x, int *y, int *w, int *h)
+Window::layout (ScreenLayout *l)
 {
 	int dw, dh;
-	/* The screen's shape, sw by sh: its pixels' (square), or its own
-	 * (a CRT's 1920x240 is 4:3 or 16:9) */
-	int64_t sw, sh;
 
 	Window::drawable_size (&dw, &dh);
-	*x = 0;
-	*y = 0;
-	*w = dw;
-	*h = dh;
-	switch (hl::Config::get ()->screen_shape) {
-	case hl::SCREEN_4_3:
-		sw = 4, sh = 3;
-		break;
-	case hl::SCREEN_16_9:
-		sw = 16, sh = 9;
-		break;
-	default:
-		sw = dw, sh = dh;
-		break;
-	}
-
-	switch (hl::Config::get ()->aspect) {
-	case hl::ASPECT_INTEGER: {
-		int scale = MIN2 (dw / native_w, dh / native_h);
-		/* Whole multiples, of square pixels only */
-		if (scale >= 1 && hl::Config::get ()->screen_shape == hl::SCREEN_AUTO) {
-			*w = native_w * scale;
-			*h = native_h * scale;
-			break;
-		}
-	}	/* too small for 1x: fall back to the picture's shape */
-		/* fall-through */
-	case hl::ASPECT_ORIGINAL:
-		/* The screen wider than the picture: bars at the sides; else
-		 * above and below */
-		if (sw * native_h > sh * native_w) {
-			*h = dh;
-			*w = (int) ((int64_t) dw * native_w * sh / (native_h * sw));
-		} else {
-			*w = dw;
-			*h = (int) ((int64_t) dh * native_h * sw / (native_w * sh));
-		}
-		/* Within a pixel of the screen, all of it: 854x480 is a hair
-		 * wider than 16:9, and left a black row on a 16:9 screen */
-		if (*w >= dw - 1)
-			*w = dw;
-		if (*h >= dh - 1)
-			*h = dh;
-		break;
-	default:
-		break;
-	}
-	*x = (dw - *w) / 2;
-	*y = (dh - *h) / 2;
+	screen_layout (l, dw, dh, native_w, native_h);
 }
 
 void
-Window::set_output_viewport ()
+Window::output_rect (int *x, int *y, int *w, int *h)
 {
-	int x, y, w, h, dw, dh;
+	ScreenLayout l;
+	int x1, y1;
 
-	Window::drawable_size (&dw, &dh);
-	Window::output_rect (&x, &y, &w, &h);
+	/* The picture where it is in the frame: no bars, nothing cut */
+	Window::layout (&l);
+	*x = MAX2 (l.frame[0], l.image[0]);
+	*y = MAX2 (l.frame[1], l.image[1]);
+	x1 = MIN2 (l.frame[0] + l.frame[2], l.image[0] + l.image[2]);
+	y1 = MIN2 (l.frame[1] + l.frame[3], l.image[1] + l.image[3]);
+	*w = MAX2 (0, x1 - *x);
+	*h = MAX2 (0, y1 - *y);
+}
+
+void
+Window::set_output_viewport (const ScreenLayout &l, int width, int height)
+{
+	const int *r = l.barrel_axis >= 0 ? l.frame : l.image;
 
 	/* Black bars around the picture */
 	glDisable (GL_SCISSOR_TEST);
-	glViewport (0, 0, dw, dh);
+	glViewport (0, 0, width, height);
 	glClearColor (0.0f, 0.0f, 0.0f, 1.0f);
 	glClear (GL_COLOR_BUFFER_BIT);
-	glViewport (x, y, w, h);
+	glViewport (r[0], r[1], r[2], r[3]);
+	/* A crop: the picture larger than the frame, cut to it */
+	glScissor (l.frame[0], l.frame[1], l.frame[2], l.frame[3]);
+	glEnable (GL_SCISSOR_TEST);
 }
 
 void

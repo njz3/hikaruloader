@@ -146,21 +146,49 @@ Tab opens the settings, in the picker and in a game. Save writes them to
 and its default; the file can be edited by hand as well. A few take effect at
 the game's next start, as the window says.
 
-**Display.** Window, full screen or borderless full screen (both at the
-desktop's resolution: no mode change); the window's size, 1x to 4x 640x480;
-the aspect ratio: the picture in its shape with black bars, the same at
-whole multiples only (sharp pixels), or stretched to fill the screen. Also
-v-sync, the frame limiter and its rate, the frame rate shown (F12), the
-frame number in the title (to report a glitch), the mouse pointer hidden.
+**Display.** The picture's settings are those of linuxloader, Supermodel,
+Flycast and sm2-emu, under the same names in `hikaruloader.ini`; each takes
+effect at once.
+
+- *Internal resolution* (`RENDER_SCALE`): the 3D drawn at 640x480, the
+  board's (native), or 2 to 6 times larger (1280x960 ... 3840x2880; 854
+  wide in widescreen), then fitted to the window. Sharper edges and
+  textures, more work for the graphics card; the 2D (texts, logos) keeps its
+  size. Larger than the window, the picture is averaged down
+  (supersampling): x2 smooths the edges even in a 640x480 window.
+- *Aspect ratio* (`ASPECT_RATIO`): the frame the picture is shown in, and
+  how the picture fills it. *Original*, the picture's own shape (4:3, 16:9
+  in widescreen); *4:3* or *16:9, black bars*, that frame with the whole
+  picture in it; *stretched*, the picture fills the frame, deformed;
+  *cropped*, it fills the frame at its own shape, cut at the sides or above
+  and below. A crop's *position* moves the part kept (`CROP_POSITION`, -100
+  to 100), and *Bend the cut parts onto the edges* (`CROP_BARREL`) shows
+  them squeezed on the edges, as on a cylinder seen from the front, the
+  middle undistorted (`BARREL_CENTER`, `BARREL_RADIUS`).
+- *Display mode* (`DISPLAY_MODE`): window, full screen or borderless full
+  screen (both at the desktop's resolution: no mode change), the frame at
+  its shape in the middle; or *stretched* (`WINDOW_STRETCH`...), the frame
+  filling the window or the screen. Then the window's size, 1x to 4x
+  640x480.
+- *Whole multiples only* (`INTEGER_SCALE`): the picture at 1x, 2x, 3x... its
+  size, for even pixels, with larger black bars.
+- Also v-sync, the frame limiter and its rate, the frame rate shown (F12),
+  the frame number in the title (to report a glitch), the mouse pointer
+  hidden.
+
+An `hikaruloader.ini` from before keeps its choices: `ASPECT_RATIO = INTEGER`
+becomes *Original* with whole multiples, `STRETCH` *Original* in a
+stretched display mode, `SCALE_FILTER` is read as `SCALING_FILTER`, and
+`RENDER_SCALE` from `[Enhancements]`.
 
 - *Screen shape*: the aspect ratio places the picture by the screen's shape,
   by default that of its resolution (square pixels). On a CRT driven at a
   super resolution (1920x240, say), choose its real shape, 4:3 or 16:9: the
   black bars then fall right, and a 4:3 picture is no longer stretched on a
   16:9 screen.
-- *Scaling filter*: Sharp, or Smooth. Down to 240 rows on a CRT, Smooth
-  makes each row the mean of two, where Sharp drops one in two (thin lines,
-  small texts).
+- *Scaling filter* (`SCALING_FILTER`): Sharp pixels, or Smooth. Down to 240
+  rows on a CRT, Smooth makes each row the mean of two, where Sharp pixels
+  drops one in two (thin lines, small texts).
 - *Draw on a thread of its own* (on by default): each frame is drawn while
   the next one is emulated. Faster when the drawing slows the game, but the
   picture comes a frame later.
@@ -174,11 +202,6 @@ frame number in the title (to report a glitch), the mouse pointer hidden.
 **Enhancements.** Beyond the board's own picture, all off by default; each
 takes effect at once (`[Enhancements]` in `hikaruloader.ini`).
 
-- *3D resolution* (x1 to x4, the size shown: x2 is 1280x960, 1708x960 in
-  widescreen): the 3D drawn larger, then fitted to the window. Sharper edges
-  and textures, more work for the graphics card. The 2D keeps its size.
-  Larger than the window, the picture is averaged down (supersampling): x2
-  smooths the edges even in a 640x480 window.
 - *Antialiasing (MSAA)* (x2, x4, x8): the 3D's edges smoothed by several
   samples a pixel; the edges inside the textures (fences, leaves) stay.
 - *Edge smoothing (FXAA)*: the 3D's edges smoothed once drawn, cheaper than
@@ -221,6 +244,11 @@ front, 3 dB lower. Also the front/rear balance and the volume.
   same machine either way. *Memory access*: the same, three ways.
 - *Fake the MIE*: Valkyrie's old shortcut, without the I/O board. Leave it
   off.
+
+**Outputs.** The cabinet's lamps and NASCAR Arcade's drive board commands,
+sent over the network to the programs that drive real ones (see *Cabinet
+outputs* below): on or off, the ports, whether a program is connected, and
+the list of what the game sends with its values.
 
 **Picker.** The games folders (typed, separated by `;`, or each added with
 *Add a folder...*, Windows' folder dialog; a folder not found is marked so),
@@ -341,6 +369,57 @@ the environment forces the simulation). It starts in some 11 seconds (CF,
 CE, CD, then CC), as on the cabinet. Two environment variables adjust
 it: `FFB_GAIN`, a percentage (100 by default), and `FFB_INVERT=1` for a
 wheel that pushes the wrong way.
+
+
+Cabinet outputs
+---------------
+
+The cabinet's lamps and motors, and NASCAR Arcade's drive board commands,
+can go to the programs that drive real ones (MAMEHooker, BackForceFeeder,
+DOFLinx...), in MAME's network protocol, as Supermodel, Flycast and sm2-emu
+send them. Off by default: the settings' *Outputs* tab, or `[Outputs]` in
+`hikaruloader.ini`; taken at once.
+
+- A TCP server on port 8000 (`PORT`; another one for a second instance), on
+  all of the PC's addresses, while a game runs: one `name = value` line at
+  each change, ended by a carriage return. A client that connects gets
+  `mame_start = <set>` first, then every value known; `pause = 1` while the
+  game is paused (the settings open too), `mame_stop = 1` when it ends.
+- When a game starts, `mame_start = <set>` and `tcp = <port>` go once in a
+  UDP datagram to this PC, port 8001 (`ANNOUNCE_PORT`, 0 for none), as
+  Supermodel sends them: BackForceFeeder waits for it.
+- The I/O board's outputs are `lamp0` to `lamp15`, as Flycast names a JVS
+  board's: output 1 is `lamp7`, output 8 `lamp0`, output 9 `lamp15`. The
+  same values come again under each game's names, below.
+- NASCAR Arcade's drive board gets each command as `m3ffb = XX` (hex), as
+  in Supermodel and Flycast. A client may answer `m3ffb_rx = XX`, a real
+  drive board's reply: the game then reads it instead of the emulated
+  board's, until the client leaves.
+
+The tab lists what the running game sends, each name with its meaning and
+its last value. The games' names, from their test menus' OUTPUT TEST:
+
+| Game | Name | JVS output | What |
+|---|---|---|---|
+| Air Trix | `LampStart` | 1 (`lamp7`) | Start button lamp |
+| | `LampLeftUpper`, `LampRightLower` | 2, 3 | The board's lamps |
+| | `LockMecha` | 4 | The board's lock (LOCK MECHA.), released at 1 |
+| | `LampLeftLower`, `LampRightUpper` | 5, 6 | The board's lamps |
+| Brave Firefighters | `LampStart1`, `LampStart2` | 1, 4 | The players' start lamps |
+| | `NozzleVibration1` | 2 | Player 1's nozzle shaking as it sprays |
+| Planet Harriers | `LampStart` | 1 | Start button lamp |
+| | `LampVrR`, `LampVrL`, `LampBomb` | 2, 3, 5 | The stick's buttons' lamps |
+| | `LampBillboard` | 6 | The billboard's light |
+| NASCAR Arcade | `LampStart`, `LampView` | 1, 4 | Start and view change lamps |
+| | `m3ffb` | | The drive board's commands |
+| Star Wars: Racer Arcade | `LampStart`, `LampBoost` | 1, 4 | Start and boost lamps |
+| | `BoostLock` | 5 | The boost lever's lock |
+| Virtual-On 4 | `LampStart`, `LampWinner` | 1, 6 | Start and winner lamps |
+
+Brave Firefighters' menu has no OUTPUT TEST: its outputs 3, 5 and 6 are
+likely player 2's nozzle and the two revolving lights, sent as `lamp5`,
+`lamp3` and `lamp2`. NASCAR Arcade's test lights its two lamps in turn: the
+start lamp is taken on output 1, as in the other games.
 
 
 When something goes wrong
