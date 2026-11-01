@@ -242,8 +242,6 @@ front, 3 dB lower. Also the front/rear balance and the volume.
   real time whatever the clock.
 - *SH-4 processors*: the recompiler (the default) or the interpreter, the
   same machine either way. *Memory access*: the same, three ways.
-- *Fake the MIE*: Valkyrie's old shortcut, without the I/O board. Leave it
-  off.
 
 **Outputs.** The cabinet's lamps and NASCAR Arcade's drive board commands,
 sent over the network to the programs that drive real ones (see *Cabinet

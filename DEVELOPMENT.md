@@ -174,7 +174,7 @@ In the environment:
   ("GL: ..."): without it, Intel's says nothing (about 10% slower).
 - `HR_NO_AUDIO=1` opens no sound output; `HR_WAV=<path>` writes all the
   sound to a WAV file as well.
-- `MIE_HACK=1` overrides the "Fake the MIE" setting; `MIE_SPEED` and
+- `MIE_HACK=1`: Valkyrie's hack instead of the MIE (below); `MIE_SPEED` and
   `MIE_IDLE_SKIP=0`, see below.
 - `FFB_GAIN`, `FFB_INVERT`: the force feedback (see README.md);
   `DRIVEBOARD_SIMULATED=1`: the drive board's program simulated even with
@@ -240,8 +240,10 @@ channel n at 2n), checked in the game's JVS TEST screen.
   frames. The games' names (`game_outputs`) were read in their OUTPUT TEST
   through the agent, a TCP client printing each line: each item turned on,
   the output that changed.
-- The setting "Fake the MIE" (MIE_HACK) brings back Valkyrie's hack: no Z80,
-  no JVS, Test and Service alone.
+- `MIE_HACK=1` in the environment brings back Valkyrie's hack, for
+  debugging: no Z80, no JVS, Test and Service alone (no controls, no
+  outputs). It was a setting, "Fake the MIE", until November 2026; an
+  `hikaruloader.ini`'s `MIE_HACK` is no longer read.
 - The Z80 runs at 16 MHz, as in MAME: 1600 / the SH-4 clock in MHz T-states
   per 100 SH-4 cycles (16 at 100 MHz; `mie:option ('speed', n)`, or
   `MIE_SPEED`). SGNASCAR's MIE program then waits some 4 seconds before the

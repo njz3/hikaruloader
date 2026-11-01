@@ -464,13 +464,6 @@ void drawSoundTab(bool inGame)
 void drawEmulationTab(bool inGame)
 {
     hl::Config *cfg = hl::Config::get ();
-    ImGui::Checkbox(tr("Fake the MIE (Valkyrie's hack)"), &cfg->mie_hack);
-    ImGui::PushTextWrapPos(0.0f);
-    ImGui::TextDisabled("%s", tr("Off, the MIE's Z80 runs the game's program and drives the JVS bus, where the I/O board has the controls. On, Valkyrie's "
-                                 "hack fakes its answers, with the Test and Service switches alone. The MIE_HACK environment variable, when set, wins over "
-                                 "this setting."));
-    ImGui::PopTextWrapPos();
-    restartNote(inGame);
 
     // The board's country, from -1: the EEPROM's own
     const char *regionLabels[] = {tr("The board's own"), tr("Japan"), tr("USA"), tr("Export"), tr("Australia"), tr("Korea")};

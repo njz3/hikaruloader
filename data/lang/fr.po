@@ -531,14 +531,6 @@ msgid "Optimized keeps the sound chips' channel registers and effects program de
 msgstr "Optimisée : les registres des voies et le programme d'effets des puces son restent décodés jusqu'à ce que le jeu les réécrive ; interprétée : ils sont décodés à chaque échantillon, plus lentement, comme référence. Le son est le même dans les deux cas ; le changement s'applique tout de suite."
 
 #: src/ui/ui_common.cpp
-msgid "Fake the MIE (Valkyrie's hack)"
-msgstr "Simuler le MIE (hack de Valkyrie)"
-
-#: src/ui/ui_common.cpp
-msgid "Off, the MIE's Z80 runs the game's program and drives the JVS bus, where the I/O board has the controls. On, Valkyrie's hack fakes its answers, with the Test and Service switches alone. The MIE_HACK environment variable, when set, wins over this setting."
-msgstr "Désactivé, le Z80 du MIE exécute le programme du jeu et pilote le bus JVS, où la carte d'entrées-sorties porte les commandes. Activé, le hack de Valkyrie simule ses réponses, avec seulement les boutons Test et Service. La variable d'environnement MIE_HACK, si elle est définie, l'emporte sur ce réglage."
-
-#: src/ui/ui_common.cpp
 msgid "The board's own"
 msgstr "Celle de la carte"
 
@@ -1227,3 +1219,9 @@ msgstr "Chargement de %s..."
 
 #~ msgid "The 3D drawn larger, then fitted to the window: sharper edges and textures, more work for the graphics card. The 2D (texts, logos) keeps its size. Above the window's size, the picture is averaged down (supersampling)."
 #~ msgstr "La 3D dessinée plus grande, puis ajustée à la fenêtre : des bords et des textures plus nets, plus de travail pour la carte graphique. La 2D (textes, logos) garde sa taille. Au-delà de la taille de la fenêtre, l'image est moyennée (suréchantillonnage)."
+
+#~ msgid "Fake the MIE (Valkyrie's hack)"
+#~ msgstr "Simuler le MIE (hack de Valkyrie)"
+
+#~ msgid "Off, the MIE's Z80 runs the game's program and drives the JVS bus, where the I/O board has the controls. On, Valkyrie's hack fakes its answers, with the Test and Service switches alone. The MIE_HACK environment variable, when set, wins over this setting."
+#~ msgstr "Désactivé, le Z80 du MIE exécute le programme du jeu et pilote le bus JVS, où la carte d'entrées-sorties porte les commandes. Activé, le hack de Valkyrie simule ses réponses, avec seulement les boutons Test et Service. La variable d'environnement MIE_HACK, si elle est définie, l'emporte sur ce réglage."

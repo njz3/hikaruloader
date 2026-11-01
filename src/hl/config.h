@@ -181,7 +181,6 @@ public:
 	char		last_game[32];
 
 	/* [Emulation] */
-	bool		mie_hack;	/* fakes the I/O board, as MIE_HACK=1 */
 	bool		dynarec;	/* the CPUs' dynamic recompilers, or
 					 * their interpreters; from the next
 					 * frame on */

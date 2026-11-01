@@ -135,7 +135,6 @@ Config::set_defaults ()
 	cfg->log_file = true;
 	cfg->artwork_download = false;
 	/* The MIE's Z80 runs, and drives the JVS bus */
-	cfg->mie_hack = false;
 	cfg->dynarec = true;
 	cfg->memory_access = MEMORY_PAGE_TABLE;
 	/* Below the board's 200 MHz: the waits the games poll cost the host
@@ -355,9 +354,9 @@ Config::set_value (const char *section, const char *key, const char *value)
 		else if (!strcasecmp (key, "LAST_GAME"))
 			snprintf (cfg->last_game, sizeof (cfg->last_game), "%s", value);
 	} else if (!strcasecmp (section, "Emulation")) {
-		if (!strcasecmp (key, "MIE_HACK"))
-			cfg->mie_hack = parse_bool (value);
-		else if (!strcasecmp (key, "CPU_CORE"))
+		/* MIE_HACK, a setting before November 2026, is no longer read:
+		 * the environment variable alone (hikaru-mie.cpp) */
+		if (!strcasecmp (key, "CPU_CORE"))
 			cfg->dynarec = strcasecmp (value, "INTERPRETER") != 0;
 		else if (!strcasecmp (key, "MEMORY_ACCESS"))
 			cfg->memory_access = (MemoryAccess) parse_name (value, memory_names, NUM_MEMORY_ACCESSES, cfg->memory_access);
@@ -646,12 +645,6 @@ Config::save () const
 	fprintf (fp, "LAST_GAME = %s\n", cfg->last_game);
 
 	fprintf (fp, "\n[Emulation]\n");
-	fprintf (fp,
-	         "\n# true: Valkyrie's hack fakes the MIE's answers, the Test and Service\n"
-	         "# switches alone; false: the MIE's Z80 runs and drives the JVS I/O board.\n"
-	         "# The MIE_HACK environment variable, when set, wins. Read at the start.\n"
-	         "# Default: %s\n", bool_name (def.mie_hack));
-	fprintf (fp, "MIE_HACK = %s\n", bool_name (cfg->mie_hack));
 	fprintf (fp,
 	         "\n# The SH-4s' code: DYNAREC, translated to x86-64; INTERPRETER, one\n"
 	         "# instruction at a time. The same machine either way. Default: %s\n",

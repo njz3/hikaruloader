@@ -528,14 +528,6 @@ msgid "Optimized keeps the sound chips' channel registers and effects program de
 msgstr ""
 
 #: src/ui/ui_common.cpp
-msgid "Fake the MIE (Valkyrie's hack)"
-msgstr ""
-
-#: src/ui/ui_common.cpp
-msgid "Off, the MIE's Z80 runs the game's program and drives the JVS bus, where the I/O board has the controls. On, Valkyrie's hack fakes its answers, with the Test and Service switches alone. The MIE_HACK environment variable, when set, wins over this setting."
-msgstr ""
-
-#: src/ui/ui_common.cpp
 msgid "The board's own"
 msgstr ""
 

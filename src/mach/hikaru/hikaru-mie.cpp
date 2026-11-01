@@ -923,11 +923,9 @@ Mie::reset (hl::ResetType type)
 		}
 	}
 
-	/* The environment wins over the settings; the BIOS alone runs
-	 * without the hack */
-	mie->hack = hl_util_get_bool_option ("MIE_HACK",
-	                                     hl::Config::get ()->mie_hack &&
-	                                     strcmp (dev->mach->game->name, "hikaru"));
+	/* Valkyrie's hack, for debugging: MIE_HACK=1 in the environment (a
+	 * setting until November 2026) */
+	mie->hack = hl_util_get_bool_option ("MIE_HACK", false);
 }
 
 int

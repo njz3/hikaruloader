@@ -22,6 +22,8 @@ and released: [DEVELOPMENT.md](DEVELOPMENT.md), "Versions and releases".
   position chosen, the cut parts possibly bent onto the edges); the display
   modes each also stretched; whole multiples only as a box of its own. A
   settings file from before keeps its choices.
+- The Emulation tab's "Fake the MIE" is gone: it left the games without
+  their controls, and every game runs with the board's own MIE.
 
 
 0.2.2 (2026-11-01)
