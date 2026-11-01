@@ -417,9 +417,15 @@ rombd_get (Hikaru *hikaru, unsigned size, uint32_t bus_addr, void *val)
 		uint32_t bank_mask = bank_size - 1;
 		uint32_t real_offs = (offs & bank_mask) + num * bank_size;
 
+		/* A bank the board has not is read too: the games measure their
+		 * ICs (SWRACER @0C011D24, the same routine in the others), each
+		 * bank 10-1B's first 16 KB against the same bytes 4 MB up, a
+		 * match a 4 MB IC. 381 reads a missing bank, an error each before
+		 * (2286 in AIRTRIX's log). Its bytes (the garbage above) compare
+		 * equal, and the games go on: not logged */
 		if (real_offs < hikaru->eprom->size ())
 			set_ptr (val, size, hikaru->eprom->get (size, real_offs));
-		else
+		else if (num * bank_size < hikaru->eprom->size ())
 			HL_CPU_ERROR (hikaru->sh_current, "ROMBD out-of-bounds R%u %08X [%08X]",
 			              size * 8, bus_addr, real_offs);
 
