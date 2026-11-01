@@ -5,8 +5,8 @@ What each version brings, for those who play. How the versions are numbered
 and released: [DEVELOPMENT.md](DEVELOPMENT.md), "Versions and releases".
 
 
-Next version (not released yet)
--------------------------------
+0.2.0 (2026-11-01)
+------------------
 
 - Fixed: on NVIDIA graphics cards, 0.1.0 crashed when a game started.
 - Fixed: NASCAR Arcade's HOW TO PLAY and DRIVING TIPS screens, and Star
