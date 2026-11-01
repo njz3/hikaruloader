@@ -5,8 +5,8 @@ What each version brings, for those who play. How the versions are numbered
 and released: [DEVELOPMENT.md](DEVELOPMENT.md), "Versions and releases".
 
 
-0.3.0 (not released yet)
-------------------------
+0.3.0 (2026-11-01)
+------------------
 
 - The cabinet's outputs, for the programs that drive real lamps, motors and
   wheels (MAMEHooker, BackForceFeeder, DOFLinx...), in MAME's network
