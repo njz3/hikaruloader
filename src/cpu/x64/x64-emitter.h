@@ -54,6 +54,13 @@ public:
 	uint8_t		*take (size_t n, size_t align = 16);
 	/* Forgets everything written */
 	void		 reset () { used = 0; }
+	/* Gives back what follows end, in the last block taken (its bound
+	 * was more than the code written) */
+	void		 trim (const uint8_t *end)
+	{
+		if (end >= mem && end <= mem + used)
+			used = (size_t) (end - mem);
+	}
 
 private:
 	uint8_t		*mem;
@@ -143,6 +150,21 @@ public:
 	void		 load32_index (Reg dst, Reg base, Reg index, unsigned scale);
 	void		 store32_index (Reg base, Reg index, unsigned scale, Reg src);
 	void		 load64_index (Reg dst, Reg base, Reg index, unsigned scale);
+	/* The other sizes at [base + index * scale]: loads sign extended to
+	 * 32 bits (movsx), 64-bit and 8- and 16-bit stores */
+	void		 load8s_index (Reg dst, Reg base, Reg index, unsigned scale);
+	void		 load16s_index (Reg dst, Reg base, Reg index, unsigned scale);
+	void		 store8_index (Reg base, Reg index, unsigned scale, Reg src);
+	void		 store16_index (Reg base, Reg index, unsigned scale, Reg src);
+	void		 store64_index (Reg base, Reg index, unsigned scale, Reg src);
+	/* 64-bit loads and stores at [base + disp]; ror r64, imm; movsx r32
+	 * from a byte or a word at [base + disp]; neg r32 */
+	void		 load64 (Reg dst, Reg base, int32_t disp);
+	void		 store64 (Reg base, int32_t disp, Reg src);
+	void		 ror64_imm (Reg r, uint8_t count);
+	void		 movsx8_mem (Reg dst, Reg base, int32_t disp);
+	void		 movsx16_mem (Reg dst, Reg base, int32_t disp);
+	void		 neg32 (Reg r);
 	/* bt [base], r: CF = the bit r of the bit string at base */
 	void		 bt_mem (Reg base, Reg bit);
 
@@ -165,6 +187,9 @@ private:
 	/* REX, opcode, ModRM, SIB and disp32 0 for [base + index * scale] */
 	void		 mem_index (bool w, uint8_t opcode, unsigned reg, Reg base,
 			            Reg index, unsigned scale);
+	/* The same with a 66 prefix (16 bits) and an opcode after 0F */
+	void		 mem_index_ex (bool p66, bool w, bool esc, uint8_t opcode,
+				       unsigned reg, Reg base, Reg index, unsigned scale);
 	void		 rel32_to (Label &l);
 };
 

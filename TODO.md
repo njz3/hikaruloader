@@ -3,14 +3,14 @@ PROCESSORS AND CHIPS (Hikaruloader, October 2026)
 
 | Part | Where | State |
 |---|---|---|
-| 2 x SH-4 (Hitachi SH7750, 200 MHz) | Main board | Dynamic recompiler (the default; the settings' "SH-4 processors" switches to the interpreter at the next frame), at the clock of the `SH4_CLOCK` setting (57 MHz by default, formerly 50 MHz; 200 MHz as on the board, but the games' busy waits then cost about real time and the boots fall below 60 fps), the timers (TMU) at the board's Pφ (50 MHz) whatever the clock, and their prescalers: the code decoded once in blocks (`src/cpu/sh/sh4-blocks.*`), translated to x86-64 by our own emitter (`src/cpu/x64/`, `src/cpu/sh/sh4-x64.*`): the frequent ALU instructions and branches written out, the others calls to the interpreter's handlers. Same machine as the interpreter, frame for frame (SGNASCAR, SWRACER checked). The idle and delay loops run forward (`cpu:option ('idle', 0)`). The interpreter stays for the debugger, and runs alone while the MMU is on (its TLBs, their exceptions run again after their handler, LDTLB, the TLB arrays; TRAPA; `tests/sh4_mmu_test.cpp`): Smashing Drive's. Also the operand cache as RAM (CCR.ORA, 7C000000) and the SCIF's output in the log |
+| 2 x SH-4 (Hitachi SH7750, 200 MHz) | Main board | Dynamic recompiler (the default; the settings' "SH-4 processors" switches to the interpreter at the next frame), at the clock of the `SH4_CLOCK` setting (100 MHz by default since November 2026, AIRTRIX's slave needing it; formerly 57, and 50 before; 200 MHz as on the board, but the games' busy waits then cost about real time and the boots fall below 60 fps), the timers (TMU) at the board's Pφ (50 MHz) whatever the clock, and their prescalers: the code decoded once in blocks (`src/cpu/sh/sh4-blocks.*`), translated to x86-64 by our own emitter (`src/cpu/x64/`, `src/cpu/sh/sh4-x64.*`): the frequent ALU instructions and branches written out, the loads and stores of every size and the FPU's moves too (FPSCR.SZ tested as they run), the others calls to the interpreter's handlers; those reach RAM and ROM straight as the translations do (Mmap::direct). The logs' CPU and machine state (debug_string, two strdup and a sprintf) is no longer made when the log is off: it was, at each on-chip register's and each logged device's access. With these, about a third less time a frame in every game, the same pictures (the six games' frames 900-3600, the interpreter's too). Same machine as the interpreter, frame for frame (SGNASCAR, SWRACER checked). The idle and delay loops run forward (`cpu:option ('idle', 0)`). The interpreter stays for the debugger, and runs alone while the MMU is on (its TLBs, their exceptions run again after their handler, LDTLB, the TLB arrays; TRAPA; `tests/sh4_mmu_test.cpp`): Smashing Drive's. Also the operand cache as RAM (CCR.ORA, 7C000000) and the SCIF's and SCI's output in the log. The FPU's fmov moves 32 bits unless SZ, whatever PR, and DRn is FRn (high half) and FRn+1, a 64-bit move taking FRn from the lower address (pairs of singles): the compilers' unsigned division (2^31 loaded in DR4 by two fmov.s) gave 0 or 1, and PHARRIER unpacked its sound data a kilobyte a frame, 15 s of black screen (`tests/sh4_mmu_test.cpp`) |
 | Z80 of the MIE (315-6146) | Main board | Emulated (`src/cpu/z80`, 16 MHz); the MIE's 2 KB internal ROM is not dumped, a stub plays its part; the SH-4s request its bus (local bus 02000000) to reach its RAM, which stops it. Its idle loops run at once, exactly (`MIE_IDLE_SKIP=0`: one instruction at a time) |
 | 93C46 serial EEPROM | Main board, on the MIE's GPIO 5/6 | Emulated (`src/hl/eeprom.cpp`), kept with the backup RAM in `nvram/<game>.nvram` |
 | 2 x ARM7DI, in the two AICAs (Yamaha, 315-6232) | AICA board, main board | Interpreted (`src/cpu/arm/arm7.*`, `tests/arm7_test.cpp`), each with its AICA's 8 MB of RAM, timers and interrupts; the drivers' scan of their 64 slots run at once, exactly (`SOUND_CORE = OPTIMIZED`) |
 | AICA voices, DSP, filter, LFO | In each AICA | Emulated (`src/mach/hikaru/hikaru-aica.*`): the 64 channels (PCM 16/8, ADPCM), envelopes, filter, LFOs, the DSP's effects and its ring buffer; out to the host's speakers (`src/hl/audio.*`: front and rear, resampled, its clock followed). The RTC reads a fixed time |
 | 68000 | Communication board 837-13404 (linked cabinets) | Not run: the board is emulated from what it gives the games (`src/mach/hikaru/hikaru-comm.*`), the ring over TCP (`src/hl/ringlink.*`, `[Network]`). Two instances play together in SWRACER, SGNASCAR, PHARRIER and VON4 |
 | TMP90PH44 (Toshiba TLCS-90) | JVS I/O board | Not needed: the 837-13551 is emulated at the JVS level |
-| 315-5881, X76F100 secure EEPROM, Lattice CPLDs | ROM board | Not emulated; SWRACER boots without them. VON4's "ERROR 7" follows "OBSONG Load Err", its sound data (the AICAs) |
+| 315-5881, X76F100 secure EEPROM, Lattice CPLDs | ROM board | The protection on the bus at 0A000000 (November 2026, `hikaru-memctl.cpp`): SGNASCAR's streams a MASKROM block, decrypted and decompressed (the NAOMI "M1" scheme, key 56DEDF33); SWRACER's is a 315-5881 (`hikaru-5881.cpp`, from MAME's), its 64 KB of RAM and registers at 0A010000 as the NAOMI "M3" carts. When their check failed, SGNASCAR and SWRACER raised their motion blur (181) to FC: the night race and the text crawl smeared. AIRTRIX's and PHARRIER's are on too (November 2026). PHARRIER's (2912C68A) is checked at the game's start (@0C103460): a ROM block (2FEE6000) written to it, subkey 5784, and the 0x273C bytes read back compared with the clear one at 103FD000; the patch that skipped the check is gone. AIRTRIX's decrypts right (12 blocks, @0C0440F0, the same words across their ends): the slave's real program, copied to its 0C010000 through aperture 16, which poses the skater itself from the bones' table (48100000) into the routine the CP calls. Some 875,000 instructions a frame: at 57 MHz it ends after the CP called the routine (the body not drawn). The recompiler now takes about 4 ms a frame for it (25 ms before November 2026): over 80 s of attract, 147 frames a second with the chip, 176 without, here. With it the CP's posing is off (gpu->skin.slave_poses), and the SH-4s need 100 MHz (SH4_CLOCK) for the slave to end before the CP's call: the skater drawn whole, posed as the board does, his shadow his whole silhouette; at 57 MHz his body is missing. At 100 MHz the six games stay above 60 frames a second here (80 s of attract: AIRTRIX 100, SWRACER 83, VON4 113; SWRACER's boot the slowest, 69), their attract a little ahead, closer to the board's (PHARRIER unpacks its sounds sooner). Without the chip the slave runs a plain program that leaves the rest pose, which the CP poses ("Skinning" in hikaru-gpu-cp.cpp). The default clock is 100 MHz since; an ini written before keeps its own (57). The secure EEPROM is not emulated |
 | Drive board (force feedback) | SGNASCAR | A Model 3 board on the 837-13844's outputs and switches: its Z80 running its EPROM, EPR-20512 (`src/hl/driveboard-z80.cpp`, from Supermodel's), taken from the user's `srally2.zip`; without it, the program simulated (`src/hl/driveboard.cpp`). SWRACER has none: its output test lists lamps and a boost lock only. `-L` and the picker tell which games have one, and which link (`data/games.json`, from the games' test menus) |
 
 
@@ -33,14 +33,14 @@ details and what is left.
   cabinets.
 - The I/O: the MIE's Z80, the JVS bus and an 837-13551 I/O board (an
   837-13844 for SGNASCAR, with its Model 3 drive board and the force
-  feedback); the EEPROM's system settings (region, attract sound, link mode)
-  from the settings.
+  feedback); VON4's card reader; the EEPROM's system settings (region,
+  attract sound, link mode) from the settings.
 - The sound: both AICAs, their ARM7s, voices, DSP effects, to the PC's
   speakers (from mono to 7.1), resampled, the sound card's clock followed.
 - The linked cabinets: the communication board emulated, the instances in a
   ring over TCP; the four linked games play two together.
 - The SH-4s: a dynamic recompiler to x86-64, their idle and timer loops run
-  forward, the clock a setting (57 MHz by default); their MMU (interpreter).
+  forward, the clock a setting (100 MHz by default); their MMU (interpreter).
 - The rendering: shading, lights, blending, punch-through and translucent
   meshes sorted, fog, mipmaps, levels of detail, the 2D layers, AIRTRIX's
   skinning; the drawing on a thread of its own; widescreen 3D, the screen's
@@ -295,8 +295,26 @@ the one after glClear in on_end_frame's threaded branch; with two instances
 at once, crashes instead (AIRTRIX about 2400-2700 and 900, BRAVEFF about
 6000-6300). Likely an error made earlier and read there, glGetError keeping
 it until read: the NVIDIA cabinet logged GL_INVALID_ENUM after the interface
-(ImGui). Next: KHR_debug's synchronous callback on the main context through
-an AIRTRIX run to 2700, for the call that makes it.
+(ImGui). The 10-minute passes (November 2026) showed it is GL_OUT_OF_MEMORY
+(AIRTRIX at 3478, BRAVEFF at 33138 on glBufferData in upload_frame_vertices;
+the same in VON4 at 14122 with two instances at once), the KHR_debug callback
+silent (no debug context). Since: the GPU out of memory no longer stops the
+machine (hl::gl::check_error logs it with its place, the frame goes on, the
+3D of a frame whose vertices found no memory not drawn); the vertex buffer
+keeps the largest frame's size, given back to the driver and written into
+each frame; the layers' textures keep their storage (glTexSubImage2D). It
+still happens in BRAVEFF, on this PC's Intel UHD (driver 32.0.101.6881),
+about once in 5000 to 25000 frames, at 60 fps too: the driver can allocate
+nothing more (GL_OUT_OF_MEMORY in BufferData, then in FenceSync, as a debug
+context, HR_GL_DEBUG=1, tells), then crashes in igxelpicd64.dll on its
+drawing thread. Not ours to grow: the process's GPU memory stays at 150 MB,
+the vertex buffer at 7.5 MB at most; no driver reset in Windows' log. A
+debug context made it rarer (1 crash in 8 passes of 20000 frames, against 2
+in 4), at 10% of the speed; deleting the replaced textures 3 frames later
+changed nothing. AIRTRIX, SGNASCAR and SWRACER ran 10 minutes without it.
+On this PC's NVIDIA (RTX 3050, taken since November 2026), BRAVEFF ran 4
+passes of 20040 frames without it, nor any GL error. Left: another Intel
+driver.
 
 
 AIRTRIX
@@ -354,9 +372,26 @@ Cyber Troops Virtual On 4
 Not dumped yet. Dumped since: MAME's von4 set (Rev E). In Hikaruloader it
 boots and plays, and two linked instances fight a battle of two (see the
 communication board). Its robot's black and cyan patches are fixed (see the
-GPU's 083 and 0C3). Left: its card reader, not emulated (its attract shows
-the reader's error); its "ERROR 7" after "OBSONG Load Err" (see the ROM
-board's chips, at the top).
+GPU's 083 and 0C3).
+
+Its card reader (November 2026), a Sanwa CRP-1231 with a stocker and a
+printer (hl::CardReader), on the MIE's serial line: the game puts a program
+at the Z80's 9000 that drives it through ports 09-0D (see hikaru-mie.cpp).
+CARD R/W (GAME ASSIGNMENTS, the EEPROM's byte 32) is ON by default outside
+the USA, whose menu hides it; without the reader, the game stopped at its
+start on CARD R/W INITIALIZE, then the reader's error. Checked: the reader's
+start (fonts, RETRY SET, INIT), a new card made by the terminal (GAME START
+MODE VENDOR, free play: name, Virtual-roid, written and printed), that card
+read at the Virtual-roid's choice, written at the sortie and at the game's
+end, then given back; the terminal's transfer: the old card read, written
+(no sortie left), printed and given back. A cancel with the card inside
+answers S3 '4': with '0', the game calls the card stuck in the reader. Not
+checked: the transfer's new card watched to its end, the game's own card
+test (SETUP RS422, CARD RW TEST), the card reader cleaning menu.
+
+Its "ERROR 7" after "OBSONG Load Err" is gone: its start lists "Sound OK"
+(already in the 10-minute passes of November 2026; which fix did it, not
+looked for).
 
 
 PHARRIER
@@ -369,6 +404,15 @@ hexagon's silver arms, the rails, the characters' shoes: their soles): a
 recalled material or texhead now splits the mesh. The LOD jumps compare the
 models' size on the screen with their sizes (I): the characters take their
 finest meshes, rounded shoes; the scale is a guess (see 055).
+
+The attract's asteroids (frames 1100-1450) show notches in their outline
+and one is bean-shaped: their models' own outlines (November 2026). Each
+is a closed mesh in the ROM (1412 triangles for the large one, 130 to 226
+for the others), every edge shared by two triangles when the strips are
+built as the pivot bit says (it keeps the fan's first vertex: no other
+rule closes them), all with the same matrix; projected by hand, its
+triangles draw the same outline. Not missing triangles, culling, LOD or
+depth.
 
 Brightness (October 2026): the board's video (below) looked brighter on the
 stage's metal, near-white silver against our mid grey. Frame for frame it is
@@ -399,6 +443,23 @@ a negative shift, and the machine aborted at frame 1812. Its WARNING screen
 needs the layers' pixel order (left pixel in the high half of each word).
 The SEGA logo is meant to come up
 mirrored: a character turns it round.
+
+The viewports' near plane is at 0.01: a projection's depth, 24 bits, then
+steps by z^2 / near / 2^24, 0.015 at 50 units, and the pod engines' panels
+and decals z-fought (saw teeth on the gold panels, white specks at the
+cones; attract frames 2380-2420). Done in Hikaruloader: the fragments' depth
+is log2 (1 + z) / log2 (1 + far), a step of about z / 2^20. The meshes'
+depth bias (101, every polytype) moves them nearer, as a 32-bit float
+depth buffer's bias would: its low 10 bits the amount, bit 10 the mode.
+Clear, a constant: 1/z up by about amount * 2000 / 2^24 / ln 2 of itself
+(2000 units of the depth's last bit). Set, a slope: 1/z up by its slope
+across a pixel times amount * 6 / 256. It was a polygon offset of the
+whole 16 bits before, punch-through and translucent only: PHARRIER's
+translucent meshes take 0x400, no bias at all, which moved them nearer.
+With it SGNASCAR's tracks show their white lines (they were hidden), AIRTRIX's
+skater casts his whole shadow, and BRAVEFF's far windows (204, 409) no longer
+show through the buildings in front: the old offset, constant in 1/z over a
+0.01 near plane, grew far too large far away.
 
 The "/" of "AND/OR" on the WARNING screen is not in the game's font: the
 BIOS's loader copies the font from the ROM board (master 0C3EBxxx), 8x8
@@ -442,6 +503,10 @@ commands at 1E0, e.g. 23 a read of 200 bytes, the master's answer at 1EC),
 the slave sets the Neon 250 up (its PCI BARs: 18000000, 14000000) and
 starts a frame every other frame, the DAC starts (ATV Track at frame 710,
 Smashing Drive at 320). Smashing Drive's MMU and operand cache RAM work.
+Gaelco Football stopped at its first frame on ICR = FF80 (reserved bits,
+now dropped), then waited for the SCI's TDRE: its slave now writes there,
+the log shows it, "SH4 I/O at 60661 baud", sets a "PMX" up ("PMX appears
+to have woken up", "the test CCB failed") and loads its microcode; black.
 
 To do, in order:
  - check what was guessed: the DAC's IRL pins ("IRL5"), the ADC's protocol

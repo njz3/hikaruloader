@@ -36,7 +36,9 @@ The version shows in the window's title and in the settings' About tab.
 What it needs
 -------------
 
-- Windows 10 or 11, 64-bit, and a graphics card with OpenGL 3.1.
+- Windows 10 or 11, 64-bit, and a graphics card with OpenGL 3.1. On a
+  laptop with two (an Intel one and an NVIDIA or AMD one), the program asks
+  for the faster one; Windows' graphics settings can still choose another.
 - The program's folder: `hikaruloader.exe` and `data/`, from a
   release archive or built from the sources ([INSTALL.md](INSTALL.md)).
 - The games, as MAME romsets: the game's zip (`airtrix.zip`), its parent's
@@ -58,7 +60,7 @@ The games
 | `pharrier` | Planet Harriers (Rev A), 2000 | Linked, four speakers |
 | `sgnascar`, `sgnascaro` | NASCAR Arcade (Rev A, original), 2000 | Wheel and pedals, force feedback, linked, four speakers |
 | `swracer` | Star Wars: Racer Arcade, 2000 | Linked, four speakers |
-| `von4` | Cyber Troopers Virtual-On 4: Force (Rev E), 2001 | Linked, four speakers; its card reader is not emulated |
+| `von4` | Cyber Troopers Virtual-On 4: Force (Rev E), 2001 | Linked, four speakers, a card reader |
 
 The picker also lists Gaelco's ATV Track, Gaelco Football and Smashing Drive
 (six sets), which run on another board: they do not work yet, their screen
@@ -124,6 +126,7 @@ Keys and controllers
 | Space | Pause |
 | F4, F1 | Save, load the game's state |
 | Tab, a controller's Back | Settings |
+| F7 | Virtual-On 4's card: in the reader's slot, or taken back (see below) |
 | F12 | The frame rate over the picture |
 | F9 | Quit |
 | Escape | Back to the picker, or quit |
@@ -209,10 +212,11 @@ front, 3 dB lower. Also the front/rear balance and the volume.
   written to the game's EEPROM at its start; AUTO keeps the EEPROM's. The
   games take their language from it: Brave Firefighters speaks English
   outside Japan.
-- *SH-4 clock* (20 to 200 MHz, 57 by default, at the game's start): the
+- *SH-4 clock* (20 to 200 MHz, 100 by default, at the game's start): the
   board's 200 MHz is spent mostly waiting, which costs real time on the PC;
-  57 MHz keeps every game above 60 frames a second. The games' timers count
-  in real time whatever the clock.
+  100 MHz keeps every game above 60 frames a second. Air Trix needs 100 at
+  least: below, its skater's body is missing. The games' timers count in
+  real time whatever the clock.
 - *SH-4 processors*: the recompiler (the default) or the interpreter, the
   same machine either way. *Memory access*: the same, three ways.
 - *Fake the MIE*: Valkyrie's old shortcut, without the I/O board. Leave it
@@ -244,6 +248,7 @@ Saves and files
   by themselves: the EEPROM half a second after the game writes it, the RAM
   every ten seconds when it changed, both when the game ends. Deleting the
   file gives the game a new board's settings back.
+- `nvram/von4.card`: Virtual-On 4's card, its three tracks (see below).
 - `<game>.hlstate`: the save state of F4, which F1 loads. It holds the whole
   machine; a state may not load in another version of the program.
 - `hikaruloader.ini`, `controls.ini`: the settings and the controls.
@@ -297,6 +302,33 @@ others wait, and they drop the link after 5 seconds; when one enters its test
 menu or quits, at once.
 
 
+Virtual-On 4's cards
+--------------------
+
+Outside the USA region, Virtual-On 4 has a card reader, emulated: a VO4 card
+keeps a pilot's name, rank, Virtual-roid and records. The card is a file,
+`nvram/von4.card` (with a write directory, its copy). F7 (*Card*,
+`P1_Card1Insert` in `controls.ini`) puts it in the reader's slot, or takes it
+back: the game takes it in when it asks for it (at the choice of the
+Virtual-roid), and gives it back at the end; it is taken 3 seconds later.
+Without a card, the game plays as usual.
+
+A new card comes from the VO4 terminal: the game in its card vending mode.
+
+1. In the test menu (F5), GAME TEST MENU, GAME ASSIGNMENTS: GAME START MODE
+   to VENDOR. The BIOS's COIN ASSIGNMENTS must be FREE PLAY (or one of the
+   two the game lists), else the game says COIN ASSIGNMENTS ERROR.
+2. Out of the test menu, Start, then the new card: the pilot's name, the
+   Virtual-roid. The reader's stocker gives a blank card; the game writes
+   it, prints it and gives it back. The card file before, if any, is kept
+   as `nvram/von4.1.card`.
+3. GAME START MODE back to GAME, to play.
+
+As on the board, a card allows a number of sorties; the terminal's other
+choice moves a card's records to a new one, the old card then allowing no
+more. CARD R/W OFF, in GAME ASSIGNMENTS, turns the reader off.
+
+
 Force feedback
 --------------
 
@@ -316,8 +348,9 @@ When something goes wrong
 
 - A game is missing or Incomplete in the picker: `hikaruloader.exe -L`
   lists the files each game needs, and which ones the games folder lacks.
-- The game is slow: keep the SH-4 clock at 57 MHz and the drawing on its
-  own thread; the frame rate (F12) shows the gain.
+- The game is slow: keep the SH-4 clock at 100 MHz (57 for the games but
+  Air Trix) and the drawing on its own thread; the frame rate (F12) shows
+  the gain.
 - The picture is a frame late: turn off the drawing on its own thread.
 - The attract is silent: set the Attract sound to ON.
 - The sound crackles: raise the latency.

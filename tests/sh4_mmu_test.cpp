@@ -19,8 +19,8 @@
 /* The SH-4 MMU's tests (sh4.cpp, "MMU"): small programs run from P2, the
  * TLBs loaded by LDTLB or through their arrays, the misses served by a
  * handler that loads the entry and runs the instruction again, the other
- * exceptions by one that notes EXPEVT and skips it. Run by ctest, or alone:
- * sh4mmutest. */
+ * exceptions by one that notes EXPEVT and skips it; and the FPU's moves.
+ * Run by ctest, or alone: sh4mmutest. */
 
 #include <stdio.h>
 #include <string.h>
@@ -363,6 +363,52 @@ test_off (void)
 	CHECK ("off", cpu->regs.r[13], 0);
 }
 
+/* An FPU register by its name ("fr4"), as the debugger reads it */
+static uint32_t
+fpu_reg (const char *name)
+{
+	for (unsigned i = 0; i < cpu->num_registers (); i++)
+		if (!strcmp (cpu->register_name (i), name))
+			return (uint32_t) cpu->get_register (i);
+	return 0xDEADBEEF;
+}
+
+/* The FPU's moves: fmov.s moves 32 bits in double precision too (SZ's alone
+ * sets the size), and two of them make DRn of FRn, its high half, and
+ * FRn+1 (PHARRIER's unsigned division loads 2^31 so); a 64-bit one (SZ)
+ * takes FRn from the lower address, FRn+1 from the higher, and stores them
+ * back so (the games move pairs of singles that way) */
+static void
+test_fmov (void)
+{
+	static const uint32_t base = 0x0C000100;
+
+	start (CODE);
+	ram->put (4, base & 0xFFFFFF, 0x00000000);
+	ram->put (4, (base + 4) & 0xFFFFFF, 0x41E00000);
+	cpu->regs.fpscr.full = 0x00080000;
+	cpu->regs.r[0] = base;
+	code (CODE, { 0xF509, 0xF408, STOP, NOP });	/* fmov.s @r0+,fr5; fmov.s @r0,fr4 */
+	run ();
+	CHECK ("fmov.s PR", cpu->regs.r[0], base + 4);
+	CHECK ("fmov.s PR FR4", fpu_reg ("fr4"), 0x41E00000);
+	CHECK ("fmov.s PR DR4", cpu->regs.f.d[2].f == 2147483648.0, 1);
+
+	start (CODE);
+	ram->put (4, base & 0xFFFFFF, 0x3F800000);
+	ram->put (4, (base + 4) & 0xFFFFFF, 0x40000000);
+	cpu->regs.fpscr.full = 0x00100000;
+	cpu->regs.r[0] = base;
+	cpu->regs.r[1] = base + 0x10;
+	code (CODE, { 0xF409, 0xF14A, STOP, NOP });	/* fmov @r0+,dr4; fmov dr4,@r1 */
+	run ();
+	CHECK ("fmov SZ", cpu->regs.r[0], base + 8);
+	CHECK ("fmov SZ FR4", fpu_reg ("fr4"), 0x3F800000);
+	CHECK ("fmov SZ FR5", fpu_reg ("fr5"), 0x40000000);
+	CHECK ("fmov SZ store", ram->get (4, (base + 0x10) & 0xFFFFFF), 0x3F800000);
+	CHECK ("fmov SZ store", ram->get (4, (base + 0x14) & 0xFFFFFF), 0x40000000);
+}
+
 int
 main (int argc, char **argv)
 {
@@ -386,6 +432,7 @@ main (int argc, char **argv)
 	test_arrays ();
 	test_trapa ();
 	test_off ();
+	test_fmov ();
 
 	printf ("sh4mmutest: %d checks, %d failures\n", checks, failures);
 	return failures ? 1 : 0;

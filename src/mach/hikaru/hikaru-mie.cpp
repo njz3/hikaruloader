@@ -195,8 +195,47 @@ Mie::acknowledge ()
 static bool
 known_port (uint8_t port)
 {
-	return port <= 0x08 || port == 0x0F || (port >= 0x10 && port <= 0x17) ||
+	return port <= 0x0D || port == 0x0F || (port >= 0x10 && port <= 0x17) ||
 	       port == 0x30 || port == 0x50 || port == 0x70 || port == 0x90 || port == 0x91;
+}
+
+/* The serial line to a card reader (VON4's), ports 09-0D, as VON4's program
+ * for it (at 9000) uses them: 0A the byte, then 09 the operation; 0D bit 3
+ * once its answer is there (bit 2 for the loopback), bits 0-1 busy; the
+ * answer in 0B (the operation) and 0C. The operations:
+ *
+ *   01  Send 0A to the reader; 0C, the byte sent
+ *   55  The loopback; 0C, 0A
+ *   80  Poll; 0C bit 6, a byte from the reader to read
+ *   81  Read it; 0C, the byte
+ *
+ * The answer comes at once. The program also sets up a 16550 at 20-27
+ * (divisor 8, 8N1, FIFOs), kept as written */
+void
+Mie::serial_write (uint8_t op)
+{
+	serial.answer[0] = op;
+	serial.status = 0x08;
+	switch (op) {
+	case 0x01:
+		serial.answer[1] = serial.data;
+		card_reader->receive (serial.data);
+		break;
+	case 0x55:
+		serial.answer[1] = serial.data;
+		serial.status = 0x04;
+		break;
+	case 0x80:
+		serial.answer[1] = card_reader->has_byte () ? 0x40 : 0;
+		break;
+	case 0x81:
+		serial.answer[1] = card_reader->send ();
+		break;
+	default:
+		HL_PRINT ("mie: serial operation %02X (%02X)", op, serial.data);
+		serial.answer[1] = serial.data;
+		break;
+	}
 }
 
 uint8_t
@@ -234,6 +273,19 @@ Mie::port_read (uint8_t port)
 		break;
 	case 0x08:
 		val = io.gpio_dir;
+		break;
+	case 0x09: case 0x0A:
+		val = io.other[port];
+		break;
+	case 0x0B:
+		val = card_reader ? serial.answer[0] : 0;
+		break;
+	case 0x0C:
+		val = card_reader ? serial.answer[1] : 0;
+		serial.status = 0;
+		break;
+	case 0x0D:
+		val = card_reader ? serial.status : 0;
 		break;
 	case 0x0F:
 		val = 0;
@@ -298,6 +350,15 @@ Mie::port_write (uint8_t port, uint8_t val)
 		break;
 	case 0x08:
 		gpio_set_dir (val);
+		break;
+	case 0x09:
+		io.other[port] = val;
+		if (card_reader)
+			serial_write (val);
+		break;
+	case 0x0A:
+		io.other[port] = val;
+		serial.data = val;
 		break;
 	case 0x10:
 		if (io.lcr & 0x80)
@@ -824,6 +885,7 @@ Mie::reset (hl::ResetType type)
 	mie->regs->put (2, 0x00, 0xFFFF);
 
 	memset (&io, 0, sizeof (io));
+	memset (&serial, 0, sizeof (serial));
 	io.gpio_dir = 0xFF;
 	owed = 0;
 	busrq = false;
@@ -876,6 +938,9 @@ Mie::save_state (hl::State *state)
 	ret |= state->put (&owed, sizeof (owed));
 	ret |= state->put (&busrq, sizeof (busrq));
 	ret |= eeprom.save_state (state);
+	/* The card reader's line, for VON4 alone */
+	if (card_reader)
+		ret |= state->put (&serial, sizeof (serial));
 	return ret;
 }
 
@@ -887,6 +952,8 @@ Mie::load_state (hl::State *state)
 	ret |= state->get (&owed, sizeof (owed));
 	ret |= state->get (&busrq, sizeof (busrq));
 	ret |= eeprom.load_state (state);
+	if (card_reader)
+		ret |= state->get (&serial, sizeof (serial));
 	idle.valid = idle.confirmed = false;
 	return ret;
 }

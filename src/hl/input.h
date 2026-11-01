@@ -42,6 +42,8 @@ enum Action {
 	ACTION_BUTTON2,
 	ACTION_BUTTON3,
 	ACTION_BUTTON4,
+	/* The player's card, at a card reader's slot (VON4's) */
+	ACTION_CARD,
 	ACTION_PAUSE,
 	ACTION_SAVE_STATE,
 	ACTION_LOAD_STATE,

@@ -74,7 +74,7 @@ Sh4BlockCache::decode (Sh4 *ctx, uint32_t pc, Sh4Block *block)
 	end = MIN2 (win.hi, pc | ((1u << PAGE_BITS) - 1));
 	block->pc = pc;
 	block->code = (const uint16_t *) (win.base + (pc & win.mask));
-	block->words.clear ();
+	block->num_words = 0;
 	block->ops.clear ();
 	block->native = NULL;
 	block->native_generation = 0;
@@ -83,7 +83,7 @@ Sh4BlockCache::decode (Sh4 *ctx, uint32_t pc, Sh4Block *block)
 		uint16_t inst = *(const uint16_t *) (win.base + (a & win.mask));
 		Sh4Op op = { sh4_handler (inst), inst, ctx->patches (a) };
 
-		block->words.push_back (inst);
+		block->words[block->num_words++] = inst;
 		block->ops.push_back (op);
 		block->patched |= op.patched;
 		if (ends_block (inst))

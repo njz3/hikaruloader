@@ -12,6 +12,40 @@ Next version (not released yet)
 - Fixed: NASCAR Arcade's HOW TO PLAY and DRIVING TIPS screens, and Star
   Wars Racer Arcade's SEGA logo, were all white: the 2D layers and the 3D
   now go in the order the game asks for.
+- Fixed: NASCAR Arcade's night race and its drivers' cards, and Star Wars
+  Racer Arcade's text crawl, smeared by a motion blur that grew scene after
+  scene: the ROM boards' protection is emulated, and the games no longer
+  raise their blur.
+- Fixed: surfaces showing through one another in the 3D, in saw teeth or
+  specks: Star Wars Racer Arcade's pod engines, NASCAR Arcade's cars on the
+  drivers' cards, Virtual-On 4's sword and lights, Air Trix's shadows, Brave
+  Firefighters' distant windows. The 3D's depth is now as precise far as
+  near.
+- Fixed: NASCAR Arcade's tracks had lost their white lines, Air Trix's
+  skater cast only part of his shadow, and far away Brave Firefighters'
+  lit windows showed through the buildings in front: the games' depth
+  offsets, which lay what is painted on a surface over it, are now read
+  as the board reads them.
+- Fixed: Planet Harriers stayed 15 seconds on a black screen after its
+  WARNING: the processors' divisions done in double precision came out
+  wrong, and the game unpacked its sounds a little at a time.
+- Faster: about a third less processor time a frame in every game, the
+  same pictures.
+- Air Trix's protection chip is emulated: the game poses its skater itself,
+  as on the board (his shadow his whole silhouette). It needs the SH-4
+  clock at 100 MHz or more, now the default (57 before); a settings file
+  from an earlier version keeps its clock: set 100 in the settings'
+  Emulation tab.
+- Planet Harriers' protection chip is emulated too: the check the game
+  makes at its start passes as on the board, with no patch of the game.
+- Fixed: a game stopped now and then on "GL ERROR: out of memory" (Intel
+  graphics, after thousands of frames): the graphics memory is reused from
+  frame to frame, and a frame it fails is drawn without, the game going on.
+- On a laptop with two graphics cards, the NVIDIA or AMD one is used, not
+  the integrated Intel one.
+- Virtual-On 4's card reader: the game no longer stops at its start on the
+  reader's error outside the USA region. A VO4 card, a file, goes in and out
+  of the reader with F7; the game in its card vending mode makes new ones.
 - Several games folders, separated by `;` (`D:\roms;E:\mame\roms`), looked
   in in that order: the BIOS can be in one, the games in another. The
   settings' Picker tab adds one with Windows' folder dialog and marks those

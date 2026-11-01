@@ -54,11 +54,15 @@ struct Sh4Op {
 
 class Sh4Block {
 public:
+	static const unsigned MAX_OPS = 32;
+
 	/* Its first instruction's address, 29 bits */
 	uint32_t		 pc;
-	/* Where its code lies, in a RAM or ROM, and what it was */
+	/* Where its code lies, in a RAM or ROM, and what it was (here, not
+	 * in a vector apart: each entry compares them) */
 	const uint16_t		*code;
-	std::vector<uint16_t>	 words;
+	unsigned		 num_words = 0;
+	uint16_t		 words[MAX_OPS];
 	std::vector<Sh4Op>	 ops;
 	/* Its x86-64 translation (sh4-x64.h), of a generation of the
 	 * backend's code; none yet when 0 */
@@ -67,16 +71,31 @@ public:
 	/* An instruction the machine patches: not translated */
 	bool			 patched = false;
 
-	/* The memory still holds the code it was decoded from */
+	/* The memory still holds the code it was decoded from: compared here,
+	 * 8 bytes at a time (each block's entry asks) */
 	bool			 current () const
 	{
-		return !memcmp (code, words.data (), words.size () * sizeof (words[0]));
+		const uint8_t *a = (const uint8_t *) code;
+		const uint8_t *b = (const uint8_t *) words;
+		size_t n = num_words * sizeof (words[0]), i = 0;
+
+		for (; i + 8 <= n; i += 8) {
+			uint64_t x, y;
+			memcpy (&x, a + i, 8);
+			memcpy (&y, b + i, 8);
+			if (x != y)
+				return false;
+		}
+		for (; i < n; i += 2)
+			if (*(const uint16_t *) (a + i) != *(const uint16_t *) (b + i))
+				return false;
+		return true;
 	}
 };
 
 class Sh4BlockCache {
 public:
-	static const unsigned MAX_OPS = 32;
+	static const unsigned MAX_OPS = Sh4Block::MAX_OPS;
 
 	Sh4BlockCache () = default;
 	Sh4BlockCache (const Sh4BlockCache &) = delete;
@@ -111,5 +130,12 @@ bool		 sh4_may_branch (uint16_t inst);
  * hooks: the translations' way when they cannot go straight */
 uint32_t	 sh4_read32 (Sh4 *ctx, uint32_t addr);
 void		 sh4_write32 (Sh4 *ctx, uint32_t addr, uint32_t val);
+/* The other sizes: 8 and 16 bits sign extended, as mov.b and mov.w load */
+uint32_t	 sh4_read8s (Sh4 *ctx, uint32_t addr);
+uint32_t	 sh4_read16s (Sh4 *ctx, uint32_t addr);
+uint64_t	 sh4_read64 (Sh4 *ctx, uint32_t addr);
+void		 sh4_write8 (Sh4 *ctx, uint32_t addr, uint32_t val);
+void		 sh4_write16 (Sh4 *ctx, uint32_t addr, uint32_t val);
+void		 sh4_write64 (Sh4 *ctx, uint32_t addr, uint64_t val);
 
 #endif /* __HL_SH4_BLOCKS_H__ */

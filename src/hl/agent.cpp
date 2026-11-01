@@ -73,6 +73,7 @@ static const struct {
 	{ "Button2",	ACTION_BUTTON2 },
 	{ "Button3",	ACTION_BUTTON3 },
 	{ "Button4",	ACTION_BUTTON4 },
+	{ "Card",	ACTION_CARD },
 };
 
 static int

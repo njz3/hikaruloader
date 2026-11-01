@@ -169,7 +169,9 @@ In the environment:
   or the write directory's `<game>/`.
 - `HR_NO_DRAW=1` sends no mesh to the GPU; `HR_STATS=1` prints each frame's
   draws and triangles; `HR_SYNC=1` waits for each mesh and prints the slow
-  ones; `HR_LOG=1` logs the renderer's states.
+  ones; `HR_LOG=1` logs the renderer's states. `HR_GL_DEBUG=1` asks for a
+  debug OpenGL context, whose driver then logs its errors as they happen
+  ("GL: ..."): without it, Intel's says nothing (about 10% slower).
 - `HR_NO_AUDIO=1` opens no sound output; `HR_WAV=<path>` writes all the
   sound to a WAV file as well.
 - `MIE_HACK=1` overrides the "Fake the MIE" setting; `MIE_SPEED` and
@@ -179,9 +181,9 @@ In the environment:
   the srally2 set.
 
 The unit tests run with `ctest -C RelWithDebInfo` in `build` (the SH-4's
-MMU, the Z80, the ARM7, the AICA's arithmetic, the sound output, the EEPROM,
+MMU and its FPU's moves, the Z80, the ARM7, the AICA's arithmetic, the sound output, the EEPROM,
 the nvram file, the write directory, the games folders, the drive board,
-the translations).
+the card reader, the translations).
 `driveboardz80test` is not among them: it needs EPR-20512 (`epr-20512.bin`),
 a script and a journal of Supermodel's, and is run by hand.
 
@@ -224,10 +226,15 @@ channel n at 2n), checked in the game's JVS TEST screen.
 - `machine.devices.jvs:option ('log', 1)` logs every packet and its answer;
   `machine.devices.mie:option ('log_ports', 1)` the port accesses, the Z80's
   and the SH-4's; `machine.devices.mie:info ()` its PC and interrupts.
+- VON4's card reader (`src/hl/cardreader.cpp`), on the MIE's serial line
+  (ports 09-0D, which the game's program at the Z80's 9000 drives):
+  `machine.devices.card_reader:option ('log', 1)` logs its frames,
+  `('insert', 1)` and `('take', 1)` move the card; `:info ()` where the
+  card is. The agent's input `Card` is the F7 key.
 - The setting "Fake the MIE" (MIE_HACK) brings back Valkyrie's hack: no Z80,
   no JVS, Test and Service alone.
 - The Z80 runs at 16 MHz, as in MAME: 1600 / the SH-4 clock in MHz T-states
-  per 100 SH-4 cycles (28 at 57 MHz; `mie:option ('speed', n)`, or
+  per 100 SH-4 cycles (16 at 100 MHz; `mie:option ('speed', n)`, or
   `MIE_SPEED`). SGNASCAR's MIE program then waits some 4 seconds before the
   JVS, and the game waits for it, as on the real board.
 - The Z80's idle loops run at once: back at a loop's head as it was there,

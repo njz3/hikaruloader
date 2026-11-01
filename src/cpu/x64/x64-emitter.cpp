@@ -458,18 +458,122 @@ void
 Emitter::mem_index (bool w, uint8_t opcode, unsigned reg, Reg base, Reg index,
                     unsigned scale)
 {
+	mem_index_ex (false, w, false, opcode, reg, base, index, scale);
+}
+
+void
+Emitter::mem_index_ex (bool p66, bool w, bool esc, uint8_t opcode, unsigned reg,
+                       Reg base, Reg index, unsigned scale)
+{
 	static const uint8_t ss[9] = { 0, 0, 1, 0, 2, 0, 0, 0, 3 };
 
-	/* REX: W, R from reg, X from index, B from base */
+	/* 66 before REX: W, R from reg, X from index, B from base; a byte
+	 * register's REX always (sil, dil, not dh, bh) */
 	uint8_t r = 0x40 | (w ? 8 : 0) | ((reg & 8) ? 4 : 0) |
 	            ((index & 8) ? 2 : 0) | ((base & 8) ? 1 : 0);
-	if (r != 0x40)
+	if (p66)
+		byte (0x66);
+	if (r != 0x40 || (opcode == 0x88 && (reg & 7) >= 4))
 		byte (r);
+	if (esc)
+		byte (0x0F);
 	byte (opcode);
 	/* mod 10, rm 100: a SIB, then disp32 */
 	byte ((uint8_t) (0x84 | ((reg & 7) << 3)));
 	byte ((uint8_t) ((ss[scale] << 6) | ((index & 7) << 3) | (base & 7)));
 	u32 (0);
+}
+
+void
+Emitter::load8s_index (Reg dst, Reg base, Reg index, unsigned scale)
+{
+	/* 0F BE /r: movsx r32, r/m8 */
+	mem_index_ex (false, false, true, 0xBE, dst, base, index, scale);
+}
+
+void
+Emitter::load16s_index (Reg dst, Reg base, Reg index, unsigned scale)
+{
+	/* 0F BF /r: movsx r32, r/m16 */
+	mem_index_ex (false, false, true, 0xBF, dst, base, index, scale);
+}
+
+void
+Emitter::store8_index (Reg base, Reg index, unsigned scale, Reg src)
+{
+	/* 88 /r: mov r/m8, r8 */
+	mem_index_ex (false, false, false, 0x88, src, base, index, scale);
+}
+
+void
+Emitter::store16_index (Reg base, Reg index, unsigned scale, Reg src)
+{
+	/* 66 89 /r: mov r/m16, r16 */
+	mem_index_ex (true, false, false, 0x89, src, base, index, scale);
+}
+
+void
+Emitter::store64_index (Reg base, Reg index, unsigned scale, Reg src)
+{
+	/* REX.W 89 /r */
+	mem_index_ex (false, true, false, 0x89, src, base, index, scale);
+}
+
+void
+Emitter::load64 (Reg dst, Reg base, int32_t disp)
+{
+	/* REX.W 8B /r */
+	rex (true, dst, base);
+	byte (0x8B);
+	mem (dst, base, disp);
+}
+
+void
+Emitter::store64 (Reg base, int32_t disp, Reg src)
+{
+	/* REX.W 89 /r */
+	rex (true, src, base);
+	byte (0x89);
+	mem (src, base, disp);
+}
+
+void
+Emitter::ror64_imm (Reg r, uint8_t count)
+{
+	/* REX.W C1 /1 ib */
+	rex (true, 0, r);
+	byte (0xC1);
+	byte ((uint8_t) (0xC8 | (r & 7)));
+	byte (count);
+}
+
+void
+Emitter::movsx8_mem (Reg dst, Reg base, int32_t disp)
+{
+	/* 0F BE /r */
+	rex (false, dst, base);
+	byte (0x0F);
+	byte (0xBE);
+	mem (dst, base, disp);
+}
+
+void
+Emitter::movsx16_mem (Reg dst, Reg base, int32_t disp)
+{
+	/* 0F BF /r */
+	rex (false, dst, base);
+	byte (0x0F);
+	byte (0xBF);
+	mem (dst, base, disp);
+}
+
+void
+Emitter::neg32 (Reg r)
+{
+	/* F7 /3 */
+	rex (false, 0, r);
+	byte (0xF7);
+	byte ((uint8_t) (0xD8 | (r & 7)));
 }
 
 void

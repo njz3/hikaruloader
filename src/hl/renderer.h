@@ -23,35 +23,15 @@
 
 #include "hl/core.h"
 
+/* GL's error, logged (hl::gl::check_error): a bug stops the machine; the
+ * GPU out of memory does not, the frame goes on without what it lacked */
 #ifdef NDEBUG
 #define HL_ASSERT_NO_GL_ERROR()
 #else
 #define HL_ASSERT_NO_GL_ERROR() \
 	do { \
-		GLenum error = glGetError (); \
-		const char *msg = NULL; \
-		switch (error) { \
-		case GL_INVALID_ENUM: \
-			msg = "invalid enum"; \
-			break; \
-		case GL_INVALID_VALUE: \
-			msg = "invalid value"; \
-			break; \
-		case GL_INVALID_OPERATION: \
-			msg = "invalid operation"; \
-			break; \
-		case GL_INVALID_FRAMEBUFFER_OPERATION: \
-			msg = "invalid fb operation"; \
-			break; \
-		case GL_OUT_OF_MEMORY: \
-			msg = "out of memory"; \
-			break; \
-		default: \
-			break; \
-		} \
-		if (msg) \
-			HL_ERROR ("GL ERROR: %s", msg); \
-		HL_ASSERT (error == GL_NO_ERROR); \
+		GLenum error_ = hl::gl::check_error (__FILE__, __LINE__); \
+		HL_ASSERT (error_ == GL_NO_ERROR || error_ == GL_OUT_OF_MEMORY); \
 	} while (0)
 #endif
 
@@ -96,6 +76,9 @@ protected:
 /* OpenGL helpers of the machine renderers */
 namespace gl {
 void	clear_errors ();
+/* The error GL holds, logged with where it was found (out of memory the
+ * first times, then once in a while) */
+GLenum	check_error (const char *file, int line);
 GLuint	compile_program (const char *vs_src, const char *fs_src);
 void	destroy_program (GLuint program);
 void	print_uniforms (GLuint program);

@@ -28,6 +28,7 @@
 #include "hl/machine.h"
 #include "hl/jvs.h"
 #include "hl/eeprom.h"
+#include "hl/cardreader.h"
 #include "cpu/z80/z80.h"
 
 namespace hikaru {
@@ -67,6 +68,12 @@ public:
 	/* The Z80's 7800-7FFF and 8000-FFFF */
 	hl::Buffer *ram_lo, *ram;
 	hl::JvsBus *jvs;
+	/* On the serial line of ports 09-0D (VON4's), or NULL */
+	hl::CardReader *card_reader;
+	/* That line's last operation: its byte, its answer, 0D */
+	struct {
+		uint8_t data, answer[2], status;
+	} serial;
 	Z80 *z80;
 	/* On GPIO F and G; kept with the backup RAM in nvram/<game>.nvram
 	 * (Hikaru::save_nvram) */
@@ -123,6 +130,7 @@ private:
 	/* The ports, for the Z80 and the SH-4 */
 	uint8_t port_read (uint8_t port);
 	void port_write (uint8_t port, uint8_t val);
+	void serial_write (uint8_t op);
 	uint8_t gpio_read (unsigned port);
 	void gpio_write (unsigned port, uint8_t val);
 	void gpio_set_dir (uint8_t dir);

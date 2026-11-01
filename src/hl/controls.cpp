@@ -55,6 +55,7 @@ static const char *default_file =
 	"P1_Button2 = KEY_LeftAlt, GC0_BUTTON_B\n"
 	"P1_Button3 = KEY_LeftShift, GC0_BUTTON_X\n"
 	"P1_Button4 = KEY_Z, GC0_BUTTON_Y\n"
+	"P1_Card1Insert = KEY_F7\n"
 	"\n"
 	"[Driving]\n"
 	"P1_Steer = GC0_AXIS_LEFTX, JOY0_AXIS_0\n"
@@ -124,6 +125,8 @@ static const struct {
 	{ "Digital", "P1_Button2", "Button 2" },
 	{ "Digital", "P1_Button3", "Button 3" },
 	{ "Digital", "P1_Button4", "Button 4" },
+	{ "Digital", "P1_Card1Insert",
+	  "The card, at the card reader's slot (Virtual-On 4), or taken back" },
 	{ "Driving", NULL,
 	  "The wheel and the pedals: the I/O board's analog channels 0, 1 and 2" },
 	{ "Driving", "P1_Steer", "The steering wheel: an axis, to the left negative" },

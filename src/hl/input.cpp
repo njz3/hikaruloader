@@ -57,6 +57,8 @@ static const struct {
 	{ "BUTTON2",	"Digital",	"P1_Button2",	{ SDLK_LALT,	SDL_CONTROLLER_BUTTON_B } },
 	{ "BUTTON3",	"Digital",	"P1_Button3",	{ SDLK_LSHIFT,	SDL_CONTROLLER_BUTTON_X } },
 	{ "BUTTON4",	"Digital",	"P1_Button4",	{ SDLK_z,	SDL_CONTROLLER_BUTTON_Y } },
+	/* linuxloader's name and key */
+	{ "CARD",	"Digital",	"P1_Card1Insert", { SDLK_F7,	-1 } },
 	{ "PAUSE",	"Emulator",	"Pause",	{ SDLK_SPACE,	-1 } },
 	{ "SAVE_STATE",	"Emulator",	"SaveState",	{ SDLK_F4,	-1 } },
 	{ "LOAD_STATE",	"Emulator",	"LoadState",	{ SDLK_F1,	-1 } },

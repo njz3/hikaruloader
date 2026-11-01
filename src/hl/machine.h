@@ -119,11 +119,21 @@ private:
 
 } /* namespace hl */
 
+/* The machine's state at the head of the line: made only when the log is
+ * (Hikaru's, two strdup and a sprintf, at each access of a region the
+ * memory map logs otherwise: the GPU's, the MIE's) */
+#ifdef NDEBUG
+#define HL_MACH_LOG(mach_, fmt_, ...) \
+	do { } while (0);
+#else
 #define HL_MACH_LOG(mach_, fmt_, ...) \
 	do { \
-		const char *str = (mach_)->debug_string (); \
-		HL_LOG ("%s : " fmt_, str, ##__VA_ARGS__); \
+		if (hl_verbosity > 0) { \
+			const char *str = (mach_)->debug_string (); \
+			HL_LOG ("%s : " fmt_, str, ##__VA_ARGS__); \
+		} \
 	} while (0);
+#endif
 
 #define HL_MACH_ERROR(mach_, fmt_, ...) \
 	do { \

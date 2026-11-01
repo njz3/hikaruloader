@@ -476,7 +476,8 @@ void drawEmulationTab(bool inGame)
     ImGui::PushTextWrapPos(0.0f);
     ImGui::TextDisabled("%s", tr("The SH-4s' clock: 200 MHz is the board's. Their timers, the MIE and the sound keep real time at any "
                                  "clock; the faster, the more of the PC the waits the games poll take (at 200 MHz, the games' boots "
-                                 "run below 60 frames a second on this PC). 57 MHz by default."));
+                                 "run below 60 frames a second on this PC). 100 MHz by default; below, Air Trix's "
+                                 "skater loses his body."));
     ImGui::PopTextWrapPos();
 }
 

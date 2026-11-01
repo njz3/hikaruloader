@@ -91,6 +91,21 @@ public:
 	unsigned layout () const { return layout_version; }
 	static const unsigned TABLE_PAGE_BITS = 12;
 
+	/* Where addr lies in the host when get () or put () would go straight
+	 * there (fastmem, then the page table), an access not crossing a 4 KB
+	 * page; NULL otherwise. For the CPUs' fast paths */
+	uint8_t	*direct (uint32_t addr, bool write) const
+	{
+		if (fast (write ? fast_write : fast_read, addr))
+			return fast_base + addr;
+		if (use_pages && addr < (NUM_PAGES << PAGE_BITS)) {
+			uint8_t *page = (write ? write_pages : read_pages)[addr >> PAGE_BITS];
+			if (page)
+				return page + (addr & ((1u << PAGE_BITS) - 1));
+		}
+		return NULL;
+	}
+
 	/* A RAM or ROM that holds addr, readable in place (little endian):
 	 * the CPUs fetch their code from it without a lookup each time */
 	struct Window {

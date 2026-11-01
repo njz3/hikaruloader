@@ -131,8 +131,9 @@ Config::set_defaults ()
 	cfg->dynarec = true;
 	cfg->memory_access = MEMORY_PAGE_TABLE;
 	/* Below the board's 200 MHz: the waits the games poll cost the host
-	 * its time (see hikaru.cpp) */
-	cfg->sh4_clock = 57;
+	 * its time (see hikaru.cpp). 100 at least for AIRTRIX, whose slave
+	 * poses the skater before the GPU draws him (57 before November 2026) */
+	cfg->sh4_clock = 100;
 	/* The country the board's EEPROM holds */
 	cfg->region = -1;
 	/* The speakers the sound card has, all at their full level */
@@ -582,7 +583,8 @@ Config::save () const
 	         "\n# The SH-4s' clock in MHz, 20 to 200 (the board's). Their timers, the\n"
 	         "# MIE and the sound keep real time whatever it is; the faster, the more of\n"
 	         "# the PC the waits the games poll take (at 200, their boots run below 60\n"
-	         "# frames a second). From the game's start. Default: %u\n", def.sh4_clock);
+	         "# frames a second). Air Trix needs 100 at least: below, its skater's\n"
+	         "# body is missing. From the game's start. Default: %u\n", def.sh4_clock);
 	fprintf (fp, "SH4_CLOCK = %u\n", cfg->sh4_clock);
 	fprintf (fp,
 	         "\n# The board's country, which the games read for their language and\n"

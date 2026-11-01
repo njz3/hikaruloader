@@ -120,7 +120,8 @@ typedef struct {
 	 * alpha_thresh (C81, 154) are dropped, the others opaque */
 	bool			has_alpha_test;
 	float			alpha_thresh[2];
-	float			depth_bias;
+	/* 101: the depth bias, its mode and amount (upload_depth) */
+	uint16_t		depth_bias;
 	bool			has_two_sided_lighting;
 	uint32_t		num;
 	/* The middle of its vertices, in the model: for the back to front
@@ -227,6 +228,8 @@ public:
 		 * upload a frame, not one buffer a mesh */
 		std::vector<hikaru_vertex_body_t> verts;
 		GLuint			vbo;
+		/* Its storage's size: the largest frame's yet */
+		size_t			vbo_size;
 
 		struct {
 			GLuint		u_projection;
@@ -246,6 +249,7 @@ public:
 			GLuint		u_fog;
 			GLuint		u_fog_color;
 			GLuint		u_alpha_range;
+			GLuint		u_depth;
 		} locs;
 	} meshes;
 
@@ -279,8 +283,10 @@ public:
 			GLuint u_texture, u_texel, u_down;
 		} fxaa, bright, blur;
 		GLuint vao, vbo;
-		/* The layers' textures, kept from frame to frame */
+		/* The layers' textures, kept from frame to frame, and the
+		 * format of their storage (0 none yet) */
 		GLuint layers[2];
+		unsigned layer_formats[2];
 		/* The GPU's command lists begun when the scene was last drawn:
 		 * a frame without one keeps that picture */
 		uint32_t lists_drawn;

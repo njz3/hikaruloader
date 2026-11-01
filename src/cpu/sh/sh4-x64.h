@@ -31,8 +31,8 @@ namespace hl { class Mmap; }
  * in its order: the program counter set before each handler, the slice's
  * cycles counted, a branch taken or an interrupt to take ending it early.
  * The frequent instructions are written out in x86-64 (the ALU, the
- * branches, the 32-bit loads and stores); the others are direct calls to
- * their interpreter's handlers.
+ * branches, the loads and stores of every size, the FPU's moves); the
+ * others are direct calls to their interpreter's handlers.
  *
  * The function returns how many of the block's instructions it ran; the
  * program counter is then the next one's, the cycles counted down. It runs
@@ -45,8 +45,9 @@ namespace hl { class Mmap; }
  *	Sh4X64Calls	the interpreter's path, a call: any memory map
  *	Sh4X64Pages	the page table, read by the code: RAM and ROM at once
  *	Sh4X64Fastmem	fastmem: a bit of a map tested, then base + address
- * All three go the interpreter's way (sh4_read32, sh4_write32) for what is
- * not RAM or ROM: the devices, the on-chip registers, the store queues.
+ * All three go the interpreter's way (sh4_read32, sh4_write32 and the other
+ * sizes') for what is not RAM or ROM: the devices, the on-chip registers,
+ * the store queues.
  * The same machine whichever. Sh4X64::create () picks the one for a memory
  * map; a new one is made when its tables change (Mmap::layout ()).
  *
@@ -59,6 +60,8 @@ typedef int (* Sh4Native) (Sh4 *ctx, uint32_t pc);
 /* Where the translation finds the SH-4's state, from ctx (rbx) */
 struct Sh4Offsets {
 	int32_t pc, sr, gbr, remaining, pending, stores, far_stores, r[16];
+	/* The FPU's: the banks' first words (FR's, XF's), FPSCR, FPUL */
+	int32_t fr, xf, fpscr, fpul;
 
 	explicit Sh4Offsets (Sh4 *ctx);
 };
@@ -87,17 +90,22 @@ public:
 protected:
 	Sh4X64 (Kind kind, const hl::Mmap *mmap);
 
-	/* A 32-bit load: the address in ecx, the value to eax. A store: the
-	 * address in ecx, the value in r10d. rax, rcx, rdx, r8, r9 and r11
-	 * may go. at is the instruction's place from the block's start, for
-	 * the program counter the slow path sets */
-	virtual void	 load32 (x64::Emitter &e, const Sh4Offsets &o, int32_t at) = 0;
-	virtual void	 store32 (x64::Emitter &e, const Sh4Offsets &o, int32_t at) = 0;
+	/* A load of size bytes (1, 2, 4, 8): the address in ecx, the value to
+	 * eax (8 and 16 bits sign extended) or rax. A store: the address in
+	 * ecx, the value in r10. rax, rcx, rdx, r8, r9 and r11 may go. at is
+	 * the instruction's place from the block's start, for the program
+	 * counter the slow path sets */
+	virtual void	 load (x64::Emitter &e, const Sh4Offsets &o, int32_t at,
+			       unsigned size) = 0;
+	virtual void	 store (x64::Emitter &e, const Sh4Offsets &o, int32_t at,
+			        unsigned size) = 0;
 
 	/* The slow paths, the interpreter's: they set the program counter
 	 * first (the logs, an abort) */
-	void		 call_read32 (x64::Emitter &e, const Sh4Offsets &o, int32_t at);
-	void		 call_write32 (x64::Emitter &e, const Sh4Offsets &o, int32_t at);
+	void		 call_read (x64::Emitter &e, const Sh4Offsets &o, int32_t at,
+			            unsigned size);
+	void		 call_write (x64::Emitter &e, const Sh4Offsets &o, int32_t at,
+			             unsigned size);
 	/* A store's address (ecx) away from the stack, counted */
 	void		 count_far (x64::Emitter &e, const Sh4Offsets &o);
 
@@ -119,6 +127,8 @@ private:
 	Sh4Native	 translate (Sh4 *ctx, Sh4Block *block);
 	bool		 memory_op (x64::Emitter &e, const Sh4Offsets &o, uint16_t inst,
 			            int32_t at, uint32_t pc);
+	bool		 fpu_move_op (x64::Emitter &e, const Sh4Offsets &o, uint16_t inst,
+			              int32_t at);
 	void		 register_unwind (uint8_t *fn, size_t size);
 };
 
@@ -127,8 +137,10 @@ class Sh4X64Calls : public Sh4X64 {
 public:
 	explicit Sh4X64Calls (const hl::Mmap *mmap) : Sh4X64 (CALLS, mmap) {}
 protected:
-	void		 load32 (x64::Emitter &e, const Sh4Offsets &o, int32_t at) override;
-	void		 store32 (x64::Emitter &e, const Sh4Offsets &o, int32_t at) override;
+	void		 load (x64::Emitter &e, const Sh4Offsets &o, int32_t at,
+			       unsigned size) override;
+	void		 store (x64::Emitter &e, const Sh4Offsets &o, int32_t at,
+			        unsigned size) override;
 };
 
 /* Through the page table, read by the code */
@@ -136,11 +148,14 @@ class Sh4X64Pages : public Sh4X64 {
 public:
 	explicit Sh4X64Pages (const hl::Mmap *mmap);
 protected:
-	void		 load32 (x64::Emitter &e, const Sh4Offsets &o, int32_t at) override;
-	void		 store32 (x64::Emitter &e, const Sh4Offsets &o, int32_t at) override;
+	void		 load (x64::Emitter &e, const Sh4Offsets &o, int32_t at,
+			       unsigned size) override;
+	void		 store (x64::Emitter &e, const Sh4Offsets &o, int32_t at,
+			        unsigned size) override;
 private:
 	uint8_t * const	*read_table, * const *write_table;
-	void		 lookup (x64::Emitter &e, uint8_t * const *table, x64::Label &slow);
+	void		 lookup (x64::Emitter &e, uint8_t * const *table, x64::Label &slow,
+			         unsigned size);
 };
 
 /* Through fastmem: base + address, where the bit map says */
@@ -148,12 +163,15 @@ class Sh4X64Fastmem : public Sh4X64 {
 public:
 	explicit Sh4X64Fastmem (const hl::Mmap *mmap);
 protected:
-	void		 load32 (x64::Emitter &e, const Sh4Offsets &o, int32_t at) override;
-	void		 store32 (x64::Emitter &e, const Sh4Offsets &o, int32_t at) override;
+	void		 load (x64::Emitter &e, const Sh4Offsets &o, int32_t at,
+			       unsigned size) override;
+	void		 store (x64::Emitter &e, const Sh4Offsets &o, int32_t at,
+			        unsigned size) override;
 private:
 	uint8_t		*base;
 	const uint8_t	*readable, *writable;
-	void		 check (x64::Emitter &e, const uint8_t *bits, x64::Label &slow);
+	void		 check (x64::Emitter &e, const uint8_t *bits, x64::Label &slow,
+			        unsigned size);
 };
 
 #endif /* __HL_SH4_X64_H__ */

@@ -82,10 +82,17 @@
 #define FPSCR	ctx->regs.fpscr
 #define FPUL	ctx->regs.fpul
 
-#define FR(n_)	ctx->regs.f.f[n_]
+/* DRn is FRn (its high half: sign, exponent) and FRn+1 (its low half), the
+ * host's double the pair in the other order: the singles at n ^ 1 (and the
+ * 64-bit moves swap their words, MOVE64). A double built of two fmov.s, as
+ * the compilers' unsigned division does (PHARRIER's at 0C10E748, 2^31 loaded
+ * in DR4), is then the board's: before, it came out a denormal, the
+ * quotients 0 or 1, and PHARRIER's sound data took 15 s to unpack, a
+ * kilobyte a frame */
+#define FR(n_)	ctx->regs.f.f[(n_) ^ 1]
 #define DR(n_)	ctx->regs.f.d[(n_)/2]
 
-#define XF(n_)	ctx->regs.x.f[n_]
+#define XF(n_)	ctx->regs.x.f[(n_) ^ 1]
 #define XD(n_)	ctx->regs.x.d[(n_)/2]
 
 #define FRN	FR(_RN)
@@ -708,6 +715,21 @@ sh4_ireg_get (Sh4 *ctx, unsigned size, uint32_t addr, void *val)
 	case SCIF_SCSPTR2:
 	case SCIF_SCLSR2:
 		break;
+	/* The SCI, likewise: TDRE and TEND set, nothing received (gfootbal
+	 * waits for TDRE) */
+	case SCI_SCSSR1:
+		set_ptr (val, size, (IREG_GET (1, addr) & 0x03) | 0x84);
+		break;
+	case SCI_SCRDR1:
+		set_ptr (val, size, 0);
+		break;
+	case SCI_SCSMR1:
+	case SCI_SCBRR1:
+	case SCI_SCSCR1:
+	case SCI_SCTDR1:
+	case SCI_SCSCMR1:
+	case SCI_SCSPTR1:
+		break;
 	default:
 		/* DMAC */
 		if (IN_RANGE (addr & 0xFFFFFF, DMAC_SAR0, DMAC_DMAOR)) {
@@ -761,7 +783,8 @@ sh4_ireg_put (Sh4 *ctx, unsigned size, uint32_t addr, uint64_t val)
 		sh4_mmucr_put (ctx, (uint32_t) val);
 		return 0;
 	/* The SCIF: what is sent goes to the log, a line at a time (ATV
-	 * Track's) */
+	 * Track's); the SCI's too */
+	case SCI_SCTDR1:
 	case SCIF_SCFTDR2:
 		if (val == '\n' || ctx->scif_line.size () >= 200) {
 			HL_PRINT ("%s: SCIF: %s", ctx->name ? ctx->name : "sh4", ctx->scif_line.c_str ());
@@ -776,6 +799,12 @@ sh4_ireg_put (Sh4 *ctx, unsigned size, uint32_t addr, uint64_t val)
 	case SCIF_SCFCR2:
 	case SCIF_SCSPTR2:
 	case SCIF_SCLSR2:
+	case SCI_SCSMR1:
+	case SCI_SCBRR1:
+	case SCI_SCSCR1:
+	case SCI_SCSSR1:
+	case SCI_SCSCMR1:
+	case SCI_SCSPTR1:
 	case CCN_INTEVT:
 		break;
 	case CCN_PTEH:
@@ -806,9 +835,15 @@ sh4_ireg_put (Sh4 *ctx, unsigned size, uint32_t addr, uint64_t val)
 		{
 			uint16_t old = IREG_GET (2, addr);
 			HL_ASSERT (size == 2);
-			HL_ASSERT (!(val & ~0xC380));
+			/* The reserved bits are not kept (gfootbal sets some) */
+			if (val & ~0xC380) {
+				static bool told = false;
+				if (!told)
+					HL_CPU_ERROR (ctx, "ICR = %04X: reserved bits", (unsigned) val);
+				told = true;
+			}
 			/* ICR.NMIL is read only */
-			IREG_PUT (2, addr, (old & 0x8000) | (val & 0x7FFF));
+			IREG_PUT (2, addr, (old & 0x8000) | (val & 0x4380));
 			sh4_update_irqs (ctx);
 		}
 		return 0;
@@ -1469,101 +1504,65 @@ sh4_oc_ram (Sh4 *ctx, uint32_t addr, unsigned size)
 #define DATA_ADDR(addr_, write_) \
 	(ctx->mmu.on ? sh4_translate_data (ctx, addr_, write_) : (addr_))
 
-static inline uint8_t
-R8 (Sh4 *ctx, uint32_t addr)
+/* An access the memory map would take straight to a RAM or ROM, as the
+ * translations' (sh4-x64.cpp): the MMU off, below P3, aligned, not the
+ * operand cache's RAM; where it lies, NULL for the others */
+static inline uint8_t *
+sh4_direct (Sh4 *ctx, uint32_t addr, unsigned size, bool write)
 {
-	uint8_t tmp;
-	uint8_t *oc = sh4_oc_ram (ctx, addr, 1);
-	if (oc) {
-		memcpy (&tmp, oc, 1);
+	if (ctx->mmu.on || addr >= 0xC0000000 || (addr & (size - 1)) ||
+	    (addr >> 26) == (0x7C000000 >> 26))
+		return NULL;
+	return ((hl::Cpu *) ctx)->mmap->direct (addr & ADDR_MASK, write);
+}
+
+template <typename Word> static inline Word
+sh4_read (Sh4 *ctx, uint32_t addr)
+{
+	Word tmp;
+	uint8_t *p = sh4_direct (ctx, addr, sizeof (Word), false);
+
+	if (!p)
+		p = sh4_oc_ram (ctx, addr, sizeof (Word));
+	if (p) {
+		memcpy (&tmp, p, sizeof (Word));
 		return tmp;
 	}
-	sh4_get (ctx, 1, DATA_ADDR (addr, false), &tmp);
+	sh4_get (ctx, sizeof (Word), DATA_ADDR (addr, false), &tmp);
 	return tmp;
 }
 
-static inline uint16_t
-R16 (Sh4 *ctx, uint32_t addr)
+/* A store straight to RAM is counted as sh4_put () counts it; none while a
+ * write hook watches (sh4_put () calls it) */
+template <typename Word> static inline void
+sh4_write (Sh4 *ctx, uint32_t addr, Word val)
 {
-	uint16_t tmp;
-	uint8_t *oc = sh4_oc_ram (ctx, addr, 2);
-	if (oc) {
-		memcpy (&tmp, oc, 2);
-		return tmp;
-	}
-	sh4_get (ctx, 2, DATA_ADDR (addr, false), &tmp);
-	return tmp;
-}
+	uint8_t *p = ctx->watchpoints.empty () ? sh4_direct (ctx, addr, sizeof (Word), true) : NULL;
 
-static inline uint32_t
-R32 (Sh4 *ctx, uint32_t addr)
-{
-	uint32_t tmp;
-	uint8_t *oc = sh4_oc_ram (ctx, addr, 4);
-	if (oc) {
-		memcpy (&tmp, oc, 4);
-		return tmp;
-	}
-	sh4_get (ctx, 4, DATA_ADDR (addr, false), &tmp);
-	return tmp;
-}
-
-static inline uint64_t
-R64 (Sh4 *ctx, uint32_t addr)
-{
-	uint64_t tmp;
-	uint8_t *oc = sh4_oc_ram (ctx, addr, 8);
-	if (oc) {
-		memcpy (&tmp, oc, 8);
-		return tmp;
-	}
-	sh4_get (ctx, 8, DATA_ADDR (addr, false), &tmp);
-	return tmp;
-}
-
-static inline void
-W8 (Sh4 *ctx, uint32_t addr, uint8_t val)
-{
-	uint8_t *oc = sh4_oc_ram (ctx, addr, 1);
-	if (oc) {
-		memcpy (oc, &val, 1);
+	if (p) {
+		memcpy (p, &val, sizeof (Word));
+		ctx->stores++;
+		if (addr - ctx->regs.r[15] + 0x200 >= 0x400)
+			ctx->far_stores++;
 		return;
 	}
-	sh4_put (ctx, 1, DATA_ADDR (addr, true), val);
-}
-
-static inline void
-W16 (Sh4 *ctx, uint32_t addr, uint16_t val)
-{
-	uint8_t *oc = sh4_oc_ram (ctx, addr, 2);
-	if (oc) {
-		memcpy (oc, &val, 2);
+	p = sh4_oc_ram (ctx, addr, sizeof (Word));
+	if (p) {
+		memcpy (p, &val, sizeof (Word));
 		return;
 	}
-	sh4_put (ctx, 2, DATA_ADDR (addr, true), val);
+	sh4_put (ctx, sizeof (Word), DATA_ADDR (addr, true), val);
 }
 
-static inline void
-W32 (Sh4 *ctx, uint32_t addr, uint32_t val)
-{
-	uint8_t *oc = sh4_oc_ram (ctx, addr, 4);
-	if (oc) {
-		memcpy (oc, &val, 4);
-		return;
-	}
-	sh4_put (ctx, 4, DATA_ADDR (addr, true), val);
-}
+static inline uint8_t R8 (Sh4 *ctx, uint32_t addr) { return sh4_read<uint8_t> (ctx, addr); }
+static inline uint16_t R16 (Sh4 *ctx, uint32_t addr) { return sh4_read<uint16_t> (ctx, addr); }
+static inline uint32_t R32 (Sh4 *ctx, uint32_t addr) { return sh4_read<uint32_t> (ctx, addr); }
+static inline uint64_t R64 (Sh4 *ctx, uint32_t addr) { return sh4_read<uint64_t> (ctx, addr); }
 
-static inline void
-W64 (Sh4 *ctx, uint32_t addr, uint64_t val)
-{
-	uint8_t *oc = sh4_oc_ram (ctx, addr, 8);
-	if (oc) {
-		memcpy (oc, &val, 8);
-		return;
-	}
-	sh4_put (ctx, 8, DATA_ADDR (addr, true), val);
-}
+static inline void W8 (Sh4 *ctx, uint32_t addr, uint8_t val) { sh4_write<uint8_t> (ctx, addr, val); }
+static inline void W16 (Sh4 *ctx, uint32_t addr, uint16_t val) { sh4_write<uint16_t> (ctx, addr, val); }
+static inline void W32 (Sh4 *ctx, uint32_t addr, uint32_t val) { sh4_write<uint32_t> (ctx, addr, val); }
+static inline void W64 (Sh4 *ctx, uint32_t addr, uint64_t val) { sh4_write<uint64_t> (ctx, addr, val); }
 
 /* Interrupt Controller */
 
@@ -1858,6 +1857,42 @@ sh4_write32 (Sh4 *ctx, uint32_t addr, uint32_t val)
 	W32 (ctx, addr, val);
 }
 
+uint32_t
+sh4_read8s (Sh4 *ctx, uint32_t addr)
+{
+	return (uint32_t) (int32_t) (int8_t) R8 (ctx, addr);
+}
+
+uint32_t
+sh4_read16s (Sh4 *ctx, uint32_t addr)
+{
+	return (uint32_t) (int32_t) (int16_t) R16 (ctx, addr);
+}
+
+uint64_t
+sh4_read64 (Sh4 *ctx, uint32_t addr)
+{
+	return R64 (ctx, addr);
+}
+
+void
+sh4_write8 (Sh4 *ctx, uint32_t addr, uint32_t val)
+{
+	W8 (ctx, addr, (uint8_t) val);
+}
+
+void
+sh4_write16 (Sh4 *ctx, uint32_t addr, uint32_t val)
+{
+	W16 (ctx, addr, (uint16_t) val);
+}
+
+void
+sh4_write64 (Sh4 *ctx, uint32_t addr, uint64_t val)
+{
+	W64 (ctx, addr, val);
+}
+
 /* Execution */
 
 static void
@@ -2059,6 +2094,14 @@ sh4_run_blocks (Sh4 *ctx, bool skip_idle)
 	hl::Cpu *cpu = ctx;
 	bool irqs_done = false;
 
+	/* The backend for the memory map's way (sh4-x64.h): a new one when it
+	 * changed, at a frame's start */
+	if (ctx->use_jit && (!ctx->jit || !ctx->jit->fits (cpu->mmap))) {
+		ctx->jit.reset (Sh4X64::create (cpu->mmap));
+		if (!ctx->jit)
+			ctx->use_jit = false;
+	}
+
 	/* The MMU on: the interpreter alone (see "MMU") */
 	while (cpu->remaining > 0 && cpu->state == hl::CPU_STATE_RUN && !ctx->mmu.on) {
 		Sh4Block *block;
@@ -2076,13 +2119,6 @@ sh4_run_blocks (Sh4 *ctx, bool skip_idle)
 		if (block && ctx->use_jit && cpu->remaining > (int) block->ops.size ()) {
 			Sh4Native native;
 
-			/* The backend for the memory map's way (sh4-x64.h): a
-			 * new one when it changed, at a frame's start */
-			if (!ctx->jit || !ctx->jit->fits (cpu->mmap)) {
-				ctx->jit.reset (Sh4X64::create (cpu->mmap));
-				if (!ctx->jit)
-					ctx->use_jit = false;
-			}
 			native = ctx->jit ? ctx->jit->get (ctx, block) : NULL;
 			if (native) {
 				uint32_t pc0 = PC;
@@ -2094,9 +2130,10 @@ sh4_run_blocks (Sh4 *ctx, bool skip_idle)
 					int slot = before - cpu->remaining - n;
 					uint32_t last = pc0 + 2 * (n - 1);
 
-					for (i = 0; i < (size_t) n; i++)
-						ctx->idle.step (pc0 + 2 * (uint32_t) i,
-						                (int) i == n - 1 ? 1 + slot : 1);
+					if (ctx->idle.noting ())
+						for (i = 0; i < (size_t) n; i++)
+							ctx->idle.step (pc0 + 2 * (uint32_t) i,
+							                (int) i == n - 1 ? 1 + slot : 1);
 					if (PC <= last && last - PC < Sh4::IdleLoop::MAX_SPAN)
 						ctx->idle.back_edge (ctx, last, PC);
 				}

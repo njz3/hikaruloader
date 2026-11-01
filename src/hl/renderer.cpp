@@ -18,6 +18,8 @@
  * along with Hikaruloader.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <atomic>
+
 #include "hl/profile.h"
 #include "hl/renderer.h"
 #include "hl/window.h"
@@ -55,6 +57,44 @@ void
 gl::clear_errors ()
 {
 	while (glGetError () != GL_NO_ERROR);
+}
+
+GLenum
+gl::check_error (const char *file, int line)
+{
+	/* Both drawing contexts' */
+	static std::atomic<unsigned> out_of_memory;
+	GLenum error = glGetError ();
+	const char *msg = NULL;
+	unsigned n;
+
+	switch (error) {
+	case GL_NO_ERROR:
+		return error;
+	case GL_INVALID_ENUM:
+		msg = "invalid enum";
+		break;
+	case GL_INVALID_VALUE:
+		msg = "invalid value";
+		break;
+	case GL_INVALID_OPERATION:
+		msg = "invalid operation";
+		break;
+	case GL_INVALID_FRAMEBUFFER_OPERATION:
+		msg = "invalid fb operation";
+		break;
+	case GL_OUT_OF_MEMORY:
+		n = ++out_of_memory;
+		if (n <= 10 || !(n % 1000))
+			HL_ERROR ("GL ERROR: out of memory (%s:%d; %u times): the frame goes on without",
+			          file, line, n);
+		return error;
+	default:
+		msg = "unknown";
+		break;
+	}
+	HL_ERROR ("GL ERROR: %s (%s:%d)", msg, file, line);
+	return error;
 }
 
 static GLuint

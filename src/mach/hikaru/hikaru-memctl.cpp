@@ -441,6 +441,224 @@ rombd_get (Hikaru *hikaru, unsigned size, uint32_t bus_addr, void *val)
 	return 0;
 }
 
+/*
+ * The ROM board's protection
+ * ==========================
+ *
+ * SGNASCAR checks its ROM board as each scene starts (@0C012E98): unless a
+ * block it reads from the device at bus 0A000000 is the one it expects
+ * (@0C1ADEF0, a text), it raises its motion blur's factor (181) by 20, up to
+ * FC, and the picture smears. The device, its registers on bus addresses
+ * 0A000000 + (offs & 1FF):
+ *
+ *   00  Control: bit 31 written starts the stream at the MASKROM's byte
+ *       (val & 0FFFFFFF), in the bus's order
+ *   04  Status: 00 read back, bit 31 the stream ready
+ *   08  4252, the chip's
+ *   0C  What was written (the game checks 12345678; the BIOS finds 19620217
+ *       there on a stretched MASKROM's board, see below)
+ *   10  The stream: 4 bytes a read, the first in bits 0-7
+ *
+ * The stream, the scheme of Sega's NAOMI "M1" cartridges (MAME's
+ * naomi_m1_board): the MASKROM's bytes a b c d, by 4, give d^b, a^c, b, a,
+ * each XORed with the key's byte (the key little endian). Its first 111
+ * bytes are a dictionary; then a bit stream, its high bits first, of
+ * symbols in a prefix code (00 + 2 bits: 0-3; 010 + 2 bits: 4-7; 011 + 3
+ * bits: 8-15; 10 + 5 bits: 16-47; 11 + 6 bits: 48-111), each a byte: 0 the
+ * next 8 bits, 111 FF, the others the dictionary's. When the dictionary's
+ * first byte has bit 6, each word of 4 bytes is a difference: with the
+ * last word's two high bytes h0 h1, b0 = h0 - b0, b1 = h1 - b1; then
+ * b2 = b0 - b2, b3 = b1 - b3, and b2 b3 for the next word.
+ */
+
+static uint8_t
+prot_byte (Hikaru *hikaru)
+{
+	hikaru_rombd_prot_t *prot = &hikaru->rombd_prot;
+	uint32_t i = prot->state.pos++;
+	uint32_t at = prot->state.start + (i & ~3u);
+	uint8_t a, b, c, d, x;
+
+	if (!hikaru->maskrom || at + 3 >= hikaru->maskrom->size ())
+		return 0;
+	a = (uint8_t) hikaru->maskrom->get (1, at);
+	b = (uint8_t) hikaru->maskrom->get (1, at + 1);
+	c = (uint8_t) hikaru->maskrom->get (1, at + 2);
+	d = (uint8_t) hikaru->maskrom->get (1, at + 3);
+	switch (i & 3) {
+	case 0:  x = d ^ b; break;
+	case 1:  x = a ^ c; break;
+	case 2:  x = b; break;
+	default: x = a; break;
+	}
+	return x ^ (uint8_t) (prot->key >> (8 * (i & 3)));
+}
+
+static unsigned
+prot_bits (Hikaru *hikaru, unsigned n)
+{
+	hikaru_rombd_prot_t *prot = &hikaru->rombd_prot;
+
+	while (prot->state.nbits < (int32_t) n) {
+		prot->state.bits = (prot->state.bits << 8) | prot_byte (hikaru);
+		prot->state.nbits += 8;
+	}
+	prot->state.nbits -= n;
+	return (prot->state.bits >> prot->state.nbits) & ((1u << n) - 1);
+}
+
+static uint8_t
+prot_out_byte (Hikaru *hikaru)
+{
+	unsigned sym;
+
+	if (!prot_bits (hikaru, 1)) {
+		if (!prot_bits (hikaru, 1))
+			sym = prot_bits (hikaru, 2);
+		else if (prot_bits (hikaru, 1))
+			sym = 8 + prot_bits (hikaru, 3);
+		else
+			sym = 4 + prot_bits (hikaru, 2);
+	} else if (prot_bits (hikaru, 1))
+		sym = 0x30 + prot_bits (hikaru, 6);
+	else
+		sym = 0x10 + prot_bits (hikaru, 5);
+
+	if (sym == 0x6F)
+		return 0xFF;
+	if (sym == 0)
+		return (uint8_t) prot_bits (hikaru, 8);
+	return hikaru->rombd_prot.state.dict[sym];
+}
+
+static uint32_t
+prot_word (Hikaru *hikaru)
+{
+	hikaru_rombd_prot_t *prot = &hikaru->rombd_prot;
+	uint8_t b[4];
+	unsigned i;
+
+	for (i = 0; i < 4; i++)
+		b[i] = prot_out_byte (hikaru);
+	if (prot->state.dict[0] & 0x40) {
+		if (prot->state.has_hist) {
+			b[0] = (uint8_t) (prot->state.hist[0] - b[0]);
+			b[1] = (uint8_t) (prot->state.hist[1] - b[1]);
+		}
+		b[2] = (uint8_t) (b[0] - b[2]);
+		b[3] = (uint8_t) (b[1] - b[3]);
+		prot->state.hist[0] = b[2];
+		prot->state.hist[1] = b[3];
+		prot->state.has_hist = 1;
+	}
+	return b[0] | (b[1] << 8) | (b[2] << 16) | ((uint32_t) b[3] << 24);
+}
+
+static void
+prot_start (Hikaru *hikaru, uint32_t start)
+{
+	hikaru_rombd_prot_t *prot = &hikaru->rombd_prot;
+	unsigned i;
+
+	prot->state.start = start;
+	prot->state.pos = 0;
+	prot->state.bits = 0;
+	prot->state.nbits = 0;
+	prot->state.has_hist = 0;
+	for (i = 0; i < sizeof (prot->state.dict); i++)
+		prot->state.dict[i] = prot_byte (hikaru);
+}
+
+static uint32_t
+prot_get (Hikaru *hikaru, uint32_t reg)
+{
+	hikaru_rombd_prot_t *prot = &hikaru->rombd_prot;
+
+	switch (reg) {
+	case 0x00:
+	case 0x04:
+		return prot->state.ctrl;
+	case 0x08:
+		return 0x4252;
+	case 0x0C:
+		return prot->state.regc;
+	case 0x10:
+		return prot_word (hikaru);
+	}
+	return 0;
+}
+
+static void
+prot_put (Hikaru *hikaru, uint32_t reg, uint32_t val)
+{
+	hikaru_rombd_prot_t *prot = &hikaru->rombd_prot;
+
+	switch (reg) {
+	case 0x00:
+		prot->state.ctrl = val;
+		if (val & 0x80000000)
+			prot_start (hikaru, val & 0x0FFFFFFF);
+		break;
+	case 0x0C:
+		prot->state.regc = val;
+		break;
+	}
+}
+
+/*
+ * SWRACER, PHARRIER and AIRTRIX have a 315-5881 there instead (see
+ * hikaru-5881.cpp), with 64 KB of RAM at 0A000000 and its registers at
+ * 0A010000 (as the NAOMI's "M3" cartridges): the game writes a block to the
+ * RAM, then 1000A (the address's high half), 10008 (its low half), 1000C
+ * (the subkey), and reads the result at 1000E, a dummy word first; 10000
+ * bit 0 is busy. SWRACER checks the chip by its RAM (AAAA, 5555, @0C13FA30)
+ * and decrypts with it (@0C13FA68). Only SWRACER's is turned on (see
+ * hikaru_set_rombd_config: AIRTRIX's skater loses his body with it).
+ */
+
+static uint32_t
+crypt_get (Hikaru *hikaru, unsigned size, uint32_t offs)
+{
+	hikaru_rombd_prot_t *prot = &hikaru->rombd_prot;
+
+	if (offs < sizeof (prot->ram)) {
+		uint32_t val = 0;
+		for (unsigned i = 0; i < size && offs + i < sizeof (prot->ram); i++)
+			val |= (uint32_t) prot->ram[offs + i] << (8 * i);
+		return val;
+	}
+	switch (offs) {
+	case 0x1000E:
+		return prot->crypt.read_le ();
+	}
+	return 0;
+}
+
+static void
+crypt_put (Hikaru *hikaru, unsigned size, uint32_t offs, uint32_t val)
+{
+	hikaru_rombd_prot_t *prot = &hikaru->rombd_prot;
+
+	if (offs < sizeof (prot->ram)) {
+		for (unsigned i = 0; i < size && offs + i < sizeof (prot->ram); i++)
+			prot->ram[offs + i] = (uint8_t) (val >> (8 * i));
+		return;
+	}
+	switch (offs) {
+	case 0x10008:
+		prot->crypt.set_addr_low ((uint16_t) val);
+		if (size == 4)
+			prot->crypt.set_addr_high ((uint16_t) (val >> 16));
+		break;
+	case 0x1000A:
+		prot->crypt.set_addr_high ((uint16_t) val);
+		break;
+	case 0x1000C:
+		prot->crypt.set_subkey ((uint16_t) val);
+		break;
+	}
+}
+
 static int
 memctl_bus_get (Memctl *memctl, unsigned size, uint32_t bus_addr, void *val)
 {
@@ -473,7 +691,18 @@ memctl_bus_get (Memctl *memctl, unsigned size, uint32_t bus_addr, void *val)
 		 * to be 4 for everything except SGNASCAR, and 8 for
 		 * SGNASCAR (?). PHARRIER should be '4' type, but the ROM
 		 * zip contains two IC35's, one EPROM and one MASKROM.
-		 */
+		 *
+		 * A board with the protection (SGNASCAR's): its device, whose
+		 * 0C keeps what was written (19620217 at first). With a
+		 * 315-5881, its RAM and registers, but 08 and 0C as below */
+		if (hikaru->rombd_prot.mode == 1) {
+			set_ptr (val, size, prot_get (hikaru, offs & 0x1FF));
+			return 0;
+		}
+		if (hikaru->rombd_prot.mode == 2 && offs != 0x8 && offs != 0xC) {
+			set_ptr (val, size, crypt_get (hikaru, size, offs));
+			return 0;
+		}
 		switch (offs) {
 		case 0x8:
 			if (!hikaru->rombd_config.maskrom_is_stretched)
@@ -597,7 +826,11 @@ memctl_bus_put (Memctl *memctl, unsigned size, uint32_t bus_addr, uint64_t val)
 		/* TEXRAM Bank 1 */
 		texram_put (hikaru, 1, size, offs, val);
 	} else if (bus_addr >= 0x0A000000 && bus_addr <= 0x0AFFFFFF) {
-		/* Unknown */
+		/* The ROM board's protection, else unknown */
+		if (hikaru->rombd_prot.mode == 1)
+			prot_put (hikaru, offs & 0x1FF, (uint32_t) val);
+		else if (hikaru->rombd_prot.mode == 2)
+			crypt_put (hikaru, size, offs, (uint32_t) val);
 		log = true;
 	} else if (bus_addr >= 0x0C000000 && bus_addr <= 0x0CFFFFFF) {
 		/* AICA 1 */

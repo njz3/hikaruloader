@@ -177,6 +177,18 @@ resolve_write_dir (int argc, char **argv)
 	return dir;
 }
 
+#ifdef _WIN32
+/* On a PC with two GPUs (most gaming laptops), the drivers run a program on
+ * the integrated one unless it asks for the other: these exports ask for the
+ * high performance GPU, to NVIDIA's Optimus and AMD's PowerXpress drivers,
+ * which look them up in the executable when it starts. A choice made in
+ * Windows' graphics settings still wins */
+extern "C" {
+__declspec (dllexport) unsigned long NvOptimusEnablement = 1;
+__declspec (dllexport) int AmdPowerXpressRequestHighPerformance = 1;
+}
+#endif
+
 int
 main (const int argc, char **argv)
 {

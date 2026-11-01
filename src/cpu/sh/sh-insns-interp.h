@@ -1436,9 +1436,17 @@ I (fcnvds)
 	FPUL.f = DRN.f;
 }
 
+/* The moves' size is SZ's alone, PR not: a fmov.s in double precision
+ * moves 32 bits (the compilers' unsigned division loads 2^31 in DR4 so,
+ * PHARRIER's at 0C10E748; 64 bits from the second word on, it read text).
+ * A 64-bit move takes FRn from the lower address, FRn+1 from the higher
+ * (the games move pairs of singles so), and FRn is DRn's high half: the
+ * two words the other way round in the host's double (MOVE64) */
+#define MOVE64(v_)	(((uint64_t) (v_) >> 32) | ((uint64_t) (v_) << 32))
+
 I (fmov)
 {
-	if (FPSCR.bit.sz | FPSCR.bit.pr) {
+	if (FPSCR.bit.sz) {
 		uint64_t tmp;
 		if (_RM & 1)
 			tmp = XDM.u;
@@ -1454,68 +1462,68 @@ I (fmov)
 
 I (fmov_load)
 {
-	if (!(FPSCR.bit.sz | FPSCR.bit.pr))
+	if (!FPSCR.bit.sz)
 		FRN.u = R32 (ctx, RM);
 	else if (_RN & 1)
-		XDN.u = R64 (ctx, RM);
+		XDN.u = MOVE64 (R64 (ctx, RM));
 	else
-		DRN.u = R64 (ctx, RM);
+		DRN.u = MOVE64 (R64 (ctx, RM));
 }
 
 I (fmov_store)
 {
-	if (!(FPSCR.bit.sz | FPSCR.bit.pr))
+	if (!FPSCR.bit.sz)
 		W32 (ctx, RN, FRM.u);
 	else if (_RM & 1)
-		W64 (ctx, RN, XDM.u);
+		W64 (ctx, RN, MOVE64 (XDM.u));
 	else
-		W64 (ctx, RN, DRM.u);
+		W64 (ctx, RN, MOVE64 (DRM.u));
 }
 
 I (fmov_index_load)
 {
-	if (!(FPSCR.bit.sz | FPSCR.bit.pr))
+	if (!FPSCR.bit.sz)
 		FRN.u = R32 (ctx, R0 + RM);
 	else if (_RN & 1)
-		XDN.u = R64 (ctx, R0 + RM);
+		XDN.u = MOVE64 (R64 (ctx, R0 + RM));
 	else
-		DRN.u = R64 (ctx, R0 + RM);
+		DRN.u = MOVE64 (R64 (ctx, R0 + RM));
 }
 
 I (fmov_index_store)
 {
-	if (!(FPSCR.bit.sz | FPSCR.bit.pr))
+	if (!FPSCR.bit.sz)
 		W32 (ctx, R0 + RN, FRM.u);
 	else if (_RM & 1)
-		W64 (ctx, R0 + RN, XDM.u);
+		W64 (ctx, R0 + RN, MOVE64 (XDM.u));
 	else
-		W64 (ctx, R0 + RN, DRM.u);
+		W64 (ctx, R0 + RN, MOVE64 (DRM.u));
 }
 
 I (fmov_restore)
 {
-	if (!(FPSCR.bit.sz | FPSCR.bit.pr)) {
+	if (!FPSCR.bit.sz) {
 		FRN.u = R32 (ctx, RM);
 		RM += 4;
 	} else if (_RN & 1) {
-		XDN.u = R64 (ctx, RM);
+		XDN.u = MOVE64 (R64 (ctx, RM));
 		RM += 8;
 	} else {
-		DRN.u = R64 (ctx, RM);
+		DRN.u = MOVE64 (R64 (ctx, RM));
 		RM += 8;
 	}
 }
 
 I (fmov_save)
 {
-	if (!(FPSCR.bit.sz | FPSCR.bit.pr)) {
+	if (!FPSCR.bit.sz) {
 		W32 (ctx, RN - 4, FRM.u);
 		RN -= 4;
 	} else if (_RM & 1) {
-		W64 (ctx, RN - 8, XDM.u);
+		W64 (ctx, RN - 8, MOVE64 (XDM.u));
 		RN -= 8;
 	} else {
-		W64 (ctx, RN - 8, DRM.u);
+		W64 (ctx, RN - 8, MOVE64 (DRM.u));
 		RN -= 8;
 	}
 }

@@ -53,6 +53,7 @@ set (HL_SRC
 	src/hl/profile.cpp
 	src/hl/ffb.cpp
 	src/hl/driveboard.cpp
+	src/hl/cardreader.cpp
 	src/hl/audio.cpp)
 
 set (HIKARU_SRC
@@ -67,6 +68,7 @@ set (HIKARU_SRC
 	src/mach/hikaru/hikaru-comm.cpp
 	src/mach/hikaru/hikaru-mie.cpp
 	src/mach/hikaru/hikaru-memctl.cpp
+	src/mach/hikaru/hikaru-5881.cpp
 	src/mach/hikaru/hikaru-renderer.cpp
 	src/mach/hikaru/hikaru-gpu.cpp
 	src/mach/hikaru/hikaru-gpu-cp.cpp
@@ -241,6 +243,12 @@ if (TARGET SDL2::SDL2main)
 	target_link_libraries (driveboardtest PRIVATE SDL2::SDL2main)
 endif ()
 add_test (NAME driveboard COMMAND driveboardtest)
+add_executable (cardreadertest tests/cardreader_test.cpp)
+target_link_libraries (cardreadertest PRIVATE hl)
+if (TARGET SDL2::SDL2main)
+	target_link_libraries (cardreadertest PRIVATE SDL2::SDL2main)
+endif ()
+add_test (NAME cardreader COMMAND cardreadertest)
 add_executable (potest tests/po_test.cpp src/ui/ui_po.cpp)
 target_include_directories (potest PRIVATE ${CMAKE_SOURCE_DIR}/src)
 add_test (NAME po COMMAND potest ${CMAKE_SOURCE_DIR}/data/lang/fr.po)

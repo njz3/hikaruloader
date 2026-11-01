@@ -294,6 +294,9 @@ public:
 		bool		 enabled = true;
 
 		void		 reset () { tail = ~0u; }
+		/* An iteration's path being noted: step () does nothing
+		 * otherwise */
+		bool		 noting () const { return tracking; }
 		/* Each instruction run, with the instructions it took (2 with
 		 * a delay slot) */
 		void		 step (uint32_t pc, int taken)

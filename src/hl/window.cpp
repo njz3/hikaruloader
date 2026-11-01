@@ -507,8 +507,9 @@ log_gl_message (GLenum source, GLenum type, GLuint id, GLenum severity,
 	(void) source;
 	(void) length;
 	(void) user;
-	if (type == GL_DEBUG_TYPE_ERROR)
-		HL_ERROR ("GL: %s (id %u, severity %04X)", message, id, severity);
+	if (type == GL_DEBUG_TYPE_ERROR ||
+	    severity == GL_DEBUG_SEVERITY_HIGH || severity == GL_DEBUG_SEVERITY_MEDIUM)
+		HL_ERROR ("GL: %s (id %u, type %04X, severity %04X)", message, id, type, severity);
 }
 
 SDL_GLContext
@@ -598,8 +599,12 @@ Window::open (unsigned width, unsigned height)
 	SDL_GL_SetAttribute (SDL_GL_ACCELERATED_VISUAL, 1);
 	SDL_GL_SetAttribute (SDL_GL_CONTEXT_MAJOR_VERSION, 3);
 	SDL_GL_SetAttribute (SDL_GL_CONTEXT_MINOR_VERSION, 1);
+	/* HR_GL_DEBUG=1: a debug context, whose driver says what goes wrong
+	 * (log_gl_message): a context without it says nothing on Intel */
 	SDL_GL_SetAttribute (SDL_GL_CONTEXT_FLAGS,
-	                     SDL_GL_CONTEXT_FORWARD_COMPATIBLE_FLAG);
+	                     SDL_GL_CONTEXT_FORWARD_COMPATIBLE_FLAG |
+	                     (hl_util_get_bool_option ("HR_GL_DEBUG", false) ?
+	                      SDL_GL_CONTEXT_DEBUG_FLAG : 0));
 	SDL_GL_SetAttribute (SDL_GL_CONTEXT_PROFILE_MASK,
 	                     SDL_GL_CONTEXT_PROFILE_CORE);
 

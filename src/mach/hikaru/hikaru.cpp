@@ -436,8 +436,9 @@ Hikaru::raise_memctl_irq ()
 }
 
 /* The SH-4s' cycles a line (Hikaru::cycles_per_line), of a frame's 544: the
- * [Emulation] SH4_CLOCK, 200 MHz as on the board, 57 by default (Valkyrie's
- * 50 MHz over 480 lines), as fast as the dynamic recompiler keeps up with
+ * [Emulation] SH4_CLOCK, 200 MHz as on the board, 100 by default (57 before
+ * November 2026, Valkyrie's 50 MHz over 480 lines; AIRTRIX's slave needs
+ * 100 to pose its skater in time), as fast as the dynamic recompiler keeps up with
  * the waits the games poll that are not run forward (sh4.cpp): at 200 MHz,
  * their boots take 12 to 23 ms of the master a frame. Their timers, the
  * MIE's Z80 and the AICAs keep real time whatever it is. The GPU's command
@@ -707,6 +708,8 @@ Hikaru::run_frame ()
 	}
 	hikaru_mix_audio (hikaru);
 	hikaru_keep_nvram (hikaru);
+	if (hikaru->card_reader)
+		hikaru->card_reader->frame ();
 	return 0;
 }
 
@@ -725,6 +728,12 @@ Hikaru::on_reset (hl::ResetType type)
 	hikaru->porta_m = 0xFFFF;
 	hikaru->porta_s = 0xFFFF;
 
+	/* The protection idle; its 0C holds what the BIOS looks for there
+	 * (see memctl_bus_get) */
+	memset (&hikaru->rombd_prot.state, 0, sizeof (hikaru->rombd_prot.state));
+	hikaru->rombd_prot.state.regc = 0x19620217;
+	memset (hikaru->rombd_prot.ram, 0, sizeof (hikaru->rombd_prot.ram));
+	hikaru->rombd_prot.crypt.reset ();
 }
 
 const char *
@@ -768,6 +777,12 @@ Hikaru::on_load_state (hl::State *state)
 	LOAD (hikaru->porta_s);
 	LOAD (hikaru->porta_s_bit1_buffer);
 	LOAD (hikaru->rombd_config);
+	if (hikaru->rombd_prot.mode == 1)
+		LOAD (hikaru->rombd_prot.state);
+	if (hikaru->rombd_prot.mode == 2) {
+		LOAD (hikaru->rombd_prot.ram);
+		LOAD (hikaru->rombd_prot.crypt.s);
+	}
 
 	/* Another TEXRAM: the textures uploaded again, the drawing thread's
 	 * copy taken again */
@@ -789,6 +804,12 @@ Hikaru::on_save_state (hl::State *state)
 	SAVE (hikaru->porta_s);
 	SAVE (hikaru->porta_s_bit1_buffer);
 	SAVE (hikaru->rombd_config);
+	if (hikaru->rombd_prot.mode == 1)
+		SAVE (hikaru->rombd_prot.state);
+	if (hikaru->rombd_prot.mode == 2) {
+		SAVE (hikaru->rombd_prot.ram);
+		SAVE (hikaru->rombd_prot.crypt.s);
+	}
 
 	return ret;
 }
@@ -910,6 +931,17 @@ setup_slave_mmap (Hikaru *hikaru)
 	return ret ? NULL : mmap;
 }
 
+/* The 315-5881's word at addr, from its RAM (the 64 KB the game writes at
+ * bus 0A000000), its bytes as written, the first the high one */
+static uint16_t
+rombd_crypt_read (void *opaque, uint32_t addr)
+{
+	const uint8_t *ram = ((Hikaru *) opaque)->rombd_prot.ram;
+	unsigned base = 2 * (addr & 0x7FFF);
+
+	return (uint16_t) (ram[base + 1] | (ram[base] << 8));
+}
+
 static int
 hikaru_set_rombd_config (Hikaru *hikaru)
 {
@@ -936,21 +968,46 @@ hikaru_set_rombd_config (Hikaru *hikaru)
 	} else if (!strcmp (name, "airtrix")) {
 		eprom_bank_size = 4;
 		maskrom_bank_size = 16;
+		/* A 315-5881 (291B02C7). The master decrypts 768 KB
+		 * (@0C0440F0, 12 blocks) and copies them to the slave's
+		 * 0C010000 (aperture 16): the slave's real program, which
+		 * poses the skater itself from the bones' table (48100000)
+		 * into one of four routines the CP calls (the CP's posing
+		 * off, gpu->skin.slave_poses). Some 875,000 instructions a
+		 * frame, done by the CP's call only with the SH-4s' clock
+		 * high enough. Without the chip the slave runs a plain
+		 * program that does not pose him, and the CP poses the rest
+		 * pose (see begin_skinning) */
+		hikaru->rombd_prot.mode = 2;
+		hikaru->rombd_prot.key = 0x291B02C7;
 	} else if (!strcmp (name, "braveff")) {
 		eprom_bank_size = 2;
 		maskrom_bank_size = 8;
 	} else if (!strcmp (name, "pharrier")) {
 		eprom_bank_size = 4;
 		maskrom_bank_size = 16;
+		/* A 315-5881 too (2912C68A): the game's self-test at its start
+		 * (@0C103460) writes a ROM block (2FEE6000) to it, subkey 5784,
+		 * and compares the 0x273C bytes it reads back with the clear
+		 * one at 103FD000; without the chip it stopped there */
+		hikaru->rombd_prot.mode = 2;
+		hikaru->rombd_prot.key = 0x2912C68A;
 	} else if (!strcmp (name, "swracer")) {
 		eprom_bank_size = 4;
 		maskrom_bank_size = 8;
 		maskrom_is_stretched = true;
+		/* A 315-5881: without it, the game raises its motion blur
+		 * scene after scene (the text crawl smeared) */
+		hikaru->rombd_prot.mode = 2;
+		hikaru->rombd_prot.key = 0x2903DAD5;
 	} else if (!strcmp (name, "sgnascar")) {
 		//rombd_offs = 8;
 		eprom_bank_size = 4;
 		maskrom_bank_size = 16;
 		maskrom_is_stretched = true;
+		/* Its protection, the key of its chip */
+		hikaru->rombd_prot.mode = 1;
+		hikaru->rombd_prot.key = 0x56DEDF33;
 	} else if (!strcmp (name, "von4")) {
 		/* Same layout as pharrier, with only two EPROM pairs */
 		eprom_bank_size = 4;
@@ -977,6 +1034,10 @@ hikaru_set_rombd_config (Hikaru *hikaru)
 	/* The EEPROM bank is constant */
 	config->eeprom_bank = rombd_offs + 0x14;
 
+	/* The 315-5881 reads its RAM */
+	hikaru->rombd_prot.crypt.key = hikaru->rombd_prot.key;
+	hikaru->rombd_prot.crypt.read_cb = rombd_crypt_read;
+	hikaru->rombd_prot.crypt.opaque = hikaru;
 	return 0;
 }
 
@@ -1002,36 +1063,20 @@ patch_braveff (hl::Cpu *cpu, uint32_t pc, uint32_t inst)
 	return inst;
 }
 
-static uint32_t
-patch_pharrier (hl::Cpu *cpu, uint32_t pc, uint32_t inst)
-{
-	if (0) {
-		/* Debug switches
-		 *
-		 * 0C21D4A8 00000003 Enable axis on top right
-		 * 0C21D4A8 00000007 CPU bar
-		 * 0C21D4A8 0000000F Date
-		 * 0C21D4A8 00000041 Char ball
-		 * 0C21D4A8 000000F0 World bounding boxes?
-		 * 0C21D4A8 00000F00 Light list + fog debug?
-		 * 0C21D4A8 00020000 Disable char + world
-		 * 0C21D4A8 00F00000 Switch between world and bounding boxes
-		 * 0C21D4A8 F0000000 Mod light?
-		 */
-		cpu->write (4, 0x0C21D4A8, 0xFFFFFFFF);
-		cpu->write (4, 0x0C21D4AC, 0xFFFFFFFF);
-	}
-
-	switch (pc) {
-	case 0x0C01C322:
-		/* The while (1) after a failed self-test (@0C103460) of the
-		 * device at 8A000000: the game writes a ROM block to it, and
-		 * compares what it reads back with another. Not the AICA: the
-		 * banks from 80 (see hikaru-memctl.cpp), not emulated. A NOP */
-		return 0x0009;
-	}
-	return inst;
-}
+/* PHARRIER's debug switches, once a patch's (none needed now: its ROM
+ * board's self-test at 0C103460 passes with the 315-5881):
+ *
+ * 0C21D4A8 00000003 Enable axis on top right
+ * 0C21D4A8 00000007 CPU bar
+ * 0C21D4A8 0000000F Date
+ * 0C21D4A8 00000041 Char ball
+ * 0C21D4A8 000000F0 World bounding boxes?
+ * 0C21D4A8 00000F00 Light list + fog debug?
+ * 0C21D4A8 00020000 Disable char + world
+ * 0C21D4A8 00F00000 Switch between world and bounding boxes
+ * 0C21D4A8 F0000000 Mod light?
+ *
+ * (and 0C21D4AC, written FFFFFFFF with it) */
 
 static uint32_t
 patch_sgnascar (hl::Cpu *cpu, uint32_t pc, uint32_t inst)
@@ -1071,8 +1116,6 @@ hikaru_install_game_patches (Hikaru *hikaru)
 	 * SGNASCAR's 0C00BC9A (the EEPROM's data, now emulated, pass) */
 	if (!strcmp (game->name, "braveff"))
 		cpu->install_patch (patch_braveff, { 0x0C0407D0 });
-	else if (!strcmp (game->name, "pharrier"))
-		cpu->install_patch (patch_pharrier, { 0x0C01C322 });
 	else if (!strcmp (game->name, "sgnascar"))
 		cpu->install_patch (patch_sgnascar, { 0x0C0130CE });
 	else
@@ -1199,6 +1242,16 @@ hikaru_init (Hikaru *hikaru)
 	hikaru->mie = new hikaru::Mie (mach, hikaru->mie_ram, hikaru->jvs);
 	if (!hikaru->mie)
 		return -1;
+	/* VON4's card reader, on the MIE's serial line; the player's card in
+	 * nvram/von4.card (with a write directory, its copy) */
+	if (!strcmp (game->parent[0] ? game->parent : game->name, "von4")) {
+		std::string file = std::string ("nvram/") + game->name + ".card";
+		std::string card = hl::Paths::game_write (game->name, file);
+		if (hl::Paths::has_write_dir () && hl::Paths::seed (file, card))
+			HL_PRINT ("hikaru: '%s' copied from '%s'", card.c_str (), file.c_str ());
+		hikaru->card_reader = new hl::CardReader (mach, card);
+		((Mie *) hikaru->mie)->card_reader = hikaru->card_reader;
+	}
 
 	hikaru->renderer = new Renderer (hikaru->fb, hikaru->texram);
 
@@ -1208,6 +1261,9 @@ hikaru_init (Hikaru *hikaru)
 		return -1;
 
 	((Renderer *) hikaru->renderer)->set_gpu (hikaru->gpu);
+	/* The 315-5881 emulated: the slave's real program, which poses
+	 * AIRTRIX's skater itself */
+	((Gpu *) hikaru->gpu)->skin.slave_poses = hikaru->rombd_prot.mode == 2;
 
 	/* The SH-4s' clock, [Emulation] SH4_CLOCK in MHz */
 	hikaru->cycles_per_line = (unsigned) ((uint64_t) hl::Config::sh4_clock_mhz () * MHZ /
@@ -1268,6 +1324,8 @@ hikaru_init (Hikaru *hikaru)
 	hikaru->io_board->name	= "io_board";
 	if (hikaru->drive_board)
 		hikaru->drive_board->name = "drive_board";
+	if (hikaru->card_reader)
+		hikaru->card_reader->name = "card_reader";
 	hikaru->gpu->name	= "gpu";
 	hikaru->aica_m->name	= "aica_m";
 	hikaru->aica_s->name	= "aica_s";

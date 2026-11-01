@@ -486,9 +486,13 @@ D (0x012)
  * Skinning
  * ========
  *
- * AIRTRIX's skater is a routine of meshes in the rest pose (a T-pose), which
- * the GPU poses with the bones of a table in the area that 1500001C points
- * to (48100000). The master SH-4 fills it each frame (AT:@0C0431B0):
+ * AIRTRIX's skater is a routine of meshes in the rest pose (a T-pose), posed
+ * with the bones of a table in the area that 1500001C points to (48100000).
+ * On the board the slave poses it, in the program the ROM board's 315-5881
+ * decrypts (see hikaru_set_rombd_config), into the routine the CP then
+ * calls; without the chip it runs another program, which leaves the rest
+ * pose, and the CP poses it here. The master SH-4 fills the table each frame
+ * (AT:@0C0431B0):
  *
  *  +000  2 or 3
  *  +004  The routine, as the master SH-4 sees it (B4102120 for 48102120)
@@ -497,11 +501,12 @@ D (0x012)
  *  +708  Their rest poses, inverted, in the same order (zero for none)
  *  +E20  Read back by the master once the frame is drawn; unknown
  *
- * The routine has four copies (frame & 3), written once: the GPU poses the
- * vertices as it draws them. The hands and the board are other meshes,
+ * The routine has four copies (frame & 3), written once: we pose the
+ * vertices as the CP draws them. The hands and the board are other meshes,
  * drawn with the skater's matrix times their bone, so a vertex of bone b
- * goes to bone[b] x rest[b] x v. Which bone, the routine does not say: no
- * bits of the vertices, nor anything else in CMDRAM, tell. We give each
+ * goes to bone[b] x rest[b] x v. Which bone, the routine does not say (the
+ * slave's program knows): no bits of the vertices, nor anything else in
+ * CMDRAM, tell. We give each
  * vertex the nearest bone segment of the rest pose, from a joint to its
  * child's; a bone's parent being the nearest one whose matrix carries its
  * rest joint onto its posed joint. A guess that poses the skater as the
@@ -583,7 +588,8 @@ begin_skinning (Gpu *gpu, uint32_t addr)
 	bool valid[NUM_SKIN_BONES];
 	unsigned b, c, p;
 
-	if ((mode != 2 && mode != 3) || ((routine ^ addr) & 0x3FFFFF))
+	if ((mode != 2 && mode != 3) || ((routine ^ addr) & 0x3FFFFF) ||
+	    gpu->skin.slave_poses)
 		return false;
 
 	for (b = 0; b < NUM_SKIN_BONES; b++) {
@@ -2395,9 +2401,10 @@ D (0x043)
 
 /* 101	Mesh: Set Depth Bias
  *
- *	-----BBB BBBBBBBB -------o oooooooo
+ *	-----MBB BBBBBBBB -------o oooooooo
  *
- * B = Bias
+ * B = Bias, toward the eye
+ * M = Mode: 0 a constant, 1 the polygon's depth slope (see upload_depth)
  *
  * See @0C008040, PH:@0C016418, PH:@0C016446.
  *

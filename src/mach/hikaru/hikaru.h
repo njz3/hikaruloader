@@ -28,6 +28,8 @@
 #include "hl/machine.h"
 #include "hl/jvs.h"
 #include "hl/nvram.h"
+#include "hl/cardreader.h"
+#include "mach/hikaru/hikaru-5881.h"
 
 namespace hikaru {
 
@@ -43,6 +45,32 @@ typedef struct {
 	uint32_t maskrom_bank_size;
 	bool maskrom_is_stretched;
 } hikaru_rombd_config_t;
+
+/* The ROM board's protection, a device on the bus at 0A000000 (see
+ * hikaru-memctl.cpp): SGNASCAR's streams a block of the MASKROM, decrypted
+ * and decompressed; the others' is a 315-5881, which decrypts what the game
+ * writes to its RAM. Its mode and key are the game's; its state is saved for
+ * the games that have one */
+typedef struct {
+	/* 0 none, 1 SGNASCAR's, 2 a 315-5881 */
+	unsigned mode;
+	uint32_t key;
+	/* 2: its RAM, and the chip */
+	uint8_t ram[0x10000];
+	Crypt5881 crypt;
+	struct {
+		/* Its registers: 00 (04 reads it back), 0C */
+		uint32_t ctrl, regc;
+		/* The stream: its start in the MASKROM, the bytes taken, the
+		 * bits not used yet */
+		uint32_t start, pos, bits;
+		int32_t nbits;
+		uint8_t dict[111];
+		/* The last word's two high bytes, for the next one */
+		uint8_t hist[2];
+		uint8_t has_hist;
+	} state;
+} hikaru_rombd_prot_t;
 
 /* The SEGA Hikaru: two SH-4s, their memory controllers, the GPU, the
  * MIE, two AICAs, and the ROM board. */
@@ -87,6 +115,8 @@ public:
 	hl::JvsBus *jvs;
 	hl::Device *io_board;
 	hl::DriveBoard *drive_board;
+	/* VON4's card reader, on the MIE's serial line; NULL without */
+	hl::CardReader *card_reader;
 	hl::Device *aica_m;
 	hl::Device *aica_s;
 	/* The cabinet's speakers (games.json's "audio"): what the frames'
@@ -138,6 +168,7 @@ public:
 
 	/* ROMBD configuration */
 	hikaru_rombd_config_t rombd_config;
+	hikaru_rombd_prot_t rombd_prot;
 
 
 private:

@@ -443,8 +443,8 @@ msgid "SH-4 clock"
 msgstr "Horloge des SH-4"
 
 #: src/ui/ui_common.cpp
-msgid "The SH-4s' clock: 200 MHz is the board's. Their timers, the MIE and the sound keep real time at any clock; the faster, the more of the PC the waits the games poll take (at 200 MHz, the games' boots run below 60 frames a second on this PC). 57 MHz by default."
-msgstr "L'horloge des SH-4 : 200 MHz est celle de la carte. Leurs minuteries, le MIE et le son gardent le temps réel à toute horloge ; plus elle est rapide, plus les attentes que les jeux font en boucle prennent de PC (à 200 MHz, les démarrages des jeux tournent sous 60 images par seconde sur ce PC). 57 MHz par défaut."
+msgid "The SH-4s' clock: 200 MHz is the board's. Their timers, the MIE and the sound keep real time at any clock; the faster, the more of the PC the waits the games poll take (at 200 MHz, the games' boots run below 60 frames a second on this PC). 100 MHz by default; below, Air Trix's skater loses his body."
+msgstr "L'horloge des SH-4 : 200 MHz est celle de la carte. Leurs minuteries, le MIE et le son gardent le temps réel à toute horloge ; plus elle est rapide, plus les attentes que les jeux font en boucle prennent de PC (à 200 MHz, les démarrages des jeux tournent sous 60 images par seconde sur ce PC). 100 MHz par défaut ; en dessous, le skateur d'Air Trix perd son corps."
 
 #: src/ui/ui_common.cpp src/ui/ui_picker.cpp
 msgid "Games folder"
@@ -651,6 +651,10 @@ msgstr "Bouton 3"
 #: src/ui/ui_controls.cpp
 msgid "Button 4"
 msgstr "Bouton 4"
+
+#: src/ui/ui_controls.cpp
+msgid "Card: insert or take back"
+msgstr "Carte : insérer ou reprendre"
 
 #: src/ui/ui_controls.cpp
 msgid "Steering wheel"

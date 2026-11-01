@@ -645,6 +645,10 @@ Renderer::invalidate_texcache (hikaru_texhead_t *th)
  State
 ****************************************************************************/
 
+/* The scene's far plane, past the viewports' own (DRAW_DISTANCE draws
+ * farther than the games) */
+#define SCENE_FAR	1e5f
+
 static const char *mesh_vs_source =
 "#version 140									\n \
 										\n \
@@ -717,6 +721,7 @@ uniform sampler2D	u_texture;						\n \
 uniform vec2		u_fog;							\n \
 uniform vec3		u_fog_color;						\n \
 uniform vec2		u_alpha_range;						\n \
+uniform vec3		u_depth;						\n \
 										\n \
 in vec4 p_position;								\n \
 in vec3 p_normal;								\n \
@@ -792,6 +797,11 @@ main (void)									\n \
 	vec3 base;								\n \
 	float alpha = p_alpha;							\n \
 										\n \
+	/* The slope of 1/z across a pixel, for the depth bias's slope	\n \
+	 * mode: taken here, before any discard */				\n \
+	float inv_z = 1.0 / max (abs (p_position.z), 1e-6);			\n \
+	float slope = max (abs (dFdx (inv_z)), abs (dFdy (inv_z)));		\n \
+										\n \
 	/* The base colour: the texture's, by 2C1's mode, with the diffuse	\n \
 	 * (091) and the ambient (291) */					\n \
 #if HAS_TEXTURE									\n \
@@ -861,11 +871,20 @@ main (void)									\n \
 	color.a = 1.0;								\n \
 #endif										\n \
 										\n \
+	/* The depth, logarithmic in the eye's distance. The projection's,	\n \
+	 * the viewports' near plane at 0.01, stepped by z^2 / near / 2^24 in	\n \
+	 * a 24-bit buffer, 0.015 at 50 units: SWRACER's pod engines		\n \
+	 * z-fought. This one steps by about z / 2^20. The mesh's depth bias	\n \
+	 * moves it nearer: 1/z up by a part of itself (u_depth.y), or by	\n \
+	 * its slope across a pixel times u_depth.z */				\n \
+	float z = abs (p_position.z);						\n \
+	z = z / (1.0 + u_depth.y + u_depth.z * slope * z);			\n \
+	gl_FragDepth = log2 (1.0 + z) * u_depth.x;				\n \
+										\n \
 #if HAS_FOG									\n \
 	/* The viewport's fog (621), linear in 1/z: clear up to 1/x, its	\n \
 	 * colour from 1/y on */						\n \
-	float w = 1.0 / max (abs (p_position.z), 1e-6);				\n \
-	float clear = clamp ((w - u_fog.y) / max (u_fog.x - u_fog.y, 1e-12),	\n \
+	float clear = clamp ((inv_z - u_fog.y) / max (u_fog.x - u_fog.y, 1e-12),	\n \
 	                     0.0, 1.0);						\n \
 	frag_color = vec4 (mix (u_fog_color, color.rgb, clear), color.a);	\n \
 #else										\n \
@@ -1123,6 +1142,8 @@ update_locations:
 		glGetUniformLocation (hr->meshes.program, "u_fog_color");
 	hr->meshes.locs.u_alpha_range =
 		glGetUniformLocation (hr->meshes.program, "u_alpha_range");
+	hr->meshes.locs.u_depth =
+		glGetUniformLocation (hr->meshes.program, "u_depth");
 	HL_ASSERT_NO_GL_ERROR ();
 }
 
@@ -1185,7 +1206,7 @@ upload_viewport (Renderer *hr, hikaru_mesh_t *mesh)
 	LOG ("vp  = %s : [w=%f h=%f dcx=%f dcy=%f]",
 	     get_viewport_str (vp), w, h, dcx, dcy);
 
-	hl::frustum (projection, left, right, bottom, top, vp->clip.n, 1e5);
+	hl::frustum (projection, left, right, bottom, top, vp->clip.n, SCENE_FAR);
 
 	glUniformMatrix4fv (hr->meshes.locs.u_projection, 1, GL_FALSE,
 	                    (const GLfloat *) projection);
@@ -1296,6 +1317,32 @@ upload_alpha_range (Renderer *hr, hikaru_mesh_t *mesh)
 
 	glUniform2fv (hr->meshes.locs.u_alpha_range, 1, mesh->alpha_thresh);
 	HL_ASSERT_NO_GL_ERROR ();
+}
+
+/* The fragments' depth (the shader's u_depth): its scale, and the mesh's
+ * depth bias (101), which moves it nearer. Its low 10 bits are the amount;
+ * bit 10 picks the mode, as a 32-bit float depth buffer's bias:
+ *  - clear, a constant: amount * 2000 units of the depth's last bit, 2^-23
+ *    of its power of 2. 1/z goes up by that part of itself, between
+ *    amount * 2000 / 2^24 and twice that: here the middle, / ln 2;
+ *  - set, a slope: 1/z up by its slope across a pixel times amount * 6 /
+ *    256, at the native resolution.
+ * PHARRIER's translucent meshes take 0x400, nothing, and 0x500; AIRTRIX's,
+ * constants up to 982. All the polytypes take it */
+static void
+upload_depth (Renderer *hr, hikaru_mesh_t *mesh)
+{
+	unsigned amount = mesh->depth_bias & 0x3FF;
+	float depth[3];
+
+	depth[0] = 1.0f / log2f (1.0f + SCENE_FAR);
+	depth[1] = 0.0f;
+	depth[2] = 0.0f;
+	if (mesh->depth_bias & 0x400)
+		depth[2] = amount * 6.0f / 256.0f * hr->framebuffer.scale;
+	else
+		depth[1] = amount * 2000.0f / 16777216.0f / logf (2.0f);
+	glUniform3fv (hr->meshes.locs.u_depth, 1, depth);
 }
 
 static void
@@ -1720,7 +1767,7 @@ draw_mesh (Renderer *hr, hikaru_mesh_t *mesh)
 	upload_lightset (hr, mesh);
 	HL_ASSERT_NO_GL_ERROR ();
 
-	glPolygonOffset (0.0f, -mesh->depth_bias);
+	upload_depth (hr, mesh);
 
 	hr->debug.draws += mesh->num_instances;
 	hr->debug.tris += (uint64_t) mesh->num_tris * mesh->num_instances;
@@ -1778,11 +1825,19 @@ draw_mesh (Renderer *hr, hikaru_mesh_t *mesh)
 }
 
 /* The frame's vertices to the buffer, once, and where each attribute is:
- * the meshes draw from it. The vertex array keeps it bound. */
-static void
+ * the meshes draw from it. The vertex array keeps it bound. The buffer's
+ * storage has the largest frame's size, given back to the driver at each
+ * frame (the same size, which it takes back once the GPU is done with it)
+ * and written into: a storage of each frame's size, a new one a frame, ran
+ * an Intel UHD out of memory now and then (AIRTRIX, BRAVEFF, after
+ * thousands of frames). False when the GPU has no memory for them: the
+ * frame's 3D is not drawn */
+static bool
 upload_frame_vertices (Renderer *hr)
 {
 	std::vector<hikaru_vertex_body_t> &verts = hr->meshes.verts;
+	size_t bytes = sizeof (verts[0]) * verts.size ();
+	GLenum error;
 
 	if (!hr->meshes.vao)
 		glGenVertexArrays (1, &hr->meshes.vao);
@@ -1790,9 +1845,19 @@ upload_frame_vertices (Renderer *hr)
 		glGenBuffers (1, &hr->meshes.vbo);
 	glBindVertexArray (hr->meshes.vao);
 	glBindBuffer (GL_ARRAY_BUFFER, hr->meshes.vbo);
-	glBufferData (GL_ARRAY_BUFFER, sizeof (verts[0]) * verts.size (),
-	              verts.data (), GL_STREAM_DRAW);
-	HL_ASSERT_NO_GL_ERROR ();
+	if (bytes > hr->meshes.vbo_size)
+		hr->meshes.vbo_size = bytes + bytes / 4;
+	glBufferData (GL_ARRAY_BUFFER, hr->meshes.vbo_size, NULL, GL_STREAM_DRAW);
+	if (bytes)
+		glBufferSubData (GL_ARRAY_BUFFER, 0, bytes, verts.data ());
+	/* Checked in every build (the release's has no HL_ASSERT_NO_GL_ERROR):
+	 * a failed storage is not drawn from */
+	error = hl::gl::check_error (__FILE__, __LINE__);
+	if (error == GL_OUT_OF_MEMORY) {
+		/* Its size again at the next frame */
+		hr->meshes.vbo_size = 0;
+		return false;
+	}
 
 	VAP (0, 3, GL_FLOAT,          position,  GL_FALSE);
 	VAP (1, 3, GL_FLOAT,          normal,    GL_FALSE);
@@ -1803,6 +1868,7 @@ upload_frame_vertices (Renderer *hr)
 	VAP (6, 2, GL_FLOAT,          texcoords, GL_FALSE);
 	VAP (7, 1, GL_UNSIGNED_BYTE,  alpha,     GL_TRUE);
 	VAP (8, 1, GL_UNSIGNED_BYTE,  link,      GL_FALSE);
+	return true;
 }
 
 #undef OFFSET
@@ -1990,24 +2056,20 @@ draw_meshes_for_polytype (Renderer *hr, unsigned vpi, int polytype)
 		glEnable (GL_BLEND);
 		glBlendFuncSeparate (GL_ONE, GL_ZERO, GL_CONSTANT_ALPHA, GL_ONE);
 		glDepthMask (GL_TRUE);
-		glEnable (GL_POLYGON_OFFSET_FILL);
 		break;
 	case HIKARU_POLYTYPE_TRANSLUCENT:
 		glEnable (GL_BLEND);
 		glDepthMask (GL_FALSE);
-		glEnable (GL_POLYGON_OFFSET_FILL);
 		break;
 	case HIKARU_POLYTYPE_BACKGROUND:
 		glEnable (GL_BLEND);
 		glDepthMask (GL_FALSE);
-		glDisable (GL_POLYGON_OFFSET_FILL);
 		break;
 	default:
 		/* Opaque: blended only for the scene's alpha */
 		glEnable (GL_BLEND);
 		glBlendFuncSeparate (GL_ONE, GL_ZERO, GL_CONSTANT_ALPHA, GL_ONE);
 		glDepthMask (GL_TRUE);
-		glDisable (GL_POLYGON_OFFSET_FILL);
 		break;
 	}
 	
@@ -2069,7 +2131,8 @@ draw_scene (Renderer *hr)
 	if (hr->debug.flags[HR_DEBUG_NO_3D])
 		return;
 
-	upload_frame_vertices (hr);
+	if (!upload_frame_vertices (hr))
+		return;
 
 	/* Note that "the pixel ownership test, the scissor test, dithering,
 	 * and the buffer writemasks affect the operation of glClear". */
@@ -2714,6 +2777,8 @@ destroy_fb_state (Renderer *hr)
 	glDeleteTextures (NUM_FRAMEBUFFERS, hr->framebuffer.cb);
 	glDeleteRenderbuffers (NUM_FRAMEBUFFERS, hr->framebuffer.db);
 	glDeleteTextures (2, hr->framebuffer.layers);
+	memset (hr->framebuffer.layers, 0, sizeof (hr->framebuffer.layers));
+	memset (hr->framebuffer.layer_formats, 0, sizeof (hr->framebuffer.layer_formats));
 	if (hr->framebuffer.ms_fb) {
 		glDeleteFramebuffers (1, &hr->framebuffer.ms_fb);
 		glDeleteRenderbuffers (1, &hr->framebuffer.ms_cb);
@@ -2728,6 +2793,19 @@ destroy_fb_state (Renderer *hr)
 	HL_ASSERT_NO_GL_ERROR ();
 
 	hl::gl::destroy_program (hr->framebuffer.program);
+}
+
+/* A layer's 640x480 pixels to its texture, bound: its storage made for the
+ * format (the GPU's, 1 + format, 0 none), else written into */
+static void
+layer_pixels (Renderer *hr, unsigned i, unsigned format, GLint internal, GLenum type,
+              const void *data)
+{
+	if (hr->framebuffer.layer_formats[i] != format + 1) {
+		glTexImage2D (GL_TEXTURE_2D, 0, internal, 640, 480, 0, GL_RGBA, type, data);
+		hr->framebuffer.layer_formats[i] = format + 1;
+	} else
+		glTexSubImage2D (GL_TEXTURE_2D, 0, 0, 0, 640, 480, GL_RGBA, type, data);
 }
 
 static void
@@ -2753,9 +2831,13 @@ upload_layer (Renderer *hr, hikaru_layer_t *layer, unsigned i, GLuint *id, float
 
 	/* To its texture, made once (a texture made and deleted each frame,
 	 * two a frame, is the drivers' least tried path, the more so with
-	 * THREADED_RENDERING) */
-	if (!hr->framebuffer.layers[i])
+	 * THREADED_RENDERING); its storage made again only when the format
+	 * changes, its pixels written into it the other frames (a new storage
+	 * each frame ran an Intel UHD out of memory, now and then) */
+	if (!hr->framebuffer.layers[i]) {
 		glGenTextures (1, &hr->framebuffer.layers[i]);
+		hr->framebuffer.layer_formats[i] = 0;
+	}
 	*id = hr->framebuffer.layers[i];
 	glActiveTexture (GL_TEXTURE0 + 0);
 	glBindTexture (GL_TEXTURE_2D, *id);
@@ -2785,25 +2867,15 @@ upload_layer (Renderer *hr, hikaru_layer_t *layer, unsigned i, GLuint *id, float
 				pixels[y * 640 + x] = src[y * 2048 + (x ^ 1)];
 		data = pixels;
 		glPixelStorei (GL_UNPACK_ROW_LENGTH, 640);
-
-		glTexImage2D (GL_TEXTURE_2D, 0,
-		              GL_RGB5_A1,
-		              640, 480, 0,
-		              GL_RGBA, GL_UNSIGNED_SHORT_1_5_5_5_REV,
-		              data);
-
+		layer_pixels (hr, i, layer->format, GL_RGB5_A1,
+		              GL_UNSIGNED_SHORT_1_5_5_5_REV, data);
 		*mult = 1.0f;
 		break;
 	}
 	case HIKARU_FORMAT_A2BGR10:
 		glPixelStorei (GL_UNPACK_ROW_LENGTH, 1024);
-
-		glTexImage2D (GL_TEXTURE_2D, 0,
-		              GL_RGB10_A2,
-		              640, 480, 0,
-		              GL_RGBA, GL_UNSIGNED_INT_2_10_10_10_REV,
-		              data);
-
+		layer_pixels (hr, i, layer->format, GL_RGB10_A2,
+		              GL_UNSIGNED_INT_2_10_10_10_REV, data);
 		*mult = 4.0f;
 		break;
 	default:

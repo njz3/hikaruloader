@@ -457,6 +457,9 @@ public:
 			vec3f_t a, b;
 		} seg[2 * NUM_SKIN_BONES];
 		unsigned num_segs;
+		/* The slave poses the routine itself, in the program the ROM
+		 * board's 315-5881 decrypts (AIRTRIX's): the CP leaves it */
+		bool slave_poses = false;
 	} skin;
 
 	/* The matrix last pushed by 161 (P), which the vertices with S take

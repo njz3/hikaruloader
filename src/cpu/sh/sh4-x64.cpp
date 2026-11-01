@@ -173,6 +173,10 @@ Sh4Offsets::Sh4Offsets (Sh4 *ctx)
 	far_stores = (int32_t) ((const uint8_t *) &ctx->far_stores - base);
 	for (unsigned i = 0; i < 16; i++)
 		r[i] = (int32_t) ((const uint8_t *) &ctx->regs.r[i] - base);
+	fr = (int32_t) ((const uint8_t *) &ctx->regs.f - base);
+	xf = (int32_t) ((const uint8_t *) &ctx->regs.x - base);
+	fpscr = (int32_t) ((const uint8_t *) &ctx->regs.fpscr - base);
+	fpul = (int32_t) ((const uint8_t *) &ctx->regs.fpul - base);
 }
 
 /* The memory accesses */
@@ -194,52 +198,88 @@ Sh4X64::count_far (Emitter &e, const Sh4Offsets &o)
 }
 
 /* The slow paths: the program counter set, then the interpreter's own
- * access (ecx the address, r10d the value) */
+ * access (ecx the address, r10 the value) */
 void
-Sh4X64::call_read32 (Emitter &e, const Sh4Offsets &o, int32_t at)
+Sh4X64::call_read (Emitter &e, const Sh4Offsets &o, int32_t at, unsigned size)
 {
 	e.lea32 (R11, RSI, at);
 	e.store32 (RBX, o.pc, R11);
 	e.mov32 (RDX, RCX);
 	e.mov (RCX, RBX);
-	e.call ((const void *) sh4_read32);
+	switch (size) {
+	case 1: e.call ((const void *) sh4_read8s); break;
+	case 2: e.call ((const void *) sh4_read16s); break;
+	case 4: e.call ((const void *) sh4_read32); break;
+	default: e.call ((const void *) sh4_read64); break;
+	}
 }
 
 void
-Sh4X64::call_write32 (Emitter &e, const Sh4Offsets &o, int32_t at)
+Sh4X64::call_write (Emitter &e, const Sh4Offsets &o, int32_t at, unsigned size)
 {
 	e.lea32 (R11, RSI, at);
 	e.store32 (RBX, o.pc, R11);
-	e.mov32 (R8, R10);
+	e.mov (R8, R10);
 	e.mov32 (RDX, RCX);
 	e.mov (RCX, RBX);
-	e.call ((const void *) sh4_write32);
+	switch (size) {
+	case 1: e.call ((const void *) sh4_write8); break;
+	case 2: e.call ((const void *) sh4_write16); break;
+	case 4: e.call ((const void *) sh4_write32); break;
+	default: e.call ((const void *) sh4_write64); break;
+	}
 }
 
 void
-Sh4X64Calls::load32 (Emitter &e, const Sh4Offsets &o, int32_t at)
+Sh4X64Calls::load (Emitter &e, const Sh4Offsets &o, int32_t at, unsigned size)
 {
-	call_read32 (e, o, at);
+	call_read (e, o, at, size);
 }
 
 void
-Sh4X64Calls::store32 (Emitter &e, const Sh4Offsets &o, int32_t at)
+Sh4X64Calls::store (Emitter &e, const Sh4Offsets &o, int32_t at, unsigned size)
 {
-	call_write32 (e, o, at);
+	call_write (e, o, at, size);
 }
 
 /* The memory map's address of an access the code may make itself, to edx:
  * below the P3 area and the on-chip registers (sh4_get () checks them,
  * then takes 29 bits), aligned (an access across two pages never) */
 static void
-straight_address (Emitter &e, Label &slow)
+straight_address (Emitter &e, Label &slow, unsigned size)
 {
 	e.cmp32_imm (RCX, 0xC0000000);
 	e.jcc (CC_AE, slow);
-	e.test32_imm (RCX, 3);
-	e.jcc (CC_NE, slow);
+	if (size > 1) {
+		e.test32_imm (RCX, size - 1);
+		e.jcc (CC_NE, slow);
+	}
 	e.mov32 (RDX, RCX);
 	e.and32_imm (RDX, 0x1FFFFFFF);
+}
+
+/* The access at r9 + rdx: a load to eax (sign extended) or rax, a store
+ * of r10 */
+static void
+access_load (Emitter &e, unsigned size)
+{
+	switch (size) {
+	case 1: e.load8s_index (RAX, R9, RDX, 1); break;
+	case 2: e.load16s_index (RAX, R9, RDX, 1); break;
+	case 4: e.load32_index (RAX, R9, RDX, 1); break;
+	default: e.load64_index (RAX, R9, RDX, 1); break;
+	}
+}
+
+static void
+access_store (Emitter &e, unsigned size)
+{
+	switch (size) {
+	case 1: e.store8_index (R9, RDX, 1, R10); break;
+	case 2: e.store16_index (R9, RDX, 1, R10); break;
+	case 4: e.store32_index (R9, RDX, 1, R10); break;
+	default: e.store64_index (R9, RDX, 1, R10); break;
+	}
 }
 
 Sh4X64Pages::Sh4X64Pages (const hl::Mmap *mmap) :
@@ -251,9 +291,9 @@ Sh4X64Pages::Sh4X64Pages (const hl::Mmap *mmap) :
 /* r9 = the page's host address, from the table; edx the address, to its
  * offset in the page */
 void
-Sh4X64Pages::lookup (Emitter &e, uint8_t * const *table, Label &slow)
+Sh4X64Pages::lookup (Emitter &e, uint8_t * const *table, Label &slow, unsigned size)
 {
-	straight_address (e, slow);
+	straight_address (e, slow, size);
 	e.mov32 (RAX, RDX);
 	e.shr32_imm (RAX, hl::Mmap::TABLE_PAGE_BITS);
 	e.mov_imm64 (R8, (uint64_t) (uintptr_t) table);
@@ -264,30 +304,30 @@ Sh4X64Pages::lookup (Emitter &e, uint8_t * const *table, Label &slow)
 }
 
 void
-Sh4X64Pages::load32 (Emitter &e, const Sh4Offsets &o, int32_t at)
+Sh4X64Pages::load (Emitter &e, const Sh4Offsets &o, int32_t at, unsigned size)
 {
 	Label slow, done;
 
-	lookup (e, read_table, slow);
-	e.load32_index (RAX, R9, RDX, 1);
+	lookup (e, read_table, slow, size);
+	access_load (e, size);
 	e.jmp (done);
 	e.bind (slow);
-	call_read32 (e, o, at);
+	call_read (e, o, at, size);
 	e.bind (done);
 }
 
 void
-Sh4X64Pages::store32 (Emitter &e, const Sh4Offsets &o, int32_t at)
+Sh4X64Pages::store (Emitter &e, const Sh4Offsets &o, int32_t at, unsigned size)
 {
 	Label slow, done;
 
-	lookup (e, write_table, slow);
-	e.store32_index (R9, RDX, 1, R10);
+	lookup (e, write_table, slow, size);
+	access_store (e, size);
 	e.add64_mem_imm (RBX, o.stores, 1);
 	count_far (e, o);
 	e.jmp (done);
 	e.bind (slow);
-	call_write32 (e, o, at);
+	call_write (e, o, at, size);
 	e.bind (done);
 }
 
@@ -300,9 +340,9 @@ Sh4X64Fastmem::Sh4X64Fastmem (const hl::Mmap *mmap) :
 
 /* edx the address, its 64 KB granule's bit set in the map; r9 the base */
 void
-Sh4X64Fastmem::check (Emitter &e, const uint8_t *bits, Label &slow)
+Sh4X64Fastmem::check (Emitter &e, const uint8_t *bits, Label &slow, unsigned size)
 {
-	straight_address (e, slow);
+	straight_address (e, slow, size);
 	e.mov32 (RAX, RDX);
 	e.shr32_imm (RAX, 16);
 	e.mov_imm64 (R8, (uint64_t) (uintptr_t) bits);
@@ -312,103 +352,245 @@ Sh4X64Fastmem::check (Emitter &e, const uint8_t *bits, Label &slow)
 }
 
 void
-Sh4X64Fastmem::load32 (Emitter &e, const Sh4Offsets &o, int32_t at)
+Sh4X64Fastmem::load (Emitter &e, const Sh4Offsets &o, int32_t at, unsigned size)
 {
 	Label slow, done;
 
-	check (e, readable, slow);
-	e.load32_index (RAX, R9, RDX, 1);
+	check (e, readable, slow, size);
+	access_load (e, size);
 	e.jmp (done);
 	e.bind (slow);
-	call_read32 (e, o, at);
+	call_read (e, o, at, size);
 	e.bind (done);
 }
 
 void
-Sh4X64Fastmem::store32 (Emitter &e, const Sh4Offsets &o, int32_t at)
+Sh4X64Fastmem::store (Emitter &e, const Sh4Offsets &o, int32_t at, unsigned size)
 {
 	Label slow, done;
 
-	check (e, writable, slow);
-	e.store32_index (R9, RDX, 1, R10);
+	check (e, writable, slow, size);
+	access_store (e, size);
 	e.add64_mem_imm (RBX, o.stores, 1);
 	count_far (e, o);
 	e.jmp (done);
 	e.bind (slow);
-	call_write32 (e, o, at);
+	call_write (e, o, at, size);
 	e.bind (done);
 }
 
-/* The 32-bit moves to and from memory, as their handlers have them
- * (sh-insns-interp.h): the address to ecx, the value to r10d, the access,
+/* The FPU's moves (fmov, sh-insns-interp.h): 32 bits, a single, unless
+ * FPSCR.SZ, 64 bits, a pair; the singles at n ^ 1 (FR ()), a pair's words
+ * swapped (MOVE64), XDn for an odd n. SZ tested as they run */
+bool
+Sh4X64::fpu_move_op (Emitter &e, const Sh4Offsets &o, uint16_t inst, int32_t at)
+{
+	const unsigned n = (inst >> 8) & 15, m = (inst >> 4) & 15;
+	const int32_t rn = o.r[n], rm = o.r[m], r0 = o.r[0];
+	const unsigned kind = inst & 0xF00F;
+	Label pair, done;
+	unsigned sz;
+
+	if (kind < 0xF006 || kind > 0xF00C)
+		return false;
+
+	auto single = [&] (unsigned r) { return o.fr + 4 * (int32_t) (r ^ 1); };
+	auto pair_at = [&] (unsigned r) { return ((r & 1) ? o.xf : o.fr) + 8 * (int32_t) (r >> 1); };
+
+	e.test_mem_imm (RBX, o.fpscr, 0x00100000);
+	e.jcc (CC_NE, pair);
+	for (sz = 0; sz < 2; sz++) {
+		const unsigned size = sz ? 8 : 4;
+
+		if (sz)
+			e.bind (pair);
+		switch (kind) {
+		case 0xF008:			/* fmov @Rm,FRn */
+		case 0xF009:			/* fmov @Rm+,FRn */
+		case 0xF006:			/* fmov @(R0,Rm),FRn */
+			e.load32 (RCX, RBX, rm);
+			if (kind == 0xF006)
+				e.alu_reg_mem (Emitter::ALU_ADD, RCX, RBX, r0);
+			load (e, o, at, size);
+			if (sz) {
+				e.ror64_imm (RAX, 32);
+				e.store64 (RBX, pair_at (n), RAX);
+			} else
+				e.store32 (RBX, single (n), RAX);
+			if (kind == 0xF009)
+				e.add32_mem_imm (RBX, rm, (int32_t) size);
+			break;
+		case 0xF00A:			/* fmov FRm,@Rn */
+		case 0xF00B:			/* fmov FRm,@-Rn */
+		case 0xF007:			/* fmov FRm,@(R0,Rn) */
+			e.load32 (RCX, RBX, rn);
+			if (kind == 0xF007)
+				e.alu_reg_mem (Emitter::ALU_ADD, RCX, RBX, r0);
+			if (kind == 0xF00B)
+				e.lea32 (RCX, RCX, -(int32_t) size);
+			if (sz) {
+				e.load64 (R10, RBX, pair_at (m));
+				e.ror64_imm (R10, 32);
+			} else
+				e.load32 (R10, RBX, single (m));
+			store (e, o, at, size);
+			if (kind == 0xF00B)
+				e.add32_mem_imm (RBX, rn, -(int32_t) size);
+			break;
+		default:			/* fmov FRm,FRn */
+			if (sz) {
+				e.load64 (RAX, RBX, pair_at (m));
+				e.store64 (RBX, pair_at (n), RAX);
+			} else {
+				e.load32 (RAX, RBX, single (m));
+				e.store32 (RBX, single (n), RAX);
+			}
+			break;
+		}
+		if (!sz)
+			e.jmp (done);
+	}
+	e.bind (done);
+	return true;
+}
+
+/* The moves to and from memory, as their handlers have them
+ * (sh-insns-interp.h): the address to ecx, the value to r10, the access,
  * the registers after. false for the others */
 bool
 Sh4X64::memory_op (Emitter &e, const Sh4Offsets &o, uint16_t inst, int32_t at, uint32_t pc)
 {
 	const unsigned n = (inst >> 8) & 15, m = (inst >> 4) & 15;
-	const int32_t rn = o.r[n], rm = o.r[m];
+	const int32_t rn = o.r[n], rm = o.r[m], r0 = o.r[0];
+	/* mov.b, mov.w, mov.l: the size from the low bits */
+	static const unsigned sizes[4] = { 1, 2, 4, 4 };
+	const unsigned size = sizes[inst & 3];
+
+	if ((inst & 0xF000) == 0xF000)
+		return fpu_move_op (e, o, inst, at);
 
 	switch (inst & 0xF00F) {
+	case 0x6000:				/* mov.b @Rm,Rn */
+	case 0x6001:				/* mov.w @Rm,Rn */
 	case 0x6002:				/* mov.l @Rm,Rn */
 		e.load32 (RCX, RBX, rm);
-		load32 (e, o, at);
+		load (e, o, at, size);
 		e.store32 (RBX, rn, RAX);
 		return true;
+	case 0x6004:				/* mov.b @Rm+,Rn */
+	case 0x6005:				/* mov.w @Rm+,Rn */
 	case 0x6006:				/* mov.l @Rm+,Rn */
 		e.load32 (RCX, RBX, rm);
-		load32 (e, o, at);
+		load (e, o, at, size);
 		e.store32 (RBX, rn, RAX);
 		if (n != m)
-			e.add32_mem_imm (RBX, rm, 4);
+			e.add32_mem_imm (RBX, rm, (int32_t) size);
 		return true;
+	case 0x2000:				/* mov.b Rm,@Rn */
+	case 0x2001:				/* mov.w Rm,@Rn */
 	case 0x2002:				/* mov.l Rm,@Rn */
 		e.load32 (RCX, RBX, rn);
 		e.load32 (R10, RBX, rm);
-		store32 (e, o, at);
+		store (e, o, at, size);
 		return true;
+	case 0x2004:				/* mov.b Rm,@-Rn */
+	case 0x2005:				/* mov.w Rm,@-Rn */
 	case 0x2006:				/* mov.l Rm,@-Rn */
 		e.load32 (RCX, RBX, rn);
-		e.lea32 (RCX, RCX, -4);
+		e.lea32 (RCX, RCX, -(int32_t) size);
 		e.load32 (R10, RBX, rm);
-		store32 (e, o, at);
-		e.add32_mem_imm (RBX, rn, -4);
+		store (e, o, at, size);
+		e.add32_mem_imm (RBX, rn, -(int32_t) size);
+		return true;
+	case 0x000C:				/* mov.b @(R0,Rm),Rn */
+	case 0x000D:				/* mov.w @(R0,Rm),Rn */
+	case 0x000E:				/* mov.l @(R0,Rm),Rn */
+		e.load32 (RCX, RBX, rm);
+		e.alu_reg_mem (Emitter::ALU_ADD, RCX, RBX, r0);
+		load (e, o, at, size);
+		e.store32 (RBX, rn, RAX);
+		return true;
+	case 0x0004:				/* mov.b Rm,@(R0,Rn) */
+	case 0x0005:				/* mov.w Rm,@(R0,Rn) */
+	case 0x0006:				/* mov.l Rm,@(R0,Rn) */
+		e.load32 (RCX, RBX, rn);
+		e.alu_reg_mem (Emitter::ALU_ADD, RCX, RBX, r0);
+		e.load32 (R10, RBX, rm);
+		store (e, o, at, size);
 		return true;
 	}
 	switch (inst & 0xF000) {
 	case 0x5000:				/* mov.l @(disp,Rm),Rn */
 		e.load32 (RCX, RBX, rm);
 		e.lea32 (RCX, RCX, (inst & 15) * 4);
-		load32 (e, o, at);
+		load (e, o, at, 4);
 		e.store32 (RBX, rn, RAX);
 		return true;
 	case 0x1000:				/* mov.l Rm,@(disp,Rn) */
 		e.load32 (RCX, RBX, rn);
 		e.lea32 (RCX, RCX, (inst & 15) * 4);
 		e.load32 (R10, RBX, rm);
-		store32 (e, o, at);
+		store (e, o, at, 4);
 		return true;
 	case 0xD000: {				/* mov.l @(disp,PC),Rn */
 		/* ((PC + 4) & ~3) + disp * 4, PC's low bits the block's own */
 		int32_t from_esi = (int32_t) (((pc + 4) & ~3u) - (pc - (uint32_t) at)) +
 		                   (int32_t) ((inst & 0xFF) * 4);
 		e.lea32 (RCX, RSI, from_esi);
-		load32 (e, o, at);
+		load (e, o, at, 4);
 		e.store32 (RBX, rn, RAX);
 		return true;
 	}
+	case 0x9000:				/* mov.w @(disp,PC),Rn */
+		e.lea32 (RCX, RSI, at + 4 + (int32_t) ((inst & 0xFF) * 2));
+		load (e, o, at, 2);
+		e.store32 (RBX, rn, RAX);
+		return true;
 	}
 	switch (inst & 0xFF00) {
 	case 0xC600:				/* mov.l @(disp,GBR),R0 */
+	case 0xC500:				/* mov.w @(disp,GBR),R0 */
+	case 0xC400: {				/* mov.b @(disp,GBR),R0 */
+		const unsigned s = 1u << ((inst >> 8) & 3);
 		e.load32 (RCX, RBX, o.gbr);
-		e.lea32 (RCX, RCX, (inst & 0xFF) * 4);
-		load32 (e, o, at);
-		e.store32 (RBX, o.r[0], RAX);
+		e.lea32 (RCX, RCX, (int32_t) ((inst & 0xFF) * s));
+		load (e, o, at, s);
+		e.store32 (RBX, r0, RAX);
 		return true;
+	}
 	case 0xC200:				/* mov.l R0,@(disp,GBR) */
+	case 0xC100:				/* mov.w R0,@(disp,GBR) */
+	case 0xC000: {				/* mov.b R0,@(disp,GBR) */
+		const unsigned s = 1u << ((inst >> 8) & 3);
 		e.load32 (RCX, RBX, o.gbr);
-		e.lea32 (RCX, RCX, (inst & 0xFF) * 4);
-		e.load32 (R10, RBX, o.r[0]);
-		store32 (e, o, at);
+		e.lea32 (RCX, RCX, (int32_t) ((inst & 0xFF) * s));
+		e.load32 (R10, RBX, r0);
+		store (e, o, at, s);
+		return true;
+	}
+	case 0x8500:				/* mov.w @(disp,Rm),R0 */
+	case 0x8400: {				/* mov.b @(disp,Rm),R0 */
+		const unsigned s = (inst & 0x0100) ? 2 : 1;
+		e.load32 (RCX, RBX, o.r[(inst >> 4) & 15]);
+		e.lea32 (RCX, RCX, (int32_t) ((inst & 15) * s));
+		load (e, o, at, s);
+		e.store32 (RBX, r0, RAX);
+		return true;
+	}
+	case 0x8100:				/* mov.w R0,@(disp,Rn) */
+	case 0x8000: {				/* mov.b R0,@(disp,Rn) */
+		const unsigned s = (inst & 0x0100) ? 2 : 1;
+		e.load32 (RCX, RBX, o.r[(inst >> 4) & 15]);
+		e.lea32 (RCX, RCX, (int32_t) ((inst & 15) * s));
+		e.load32 (R10, RBX, r0);
+		store (e, o, at, s);
+		return true;
+	}
+	}
+	if ((inst & 0xF0FF) == 0x00C3) {	/* movca.l R0,@Rn */
+		e.load32 (RCX, RBX, rn);
+		e.load32 (R10, RBX, r0);
+		store (e, o, at, 4);
 		return true;
 	}
 	return false;
@@ -517,6 +699,19 @@ native_op (Emitter &e, const Sh4Offsets &o, uint16_t inst)
 		set_t (e, o, conds[inst & 7]);
 		return true;
 	}
+	case 0x600E:				/* exts.b Rm,Rn */
+		e.movsx8_mem (RAX, RBX, rm);
+		e.store32 (RBX, rn, RAX);
+		return true;
+	case 0x600F:				/* exts.w Rm,Rn */
+		e.movsx16_mem (RAX, RBX, rm);
+		e.store32 (RBX, rn, RAX);
+		return true;
+	case 0x600B:				/* neg Rm,Rn */
+		e.load32 (RAX, RBX, rm);
+		e.neg32 (RAX);
+		e.store32 (RBX, rn, RAX);
+		return true;
 	}
 	switch (inst & 0xF0FF) {
 	case 0x4010:				/* dt Rn */
@@ -542,6 +737,37 @@ native_op (Emitter &e, const Sh4Offsets &o, uint16_t inst)
 		e.and32_imm (RAX, 1);
 		e.store32 (RBX, rn, RAX);
 		return true;
+	case 0x4015:				/* cmp/pl Rn */
+	case 0x4011:				/* cmp/pz Rn */
+		e.alu_mem_imm (Emitter::ALU_CMP, RBX, rn, 0);
+		set_t (e, o, (inst & 4) ? CC_G : CC_GE);
+		return true;
+	/* The FPU's: FPUL, the singles at n ^ 1 (sh4.cpp, FR ()) */
+	case 0x005A:				/* sts FPUL,Rn */
+		e.load32 (RAX, RBX, o.fpul);
+		e.store32 (RBX, rn, RAX);
+		return true;
+	case 0x405A:				/* lds Rm,FPUL */
+		e.load32 (RAX, RBX, rn);
+		e.store32 (RBX, o.fpul, RAX);
+		return true;
+	case 0xF00D:				/* fsts FPUL,FRn */
+		e.load32 (RAX, RBX, o.fpul);
+		e.store32 (RBX, o.fr + 4 * (int32_t) (n ^ 1), RAX);
+		return true;
+	case 0xF01D:				/* flds FRm,FPUL */
+		e.load32 (RAX, RBX, o.fr + 4 * (int32_t) (n ^ 1));
+		e.store32 (RBX, o.fpul, RAX);
+		return true;
+	case 0xF08D:				/* fldi0 FRn */
+	case 0xF09D:				/* fldi1 FRn */
+		e.store32_imm (RBX, o.fr + 4 * (int32_t) (n ^ 1),
+		               (inst & 0x10) ? 0x3F800000 : 0);
+		return true;
+	}
+	if (inst == 0xF3FD) {			/* fschg: FPSCR.SZ */
+		e.alu_mem_imm (Emitter::ALU_XOR, RBX, o.fpscr, 0x00100000);
+		return true;
 	}
 	return false;
 }
@@ -551,8 +777,9 @@ Sh4X64::translate (Sh4 *ctx, Sh4Block *block)
 {
 	const Sh4Offsets o (ctx);
 	const size_t n = block->ops.size ();
-	/* A generous bound of the function's size */
-	const size_t max = 128 + n * 256;
+	/* A generous bound of the function's size: an FPU move writes both
+	 * sizes' accesses, each with its slow path, some 400 bytes */
+	const size_t max = 128 + n * 768;
 	/* The ways out after instruction i: in sequence (the next one's
 	 * address to set), after a handler's branch (its target less 2 set),
 	 * after a branch written out (its target set) */
@@ -663,6 +890,7 @@ Sh4X64::translate (Sh4 *ctx, Sh4Block *block)
 
 	if (e.overflowed ())
 		return NULL;
+	arena.trim (buf + e.length ());
 	register_unwind (buf, e.length ());
 	num_translated++;
 	return (Sh4Native) buf;
@@ -680,6 +908,10 @@ Sh4X64::get (Sh4 *ctx, Sh4Block *block)
 		/* The arena is full: everything goes, this block first again */
 		clear ();
 		block->native = (void *) translate (ctx, block);
+		/* Too big for the bound even so: the interpreter's, for good
+		 * (the arena not cleared again at each entry) */
+		if (!block->native)
+			block->patched = true;
 	}
 	block->native_generation = generation;
 	return (Sh4Native) block->native;

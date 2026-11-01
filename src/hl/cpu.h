@@ -186,11 +186,20 @@ private:
 
 } /* namespace hl */
 
+/* The CPU's state at the head of the line: made only when the log is (its
+ * debug_string () a sprintf, at each on-chip register's access otherwise) */
+#ifdef NDEBUG
+#define HL_CPU_LOG(cpu_, fmt_, ...) \
+	do { } while (0);
+#else
 #define HL_CPU_LOG(cpu_, fmt_, ...) \
 	do { \
-		const char *str = (cpu_)->debug_string (); \
-		HL_LOG ("%s : " fmt_, str, ##__VA_ARGS__); \
+		if (hl_verbosity > 0) { \
+			const char *str = (cpu_)->debug_string (); \
+			HL_LOG ("%s : " fmt_, str, ##__VA_ARGS__); \
+		} \
 	} while (0);
+#endif
 
 #define HL_CPU_ERROR(cpu_, fmt_, ...) \
 	do { \
