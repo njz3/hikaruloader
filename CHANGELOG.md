@@ -5,6 +5,16 @@ What each version brings, for those who play. How the versions are numbered
 and released: [DEVELOPMENT.md](DEVELOPMENT.md), "Versions and releases".
 
 
+0.2.1 (2026-11-01)
+------------------
+
+- Microsoft Defender took 0.2.0's program for a Trojan
+  (Bearfoos.A!ml, a false detection) and removed it: this version's
+  program is a new build.
+- Fixed: the log got a line at each frame of a game, which slowed the
+  games down with the log on a network drive.
+
+
 0.2.0 (2026-11-01)
 ------------------
 
