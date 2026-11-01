@@ -3032,7 +3032,7 @@ draw (Renderer *hr)
 		HL_ABORT ("could not build the scene's buffers");
 
 	/* Figure out the GPU framebuffer assignments */
-	HL_PRINT ("FRAMEBUFFER 781=%08X 181=%08X", gpu->fb_config._781, gpu->fb_config._181);
+	LOG ("FRAMEBUFFER 781=%08X 181=%08X", gpu->fb_config._781, gpu->fb_config._181);
 
 	n1 = gpu->fb_config.num_1;
 	n2 = gpu->fb_config.num_2;
