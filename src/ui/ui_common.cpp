@@ -44,6 +44,7 @@
 
 #include "hl/audio.h"
 #include "hl/config.h"
+#include "hl/crt_preset.h"
 #include "hl/outputs.h"
 #include "hl/renderer.h"
 #include "hl/romset.h"
@@ -283,6 +284,14 @@ void drawDisplayTab()
     wrappedNote(tr("Sharp pixels: square and crisp, but uneven unless the picture is enlarged a whole number of times. Smooth: down to "
                    "240 rows (a CRT), each one the mean of two, where Sharp pixels drops one in two (thin lines, small texts)."));
 
+    // BEZEL: what is around the picture where the window is wider than its frame (hl/bezel.h): read at each frame
+    const char *bezelLabels[] = {tr("Off (black)"), tr("The picture's edges, blurred"), tr("The game's bezel picture")};
+    ImGui::Combo(tr("Bezel"), &cfg->bezel, bezelLabels, IM_ARRAYSIZE(bezelLabels));
+    wrappedNote(tr("Around the picture where the window is wider than its frame: black, the picture's own edges blurred and dimmed, "
+                   "or the game's bezel picture with the game in its screen. The pictures are Batocera's: artwork\\bezels\\<set>.png "
+                   "beside the program and its <set>.info (where the screen is; else the picture's see-through middle), a clone "
+                   "taking its parent's, else default.png; black without any."));
+
     ImGui::Separator();
     changed |= ImGui::Checkbox(tr("Vertical sync"), &cfg->vsync);
     ImGui::Checkbox(tr("Limit the frame rate"), &cfg->fps_limiter);
@@ -299,6 +308,13 @@ void drawDisplayTab()
     ImGui::PushTextWrapPos(0.0f);
     ImGui::TextDisabled("%s", tr("Each frame drawn while the next one is emulated: faster when the drawing slows the game, "
                                  "but the picture comes a frame later. Takes effect at the game's next start."));
+    ImGui::PopTextWrapPos();
+
+    ImGui::Checkbox(tr("Sort the translucent polygons at each pixel"), &cfg->sort_translucent_pixels);
+    ImGui::PushTextWrapPos(0.0f);
+    ImGui::TextDisabled("%s", tr("Blended from the farthest at each pixel, as the board does: right where they cross. "
+                                 "Needs OpenGL 4.3 and no MSAA; off, each mesh is sorted as a whole, lighter for a weak "
+                                 "graphics card."));
     ImGui::PopTextWrapPos();
 
     ImGui::Checkbox(tr("Widescreen 3D (16:9)"), &cfg->widescreen);
@@ -375,9 +391,32 @@ void drawEnhancementsTab()
     ImGui::SliderInt(tr("Bloom"), &cfg->bloom, 0, 100, "%d %%");
     wrappedNote(tr("A glow around the 3D's bright parts (lights, sky, explosions). 0: none."));
 
+    // CRT_PRESET: a libretro preset's passes in CRT_FILTER's place (hl/crt_preset.h), the folder read when the list opens
+    static std::vector<std::string> presets = hl::crt_preset::list();
+    if (ImGui::BeginCombo(tr("CRT preset"), cfg->crt_preset[0] ? cfg->crt_preset : tr("None")))
+    {
+        if (ImGui::IsWindowAppearing())
+            presets = hl::crt_preset::list();
+        if (ImGui::Selectable(tr("None"), !cfg->crt_preset[0]))
+            cfg->crt_preset[0] = '\0';
+        for (const std::string &name : presets)
+            if (ImGui::Selectable(name.c_str(), name == cfg->crt_preset))
+                snprintf(cfg->crt_preset, sizeof(cfg->crt_preset), "%s", name.c_str());
+        ImGui::EndCombo();
+    }
+    wrappedNote(tr("A CRT drawn over the whole picture by a shader preset (data\\crt beside the program): Lola Retro's, by Zoki. "
+                   "sega-monitor-29 and sega-projector-50: the cabinets' screens; pc-monitor-vga: PC monitors, from good to extreme "
+                   "(-flat: a flat tube). The tube stays 4:3; a crop's bent edges are not drawn. Needs OpenGL 3.3."));
+
+    // The preset draws its own scanlines and mask: ours over them would beat with them
+    ImGui::BeginDisabled(cfg->crt_preset[0] != '\0');
     ImGui::SliderInt(tr("CRT filter"), &cfg->crt_filter, 0, 100, "%d %%");
-    wrappedNote(tr("A CRT's look on a flat screen: its scanlines and its phosphors' stripes, over the whole picture. "
-                   "From 960 rows up (a window of x2 or more, full screen); none on a CRT itself. 0: none."));
+    ImGui::EndDisabled();
+    if (cfg->crt_preset[0])
+        wrappedNote(tr("Not with a CRT preset, which draws its own scanlines and mask."));
+    else
+        wrappedNote(tr("A CRT's look on a flat screen: its scanlines and its phosphors' stripes, over the whole picture. "
+                       "From 960 rows up (a window of x2 or more, full screen); none on a CRT itself. 0: none."));
 }
 
 void drawSoundTab(bool inGame)
@@ -514,6 +553,23 @@ void drawEmulationTab(bool inGame)
                                  "run below 60 frames a second on this PC). 100 MHz by default; below, Air Trix's "
                                  "skater loses his body."));
     ImGui::PopTextWrapPos();
+
+    // The low-level emulations, off by default (IO_BOARD_PROGRAM, SECURITY_CHIPS)
+    ImGui::Separator();
+    ImGui::Checkbox(tr("I/O board running its own program"), &cfg->io_board_program);
+    restartNote(inGame);
+    ImGui::PushTextWrapPos(0.0f);
+    ImGui::TextDisabled("%s", tr("The JVS I/O board's processor runs its program, as on the cabinet, instead of its simulation: "
+                                 "315-6215 (MAME's jvs13551 set), epr-21868 for NASCAR Arcade (the 18wheelr set); without the "
+                                 "file, the simulation. Test and Service then go through that board, as a cabinet's."));
+    ImGui::PopTextWrapPos();
+    ImGui::Checkbox(tr("Security chips"), &cfg->security_chips);
+    restartNote(inGame);
+    ImGui::PushTextWrapPos(0.0f);
+    ImGui::TextDisabled("%s", tr("The ROM board's X76F100 and the main board's 93C46 answer from their images (x76f100.ic85 and "
+                                 "93c46.ic115, in MAME's newer hikaru set), the BIOS checking them instead of skipping the check; "
+                                 "NASCAR Arcade's protection answers as its Actel chip."));
+    ImGui::PopTextWrapPos();
 }
 
 // A port typed in, taken once the field is left: not each digit, which
@@ -643,8 +699,8 @@ void drawPickerTab()
         else
             ImGui::BulletText(tr("%s (not found)"), folder.c_str());
     }
-    ImGui::TextDisabled("%s", tr("MAME romsets (merged, split or non-merged zips): <game>.zip, its parent's zip and hikaru.zip for the BIOS. Folders <game>/ "
-                                 "with the files unpacked still work."));
+    ImGui::TextDisabled("%s", tr("MAME romsets (merged, split or non-merged), zips or 7z: <game>.zip or <game>.7z, its parent's and hikaru's for the "
+                                 "BIOS. Folders <game>/ with the files unpacked still work."));
     ImGui::PopTextWrapPos();
 
     ImGui::Separator();
@@ -708,11 +764,14 @@ void drawAboutTab()
                               "contributors; modified for Hikaru Loader:"));
     ImGui::TextUnformatted("https://github.com/dmanlfc/sm2-emu");
     ImGui::Spacing();
-    ImGui::TextUnformatted(tr("Romsets read as sm2-emu does: by CRC32, with miniz."));
+    ImGui::TextUnformatted(tr("Romsets read as sm2-emu does: by CRC32, with miniz; the 7z ones with the LZMA SDK, by Igor Pavlov (public domain)."));
     ImGui::Spacing();
     ImGui::TextUnformatted(tr("Games' pictures, when downloaded: scraping using Arcade Database by motoschifo, as sm2-emu does; their copyrights "
                               "belong to their owners. Pictures read with stb_image, by Sean Barrett (public domain)."));
     ImGui::TextUnformatted("https://adb.arcadeitalia.net");
+    ImGui::Spacing();
+    ImGui::TextUnformatted(tr("CRT presets: Lola Retro's, by Zoki (MIT licence, data/crt/lola-retro/LICENSE), as Odin ships them. The presets' "
+                              "reader and passes and the bezels derive from Odin's, by Réda Chérif-Touil (GPL v3 or later)."));
     ImGui::PopTextWrapPos();
 }
 } // namespace

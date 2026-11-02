@@ -52,6 +52,10 @@ static const char *filter_names[NUM_FILTERS] = {
 	"NEAREST", "LINEAR"
 };
 
+static const char *bezel_names[NUM_BEZEL_MODES] = {
+	"OFF", "BLUR", "IMAGE"
+};
+
 /* The BIOS's countries, from -1: the EEPROM's own */
 static const char *region_names[] = {
 	"AUTO", "JAPAN", "USA", "EXPORT", "AUSTRALIA", "KOREA"
@@ -65,6 +69,11 @@ static const char *attract_sound_names[] = {
 /* The BIOS's COMMUNICATION MODE, from -1: the EEPROM's own */
 static const char *link_names[] = {
 	"AUTO", "NO_LINK", "MASTER", "SLAVE", "RELAY"
+};
+
+/* The communication board (CommBoard) */
+static const char *comm_board_names[NUM_COMM_BOARDS] = {
+	"SIMULATED", "PROGRAM"
 };
 
 /* The speakers, by their channels (Audio::Output) */
@@ -115,10 +124,13 @@ Config::set_defaults ()
 	cfg->title_frame = false;
 	cfg->hide_cursor = false;
 	cfg->threaded_rendering = true;
+	cfg->sort_translucent_pixels = true;
 	cfg->widescreen = false;
 	cfg->widescreen_2d = WIDESCREEN_2D_CENTERED;
 	cfg->scale_filter = FILTER_NEAREST;
 	cfg->draw_distance = 1.0f;
+	/* Black around the picture, as before */
+	cfg->bezel = BEZEL_OFF;
 	cfg->render_scale = 1;
 	cfg->msaa = 0;
 	cfg->anisotropy = 1;
@@ -126,6 +138,7 @@ Config::set_defaults ()
 	cfg->fxaa = false;
 	cfg->bloom = 0;
 	cfg->crt_filter = 0;
+	cfg->crt_preset[0] = '\0';
 	strcpy (cfg->language, "auto");
 	cfg->log_file = true;
 	cfg->artwork_download = false;
@@ -138,6 +151,9 @@ Config::set_defaults ()
 	cfg->sh4_clock = 100;
 	/* The country the board's EEPROM holds */
 	cfg->region = -1;
+	/* The simulations, which every game plays with */
+	cfg->io_board_program = false;
+	cfg->security_chips = false;
 	/* The speakers the sound card has, all at their full level */
 	cfg->sound_output = Audio::OUTPUT_AUTO;
 	cfg->sound_balance = 50;
@@ -148,6 +164,8 @@ Config::set_defaults ()
 	cfg->sound_optimized = true;
 	/* The link the board's EEPROM holds; a cabinet alone, its own next */
 	cfg->link = -1;
+	/* Two cabinets, as before November 2026; PROGRAM links more */
+	cfg->comm_board = COMM_BOARD_SIMULATED;
 	cfg->port_in = 1970;
 	strcpy (cfg->address_out, "127.0.0.1");
 	cfg->port_out = 1970;
@@ -158,6 +176,10 @@ Config::set_defaults ()
 	cfg->outputs_announce_port = 8001;
 	/* As windowsloader and linuxloader */
 	cfg->buttons_from_one = true;
+	/* The wheel's whole turn for the game's, as before November 2026; the
+	 * factory turn of most wheels (Logitech's), Odin's choice too */
+	cfg->wheel_rotation = 0;
+	cfg->wheel_range = 900;
 	for (i = 0; i < NUM_ACTIONS; i++)
 		cfg->bindings[i] = Input::default_binding ((Action) i);
 }
@@ -176,6 +198,14 @@ unsigned
 Config::sh4_clock_mhz ()
 {
 	return MAX2 (20u, MIN2 (200u, get ()->sh4_clock));
+}
+
+double
+Config::wheel_scale (int rotation, int range)
+{
+	if (rotation <= 0 || range <= rotation)
+		return 1.0;
+	return (double) range / rotation;
 }
 
 const char *
@@ -308,6 +338,8 @@ Config::set_value (const char *section, const char *key, const char *value)
 			cfg->hide_cursor = parse_bool (value);
 		else if (!strcasecmp (key, "THREADED_RENDERING"))
 			cfg->threaded_rendering = parse_bool (value);
+		else if (!strcasecmp (key, "SORT_TRANSLUCENT_PIXELS"))
+			cfg->sort_translucent_pixels = parse_bool (value);
 		else if (!strcasecmp (key, "WIDESCREEN"))
 			cfg->widescreen = parse_bool (value);
 		else if (!strcasecmp (key, "WIDESCREEN_2D"))
@@ -317,6 +349,8 @@ Config::set_value (const char *section, const char *key, const char *value)
 			cfg->scale_filter = parse_name (value, filter_names, NUM_FILTERS, cfg->scale_filter);
 		else if (!strcasecmp (key, "DRAW_DISTANCE"))
 			cfg->draw_distance = MAX2 (1.0f, MIN2 (4.0f, (float) atof (value)));
+		else if (!strcasecmp (key, "BEZEL"))
+			cfg->bezel = parse_name (value, bezel_names, NUM_BEZEL_MODES, cfg->bezel);
 	} else if (!strcasecmp (section, "Enhancements")) {
 		/* In [Display] since November 2026 */
 		if (!strcasecmp (key, "RENDER_SCALE"))
@@ -333,6 +367,9 @@ Config::set_value (const char *section, const char *key, const char *value)
 			cfg->bloom = MAX2 (0, MIN2 (100, atoi (value)));
 		else if (!strcasecmp (key, "CRT_FILTER"))
 			cfg->crt_filter = MAX2 (0, MIN2 (100, atoi (value)));
+		else if (!strcasecmp (key, "CRT_PRESET"))
+			snprintf (cfg->crt_preset, sizeof (cfg->crt_preset), "%s",
+			          strcasecmp (value, "NONE") ? value : "");
 	} else if (!strcasecmp (section, "Picker")) {
 		if (!strcasecmp (key, "GAMES_DIR"))
 			snprintf (cfg->games_dir, sizeof (cfg->games_dir), "%s", value);
@@ -357,6 +394,10 @@ Config::set_value (const char *section, const char *key, const char *value)
 			cfg->sh4_clock = (unsigned) MAX2 (20, MIN2 (200, atoi (value)));
 		else if (!strcasecmp (key, "REGION"))
 			cfg->region = parse_name (value, region_names, (int) NUMELEM (region_names), cfg->region + 1) - 1;
+		else if (!strcasecmp (key, "IO_BOARD_PROGRAM"))
+			cfg->io_board_program = parse_bool (value);
+		else if (!strcasecmp (key, "SECURITY_CHIPS"))
+			cfg->security_chips = parse_bool (value);
 	} else if (!strcasecmp (section, "Sound")) {
 		if (!strcasecmp (key, "OUTPUT")) {
 			for (const auto &o : sound_outputs)
@@ -375,6 +416,8 @@ Config::set_value (const char *section, const char *key, const char *value)
 	} else if (!strcasecmp (section, "Network")) {
 		if (!strcasecmp (key, "LINK"))
 			cfg->link = parse_name (value, link_names, (int) NUMELEM (link_names), cfg->link + 1) - 1;
+		else if (!strcasecmp (key, "COMM_BOARD"))
+			cfg->comm_board = parse_name (value, comm_board_names, NUM_COMM_BOARDS, cfg->comm_board);
 		else if (!strcasecmp (key, "PORT_IN"))
 			cfg->port_in = (unsigned) MAX2 (1, MIN2 (65535, atoi (value)));
 		else if (!strcasecmp (key, "ADDRESS_OUT"))
@@ -391,6 +434,12 @@ Config::set_value (const char *section, const char *key, const char *value)
 	} else if (!strcasecmp (section, "Input")) {
 		if (!strcasecmp (key, "BUTTONS_FROM_ONE"))
 			cfg->buttons_from_one = parse_bool (value);
+		else if (!strcasecmp (key, "WHEEL_ROTATION")) {
+			/* Any number of degrees, not only the page's choices */
+			int degrees = atoi (value);
+			cfg->wheel_rotation = (degrees <= 0) ? 0 : MAX2 (90, MIN2 (3600, degrees));
+		} else if (!strcasecmp (key, "WHEEL_RANGE"))
+			cfg->wheel_range = MAX2 (90, MIN2 (3600, atoi (value)));
 	} else if (!strcasecmp (section, "Controls")) {
 		for (i = 0; i < NUM_ACTIONS; i++) {
 			const char *name = Input::action_name ((Action) i);
@@ -549,6 +598,13 @@ Config::save () const
 	         "# Default: %s\n", bool_name (def.threaded_rendering));
 	fprintf (fp, "THREADED_RENDERING = %s\n", bool_name (cfg->threaded_rendering));
 	fprintf (fp,
+	         "\n# The translucent polygons sorted at each pixel, from the farthest,\n"
+	         "# as the board blends them: right where they cross. It needs OpenGL\n"
+	         "# 4.3 and no MSAA; false sorts each mesh as a whole, lighter for a\n"
+	         "# weak graphics card. true or false. Default: %s\n",
+	         bool_name (def.sort_translucent_pixels));
+	fprintf (fp, "SORT_TRANSLUCENT_PIXELS = %s\n", bool_name (cfg->sort_translucent_pixels));
+	fprintf (fp,
 	         "\n# The 3D at 16:9 (854x480): the scene seen wider, its middle as the\n"
 	         "# game draws it. The game may leave objects out at the sides. Taken at\n"
 	         "# the game's start: true or false. Default: %s\n", bool_name (def.widescreen));
@@ -568,6 +624,16 @@ Config::save () const
 	         "# models and the fog that much farther (not what the game itself leaves\n"
 	         "# out). Default: %.1f\n", def.draw_distance);
 	fprintf (fp, "DRAW_DISTANCE = %.1f\n", cfg->draw_distance);
+	fprintf (fp,
+	         "\n# Around the picture where the window is wider than its frame: OFF,\n"
+	         "# black; BLUR, the picture's own edges blurred and dimmed; IMAGE, the\n"
+	         "# game's bezel picture in Batocera's format, artwork/bezels/<set>.png\n"
+	         "# and <set>.info (the screen's place in it; without, where the picture\n"
+	         "# is see-through), a clone taking its parent's, else\n"
+	         "# artwork/bezels/default.png; black without any. The game's picture goes\n"
+	         "# in the bezel's screen, as ASPECT_RATIO places it. Taken at once.\n"
+	         "# Default: %s\n", bezel_names[def.bezel]);
+	fprintf (fp, "BEZEL = %s\n", bezel_names[cfg->bezel]);
 
 	fprintf (fp, "\n[Enhancements]\n");
 	fprintf (fp,
@@ -594,13 +660,24 @@ Config::save () const
 	fprintf (fp, "BLOOM = %d\n", cfg->bloom);
 	fprintf (fp,
 	         "\n# A CRT's look on a flat screen, its scanlines and its phosphors' mask:\n"
-	         "# 0 (none) to 100 %%; best from 960 rows up. Default: %d\n", def.crt_filter);
+	         "# 0 (none) to 100 %%; best from 960 rows up. Not drawn with a CRT_PRESET,\n"
+	         "# whose mask it would beat with. Default: %d\n", def.crt_filter);
 	fprintf (fp, "CRT_FILTER = %d\n", cfg->crt_filter);
+	fprintf (fp,
+	         "\n# A CRT's look by a libretro shader preset (.glslp, as 86Box runs\n"
+	         "# them), over the whole picture, in CRT_FILTER's place: NONE, or its\n"
+	         "# name in data/crt beside the program: Lola Retro's (MIT, by Zoki),\n"
+	         "# lola-retro/sega-monitor-29 and lola-retro/sega-projector-50 (the\n"
+	         "# cabinets' screens), lola-retro/pc-monitor-vga (also -good, -premium,\n"
+	         "# -premium-plus, -extreme, each also -flat: PC monitors); or a .glslp\n"
+	         "# file's path. Their tube stays 4:3. Taken at once. Default: NONE\n");
+	fprintf (fp, "CRT_PRESET = %s\n", cfg->crt_preset[0] ? cfg->crt_preset : "NONE");
 
 	fprintf (fp, "\n[Picker]\n");
 	fprintf (fp,
-	         "\n# The folder of the MAME romsets (<game>.zip, its parent's, hikaru.zip),\n"
-	         "# or several separated by ';', looked in in that order (D:\\roms;E:\\mame\\roms).\n"
+	         "\n# The folder of the MAME romsets (<game>.zip or .7z, its parent's,\n"
+	         "# hikaru's), or several separated by ';', looked in in that order\n"
+	         "# (D:\\roms;E:\\mame\\roms).\n"
 	         "# Default: empty, the roms folder beside the program\n");
 	fprintf (fp, "GAMES_DIR = %s\n", cfg->games_dir);
 	fprintf (fp,
@@ -659,6 +736,20 @@ Config::save () const
 	         "# JAPAN, USA, EXPORT, AUSTRALIA or KOREA, written to the game's EEPROM\n"
 	         "# at its start. Default: %s\n", region_names[def.region + 1]);
 	fprintf (fp, "REGION = %s\n", region_names[cfg->region + 1]);
+	fprintf (fp,
+	         "\n# The JVS I/O board's own CPU running its program, as on the cabinet,\n"
+	         "# instead of its simulation: the 837-13551's TMP90PH44 running 315-6215\n"
+	         "# (MAME's jvs13551 set), NASCAR Arcade's 837-13741 running epr-21868\n"
+	         "# (the 18wheelr set). Without the file, the simulation, said in the log.\n"
+	         "# From the game's start: true or false. Default: %s\n", bool_name (def.io_board_program));
+	fprintf (fp, "IO_BOARD_PROGRAM = %s\n", bool_name (cfg->io_board_program));
+	fprintf (fp,
+	         "\n# The security chips answering as the boards' do: the ROM board's X76F100\n"
+	         "# secure EEPROM and the main board's 93C46 from their images (x76f100.ic85\n"
+	         "# and 93c46.ic115, in the newer MAME hikaru sets), the BOOTROM's check of\n"
+	         "# them run instead of skipped; NASCAR Arcade's Actel FPGA as the chip.\n"
+	         "# From the game's start: true or false. Default: %s\n", bool_name (def.security_chips));
+	fprintf (fp, "SECURITY_CHIPS = %s\n", bool_name (cfg->security_chips));
 
 	fprintf (fp, "\n[Sound]\n");
 	fprintf (fp,
@@ -703,6 +794,14 @@ Config::save () const
 	         "# (SGNASCAR's monitor) does not play. Default: %s\n", link_names[def.link + 1]);
 	fprintf (fp, "LINK = %s\n", link_names[cfg->link + 1]);
 	fprintf (fp,
+	         "\n# The communication board: SIMULATED, its program's work done by\n"
+	         "# Hikaruloader, two cabinets at most; PROGRAM, its 68000 running the\n"
+	         "# program the game gives it, as on the board: up to 4 cabinets for Star\n"
+	         "# Wars Racer Arcade and Virtual-On, 8 for NASCAR Arcade. The same in all\n"
+	         "# the cabinets of a ring. From the game's start. Default: %s\n",
+	         comm_board_names[def.comm_board]);
+	fprintf (fp, "COMM_BOARD = %s\n", comm_board_names[cfg->comm_board]);
+	fprintf (fp,
 	         "\n# The ring, over TCP: the previous cabinet connects to this one's PORT_IN,\n"
 	         "# this one to the next cabinet's ADDRESS_OUT and PORT_OUT, the last one to\n"
 	         "# the master. A master alone is its own next (127.0.0.1 and its PORT_IN).\n"
@@ -735,6 +834,19 @@ Config::save () const
 	         "# vJoy do (true), or from 0, as SDL and controls.ini do (false): the file\n"
 	         "# keeps SDL's numbers either way. Default: %s\n", bool_name (def.buttons_from_one));
 	fprintf (fp, "BUTTONS_FROM_ONE = %s\n", bool_name (cfg->buttons_from_one));
+	fprintf (fp,
+	         "\n# How far a wheel turns from one end to the other for the game's wheel\n"
+	         "# (NASCAR Arcade): 0, its whole turn; 270, 360, 540, 900 or 1080 degrees,\n"
+	         "# the game's wheel then at its end before the wheel's. A wheel's or a\n"
+	         "# joystick's axis (JOY<n>_AXIS_<a>), not a game controller's stick. The\n"
+	         "# force feedback's centring spring follows. Taken at once. Default: %d\n",
+	         def.wheel_rotation);
+	fprintf (fp, "WHEEL_ROTATION = %d\n", cfg->wheel_rotation);
+	fprintf (fp,
+	         "\n# The degrees the wheel turns from one end to the other, as its driver is\n"
+	         "# set (Logitech G HUB, Thrustmaster's or Fanatec's control panel): what\n"
+	         "# WHEEL_ROTATION is taken from, 90 to 3600. Default: %d\n", def.wheel_range);
+	fprintf (fp, "WHEEL_RANGE = %d\n", cfg->wheel_range);
 
 	/* The controls are controls.ini's (hl::Controls): the old [Controls]
 	 * is read once, into it, and no longer written */

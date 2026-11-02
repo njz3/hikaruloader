@@ -41,13 +41,20 @@ What it needs
   for the faster one; Windows' graphics settings can still choose another.
 - The program's folder: `hikaruloader.exe` and `data/`, from a
   release archive or built from the sources ([INSTALL.md](INSTALL.md)).
-- The games, as MAME romsets: the game's zip (`airtrix.zip`), its parent's
-  for a clone (`airtrixo` needs `airtrix.zip` as well), and `hikaru.zip`, the
-  BIOS. Merged, split and non-merged sets all work: the files are found by
-  their CRC32. Folders of unpacked files (`<game>/`) still load.
+- The games, as MAME romsets, zips or 7z: the game's (`airtrix.zip` or
+  `airtrix.7z`), its parent's for a clone (`airtrixo` needs `airtrix`'s as
+  well), and `hikaru.zip` or `hikaru.7z`, the BIOS. Merged, split and
+  non-merged sets all work: the files are found by their CRC32. A 7z is
+  usually solid, unpacked whole into memory at the game's start: a little
+  slower to start than a zip. Folders of unpacked files (`<game>/`) still
+  load.
 - For NASCAR Arcade's drive board, optionally, Sega Rally 2's set
   (`srally2.zip`): its EPR-20512 then runs on an emulated Z80. Without it the
   board is simulated, and the force feedback works the same.
+- For the Emulation tab's two low-level options, optionally (see
+  *Settings*): `jvs13551.zip` and `18wheelr.zip` (the I/O boards' programs),
+  MAME's newer `hikaru.zip` (with the `x76f100.ic85` and `93c46.ic115`
+  images). Without them the games play as before.
 
 
 The games
@@ -80,8 +87,9 @@ program. There can be several, separated by `;`
 (`D:\roms;E:\mame\roms`), looked in in that order: the BIOS can be in one,
 the games in another.
 
-In a game, Escape goes back to the picker; when the game was started from
-the command line, it quits. F9 quits at once.
+In a game, Escape (a controller's Guide + B) goes back to the picker; when
+the game was started from the command line, it quits. F9 (Guide + Start)
+quits at once.
 
 
 Command line
@@ -93,7 +101,7 @@ hikaruloader.exe [options]
 
 | Option | What it does |
 |---|---|
-| `-R <folder>` | The games folder for this start: the MAME zips, or a folder per game; several separated by `;` (`-R "D:\roms;E:\mame\roms"`) |
+| `-R <folder>` | The games folder for this start: the MAME zips or 7z, or a folder per game; several separated by `;` (`-R "D:\roms;E:\mame\roms"`) |
 | `-r <set>` | Starts that game at once, by its MAME set name (`-r sgnascar`), without the picker |
 | `-l <file>` | Loads that save state at the start: the game goes on from its frame. `-l 0` (any number) loads the game's own state, the one F4 saves |
 | `-n <frames>` | Quits after that many frames |
@@ -123,19 +131,43 @@ Keys and controllers
 | The arrows, a controller's D-pad or left stick | Up, down, left, right |
 | Left Ctrl, Left Alt, Left Shift, Z; a controller's A, B, X, Y | Buttons 1 to 4 |
 | A controller's left stick and triggers, a wheel's axes | Steering, accelerator, brake (the arrows too, all the way) |
-| Space | Pause |
-| F4, F1 | Save, load the game's state |
-| Tab, a controller's Back | Settings |
-| F7 | Virtual-On 4's card: in the reader's slot, or taken back (see below) |
+| Space; Guide + X | Pause |
+| F4, F1; Guide + R1, Guide + L1 | Save, load the game's state |
+| Tab; a controller's Back, Guide + Back | Settings |
+| F7; Guide + Y | Virtual-On 4's card: in the reader's slot, or taken back (see below) |
 | F12 | The frame rate over the picture |
-| F9 | Quit |
-| Escape | Back to the picker, or quit |
+| F9; Guide + Start | Quit |
+| Escape; Guide + B | Back to the picker, or quit |
 
 The Controls tab of the settings binds each action to keys, to the
 controllers' buttons and axes (a wheel and its pedals included, with their
 dead zones), several to each. The bindings go to `controls.ini`, written at
 the first start with a comment on each line, in the syntax of linuxloader and
 windowsloader. Its buttons can be numbered from 1, as Windows and vJoy do.
+
+**Hotkeys.** A controller's Guide button (Xbox, PS or Home), held, turns its
+other buttons into the emulator's commands, as RetroArch has them: Guide +
+Start quits, Guide + B goes back to the picker, Guide + Back opens the
+settings, Guide + R1 and L1 save and load the state, Guide + X pauses,
+Guide + Y takes Virtual-On 4's card. While Guide is held the game sees none
+of the controller's buttons, nor one pressed then until it is let go: Guide
++ B does not also press button 2. They are bindings like the others
+(`ExitGame = KEY_F9, GC0_BUTTON_GUIDE + GC0_BUTTON_START` in `controls.ini`);
+in the Controls tab, hold Guide and press a button to bind one. A
+`controls.ini` of an earlier version keeps its bindings as they are: bind
+the hotkeys in the Controls tab, or delete the file to get the defaults.
+On Windows, Guide also opens the Xbox Game Bar: Windows' settings (Gaming,
+Xbox Game Bar) turn its controller button off.
+
+**Wheel rotation.** With a wheel, NASCAR Arcade's wheel goes from one end
+to the other over the wheel's whole turn by default. The Controls tab's
+*Wheel rotation* makes it 270, 360, 540, 900 or 1080 degrees of the wheel's
+turn instead, the game's wheel then at its end before the wheel is; *Your
+wheel's turn* is the rotation set in the
+wheel's driver (Logitech G HUB, Thrustmaster's or Fanatec's control panel),
+900 degrees for most, which SDL cannot read. A wheel's axis only
+(`JOY<n>_AXIS_<a>`), not a game controller's stick. In `hikaruloader.ini`:
+`[Input]` `WHEEL_ROTATION` and `WHEEL_RANGE`.
 
 
 Settings
@@ -192,12 +224,29 @@ stretched display mode, `SCALE_FILTER` is read as `SCALING_FILTER`, and
 - *Draw on a thread of its own* (on by default): each frame is drawn while
   the next one is emulated. Faster when the drawing slows the game, but the
   picture comes a frame later.
+- *Sort the translucent polygons at each pixel* (`SORT_TRANSLUCENT_PIXELS`,
+  on by default): smoke, glass, flames and lights blended from the farthest
+  at each pixel, as the board does, right where they cross. It needs a card
+  with OpenGL 4.3 and no MSAA; off, or without them, each mesh is sorted as
+  a whole, lighter for a weak graphics card.
 - *Widescreen 3D (16:9)*: the 3D is drawn at 854x480 and seen wider; its
   middle stays as the game draws it. The 2D (texts, logos) stays 4:3 in the
   middle, or is stretched to 16:9 for a game that needs it. The games were
   made for 4:3: objects may be missing at the sides, or appear late.
 - *Draw distance* (x1 to x4): the scenery's detailed models and its fog go
   that many times farther. What a game leaves out itself is not drawn.
+- *Bezel* (`BEZEL`): what is around the picture where the window is wider
+  than its frame (a 4:3 game on a 16:9 screen). *Off*, black; *the
+  picture's edges, blurred* (`BLUR`), its own edges spread over the sides,
+  blurred and dimmed; *the game's bezel picture* (`IMAGE`), a picture laid
+  over the window with the game in its screen, placed there as the aspect
+  ratio's settings place it in a window of the screen's size. The
+  pictures are in Batocera's format, yours to put in `artwork\bezels\`
+  beside the program: `<set>.png`, with `<set>.info` beside it giving where
+  its screen is (`width`, `height`, `left`, `top`, `right`, `bottom`, in
+  pixels); without the `.info`, the screen is the picture's see-through
+  middle. A clone without its own takes its parent's; `default.png` serves
+  the others; without any, black. None is shipped.
 
 **Enhancements.** Beyond the board's own picture, all off by default; each
 takes effect at once (`[Enhancements]` in `hikaruloader.ini`).
@@ -212,9 +261,23 @@ takes effect at once (`[Enhancements]` in `hikaruloader.ini`).
   of their flat colours (texts, signs, markings) kept sharp; photographic
   textures change little. More memory, slower texture loads.
 - *Bloom* (0 to 100 %): a glow around the 3D's bright parts.
+- *CRT preset* (`CRT_PRESET`): a CRT drawn over the whole picture by a
+  libretro shader preset (`.glslp`, run by 86Box's rules): its tube, curved
+  glass, scanlines, phosphor mask and glow. Shipped in `data\crt\`: Lola
+  Retro's, by Zoki (MIT licence, `data\crt\lola-retro\LICENSE`), as Odin
+  ships them: `sega-monitor-29` and `sega-projector-50`, the cabinets'
+  29-inch monitor and 50-inch projector; `pc-monitor-vga`, PC monitors of
+  the VGA days from `-good` to `-extreme`, each also `-flat`. The picture is
+  given to the preset at its own size (640x480, 854x480 in widescreen),
+  whatever the internal resolution. The tube stays 4:3 (a widescreen
+  picture is squeezed into it), and a crop's bent edges are not drawn. The
+  presets need OpenGL 3.3's sampler objects and GLSL 1.50 from the driver,
+  and the larger ones a recent graphics card; a preset that cannot run is
+  logged and left out. The ini also takes a `.glslp` file's path.
 - *CRT filter* (0 to 100 %): a CRT's scanlines and its phosphors' stripes on
   a flat screen, over the whole picture. It needs 960 rows or more (a window
-  of x2 or more, full screen); on a CRT itself, leave it at 0.
+  of x2 or more, full screen); on a CRT itself, leave it at 0. Greyed with a
+  CRT preset, which draws its own: both would make their stripes beat.
 
 **Sound.** The speakers: the sound card's, or mono, stereo, 2.1, quad, 5.1,
 7.1. The games with four speakers play their front on the main sound board
@@ -242,6 +305,21 @@ front, 3 dB lower. Also the front/rear balance and the volume.
   real time whatever the clock.
 - *SH-4 processors*: the recompiler (the default) or the interpreter, the
   same machine either way. *Memory access*: the same, three ways.
+- *I/O board running its own program* (`IO_BOARD_PROGRAM`, off by default,
+  at the game's start): the JVS I/O board's processor runs its program, as
+  on the cabinet, instead of its simulation: the 837-13551's TMP90PH44
+  running `315-6215.bin` (MAME's `jvs13551.zip`), NASCAR Arcade's 837-13741
+  running `epr-21868.ic7` (MAME's `18wheelr.zip`), both in a games folder.
+  The test menu's JVS TEST then shows the board's own answers. Test and
+  Service go through that board, as on a cabinet, no longer through the
+  main board's switches. Without the file, the simulation (the log says so).
+- *Security chips* (`SECURITY_CHIPS`, off by default, at the game's start):
+  the ROM board's X76F100 secure EEPROM and the main board's 93C46 answer
+  from their images, `x76f100.ic85` and `93c46.ic115` (MAME's newer
+  `hikaru.zip`), and the BIOS checks them instead of skipping the check
+  (`ERROR 2` on a bad chip); NASCAR Arcade's protection answers as its Actel
+  FPGA. Without the images, the chips blank and the check skipped. The log
+  tells their commands.
 
 **Outputs.** The cabinet's lamps and NASCAR Arcade's drive board commands,
 sent over the network to the programs that drive real ones (see *Cabinet
@@ -273,7 +351,9 @@ Saves and files
   system settings) and its battery-backed RAM (records, bookkeeping), saved
   by themselves: the EEPROM half a second after the game writes it, the RAM
   every ten seconds when it changed, both when the game ends. Deleting the
-  file gives the game a new board's settings back.
+  file gives the game a new board's settings back. The board's clock shows
+  the PC's time; set in the test menu (CLOCK SETTING), how far it is from
+  the PC's is kept there too.
 - `nvram/von4.card`: Virtual-On 4's card, its three tracks (see below).
 - `<game>.hlstate`: the save state of F4, which F1 loads. It holds the whole
   machine; a state may not load in another version of the program.
@@ -283,6 +363,10 @@ Saves and files
   file" (`LOG_FILE`) turns it off from the next start. Join it to a bug
   report.
 - `data/games.json`: the list of the games and their files.
+- `cache\shaders\`: each game's shader programs, listed as the game shows
+  them and kept compiled for the graphics card, so that the next start
+  prepares them before the first frame (no stutter the first time an
+  effect shows). Deleting the folder only makes the next start slower.
 
 
 Write directory
@@ -322,10 +406,48 @@ joined in a ring over the network, as the boards' optical fibres were: the
 - Star Wars: Racer Arcade and Virtual-On 4 want a different seat on each
   cabinet, in the game's test menu (SEAT NUMBER, SEAT LETTER); NASCAR Arcade
   and Planet Harriers number their cabinets by the ring.
+- `COMM_BOARD`: the communication board. `SIMULATED` (the default) does its
+  program's work in Hikaruloader, for two cabinets at most. `PROGRAM` runs
+  the program the game gives the board, on its own 68000 as on the
+  cabinet: three cabinets and more (Star Wars: Racer Arcade and Virtual-On 4
+  up to four, NASCAR Arcade up to eight). All the cabinets of a ring must
+  have the same setting.
 
-The linked instances run frame by frame together: when one pauses, the
-others wait, and they drop the link after 5 seconds; when one enters its test
-menu or quits, at once.
+With `SIMULATED`, the linked instances run frame by frame together: when one
+pauses, the others wait, and they drop the link after 5 seconds; when one
+enters its test menu or quits, at once.
+
+### Three or four cabinets
+
+Set `COMM_BOARD = PROGRAM` on every instance, and chain their ports in a
+ring. Four on one PC, each with its own write directory
+(`--write-dir C:\Racecab\Cab1`, `Cab2`...):
+
+| Cabinet | `LINK`   | `PORT_IN` | `ADDRESS_OUT` | `PORT_OUT` | Seat (SWRACER, VON4) |
+|---------|----------|-----------|---------------|------------|----------------------|
+| 1       | `MASTER` | 1970      | 127.0.0.1     | 1971       | 1, A                 |
+| 2       | `SLAVE`  | 1971      | 127.0.0.1     | 1972       | 2, B                 |
+| 3       | `SLAVE`  | 1972      | 127.0.0.1     | 1973       | 3, C                 |
+| 4       | `SLAVE`  | 1973      | 127.0.0.1     | 1970       | 4, D                 |
+
+For three, the third connects back to 1970. On several PCs, `ADDRESS_OUT` is
+the next PC's address (the firewall asks once). Set each cabinet's seat once
+in the game's test menu (GAME ASSIGNMENTS), then quit it: the game checks
+the ring when it starts again (Star Wars: Racer Arcade shows each node's
+game, then CONNECTION WAS ESTABLISHED; Virtual-On 4 THIS IS MASTER SITE or
+SLAVE SITE and the seat letter).
+
+With `PROGRAM`, the boards of a ring keep the same time as the real ones
+did, a quarter of a millisecond apart at most, so the instances run in step
+at a fraction of a frame: the ring goes as fast as its slowest instance, and
+the link costs some of each one's speed. Four instances need a fast PC: on
+an 8-core laptop, four of Star Wars: Racer Arcade raced each other at about
+25 frames a second (four racing alone, unlinked, at 37), two at 36. When an
+instance pauses (the settings window), the next one waits
+2 seconds, then runs on alone until it is back; an instance in its test
+menu holds its board, and the others go on without it. A cabinet started
+later, or a state loaded, takes the ring's time again by itself. Linking
+PCs over a network is not tried yet.
 
 
 Virtual-On 4's cards
@@ -367,6 +489,13 @@ the environment forces the simulation). It starts in some 11 seconds (CF,
 CE, CD, then CC), as on the cabinet. Two environment variables adjust
 it: `FFB_GAIN`, a percentage (100 by default), and `FFB_INVERT=1` for a
 wheel that pushes the wrong way.
+
+With a wheel rotation (see "Keys and controllers"), the game's own forces
+follow the wheel's position as the game reads it, already scaled; the servo
+board's centring spring, which the wheel works out itself from its own
+position, is made as much stiffer and its dead band as much narrower, as far
+as the wheel's strongest spring goes. The friction, which follows the
+wheel's speed, stays as it was.
 
 
 Cabinet outputs

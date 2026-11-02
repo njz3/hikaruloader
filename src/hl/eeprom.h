@@ -63,6 +63,8 @@ public:
 	uint8_t	 mem[SIZE];
 	/* Set by each write or erase, for the host to save the file */
 	bool	 changed;
+	/* Its first commands to the log under that name; NULL: none */
+	const char *log_name;
 
 private:
 	enum Phase {
@@ -80,6 +82,7 @@ private:
 	/* Plain integers, for the states */
 	uint32_t phase, bits, count, addr, all, shift, left;
 	uint8_t	 cs, sk, dout, enabled;
+	unsigned told;
 };
 
 } /* namespace hl */

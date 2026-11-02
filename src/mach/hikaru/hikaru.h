@@ -29,11 +29,14 @@
 #include "hl/jvs.h"
 #include "hl/nvram.h"
 #include "hl/cardreader.h"
+#include "hl/eeprom.h"
+#include "hl/x76f100.h"
 #include "mach/hikaru/hikaru-5881.h"
 
 namespace hikaru {
 
 class Gpu;
+class CommBoard;
 
 
 typedef struct {
@@ -70,6 +73,16 @@ typedef struct {
 		uint8_t hist[2];
 		uint8_t has_hist;
 	} state;
+	/* With SECURITY_CHIPS, SGNASCAR's FPGA answers as the chip (see
+	 * hikaru-memctl.cpp): its state kept apart, saved with it only, so
+	 * that the states saved without keep loading */
+	bool chip;
+	struct {
+		uint8_t running, ended;
+		/* The bytes given, and the last two, for the differences */
+		uint32_t out;
+		uint8_t last[2];
+	} chip_state;
 } hikaru_rombd_prot_t;
 
 /* The SEGA Hikaru: two SH-4s, their memory controllers, the GPU, the
@@ -107,8 +120,10 @@ public:
 	hl::Device *memctl_m;
 	hl::Device *memctl_s;
 	hl::Device *mscomm;
-	/* The communication board, linking the cabinets */
+	/* The communication board, linking the cabinets: simulated (Comm), or
+	 * its 68000 running the game's program (comm_board, NULL else) */
 	hl::Device *comm;
+	CommBoard *comm_board = NULL;
 	hl::Device *mie;
 	/* The cabinet's JVS bus, and the I/O board on it; the drive board
 	 * on that, NULL without */
@@ -169,6 +184,13 @@ public:
 	/* ROMBD configuration */
 	hikaru_rombd_config_t rombd_config;
 	hikaru_rombd_prot_t rombd_prot;
+
+	/* [Emulation] SECURITY_CHIPS, NULL without: the ROM board's X76F100
+	 * secure EEPROM (bus page 14), the main board's 93C46 on the master
+	 * SH-4's port A (bits 2-5), from their images (x76f100.ic85,
+	 * 93c46.ic115) or blank */
+	hl::X76F100 *rombd_eeprom;
+	hl::Eeprom93C46 *mainbd_eeprom;
 
 
 private:

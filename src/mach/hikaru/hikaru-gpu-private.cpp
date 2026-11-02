@@ -157,7 +157,7 @@ get_light_str (hikaru_light_t *lit)
 	         lit->att_type, lit->attenuation[0], lit->attenuation[1],
 	         lit->has_direction, lit->direction[0], lit->direction[1], lit->direction[2],
 	         lit->has_position, lit->position[0], lit->position[1], lit->position[2],
-	         lit->_051_index, lit->diffuse[0], lit->diffuse[1], lit->diffuse[2],
+	         lit->ambient_level, lit->diffuse[0], lit->diffuse[1], lit->diffuse[2],
 	         lit->has_specular, lit->specular[0], lit->specular[1], lit->specular[2]);
 
 	return (const char *) out;

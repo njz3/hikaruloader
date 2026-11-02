@@ -98,7 +98,7 @@ typedef struct {
 		float density, bias;
 		vec4b_t mask;
 		uint32_t func		: 3;
-		uint32_t q_type		: 2;
+		uint32_t q_type		: 3;	/* 0 linear; 2, 4, 6 a density (621) */
 		uint32_t q_enabled	: 1;
 		uint32_t q_unknown	: 1;
 	} depth;
@@ -236,6 +236,8 @@ typedef enum {
 	HIKARU_LIGHT_TYPE_DIRECTIONAL,
 	HIKARU_LIGHT_TYPE_POSITIONAL,
 	HIKARU_LIGHT_TYPE_SPOT,
+	/* A parallel light with a null direction: it lights every side */
+	HIKARU_LIGHT_TYPE_UNDIRECTED,
 
 	HIKARU_NUM_LIGHT_TYPES
 } hikaru_light_type_t;
@@ -264,7 +266,8 @@ typedef struct {
 			uint32_t has_position	: 1;
 			uint32_t has_direction	: 1;
 			uint32_t att_type	: 2;
-			uint32_t _051_index	: 4;
+			/* 051: the ambient level, 0 to 15 (formerly _051_index) */
+			uint32_t ambient_level	: 4;
 			uint32_t _051_bit	: 1;
 			uint32_t has_specular	: 1;
 		};

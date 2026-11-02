@@ -327,6 +327,26 @@ msgid "Sharp pixels: square and crisp, but uneven unless the picture is enlarged
 msgstr "Pixels nets : carrés et francs, mais inégaux sauf si l'image est agrandie un nombre entier de fois. Lissé : réduite à 240 lignes (un CRT), chacune est la moyenne de deux, là où Pixels nets en saute une sur deux (traits fins, petits textes)."
 
 #: src/ui/ui_common.cpp
+msgid "Off (black)"
+msgstr "Désactivé (noir)"
+
+#: src/ui/ui_common.cpp
+msgid "The picture's edges, blurred"
+msgstr "Les bords de l'image, flous"
+
+#: src/ui/ui_common.cpp
+msgid "The game's bezel picture"
+msgstr "L'image de bezel du jeu"
+
+#: src/ui/ui_common.cpp
+msgid "Bezel"
+msgstr "Bezel (habillage)"
+
+#: src/ui/ui_common.cpp
+msgid "Around the picture where the window is wider than its frame: black, the picture's own edges blurred and dimmed, or the game's bezel picture with the game in its screen. The pictures are Batocera's: artwork\\bezels\\<set>.png beside the program and its <set>.info (where the screen is; else the picture's see-through middle), a clone taking its parent's, else default.png; black without any."
+msgstr "Autour de l'image, là où la fenêtre est plus large que son cadre : du noir, les bords de l'image elle-même floutés et assombris, ou l'image de bezel du jeu, le jeu dans son écran. Les images sont au format de Batocera : artwork\\bezels\\<set>.png à côté du programme et son <set>.info (où est l'écran ; sinon le milieu transparent de l'image), un clone prenant celles de son parent, sinon default.png ; du noir sans aucune."
+
+#: src/ui/ui_common.cpp
 msgid "Vertical sync"
 msgstr "Synchronisation verticale"
 
@@ -357,6 +377,14 @@ msgstr "Dessiner dans un thread à part"
 #: src/ui/ui_common.cpp
 msgid "Each frame drawn while the next one is emulated: faster when the drawing slows the game, but the picture comes a frame later. Takes effect at the game's next start."
 msgstr "Chaque image est dessinée pendant que la suivante est émulée : plus rapide quand le dessin ralentit le jeu, mais l'image arrive une image plus tard. Prend effet au prochain lancement du jeu."
+
+#: src/ui/ui_common.cpp
+msgid "Sort the translucent polygons at each pixel"
+msgstr "Trier les polygones translucides à chaque pixel"
+
+#: src/ui/ui_common.cpp
+msgid "Blended from the farthest at each pixel, as the board does: right where they cross. Needs OpenGL 4.3 and no MSAA; off, each mesh is sorted as a whole, lighter for a weak graphics card."
+msgstr "Mélangés du plus lointain au plus proche à chaque pixel, comme sur la carte : justes là où ils se croisent. Demande OpenGL 4.3 et pas de MSAA ; désactivé, chaque objet est trié en entier, plus léger pour une carte graphique modeste."
 
 #: src/ui/ui_common.cpp
 msgid "Widescreen 3D (16:9)"
@@ -431,8 +459,24 @@ msgid "A glow around the 3D's bright parts (lights, sky, explosions). 0: none."
 msgstr "Un halo autour des parties claires de la 3D (lumières, ciel, explosions). 0 : aucun."
 
 #: src/ui/ui_common.cpp
+msgid "CRT preset"
+msgstr "Préréglage CRT"
+
+#: src/ui/ui_common.cpp
+msgid "None"
+msgstr "Aucun"
+
+#: src/ui/ui_common.cpp
+msgid "A CRT drawn over the whole picture by a shader preset (data\\crt beside the program): Lola Retro's, by Zoki. sega-monitor-29 and sega-projector-50: the cabinets' screens; pc-monitor-vga: PC monitors, from good to extreme (-flat: a flat tube). The tube stays 4:3; a crop's bent edges are not drawn. Needs OpenGL 3.3."
+msgstr "Un écran cathodique dessiné sur toute l'image par un préréglage de shaders (data\\crt à côté du programme) : ceux de Lola Retro, par Zoki. sega-monitor-29 et sega-projector-50 : les écrans des bornes ; pc-monitor-vga : des moniteurs de PC, de good à extreme (-flat : un tube plat). Le tube reste en 4:3 ; les bords courbés d'un recadrage ne sont pas dessinés. Demande OpenGL 3.3."
+
+#: src/ui/ui_common.cpp
 msgid "CRT filter"
 msgstr "Filtre CRT"
+
+#: src/ui/ui_common.cpp
+msgid "Not with a CRT preset, which draws its own scanlines and mask."
+msgstr "Pas avec un préréglage CRT, qui dessine ses propres lignes de balayage et son masque."
 
 #: src/ui/ui_common.cpp
 msgid "A CRT's look on a flat screen: its scanlines and its phosphors' stripes, over the whole picture. From 960 rows up (a window of x2 or more, full screen); none on a CRT itself. 0: none."
@@ -603,6 +647,22 @@ msgid "The SH-4s' clock: 200 MHz is the board's. Their timers, the MIE and the s
 msgstr "L'horloge des SH-4 : 200 MHz est celle de la carte. Leurs minuteries, le MIE et le son gardent le temps réel à toute horloge ; plus elle est rapide, plus les attentes que les jeux font en boucle prennent de PC (à 200 MHz, les démarrages des jeux tournent sous 60 images par seconde sur ce PC). 100 MHz par défaut ; en dessous, le skateur d'Air Trix perd son corps."
 
 #: src/ui/ui_common.cpp
+msgid "I/O board running its own program"
+msgstr "Carte d'entrées-sorties exécutant son propre programme"
+
+#: src/ui/ui_common.cpp
+msgid "The JVS I/O board's processor runs its program, as on the cabinet, instead of its simulation: 315-6215 (MAME's jvs13551 set), epr-21868 for NASCAR Arcade (the 18wheelr set); without the file, the simulation. Test and Service then go through that board, as a cabinet's."
+msgstr "Le processeur de la carte d'entrées-sorties JVS exécute son programme, comme sur la borne, au lieu de sa simulation : 315-6215 (le set jvs13551 de MAME), epr-21868 pour NASCAR Arcade (le set 18wheelr) ; sans le fichier, la simulation. Test et Service passent alors par cette carte, comme sur une borne."
+
+#: src/ui/ui_common.cpp
+msgid "Security chips"
+msgstr "Puces de sécurité"
+
+#: src/ui/ui_common.cpp
+msgid "The ROM board's X76F100 and the main board's 93C46 answer from their images (x76f100.ic85 and 93c46.ic115, in MAME's newer hikaru set), the BIOS checking them instead of skipping the check; NASCAR Arcade's protection answers as its Actel chip."
+msgstr "Le X76F100 de la carte ROM et le 93C46 de la carte mère répondent d'après leurs images (x76f100.ic85 et 93c46.ic115, dans le set hikaru récent de MAME), le BIOS les vérifiant au lieu de sauter ce contrôle ; la protection de NASCAR Arcade répond comme sa puce Actel."
+
+#: src/ui/ui_common.cpp
 msgid "Network outputs (MAME protocol)"
 msgstr "Sorties réseau (protocole de MAME)"
 
@@ -707,8 +767,8 @@ msgid "%s (not found)"
 msgstr "%s (introuvable)"
 
 #: src/ui/ui_common.cpp
-msgid "MAME romsets (merged, split or non-merged zips): <game>.zip, its parent's zip and hikaru.zip for the BIOS. Folders <game>/ with the files unpacked still work."
-msgstr "Romsets MAME (zips merged, split ou non-merged) : <jeu>.zip, le zip de son parent et hikaru.zip pour le BIOS. Les dossiers <jeu>/ avec les fichiers décompressés marchent toujours."
+msgid "MAME romsets (merged, split or non-merged), zips or 7z: <game>.zip or <game>.7z, its parent's and hikaru's for the BIOS. Folders <game>/ with the files unpacked still work."
+msgstr "Romsets MAME (merged, split ou non-merged), en zip ou en 7z : <jeu>.zip ou <jeu>.7z, ceux de son parent et de hikaru pour le BIOS. Les dossiers <jeu>/ avec les fichiers décompressés marchent toujours."
 
 #: src/ui/ui_common.cpp
 msgid "Automatic"
@@ -759,12 +819,16 @@ msgid "Interface based on linuxloader's, itself a modified work based on sm2-emu
 msgstr "Interface reprise de celle de linuxloader, elle-même une version modifiée de celle de sm2-emu, par Daniel Martin (dmanlfc) et les contributeurs de sm2-emu ; modifiée pour Hikaru Loader :"
 
 #: src/ui/ui_common.cpp
-msgid "Romsets read as sm2-emu does: by CRC32, with miniz."
-msgstr "Romsets lus comme le fait sm2-emu : par CRC32, avec miniz."
+msgid "Romsets read as sm2-emu does: by CRC32, with miniz; the 7z ones with the LZMA SDK, by Igor Pavlov (public domain)."
+msgstr "Romsets lus comme le fait sm2-emu : par CRC32, avec miniz ; ceux en 7z avec le LZMA SDK, par Igor Pavlov (domaine public)."
 
 #: src/ui/ui_common.cpp
 msgid "Games' pictures, when downloaded: scraping using Arcade Database by motoschifo, as sm2-emu does; their copyrights belong to their owners. Pictures read with stb_image, by Sean Barrett (public domain)."
 msgstr "Images des jeux, quand elles sont téléchargées : scraping using Arcade Database by motoschifo, comme le fait sm2-emu ; leurs droits appartiennent à leurs propriétaires. Images lues avec stb_image, de Sean Barrett (domaine public)."
+
+#: src/ui/ui_common.cpp
+msgid "CRT presets: Lola Retro's, by Zoki (MIT licence, data/crt/lola-retro/LICENSE), as Odin ships them. The presets' reader and passes and the bezels derive from Odin's, by Réda Chérif-Touil (GPL v3 or later)."
+msgstr "Préréglages CRT : ceux de Lola Retro, par Zoki (licence MIT, data/crt/lola-retro/LICENSE), tels qu'Odin les fournit. La lecture des préréglages, leurs passes et les bezels dérivent de ceux d'Odin, par Réda Chérif-Touil (GPL v3 ou ultérieure)."
 
 #: src/ui/ui_common.cpp
 msgid "Settings"
@@ -939,6 +1003,10 @@ msgid "Settings (this window)"
 msgstr "Paramètres (cette fenêtre)"
 
 #: src/ui/ui_controls.cpp
+msgid "Back to the picker, or quit"
+msgstr "Retour au catalogue, ou quitter"
+
+#: src/ui/ui_controls.cpp
 msgid "Show the frame rate"
 msgstr "Afficher la fréquence d'images"
 
@@ -979,6 +1047,10 @@ msgid "Press the pedal."
 msgstr "Appuyez sur la pédale."
 
 #: src/ui/ui_controls.cpp
+msgid "Hold Guide and press a button for a hotkey: the game does not see it."
+msgstr "Maintenez Guide et appuyez sur un bouton pour un raccourci : le jeu ne le voit pas."
+
+#: src/ui/ui_controls.cpp
 msgid "Escape: cancel"
 msgstr "Échap : annuler"
 
@@ -1005,6 +1077,30 @@ msgstr "Oui"
 #: src/ui/ui_controls.cpp
 msgid "No"
 msgstr "Non"
+
+#: src/ui/ui_controls.cpp
+msgid "Its whole turn"
+msgstr "Toute sa rotation"
+
+#: src/ui/ui_controls.cpp
+msgid "%d degrees"
+msgstr "%d degrés"
+
+#: src/ui/ui_controls.cpp
+msgid "Wheel rotation"
+msgstr "Rotation du volant"
+
+#: src/ui/ui_controls.cpp
+msgid "Your wheel's turn"
+msgstr "Rotation de votre volant"
+
+#: src/ui/ui_controls.cpp
+msgid "How far your wheel turns from one end to the other for NASCAR Arcade's wheel: its whole turn, or fewer degrees, the game's wheel then at its end first; the force feedback's spring as much stiffer. A wheel's axis, not a gamepad's stick. Your wheel's turn is the one set in its driver (Logitech G HUB, Thrustmaster's or Fanatec's control panel): 900 degrees for most."
+msgstr "Jusqu'où votre volant tourne d'une butée à l'autre pour celui de NASCAR Arcade : toute sa rotation, ou moins de degrés, le volant du jeu alors en butée le premier ; le ressort du retour de force d'autant plus dur. L'axe d'un volant, pas le stick d'une manette. La rotation de votre volant est celle réglée dans son pilote (Logitech G HUB, panneau de configuration de Thrustmaster ou de Fanatec) : 900 degrés pour la plupart."
+
+#: src/ui/ui_controls.cpp
+msgid "Your wheel turns %d degrees: the game's wheel takes its whole turn."
+msgstr "Votre volant tourne de %d degrés : le volant du jeu prend toute sa rotation."
 
 #: src/ui/ui_controls.cpp
 msgid "The agent drives the game: the keyboard and the controllers are not read."
@@ -1146,9 +1242,6 @@ msgstr "%s ne peut pas démarrer : il manque des fichiers."
 msgid "Loading %s..."
 msgstr "Chargement de %s..."
 
-#~ msgid "None"
-#~ msgstr "Aucune"
-
 #~ msgid "Click a binding, then press the key or the button to use. Escape: cancel, Delete: clear."
 #~ msgstr "Cliquez une affectation, puis appuyez sur la touche ou le bouton à utiliser. Échap : annuler, Suppr : effacer."
 
@@ -1229,3 +1322,9 @@ msgstr "Chargement de %s..."
 
 #~ msgid "The picture is placed by the screen's shape: that of its resolution, or 4:3 or 16:9 whatever its resolution, for a CRT's super resolutions (1920x240): the black bars right, and stretched from 4:3 to 16:9 no more."
 #~ msgstr "L'image est placée d'après la forme de l'écran : celle de sa résolution, ou 4:3 ou 16:9 quelle que soit sa résolution, pour les super-résolutions d'un CRT (1920x240) : les bandes noires justes, et plus d'étirement du 4:3 vers le 16:9."
+
+#~ msgid "MAME romsets (merged, split or non-merged zips): <game>.zip, its parent's zip and hikaru.zip for the BIOS. Folders <game>/ with the files unpacked still work."
+#~ msgstr "Romsets MAME (zips merged, split ou non-merged) : <jeu>.zip, le zip de son parent et hikaru.zip pour le BIOS. Les dossiers <jeu>/ avec les fichiers décompressés marchent toujours."
+
+#~ msgid "Romsets read as sm2-emu does: by CRC32, with miniz."
+#~ msgstr "Romsets lus comme le fait sm2-emu : par CRC32, avec miniz."

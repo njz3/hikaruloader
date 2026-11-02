@@ -32,6 +32,7 @@
 
 #include "hl/config.h"
 #include "hl/controls.h"
+#include "hl/ffb.h"
 #include "hl/input.h"
 
 namespace ui
@@ -83,6 +84,7 @@ const char *actionLabel(const std::string &key)
         {"SaveState", N_("Save the state")},
         {"LoadState", N_("Load the state")},
         {"Menu", N_("Settings (this window)")},
+        {"Back", N_("Back to the picker, or quit")},
         {"ShowFps", N_("Show the frame rate")},
         {"Steer", N_("Steering wheel")},
         {"Gas", N_("Accelerator")},
@@ -377,6 +379,8 @@ void captureWindow()
             ImGui::TextUnformatted(tr("Turn to the left."));
         else if (isPedal(g_capture.key))
             ImGui::TextUnformatted(tr("Press the pedal."));
+        else if (g_mapping.device.game_controller)
+            ImGui::TextUnformatted(tr("Hold Guide and press a button for a hotkey: the game does not see it."));
         ImGui::Spacing();
         ImGui::TextDisabled("%s", tr("Escape: cancel"));
         if (ImGui::Button(tr("Cancel")))
@@ -493,6 +497,67 @@ void drawOptions()
             }
         }
     }
+}
+
+// "270 degrees", or the wheel's whole turn for 0
+void degreesLabel(int degrees, char *text, size_t size)
+{
+    if (degrees <= 0)
+        snprintf(text, size, "%s", tr("Its whole turn"));
+    else
+        snprintf(text, size, tr("%d degrees"), degrees);
+}
+
+// A combo of degrees: the choices, the value kept even when not among them
+bool degreesCombo(const char *label, int *value, const int *choices, size_t count)
+{
+    char text[64];
+    bool changed = false;
+    degreesLabel(*value, text, sizeof text);
+    if (ImGui::BeginCombo(label, text))
+    {
+        for (size_t i = 0; i < count; i++)
+        {
+            degreesLabel(choices[i], text, sizeof text);
+            if (ImGui::Selectable(text, choices[i] == *value) && choices[i] != *value)
+            {
+                *value = choices[i];
+                changed = true;
+            }
+        }
+        ImGui::EndCombo();
+    }
+    return changed;
+}
+
+// [Input] WHEEL_ROTATION and WHEEL_RANGE: saved at once to hikaruloader.ini,
+// alone (the window's other changes wait for Save), as the buttons' numbers;
+// the force feedback's spring follows at once
+void drawWheel()
+{
+    hl::Config *cfg = hl::Config::get();
+    int rotation = cfg->wheel_rotation, range = cfg->wheel_range;
+    bool changed = degreesCombo(tr("Wheel rotation"), &rotation, hl::WHEEL_ROTATIONS, IM_ARRAYSIZE(hl::WHEEL_ROTATIONS));
+    ImGui::BeginDisabled(rotation <= 0);
+    changed |= degreesCombo(tr("Your wheel's turn"), &range, hl::WHEEL_RANGES, IM_ARRAYSIZE(hl::WHEEL_RANGES));
+    ImGui::EndDisabled();
+    ImGui::PushTextWrapPos(0.0f);
+    ImGui::TextDisabled("%s", tr("How far your wheel turns from one end to the other for NASCAR Arcade's wheel: its whole turn, or fewer "
+                                 "degrees, the game's wheel then at its end first; the force feedback's spring as much stiffer. "
+                                 "A wheel's axis, not a gamepad's stick. Your wheel's turn is the one set in its driver (Logitech "
+                                 "G HUB, Thrustmaster's or Fanatec's control panel): 900 degrees for most."));
+    if (rotation > 0 && rotation >= range)
+        ImGui::TextDisabled(tr("Your wheel turns %d degrees: the game's wheel takes its whole turn."), range);
+    ImGui::PopTextWrapPos();
+    if (!changed)
+        return;
+    hl::Config onDisk;
+    onDisk.set_defaults();
+    onDisk.load();
+    onDisk.wheel_rotation = cfg->wheel_rotation = rotation;
+    onDisk.wheel_range = cfg->wheel_range = range;
+    onDisk.save();
+    hl::ForceFeedback::wheel_changed();
 }
 
 // What the game reads now: the switches, the wheel and the pedals
@@ -636,6 +701,9 @@ void drawControlsTab()
 
     header(tr("What the game receives"));
     drawGameInputs();
+
+    header(tr("Steering wheel"));
+    drawWheel();
 
     header(tr("Dead zones and options"));
     drawOptions();

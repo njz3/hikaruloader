@@ -324,6 +324,26 @@ msgid "Sharp pixels: square and crisp, but uneven unless the picture is enlarged
 msgstr ""
 
 #: src/ui/ui_common.cpp
+msgid "Off (black)"
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "The picture's edges, blurred"
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "The game's bezel picture"
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "Bezel"
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "Around the picture where the window is wider than its frame: black, the picture's own edges blurred and dimmed, or the game's bezel picture with the game in its screen. The pictures are Batocera's: artwork\\bezels\\<set>.png beside the program and its <set>.info (where the screen is; else the picture's see-through middle), a clone taking its parent's, else default.png; black without any."
+msgstr ""
+
+#: src/ui/ui_common.cpp
 msgid "Vertical sync"
 msgstr ""
 
@@ -353,6 +373,14 @@ msgstr ""
 
 #: src/ui/ui_common.cpp
 msgid "Each frame drawn while the next one is emulated: faster when the drawing slows the game, but the picture comes a frame later. Takes effect at the game's next start."
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "Sort the translucent polygons at each pixel"
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "Blended from the farthest at each pixel, as the board does: right where they cross. Needs OpenGL 4.3 and no MSAA; off, each mesh is sorted as a whole, lighter for a weak graphics card."
 msgstr ""
 
 #: src/ui/ui_common.cpp
@@ -428,7 +456,23 @@ msgid "A glow around the 3D's bright parts (lights, sky, explosions). 0: none."
 msgstr ""
 
 #: src/ui/ui_common.cpp
+msgid "CRT preset"
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "None"
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "A CRT drawn over the whole picture by a shader preset (data\\crt beside the program): Lola Retro's, by Zoki. sega-monitor-29 and sega-projector-50: the cabinets' screens; pc-monitor-vga: PC monitors, from good to extreme (-flat: a flat tube). The tube stays 4:3; a crop's bent edges are not drawn. Needs OpenGL 3.3."
+msgstr ""
+
+#: src/ui/ui_common.cpp
 msgid "CRT filter"
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "Not with a CRT preset, which draws its own scanlines and mask."
 msgstr ""
 
 #: src/ui/ui_common.cpp
@@ -600,6 +644,22 @@ msgid "The SH-4s' clock: 200 MHz is the board's. Their timers, the MIE and the s
 msgstr ""
 
 #: src/ui/ui_common.cpp
+msgid "I/O board running its own program"
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "The JVS I/O board's processor runs its program, as on the cabinet, instead of its simulation: 315-6215 (MAME's jvs13551 set), epr-21868 for NASCAR Arcade (the 18wheelr set); without the file, the simulation. Test and Service then go through that board, as a cabinet's."
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "Security chips"
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "The ROM board's X76F100 and the main board's 93C46 answer from their images (x76f100.ic85 and 93c46.ic115, in MAME's newer hikaru set), the BIOS checking them instead of skipping the check; NASCAR Arcade's protection answers as its Actel chip."
+msgstr ""
+
+#: src/ui/ui_common.cpp
 msgid "Network outputs (MAME protocol)"
 msgstr ""
 
@@ -704,7 +764,7 @@ msgid "%s (not found)"
 msgstr ""
 
 #: src/ui/ui_common.cpp
-msgid "MAME romsets (merged, split or non-merged zips): <game>.zip, its parent's zip and hikaru.zip for the BIOS. Folders <game>/ with the files unpacked still work."
+msgid "MAME romsets (merged, split or non-merged), zips or 7z: <game>.zip or <game>.7z, its parent's and hikaru's for the BIOS. Folders <game>/ with the files unpacked still work."
 msgstr ""
 
 #: src/ui/ui_common.cpp
@@ -756,11 +816,15 @@ msgid "Interface based on linuxloader's, itself a modified work based on sm2-emu
 msgstr ""
 
 #: src/ui/ui_common.cpp
-msgid "Romsets read as sm2-emu does: by CRC32, with miniz."
+msgid "Romsets read as sm2-emu does: by CRC32, with miniz; the 7z ones with the LZMA SDK, by Igor Pavlov (public domain)."
 msgstr ""
 
 #: src/ui/ui_common.cpp
 msgid "Games' pictures, when downloaded: scraping using Arcade Database by motoschifo, as sm2-emu does; their copyrights belong to their owners. Pictures read with stb_image, by Sean Barrett (public domain)."
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "CRT presets: Lola Retro's, by Zoki (MIT licence, data/crt/lola-retro/LICENSE), as Odin ships them. The presets' reader and passes and the bezels derive from Odin's, by Réda Chérif-Touil (GPL v3 or later)."
 msgstr ""
 
 #: src/ui/ui_common.cpp
@@ -936,6 +1000,10 @@ msgid "Settings (this window)"
 msgstr ""
 
 #: src/ui/ui_controls.cpp
+msgid "Back to the picker, or quit"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
 msgid "Show the frame rate"
 msgstr ""
 
@@ -976,6 +1044,10 @@ msgid "Press the pedal."
 msgstr ""
 
 #: src/ui/ui_controls.cpp
+msgid "Hold Guide and press a button for a hotkey: the game does not see it."
+msgstr ""
+
+#: src/ui/ui_controls.cpp
 msgid "Escape: cancel"
 msgstr ""
 
@@ -1001,6 +1073,30 @@ msgstr ""
 
 #: src/ui/ui_controls.cpp
 msgid "No"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Its whole turn"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "%d degrees"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Wheel rotation"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Your wheel's turn"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "How far your wheel turns from one end to the other for NASCAR Arcade's wheel: its whole turn, or fewer degrees, the game's wheel then at its end first; the force feedback's spring as much stiffer. A wheel's axis, not a gamepad's stick. Your wheel's turn is the one set in its driver (Logitech G HUB, Thrustmaster's or Fanatec's control panel): 900 degrees for most."
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Your wheel turns %d degrees: the game's wheel takes its whole turn."
 msgstr ""
 
 #: src/ui/ui_controls.cpp

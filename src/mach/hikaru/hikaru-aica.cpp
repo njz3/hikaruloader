@@ -3,6 +3,7 @@
  * Copyright (C) 2026, Benjamin Maurin (njz3)
  *
  * Derived from src/mach/hikaru/hikaru-aica.c, Copyright (C) 2011, 2012, Stefano Teso.
+ * The RTC's origin from Odin, Copyright (C) 2026, Réda Chérif-Touil.
  *
  * Hikaruloader is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -20,6 +21,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
+#include <ctime>
 #include <functional>
 
 #include "hl/config.h"
@@ -51,9 +54,9 @@ namespace hikaru {
  * 703200-7033FF MADRS
  * 703400-703BFF MPRO; 3BFE --> AICA DSP start
  *
- * 710000 RTC Lo
- * 710004 RTC Hi
- * 710008 RTC Write Enable
+ * 710000 RTC count, its high half (seconds since 1964-01-01)
+ * 710004 RTC count, its low half
+ * 710008 RTC write enable (bit 0)
  *
  * 800000-FFFFFF RAM
  *
@@ -409,6 +412,10 @@ Aica::sample ()
 	update_arm_irq ();
 	update_main_irq ();
 	mix ();
+	if (++rtc_samples == SAMPLE_HZ) {
+		rtc_samples = 0;
+		rtc_seconds++;
+	}
 }
 
 /****************************************************************************
@@ -1155,11 +1162,17 @@ Aica::get (unsigned size, uint32_t addr, void *val)
 
 	switch (offs) {
 	case 0x710000:
-	case 0x710004:
-	case 0x710008:
-		/* AICA RTC */
+		/* RTC: the count's high half, then its low half */
 		HL_ASSERT (size == 4);
-		*val32 = aica->rtc[(offs & 0xF) / 4];
+		*val32 = aica->rtc_seconds >> 16;
+		break;
+	case 0x710004:
+		HL_ASSERT (size == 4);
+		*val32 = aica->rtc_seconds & 0xFFFF;
+		break;
+	case 0x710008:
+		HL_ASSERT (size == 4);
+		*val32 = 0;
 		break;
 	default:
 		if (IN_RANGE (offs, 0x700000, 0x70FFFF)) {
@@ -1189,11 +1202,28 @@ Aica::put (unsigned size, uint32_t addr, uint64_t val)
 
 	switch (offs) {
 	case 0x710000:
-	case 0x710004:
-	case 0x710008:
-		/* AICA RTC */
+		/* RTC, as the BIOS's CLOCK SETTING sets it: the write enable
+		 * (710008 bit 0), the high half, which takes the enable back,
+		 * then the low half, which starts the second again */
 		HL_ASSERT (size == 4);
-		return -1;
+		if (aica->rtc_we) {
+			aica->rtc_seconds = (aica->rtc_seconds & 0xFFFF) | (((uint32_t) val & 0xFFFF) << 16);
+			aica->rtc_we = false;
+			aica->rtc_set = true;
+		}
+		break;
+	case 0x710004:
+		HL_ASSERT (size == 4);
+		if (aica->rtc_we) {
+			aica->rtc_seconds = (aica->rtc_seconds & 0xFFFF0000) | ((uint32_t) val & 0xFFFF);
+			aica->rtc_samples = 0;
+			aica->rtc_set = true;
+		}
+		break;
+	case 0x710008:
+		HL_ASSERT (size == 4);
+		aica->rtc_we = (val & 1) != 0;
+		break;
 	default:
 		if (IN_RANGE (offs, 0x700000, 0x70FFFF)) {
 			reg_write (size, offs & 0xFFFF, (uint32_t) val);
@@ -1211,6 +1241,53 @@ Aica::put (unsigned size, uint32_t addr, uint64_t val)
 }
 
 /****************************************************************************
+ The RTC
+****************************************************************************/
+
+/* The count of a board whose clock was set to the PC's local time: days
+ * from 1964-01-01, four years of 1461 days from a leap one (the BOOTROM's
+ * date routine, @0C008464, right until 2100), then the time of day; as
+ * Odin's author, Réda Chérif-Touil, found it. The clock stood still at
+ * 5BFC8900 before */
+uint32_t
+Aica::host_clock ()
+{
+	const char *fixed = getenv ("HR_CLOCK");
+	time_t now;
+	struct tm local;
+	uint32_t years, days;
+
+	if (fixed && *fixed)
+		return (uint32_t) strtoul (fixed, NULL, 0);
+	/* The agent's runs repeat, whatever the day */
+	if (hl::Log::stdout_reserved)
+		return 0x5BFC8900;
+	now = time (NULL);
+#ifdef _WIN32
+	localtime_s (&local, &now);
+#else
+	localtime_r (&now, &local);
+#endif
+	years = local.tm_year > 64 ? (uint32_t) (local.tm_year - 64) : 0;
+	days = years * 365 + (years + 3) / 4 + (uint32_t) local.tm_yday;
+	return days * 86400 + (uint32_t) (local.tm_hour * 3600 + local.tm_min * 60 + local.tm_sec);
+}
+
+void
+Aica::set_clock (int32_t ahead)
+{
+	rtc_ahead = ahead;
+	rtc_seconds = host_clock () + (uint32_t) ahead;
+	rtc_samples = 0;
+}
+
+int32_t
+Aica::clock_ahead () const
+{
+	return (int32_t) (rtc_seconds - host_clock ());
+}
+
+/****************************************************************************
  The device
 ****************************************************************************/
 
@@ -1222,9 +1299,8 @@ Aica::reset (hl::ResetType type)
 	uint32_t x, a;
 
 	(void) type;
-	aica->rtc[0] = 0x5BFC;
-	aica->rtc[1] = 0x8900;
-	aica->rtc[2] = 0;
+	aica->rtc_we = false;
+	aica->set_clock (aica->rtc_ahead);
 
 	/* The ARM held in reset until the SH-4 lets it go */
 	memset (&st, 0, sizeof (st));

@@ -95,6 +95,10 @@ public:
 	} io;
 	/* The Z80's T-states owed */
 	int owed;
+	/* With an I/O board running its program on the JVS line (hl::JvsLine):
+	 * the T-states the Z80 was held (BUSRQ) while the line's time went on;
+	 * the line's time is the Z80's cycles plus these */
+	uint64_t line_stall;
 	/* The SH-4s hold the Z80's bus (BUSRQ, granted at once): the Z80
 	 * stops; see bus_get () */
 	bool busrq;
@@ -122,7 +126,14 @@ public:
 	} idle;
 
 private:
-	void run_z80 ();
+	/* Runs the Z80 for left T-states, its idle loops at once */
+	void run_z80 (int &left);
+	void run_for (int &left);
+	void run_line (int cycles);
+	/* The line's time, in the Z80's T-states, and in its ticks */
+	uint64_t line_cycles () const { return z80->regs.cycles + line_stall; }
+	uint64_t line_ticks () const { return line_cycles () * hl::JvsLine::TICKS_PER_Z80_CYCLE; }
+	uint64_t uart_char_ticks () const;
 	void came_back ();
 	void update_irq ();
 	void raise_irq (unsigned level);

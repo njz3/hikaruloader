@@ -8,6 +8,31 @@ and released: [DEVELOPMENT.md](DEVELOPMENT.md), "Versions and releases".
 0.3.1 (not released yet)
 ------------------------
 
+- The translucent polygons (smoke, glass, flames, lights) are blended from
+  the farthest at each pixel, as on the board, right where they cross:
+  *Sort the translucent polygons at each pixel* in the Display tab, on by
+  default. It needs a graphics card with OpenGL 4.3, and no MSAA; else each
+  mesh is sorted as a whole, as before.
+- Fixed: NASCAR Arcade's scenes were darker than on the board: the lights'
+  own ambient share is now taken (the board's video and ours now match on
+  the track). Brave Firefighters' and Planet Harriers' scenes are a little
+  brighter too.
+- Fixed: Planet Harriers' far scenery now fades into the sky, as on the
+  board, instead of standing out dark.
+- The board's clock follows the PC's: the bookkeeping's dates are right,
+  and a clock set in the test menu (CLOCK SETTING) is kept with the game's
+  nvram.
+- Fixed: Air Trix's ranking screens had a grey background, black and olive
+  on the board: the games' fog now grows with the distance as on the board.
+- The spotlights rise from their edge as the games' own tables give it (Air
+  Trix's halfpipe a little brighter); a lit translucent colour above white
+  keeps its excess (Planet Harriers' logo galaxy); the motion blur's trails
+  die out as on the board; the finer models come at twice the distance.
+- No more stutter the first time an effect shows: each game's shader
+  programs are prepared before its first frame, and kept compiled in
+  `cache\shaders\` (with a write directory, there), read at once the next
+  time.
+- These, as Odin's author, Réda Chérif-Touil, found them.
 - Fixed: what the games draw through a pattern of dots was drawn whole:
   Planet Harriers' and Brave Firefighters' shadows (solid black, now
   dotted, the ground seen through), Air Trix's combo labels coming and
@@ -27,6 +52,57 @@ and released: [DEVELOPMENT.md](DEVELOPMENT.md), "Versions and releases".
 - The Display tab's "Screen shape" is gone: on a CRT driven at a super
   resolution (1920x240), its real shape as the aspect ratio (4:3 or 16:9,
   black bars) in a stretched display mode does the same.
+- Three and four linked cabinets: `[Network] COMM_BOARD = PROGRAM` runs the
+  communication board's own program on its 68000, as on the cabinet
+  (ported from Odin, by Réda Chérif-Touil), and the instances of a ring in
+  step at a fraction of a frame. Star Wars Racer Arcade races with three
+  and four cabinets, Virtual-On 4 links its four sites. The default stays
+  `SIMULATED`, two cabinets as before; see "Linked cabinets" in the
+  README.
+- The romsets can be 7z as well as zips (`airtrix.7z`, `hikaru.7z`...), read
+  with the LZMA SDK (public domain, built in): the picker and `-L` find
+  them, merged, split or non-merged alike, a zip and a 7z of a set together
+  too. A solid 7z is unpacked whole at the game's start.
+- The controllers' hotkeys, as RetroArch has them: hold Guide (Xbox, PS or
+  Home) and press Start to quit, B to go back to the picker, Back for the
+  settings, R1 and L1 to save and load the state, X to pause, Y for
+  Virtual-On 4's card; the game sees none of the controller's buttons while
+  Guide is held. They are `controls.ini` bindings like the others
+  (`GC0_BUTTON_GUIDE + GC0_BUTTON_START`), bound in the Controls tab by
+  holding Guide. A `controls.ini` of an earlier version keeps its bindings
+  as they are: bind them in the Controls tab, or delete the file for the
+  defaults. Escape, back to the picker, is a binding too now (Emulator,
+  Back).
+- The wheel's rotation for NASCAR Arcade, as Odin has it: the Controls tab's
+  Wheel rotation makes the game's wheel go from one end to the other over
+  270, 360, 540, 900 or 1080 degrees of a wheel's turn instead of its whole
+  turn (the default, as before), given the turn set in the wheel's driver
+  (900 degrees by default); the force feedback's centring spring follows.
+  `[Input]` `WHEEL_ROTATION` and `WHEEL_RANGE` in `hikaruloader.ini`.
+- CRT presets (Enhancements tab, *CRT preset*): a CRT's tube, curved glass,
+  scanlines, phosphor mask and glow drawn over the picture by a libretro
+  shader preset. Lola Retro's are shipped, by Zoki (MIT licence), as Odin
+  ships them: the cabinets' 29-inch monitor and 50-inch projector, and PC
+  monitors of the VGA days from good to extreme, curved or flat. The CRT
+  filter is greyed while a preset is chosen. None by default.
+- Bezels (Display tab, *Bezel*), where the window is wider than the
+  picture's frame: the picture's own edges blurred and dimmed, or the
+  game's bezel picture with the game in its screen, in Batocera's format
+  (`artwork\bezels\<set>.png` and its `.info`; a clone takes its parent's).
+  None is shipped. Off by default, black as before.
+- New, off by default, in the Emulation tab: *I/O board running its own
+  program*. The JVS I/O board's processor runs its program as on the
+  cabinet, instead of its simulation: the 837-13551's TMP90PH44 (a Toshiba
+  TLCS-90) running 315-6215 (MAME's `jvs13551.zip`), NASCAR Arcade's
+  837-13741 running epr-21868 (`18wheelr.zip`). Its JVS TEST shows the
+  board's own answers (NASCAR's: "837-13741 I/O CONTROL BD2"); Test and
+  Service then go through that board, as on a cabinet. Ported from Odin, by
+  Réda Chérif-Touil.
+- New, off by default, in the Emulation tab: *Security chips*. The ROM
+  board's X76F100 secure EEPROM and the main board's 93C46 answer from
+  their images (MAME's newer `hikaru.zip`), and the BIOS checks them, as on
+  the board, instead of skipping the check; NASCAR Arcade's protection
+  answers as its Actel FPGA does. The games play the same.
 
 
 0.3.0 (2026-11-01)

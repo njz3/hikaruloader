@@ -65,6 +65,8 @@ static const struct {
 	{ "SETTINGS",	"Emulator",	"Menu",		{ SDLK_TAB,	SDL_CONTROLLER_BUTTON_BACK } },
 	{ "SHOW_FPS",	"Emulator",	"ShowFps",	{ SDLK_F12,	-1 } },
 	{ "QUIT",	"Common",	"ExitGame",	{ SDLK_F9,	-1 } },
+	/* Escape alone until November 2026 */
+	{ "BACK",	"Emulator",	"Back",		{ SDLK_ESCAPE,	-1 } },
 };
 
 /* The shell's and the agent's inputs */
@@ -125,6 +127,8 @@ Input::event_action (const SDL_Event *event)
 {
 	unsigned i;
 
+	/* A button pressed with Guide held: the hotkeys' until let go */
+	Controls::get ().track (event);
 	for (i = 0; i < NUM_ACTIONS; i++)
 		if (Controls::get ().pressed_by (actions[i].section, actions[i].key, event))
 			return i;

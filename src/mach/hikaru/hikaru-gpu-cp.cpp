@@ -854,13 +854,16 @@ D (0x005)
  *
  * The model's size on the screen, its diameter seen from the distance of
  * the LOD vector (561) through the viewport's projection, goes to the jumps
- * that follow (012). The scale of that size against the jumps' I is a
- * guess: in pixels, PHARRIER's characters (their feet, 32 pixels wide in the
- * demo) would take their middle meshes; 8 times that gives them their
- * finest, rounded shoes, as the game shows them.
+ * that follow (012), in 1/16 of a pixel: 32 * radius * f / distance. As
+ * Odin's author, Réda Chérif-Touil, found it: SGNASCAR draws each piece of
+ * its scenery twice, near and far, and its sizes are those of 300, 400 and
+ * 500 units in a view 60 degrees wide (f 554.256). Counted in 1/8 of a
+ * pixel before (a guess from PHARRIER's characters, their feet 32 pixels
+ * wide in the demo, who then took their finest, rounded shoes: they still
+ * do).
  */
 
-#define LOD_SCALE	8.0f
+#define LOD_SCALE	16.0f
 
 I (0x055)
 {
@@ -978,23 +981,33 @@ decode_clip_xy (uint32_t c)
  *
  * 621	Viewport: Set Depth Queue
  *
- *	-------- ---TT-DW -------o oooooooo
+ *	-------- ---TTTDW -------o oooooooo
  *	AAAAAAAA BBBBBBBB GGGGGGGG RRRRRRRR
  *	PPPPPPPP PPPPPPPP PPPPPPPP PPPPPPPP
  *	QQQQQQQQ QQQQQQQQ QQQQQQQQ QQQQQQQQ
  *
  * W = Disable depth writes
- * D = Disable fog
- * T = Unknown (0 in all the games)
+ * D = No colour: the polygons fade into what is behind them
+ * T = Type: 0 linear; 2, 4 and 6 send a density as P (not understood)
  * R, G, B, A = Fog color (A unknown: 00 in SGNASCAR's and SWRACER's, FF in
- *     some of AIRTRIX's)
- * P = Fog density: 1/z where the fog starts
- * Q = Fog offset: 1/z where it is whole
+ *     some of AIRTRIX's); not written with D
+ * P = Fog density: 1/z where the fog starts; with D, 1 / (end - start)
+ * Q = Fog offset: 1/z where it is whole; with D, near / start
  *
  * The fog is taken as linear in 1/z (as a rasterizer interpolates it):
  * SGNASCAR's from 5000 to 100000, AIRTRIX's halfpipe's from 10000 to
  * 140000, SWRACER's tracks' from 9000 to 1000000: little of it shows, as
  * in the attracts. The materials with 881's z take none (depth blend).
+ *
+ * With D, PHARRIER's library (0C015A3E, start and end; 0C015A72, type,
+ * density and start) has the meshes that do not blend (opaque,
+ * punch-through) fade into what is behind them, linearly in the eye's
+ * depth from start to end; its viewport menu names the values "Depth
+ * Queue Type", "Start", "End" and "Dns". As Odin's author, Réda
+ * Chérif-Touil, found it (the far scenery of PHARRIER's demo play fades on
+ * its cabinet, the translucent mountains stay). The X360 port fogs
+ * linearly in the eye's depth too, from P and Q as the VON4 library
+ * builds them: the coloured fog in 1/z here is still to compare.
  *
  * See PH:@0C0159C4, PH:@0C015A02, PH:@0C015A3E.
  */
@@ -1026,7 +1039,7 @@ I (0x021)
 		vp->has_421 = 1;
 		break;
 	case 6:
-		vp->depth.q_type	= (inst[0] >> 18) & 3;
+		vp->depth.q_type	= (inst[0] >> 18) & 7;
 		vp->depth.q_enabled	= ((inst[0] >> 17) & 1) ^ 1;
 		vp->depth.q_unknown	= (inst[0] >> 16) & 1;
 		vp->depth.mask[0]	= inst[1] & 0xFF;
@@ -2194,11 +2207,17 @@ D (0x061)
 
 /* 051	Light: Set Diffuse
  *
- *	-------- D---XXXX -------o oooooooo
+ *	-------- D---AAAA -------o oooooooo
  *	--BBBBBB BBBBGGGG GGGGGGRR RRRRRRRR
  *
- * D = Disabled?
- * X = Index/Mode.
+ * D = Unknown. BRAVEFF sets it on the light of its aiming reticles, which
+ *     its cabinet shows lit: it does not switch the light off.
+ * A = Ambient level, 0 to 15: the light adds A / 16 of its colour to every
+ *     polygon it reaches, facing it or not, cut by its distance and its
+ *     cone as the rest of its light. PHARRIER's light editor shows the
+ *     field as "amb" next to the colour (PH:@0C1D7048); SGNASCAR sends
+ *     16 times a level, 15 at most (@0C062200); VON4 leaves 0. As Odin's
+ *     author, Réda Chérif-Touil, found it.
  *
  * See PH:@0C0178C6; for a,b,c computation see PH:@0C03DC66.
  *
@@ -2220,7 +2239,7 @@ I (0x051)
 	switch ((inst[0] >> 8) & 7) {
 	case 0:
 		lit->_051_bit   = (inst[0] >> 23) & 1;
-		lit->_051_index = (inst[0] >> 16) & 0xF;
+		lit->ambient_level = (inst[0] >> 16) & 0xF;
 		lit->diffuse[0] = inst[1] & 0x3FF;
 		lit->diffuse[1] = (inst[1] >> 10) & 0x3FF;
 		lit->diffuse[2] = (inst[1] >> 20) & 0x3FF;

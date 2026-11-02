@@ -435,13 +435,14 @@ GameList::print (FILE *fp, const char *path)
 		         "yes (drive board; its EPROM from srally2.zip, simulated without)" : "no");
 		fprintf (fp, "  speakers:           %s\n", entry->audio[0] ? entry->audio : "?");
 
-		/* The MAME sets: its own, its parent's, the BIOS' */
-		fprintf (fp, "  sets:               %s.zip", entry->name);
+		/* The MAME sets: its own, its parent's, the BIOS', each a zip
+		 * or a 7z (hl::RomSet) */
+		fprintf (fp, "  sets:               %s", entry->name);
 		if (entry->parent[0])
-			fprintf (fp, ", %s.zip (parent)", entry->parent);
+			fprintf (fp, ", %s (parent)", entry->parent);
 		if (entry->bios[0])
-			fprintf (fp, ", %s.zip (BIOS)", entry->bios);
-		fprintf (fp, "\n");
+			fprintf (fp, ", %s (BIOS)", entry->bios);
+		fprintf (fp, ", each a .zip or a .7z\n");
 
 		for (s = 0; s < json_array_size (sections); s++) {
 			json_t *section = json_array_get (sections, s);

@@ -30,6 +30,8 @@ Eeprom93C46::Eeprom93C46 ()
 {
 	memset (mem, 0xFF, sizeof (mem));
 	changed = false;
+	log_name = NULL;
+	told = 0;
 	power_on ();
 }
 
@@ -108,6 +110,11 @@ Eeprom93C46::command ()
 
 	addr = bits & (SIZE - 1);
 	phase = IDLE;
+	if (log_name && told < 16) {
+		static const char *const names[4] = { "EWEN/EWDS/ERAL/WRAL", "WRITE", "READ", "ERASE" };
+		HL_PRINT ("%s: %s at %02X%s", log_name, names[op & 3], addr,
+		          ++told == 16 ? " (the next commands not told)" : "");
+	}
 	switch (op) {
 	case 2:
 		phase = READING;

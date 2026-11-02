@@ -49,6 +49,9 @@ struct ScreenLayout {
 	float	 scale;		/* frame / picture along the axis */
 	float	 length[2];	/* the picture each edge shows */
 	float	 angle[2];	/* the arc of the cylinder each edge covers */
+	/* BEZEL = IMAGE: where its picture is drawn, over all (the frame in
+	 * its screen, hl/bezel.h); width 0 when none shows */
+	int	 bezel[4];
 };
 
 /* The layout in a target of tw x th pixels for a picture of pw x ph */

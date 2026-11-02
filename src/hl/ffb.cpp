@@ -19,11 +19,15 @@
 #include <math.h>
 
 #include "hl/ffb.h"
+#include "hl/config.h"
 
 namespace hl {
 
 /* The records kept for the agent, at most */
 #define MAX_RECORDS	4096
+
+/* The spring's dead band about the centre, of the game's wheel's travel */
+#define SPRING_DEADBAND	0.05
 
 static float current[ForceFeedback::NUM_EFFECTS];
 static std::vector<ForceFeedback::Record> records;
@@ -125,9 +129,15 @@ play (ForceFeedback::Effect effect, float force)
 		e.condition.length = SDL_HAPTIC_INFINITY;
 		e.condition.right_sat[0] = e.condition.left_sat[0] = 0xFFFF;
 		e.condition.right_coeff[0] = e.condition.left_coeff[0] = (Sint16) lrintf (force * 32767.0f);
-		/* A dead band of 5 % about the centre, for the spring */
-		if (effect == ForceFeedback::SPRING)
-			e.condition.deadband[0] = 0xFFFF / 20;
+		/* The spring on the game's wheel, a part of the device's travel
+		 * with WHEEL_ROTATION; the friction follows the speed, not the
+		 * position, and the game's own torque the position it reads */
+		if (effect == ForceFeedback::SPRING) {
+			float coefficient, deadband;
+			ForceFeedback::spring_on_wheel (force, Config::get ()->wheel_scale (), &coefficient, &deadband);
+			e.condition.right_coeff[0] = e.condition.left_coeff[0] = (Sint16) lrintf (coefficient * 32767.0f);
+			e.condition.deadband[0] = (Uint16) (deadband * 0xFFFF);
+		}
 		break;
 	case ForceFeedback::VIBRATE:
 		e.periodic.direction.type = SDL_HAPTIC_CARTESIAN;
@@ -234,6 +244,22 @@ ForceFeedback::devices_changed ()
 	for (i = CONSTANT; i < NUM_EFFECTS; i++)
 		if (current[i] != 0.0f)
 			play ((Effect) i, device_force ((Effect) i, current[i]));
+}
+
+void
+ForceFeedback::wheel_changed ()
+{
+	if (haptic && current[SPRING] != 0.0f)
+		play (SPRING, device_force (SPRING, current[SPRING]));
+}
+
+void
+ForceFeedback::spring_on_wheel (float strength, double scale, float *coefficient, float *deadband)
+{
+	if (scale < 1.0)
+		scale = 1.0;
+	*coefficient = clamp1 ((float) (strength * scale), 0.0f);
+	*deadband = (float) (SPRING_DEADBAND / scale);
 }
 
 void

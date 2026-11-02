@@ -52,7 +52,24 @@ public:
 
 	hl::Buffer *ram;
 	hl::Buffer *regs;
-	uint32_t rtc[4];
+	/* The RTC: seconds since 1964-01-01 00:00, the BOOTROM's date routine's
+	 * origin (@0C008464), counted by the samples. At power-on the PC's
+	 * local time plus rtc_ahead, which the machine keeps in the nvram; the
+	 * BIOS's CLOCK SETTING writes the count (710000-710008), and rtc_set
+	 * tells the machine to save the new rtc_ahead. Not in the save states
+	 * (the clock goes on) */
+	uint32_t rtc_seconds = 0;
+	uint32_t rtc_samples = 0;
+	int32_t rtc_ahead = 0;
+	bool rtc_we = false;
+	bool rtc_set = false;
+	/* The count of the PC's local time; with HR_CLOCK, that count (decimal
+	 * or 0x hex) whatever the time, and in agent mode 26 Nov 2012 00:00
+	 * (5BFC8900, the count before the clock ran), for runs that repeat */
+	static uint32_t host_clock ();
+	/* rtc_seconds from the PC's time and rtc_ahead */
+	void	 set_clock (int32_t ahead);
+	int32_t	 clock_ahead () const;
 	bool master;
 	/* The SH-4 cycles exec () counts in a second */
 	uint32_t cpu_hz;

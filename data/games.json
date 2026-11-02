@@ -63,6 +63,33 @@
 						{ "name" : "mpr-23576.ic49", "size" : 16777216, "crc" : "c01e0329" },
 						{ "name" : "mpr-23580.ic50", "size" : 16777216, "crc" : "d260f39c" }
 					]
+				},
+				{
+					"name" : "io_rom",
+					"type" : "alternative",
+					"set" : "jvs13551",
+					"optional" : true,
+					"data" : [
+						{ "name" : "315-6215.bin", "size" : 16384, "crc" : "98202738" }
+					]
+				},
+				{
+					"name" : "mainbd_eeprom",
+					"type" : "alternative",
+					"set" : "hikaru",
+					"optional" : true,
+					"data" : [
+						{ "name" : "93c46.ic115", "size" : 128, "crc" : "737dc714" }
+					]
+				},
+				{
+					"name" : "rombd_eeprom",
+					"type" : "alternative",
+					"set" : "hikaru",
+					"optional" : true,
+					"data" : [
+						{ "name" : "x76f100.ic85", "size" : 132, "crc" : "194c6c18" }
+					]
 				}
 			]
 		},
@@ -109,6 +136,33 @@
 						{ "name" : "mpr-23579.ic46", "size" : 16777216, "crc" : "55e656d2" },
 						{ "name" : "mpr-23576.ic49", "size" : 16777216, "crc" : "c01e0329" },
 						{ "name" : "mpr-23580.ic50", "size" : 16777216, "crc" : "d260f39c" }
+					]
+				},
+				{
+					"name" : "io_rom",
+					"type" : "alternative",
+					"set" : "jvs13551",
+					"optional" : true,
+					"data" : [
+						{ "name" : "315-6215.bin", "size" : 16384, "crc" : "98202738" }
+					]
+				},
+				{
+					"name" : "mainbd_eeprom",
+					"type" : "alternative",
+					"set" : "hikaru",
+					"optional" : true,
+					"data" : [
+						{ "name" : "93c46.ic115", "size" : 128, "crc" : "737dc714" }
+					]
+				},
+				{
+					"name" : "rombd_eeprom",
+					"type" : "alternative",
+					"set" : "hikaru",
+					"optional" : true,
+					"data" : [
+						{ "name" : "x76f100.ic85", "size" : 132, "crc" : "194c6c18" }
 					]
 				}
 			]
@@ -176,6 +230,33 @@
 						{ "name" : "mpr-22022.ic59s", "size" : 8388608, "crc" : "abd3d888" },
 						{ "name" : "mpr-22023.ic60s", "size" : 8388608, "crc" : "07f00869" }
 					]
+				},
+				{
+					"name" : "io_rom",
+					"type" : "alternative",
+					"set" : "jvs13551",
+					"optional" : true,
+					"data" : [
+						{ "name" : "315-6215.bin", "size" : 16384, "crc" : "98202738" }
+					]
+				},
+				{
+					"name" : "mainbd_eeprom",
+					"type" : "alternative",
+					"set" : "hikaru",
+					"optional" : true,
+					"data" : [
+						{ "name" : "93c46.ic115", "size" : 128, "crc" : "737dc714" }
+					]
+				},
+				{
+					"name" : "rombd_eeprom",
+					"type" : "alternative",
+					"set" : "hikaru",
+					"optional" : true,
+					"data" : [
+						{ "name" : "x76f100.ic85", "size" : 132, "crc" : "194c6c18" }
+					]
 				}
 			]
 		},
@@ -235,6 +316,33 @@
 						{ "name" : "mpr-23563.ic62", "size" : 16777216, "crc" : "e3dc328b" },
 						{ "name" : "mpr-23560.ic65", "size" : 16777216, "crc" : "24bb7072" },
 						{ "name" : "mpr-23564.ic66", "size" : 16777216, "crc" : "255724b6" }
+					]
+				},
+				{
+					"name" : "io_rom",
+					"type" : "alternative",
+					"set" : "jvs13551",
+					"optional" : true,
+					"data" : [
+						{ "name" : "315-6215.bin", "size" : 16384, "crc" : "98202738" }
+					]
+				},
+				{
+					"name" : "mainbd_eeprom",
+					"type" : "alternative",
+					"set" : "hikaru",
+					"optional" : true,
+					"data" : [
+						{ "name" : "93c46.ic115", "size" : 128, "crc" : "737dc714" }
+					]
+				},
+				{
+					"name" : "rombd_eeprom",
+					"type" : "alternative",
+					"set" : "hikaru",
+					"optional" : true,
+					"data" : [
+						{ "name" : "x76f100.ic85", "size" : 132, "crc" : "194c6c18" }
 					]
 				}
 			]
@@ -299,6 +407,33 @@
 					"data" : [
 						{ "name" : "epr-20512.bin", "size" : 65536, "crc" : "cf64350d" }
 					]
+				},
+				{
+					"name" : "io_rom",
+					"type" : "alternative",
+					"set" : "18wheelr",
+					"optional" : true,
+					"data" : [
+						{ "name" : "epr-21868.ic7", "size" : 65536, "crc" : "c306a51f" }
+					]
+				},
+				{
+					"name" : "mainbd_eeprom",
+					"type" : "alternative",
+					"set" : "hikaru",
+					"optional" : true,
+					"data" : [
+						{ "name" : "93c46.ic115", "size" : 128, "crc" : "737dc714" }
+					]
+				},
+				{
+					"name" : "rombd_eeprom",
+					"type" : "alternative",
+					"set" : "hikaru",
+					"optional" : true,
+					"data" : [
+						{ "name" : "x76f100.ic85", "size" : 132, "crc" : "194c6c18" }
+					]
 				}
 			]
 		},
@@ -362,6 +497,33 @@
 					"optional" : true,
 					"data" : [
 						{ "name" : "epr-20512.bin", "size" : 65536, "crc" : "cf64350d" }
+					]
+				},
+				{
+					"name" : "io_rom",
+					"type" : "alternative",
+					"set" : "18wheelr",
+					"optional" : true,
+					"data" : [
+						{ "name" : "epr-21868.ic7", "size" : 65536, "crc" : "c306a51f" }
+					]
+				},
+				{
+					"name" : "mainbd_eeprom",
+					"type" : "alternative",
+					"set" : "hikaru",
+					"optional" : true,
+					"data" : [
+						{ "name" : "93c46.ic115", "size" : 128, "crc" : "737dc714" }
+					]
+				},
+				{
+					"name" : "rombd_eeprom",
+					"type" : "alternative",
+					"set" : "hikaru",
+					"optional" : true,
+					"data" : [
+						{ "name" : "x76f100.ic85", "size" : 132, "crc" : "194c6c18" }
 					]
 				}
 			]
@@ -435,6 +597,33 @@
 						{ "name" : "mpr-23116.ic67s", "size" : 8388608, "crc" : "9f567fce" },
 						{ "name" : "mpr-23117.ic68s", "size" : 8388608, "crc" : "9d4d3529" }
 					]
+				},
+				{
+					"name" : "io_rom",
+					"type" : "alternative",
+					"set" : "jvs13551",
+					"optional" : true,
+					"data" : [
+						{ "name" : "315-6215.bin", "size" : 16384, "crc" : "98202738" }
+					]
+				},
+				{
+					"name" : "mainbd_eeprom",
+					"type" : "alternative",
+					"set" : "hikaru",
+					"optional" : true,
+					"data" : [
+						{ "name" : "93c46.ic115", "size" : 128, "crc" : "737dc714" }
+					]
+				},
+				{
+					"name" : "rombd_eeprom",
+					"type" : "alternative",
+					"set" : "hikaru",
+					"optional" : true,
+					"data" : [
+						{ "name" : "x76f100.ic85", "size" : 132, "crc" : "194c6c18" }
+					]
 				}
 			]
 		},
@@ -490,6 +679,33 @@
 						{ "name" : "mpr-23763.ic62", "size" : 16777216, "crc" : "648aecb0" },
 						{ "name" : "mpr-23764.ic65", "size" : 16777216, "crc" : "0aa472aa" },
 						{ "name" : "mpr-23765.ic66", "size" : 16777216, "crc" : "d904250f" }
+					]
+				},
+				{
+					"name" : "io_rom",
+					"type" : "alternative",
+					"set" : "jvs13551",
+					"optional" : true,
+					"data" : [
+						{ "name" : "315-6215.bin", "size" : 16384, "crc" : "98202738" }
+					]
+				},
+				{
+					"name" : "mainbd_eeprom",
+					"type" : "alternative",
+					"set" : "hikaru",
+					"optional" : true,
+					"data" : [
+						{ "name" : "93c46.ic115", "size" : 128, "crc" : "737dc714" }
+					]
+				},
+				{
+					"name" : "rombd_eeprom",
+					"type" : "alternative",
+					"set" : "hikaru",
+					"optional" : true,
+					"data" : [
+						{ "name" : "x76f100.ic85", "size" : 132, "crc" : "194c6c18" }
 					]
 				}
 			]

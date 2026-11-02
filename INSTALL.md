@@ -27,6 +27,7 @@ command line are in [README.md](README.md).
    | `hikaruloader.exe` | The program, all its libraries inside |
    | `data\games.json` | The list of the games and of their files |
    | `data\lang\` | The interface's translations (French) |
+   | `data\crt\` | The CRT presets: Lola Retro's, by Zoki, with their licence (MIT, `data\crt\lola-retro\LICENSE`) |
    | `README.md`, `INSTALL.md`, `CHANGELOG.md`, `LICENSE` | The manual, this file, what each version brings, the licence |
 
 2. Put the games' zips in a folder: a `roms` folder beside the program is
@@ -58,6 +59,7 @@ Beside `hikaruloader.exe`:
 | `nvram\von4.card` | Virtual-On 4's card (F7), made by the game's card terminal (README.md, "Virtual-On 4's cards") |
 | `<game>.hlstate` | Each game's save state (F4 saves, F1 loads) |
 | `artwork\`, `cache\artwork\` | The picker's pictures: yours, and those downloaded when the Picker tab says so (README.md, "Settings") |
+| `artwork\bezels\` | Your bezel pictures, `<set>.png` and `<set>.info` (Batocera's format), shown with the Display tab's *Bezel* (README.md, "Settings") |
 
 With a write directory (`--write-dir=<folder>`, or `WRITE_DIR` in the
 `[Picker]` section of the `hikaruloader.ini` beside the program), they all go
@@ -73,7 +75,9 @@ Deleting a game's `.nvram` gives it a new board's settings.
 
 Unzip the new archive over the old folder. A release archive holds no
 settings and no saves: yours stay. `data\games.json` is replaced, with the
-new games and files. A save state of an older version may not load.
+new games and files, and so is `data\crt\lola-retro\`; presets of your own
+in another folder of `data\crt\` stay. A save state of an older version may
+not load.
 
 
 2. Building from the sources
@@ -112,6 +116,9 @@ clone made without it:
 ```
 git submodule update --init
 ```
+
+The LZMA SDK's 7z decoder (26.04, public domain, `3rdparty/lzma`, its
+`lzma-sdk.txt`) comes with the sources, built with them: the romsets in 7z.
 
 ### 3. Configuring
 

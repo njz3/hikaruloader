@@ -91,6 +91,11 @@ namespace hikaru {
  *		JVS bus raises level 3
  * 90		Bit 0 drives the RS-485 line: a packet ends when it falls
  * 91		The JVS lines: bit 0 no device, bit 1 all of them addressed
+ *
+ * With an I/O board running its own program on the line (IO_BOARD_PROGRAM,
+ * hl::JvsLine), the UART's bytes go out one at a time, LSR's THRE and TEMT
+ * telling when they have, the board's replies come in as the line brings
+ * them, and port 91's bit 1 is the board's sense line (see run_line ())
  * 40, 80, 81, 84	Unknown: kept as written, see log_ports
  *
  * As the NAOMI's MIE, which MAME emulates (src/mame/sega/mie.cpp). The
@@ -312,8 +317,14 @@ Mie::port_read (uint8_t port)
 		val = io.mcr;
 		break;
 	case 0x15:
-		/* Sent and empty; a byte to read */
-		val = 0x60 | (jvs->can_receive () ? 1 : 0);
+		/* Sent and empty; a byte to read. With a board on the line, the
+		 * bytes take their time to go */
+		if (jvs->line_mode ())
+			val = (jvs->can_receive () ? 1 : 0) |
+			      (jvs->line_fifo_empty (line_ticks ()) ? 0x20 : 0) |
+			      (jvs->line_idle (line_ticks ()) ? 0x40 : 0);
+		else
+			val = 0x60 | (jvs->can_receive () ? 1 : 0);
 		break;
 	case 0x16:
 		val = 0;
@@ -363,6 +374,8 @@ Mie::port_write (uint8_t port, uint8_t val)
 	case 0x10:
 		if (io.lcr & 0x80)
 			io.dll = val;
+		else if (jvs->line_mode ())
+			jvs->line_send (val, line_ticks (), uart_char_ticks ());
 		else
 			jvs->send (val);
 		break;
@@ -376,7 +389,9 @@ Mie::port_write (uint8_t port, uint8_t val)
 		/* Bits 1 and 2 empty the FIFOs, and clear themselves */
 		if (val & 0x02)
 			jvs->flush_receive ();
-		if (val & 0x04)
+		if ((val & 0x04) && jvs->line_mode ())
+			jvs->line_flush_send (line_ticks ());
+		else if (val & 0x04)
 			jvs->flush_send ();
 		io.fcr = val & ~0x06;
 		break;
@@ -401,8 +416,9 @@ Mie::port_write (uint8_t port, uint8_t val)
 		update_irq ();
 		break;
 	case 0x90:
-		/* The line released: the packet is out, its answer comes */
-		if ((io.jvs_control & 1) && !(val & 1)) {
+		/* The line released: the packet is out, its answer comes (a
+		 * board on the line answers by itself) */
+		if ((io.jvs_control & 1) && !(val & 1) && !jvs->line_mode ()) {
 			jvs->end_packet ();
 			if (jvs->can_receive ())
 				raise_irq (IRQ_JVS);
@@ -426,13 +442,19 @@ Mie::gpio_read (unsigned port)
 	case 1:
 		/* B: no interrupt for the SH-4 */
 		return 0x00;
-	case 6:
+	case 6: {
 		/* G: the EEPROM's DO, /Service, /Test; the fans' sensors and
 		 * the JTAG's TDO high. MAME has Test at bit 2, but SGNASCAR
-		 * enters its test menu on bit 3, as Valkyrie had it */
+		 * enters its test menu on bit 3, as Valkyrie had it. With the
+		 * I/O board running its program, Test and Service are the
+		 * cabinet's, on that board, as on a cabinet: on both, the
+		 * board's reaching the game a few frames after these, the
+		 * BIOS took a press for two */
+		bool mainbd = !jvs->line_mode ();
 		return 0xF2 | (eeprom.data_out () ? 0x01 : 0) |
-		       (hl::Input::action (hl::ACTION_SERVICE) ? 0 : 0x04) |
-		       (hl::Input::action (hl::ACTION_TEST) ? 0 : 0x08);
+		       ((mainbd && hl::Input::action (hl::ACTION_SERVICE)) ? 0 : 0x04) |
+		       ((mainbd && hl::Input::action (hl::ACTION_TEST)) ? 0 : 0x08);
+	}
 	default:
 		/* A: no DIP switches */
 		return 0xFF;
@@ -670,25 +692,89 @@ same_state (const Z80::Registers &a, const Z80::Registers &b)
 int
 Mie::exec (int cycles)
 {
-	if (hack || busrq)
+	if (hack)
+		return cycles;
+	if (jvs->line_mode ()) {
+		run_line (cycles);
+		return cycles;
+	}
+	if (busrq)
 		return cycles;
 	owed += cycles * speed / 100;
+	run_for (owed);
+	return cycles;
+}
+
+/* The Z80 for left T-states: one instruction at a time with HR_Z80_PROFILE
+ * or MIE_IDLE_SKIP=0, else its idle loops at once */
+void
+Mie::run_for (int &left)
+{
 	if (!z80_pcs.empty ()) {
-		while (owed > 0) {
+		while (left > 0) {
 			uint16_t pc = z80->regs.pc;
 			int t = z80->step ();
 			z80_pcs[pc] += t;
-			owed -= t;
+			left -= t;
 		}
-		return cycles;
+	} else if (idle_skip)
+		run_z80 (left);
+	else
+		while (left > 0)
+			left -= z80->step ();
+}
+
+/* An I/O board running its program on the JVS line (IO_BOARD_PROGRAM): the
+ * board a piece ahead of the Z80, then the Z80 up to where the board is,
+ * stopped where the board has something for it (a byte, its sense line),
+ * which the UART then shows. The board is never farther ahead than a byte of
+ * the Z80 takes to reach it (73.8 us on the 837-13551). Held by the SH-4s
+ * (BUSRQ), the Z80 waits while the line and the board go on */
+#define LINE_PIECE	1024
+
+void
+Mie::run_line (int cycles)
+{
+	const uint64_t T = hl::JvsLine::TICKS_PER_Z80_CYCLE;
+	int share = cycles * speed / 100;
+
+	if (busrq) {
+		line_stall += share;
+		jvs->line_run (line_ticks ());
+		jvs->line_deliver (line_ticks ());
+		return;
 	}
-	if (idle_skip) {
-		run_z80 ();
-		return cycles;
+	owed += share;
+	while (owed > 0) {
+		uint64_t now, end, to, event;
+
+		now = line_cycles ();
+		jvs->line_deliver (now * T);
+		end = now + owed;
+		if (jvs->line_board_now () < end * T)
+			jvs->line_run ((now + LINE_PIECE) * T);
+		to = MIN2 (end, jvs->line_board_now () / T);
+		event = jvs->line_next_event ();
+		if (event != UINT64_MAX)
+			to = MIN2 (to, (event + T - 1) / T);
+		if (to > now) {
+			int chunk = (int) (to - now), left = chunk;
+
+			run_for (left);
+			owed -= chunk - left;
+		}
 	}
-	while (owed > 0)
-		owed -= z80->step ();
-	return cycles;
+	jvs->line_deliver (line_ticks ());
+}
+
+uint64_t
+Mie::uart_char_ticks () const
+{
+	uint64_t divisor = (uint64_t) ((io.dlm << 8) | io.dll);
+
+	/* 10 bits, 16 clocks of the 14.7456 MHz crystal each by the divisor
+	 * (8 from the game's program: 115200 bauds) */
+	return 10 * 16 * hl::JvsLine::TICKS_PER_UART_CLOCK * (divisor ? divisor : 1);
 }
 
 /* The Z80's T-states owed, its idle loops at once. Back at a loop's head
@@ -700,21 +786,21 @@ Mie::exec (int cycles)
  * (the same in SGNASCAR, AIRTRIX, SWRACER) spends 79% of its time at
  * 8046-804F, polling the SH-4's command at C000. */
 void
-Mie::run_z80 ()
+Mie::run_z80 (int &left)
 {
-	while (owed > 0) {
+	while (left > 0) {
 		uint16_t pc = z80->regs.pc;
 
 		if (idle.confirmed && pc == idle.head && !idle.touched &&
-		    !z80->r_read && owed > idle.t && same_state (z80->regs, idle.regs)) {
-			int turns = (owed - 1) / idle.t;
+		    !z80->r_read && left > idle.t && same_state (z80->regs, idle.regs)) {
+			int turns = (left - 1) / idle.t;
 
-			owed -= turns * idle.t;
+			left -= turns * idle.t;
 			z80->regs.cycles += (uint64_t) turns * idle.t;
 			z80->regs.r = (uint8_t) ((z80->regs.r & 0x80) |
 			                         ((z80->regs.r + turns * idle.r) & 0x7F));
 		}
-		owed -= z80->step ();
+		left -= z80->step ();
 		/* A jump back: a loop's head, perhaps */
 		if (z80->regs.pc < pc && pc - z80->regs.pc <= 64)
 			came_back ();
@@ -939,6 +1025,10 @@ Mie::save_state (hl::State *state)
 	/* The card reader's line, for VON4 alone */
 	if (card_reader)
 		ret |= state->put (&serial, sizeof (serial));
+	/* The line's time, with a board running its program only: the states
+	 * saved without it keep loading */
+	if (jvs->line_mode ())
+		ret |= state->put (&line_stall, sizeof (line_stall));
 	return ret;
 }
 
@@ -952,6 +1042,8 @@ Mie::load_state (hl::State *state)
 	ret |= eeprom.load_state (state);
 	if (card_reader)
 		ret |= state->get (&serial, sizeof (serial));
+	if (jvs->line_mode ())
+		ret |= state->get (&line_stall, sizeof (line_stall));
 	idle.valid = idle.confirmed = false;
 	return ret;
 }

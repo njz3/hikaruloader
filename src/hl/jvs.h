@@ -29,6 +29,33 @@ namespace hl {
 
 class JvsDevice;
 
+/* An I/O board that runs its own program at the far end of the line (the
+ * [Emulation] IO_BOARD_PROGRAM setting, hl/ioboard.h), instead of the
+ * simulated JvsDevices: the host's bytes reach its UART one at a time, at the
+ * line's speed, and its replies come back the same way, through the bus's
+ * line (JvsBus::attach_line). Times are ticks of 1/9.216 GHz from the reset,
+ * in which the MIE's Z80 clock (16 MHz, 576 ticks) and the UARTs' crystal
+ * (14.7456 MHz, 625 ticks) are both whole */
+class JvsLine {
+public:
+	static const uint64_t TICKS_PER_Z80_CYCLE = 576;
+	static const uint64_t TICKS_PER_UART_CLOCK = 625;
+
+	virtual ~JvsLine () {}
+
+	/* The board's name in the log: "837-13551" */
+	virtual const char *name () const = 0;
+	virtual void	 reset () = 0;
+	/* Runs the board up to tick, taking the host's bytes at their time
+	 * (JvsBus::line_next_byte) and giving it its own (JvsBus::line_event) */
+	virtual void	 run_until (uint64_t tick) = 0;
+	/* Where the board is */
+	virtual uint64_t now () const = 0;
+	virtual int	 save_state (State *state) = 0;
+	virtual int	 load_state (State *state) = 0;
+	virtual const char *debug_string () { return NULL; }
+};
+
 /* The JVS bus (JAMMA Video Standard): the RS-485 line from the main board to
  * the cabinet's I/O boards, chained one after the other. Seen from its host
  * (the Hikaru's MIE): a packet goes out a byte at a time, then its answer
@@ -43,13 +70,24 @@ class JvsDevice;
  * As a device of the machine, its host side is also a set of registers, for
  * the Lua shell: put (1, 0, byte) sends, put (1, 1, any) ends the packet,
  * get (1, 0) reads the answer (FF when it is over), get (1, 1) the lines (bit
- * 0: a byte to read, bit 1: a device, bit 2: all addressed). */
+ * 0: a byte to read, bit 1: a device, bit 2: all addressed).
+ *
+ * With a line (attach_line: an I/O board running its program), the packets
+ * are no longer handled here: each byte the host sends goes to the board as
+ * the line carries it (line_send), and the board's bytes and its sense line
+ * come back as events, given to the host at their time (line_deliver); the
+ * chain's simulated board stays, for its inputs and outputs only. */
 class JvsBus : public Device {
 public:
 	explicit JvsBus (Machine *mach);
+	~JvsBus () override;
 
 	/* At the end of the chain */
 	void	 attach (JvsDevice *dev);
+	/* The board that runs its program: the bus keeps it, and deletes it */
+	void	 attach_line (JvsLine *board);
+	bool	 line_mode () const { return line != NULL; }
+	JvsLine	*line_board () { return line; }
 
 	void	 send (uint8_t byte);
 	void	 end_packet ();
@@ -60,8 +98,33 @@ public:
 	 * left of an answer */
 	void	 flush_send () { out.clear (); }
 	void	 flush_receive () { in.clear (); in_pos = 0; }
-	bool	 present () const { return !chain.empty (); }
+	bool	 present () const { return !chain.empty () || line; }
 	bool	 all_addressed () const;
+
+	/* The line, the host's side. A byte its UART starts at tick (or once
+	 * the one before has gone), a character of char_ticks */
+	void	 line_send (uint8_t byte, uint64_t tick, uint64_t char_ticks);
+	/* The transmitter's FIFO empty (every byte started), and the whole of
+	 * it (the last stop bit gone), at tick */
+	bool	 line_fifo_empty (uint64_t tick) const;
+	bool	 line_idle (uint64_t tick) const { return tick >= line_free; }
+	/* The FIFO reset: the bytes not started yet dropped */
+	void	 line_flush_send (uint64_t tick);
+	/* The board run to at least tick, if it is not there yet */
+	void	 line_run (uint64_t tick);
+	uint64_t line_board_now () const { return line ? line->now () : 0; }
+	/* The board's next event for the host, UINT64_MAX for none; the
+	 * events up to tick given to the host's UART and sense line */
+	uint64_t line_next_event () const;
+	void	 line_deliver (uint64_t tick);
+
+	/* The line, the board's side: the start of the host's next byte,
+	 * UINT64_MAX for none, and that byte taken */
+	uint64_t line_next_byte () const;
+	uint8_t	 line_take_byte ();
+	/* A byte for the host, or its sense line (all addressed or not), from
+	 * tick on */
+	void	 line_event (uint64_t tick, bool sense, uint8_t value);
 
 	int	 get (unsigned size, uint32_t addr, void *val) override;
 	int	 put (unsigned size, uint32_t addr, uint64_t val) override;
@@ -82,6 +145,19 @@ private:
 	std::vector<uint8_t> out, in;
 	size_t	 in_pos;
 	bool	 log;
+
+	/* The line: what goes either way, in the order of their ticks */
+	struct LineEvent {
+		uint64_t tick;
+		uint8_t	 sense;		/* the sense line, not a byte */
+		uint8_t	 value;
+	};
+	JvsLine	*line;
+	std::vector<LineEvent> to_board, to_host;
+	/* The host's transmitter free from then on; the board's sense line as
+	 * the host has it */
+	uint64_t line_free;
+	bool	 line_addressed;
 };
 
 /* A device on the JVS bus: an I/O board, a card reader... It answers the
@@ -151,6 +227,19 @@ public:
 	uint16_t coin[2];
 	uint8_t	 output;
 
+	/* The cabinet's side, for a board that runs its own program
+	 * (hl::JvsLine) on these same inputs and outputs: the system byte
+	 * (TEST in bit 7), a player's switches as SWITCH_INPUTS gives them
+	 * (START in bit 15, closed at 1), a channel (its middle 8000), the
+	 * coin switches pressed since the last call, and the outputs the
+	 * program drives, as the outputs command writes them (output 1 in bit
+	 * 7 of the first byte) */
+	uint8_t	 system_bits ();
+	virtual uint16_t player_bits (unsigned player);
+	uint16_t analog_bits (unsigned channel);
+	void	 take_coins (unsigned presses[2]);
+	void	 drive_outputs (const uint8_t *data, unsigned bytes) { outputs (bytes, data); }
+
 protected:
 	const char *identity () override;
 	uint8_t	 command_revision () override { return 0x11; }
@@ -194,11 +283,18 @@ public:
 	/* Outputs 9 to 14, in bits 7 to 2 */
 	uint8_t	 output2;
 
+	/* With the drive board's reply in bits 7-4, as on the cabinet */
+	uint16_t player_bits (unsigned player) override;
+
 protected:
 	const char *identity () override;
 	void	 functions (std::vector<uint8_t> &out) override;
 	bool	 switches (unsigned players, unsigned bytes, std::vector<uint8_t> &out) override;
 	bool	 outputs (unsigned bytes, const uint8_t *data) override;
+
+private:
+	/* The drive board's reply player_bits (0) read, for player 2's */
+	uint8_t	 line_reply;
 };
 
 } /* namespace hl */

@@ -334,7 +334,8 @@ bool ui::Interface::pick_game (hl::GameList *list, char *name, size_t size, cons
                 return false;
             const bool escape = event.type == SDL_KEYDOWN && !event.key.repeat &&
                                 event.key.keysym.sym == SDLK_ESCAPE;
-            if (action == hl::ACTION_SETTINGS || (escape && picker.settingsOpen))
+            // Escape or the Back input (Guide + B) closes the settings
+            if (action == hl::ACTION_SETTINGS || ((escape || action == hl::ACTION_BACK) && picker.settingsOpen))
             {
                 picker.settingsOpen = !picker.settingsOpen;
                 continue;

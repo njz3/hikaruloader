@@ -575,6 +575,114 @@ prot_start (Hikaru *hikaru, uint32_t start)
 		prot->state.dict[i] = prot_byte (hikaru);
 }
 
+/*
+ * With SECURITY_CHIPS, that device answers as the chip, an Actel A54SX32
+ * stamped 317-0283-COM on the 834-14125 board (after MAME's naomi_m1_board
+ * and Odin's actel_m1.cpp): its registers at 00-13 only (0 elsewhere); 04,
+ * the status, 80008000 while a stream runs (bit 15 too, which SGNASCAR's
+ * debug function at 0C0342A4 waits for), else 0; 00 starts the stream when
+ * its bit 31 rises (the game never gives a start: its bytes from the
+ * MASKROM's first, the text of the game), stops it when that bit falls; 10
+ * gives as many bytes as its access is wide, the first lowest, the
+ * differences taken a byte at a time from the byte two back; symbol 111 ends
+ * the stream, zeros after. Not known, and read by no code of the game: the
+ * status's other bits, what bits 30, 1 and 0 of the control do (the game
+ * keeps them, 0C012F5A). Each start and stop to the log
+ */
+
+static uint8_t
+chip_byte (Hikaru *hikaru)
+{
+	hikaru_rombd_prot_t *prot = &hikaru->rombd_prot;
+	unsigned sym;
+	uint8_t byte;
+
+	if (!prot->chip_state.running || prot->chip_state.ended)
+		return 0;
+	if (!prot_bits (hikaru, 1)) {
+		if (!prot_bits (hikaru, 1))
+			sym = prot_bits (hikaru, 2);
+		else if (prot_bits (hikaru, 1))
+			sym = 8 + prot_bits (hikaru, 3);
+		else
+			sym = 4 + prot_bits (hikaru, 2);
+	} else if (prot_bits (hikaru, 1))
+		sym = 0x30 + prot_bits (hikaru, 6);
+	else
+		sym = 0x10 + prot_bits (hikaru, 5);
+	if (sym == 0x6F) {
+		prot->chip_state.ended = 1;
+		return 0;
+	}
+	byte = sym ? prot->state.dict[sym] : (uint8_t) prot_bits (hikaru, 8);
+	if ((prot->state.dict[0] & 0x40) && prot->chip_state.out >= 2)
+		byte = (uint8_t) (prot->chip_state.last[prot->chip_state.out & 1] - byte);
+	prot->chip_state.last[prot->chip_state.out & 1] = byte;
+	prot->chip_state.out++;
+	return byte;
+}
+
+static uint32_t
+chip_get (Hikaru *hikaru, unsigned size, uint32_t offs)
+{
+	hikaru_rombd_prot_t *prot = &hikaru->rombd_prot;
+	uint32_t reg = offs & ~3u, val = 0;
+	unsigned i;
+
+	if (offs > 0x13)
+		return 0;
+	switch (reg) {
+	case 0x00:
+		val = prot->state.ctrl;
+		break;
+	case 0x04:
+		val = prot->chip_state.running ? 0x80008000 : 0;
+		break;
+	case 0x08:
+		val = 0x4252;
+		break;
+	case 0x0C:
+		val = prot->state.regc;
+		break;
+	case 0x10:
+		for (i = 0; i < size && i < 4; i++)
+			val |= (uint32_t) chip_byte (hikaru) << (8 * i);
+		return val;
+	}
+	val >>= 8 * (offs & 3);
+	return (size >= 4) ? val : (val & ((1u << (8 * size)) - 1));
+}
+
+static void
+chip_put (Hikaru *hikaru, unsigned size, uint32_t offs, uint32_t val)
+{
+	hikaru_rombd_prot_t *prot = &hikaru->rombd_prot;
+	uint32_t reg = offs & ~3u, shift = 8 * (offs & 3);
+	uint32_t mask = (size >= 4) ? 0xFFFFFFFFu : (((1u << (8 * size)) - 1) << shift);
+	uint32_t old;
+	static unsigned told = 0;
+
+	if (reg == 0x00) {
+		val = (prot->state.ctrl & ~mask) | ((val << shift) & mask);
+		old = prot->state.ctrl;
+		prot->state.ctrl = val;
+		if ((val & 0x80000000) && !(old & 0x80000000)) {
+			prot_start (hikaru, 0);
+			memset (&prot->chip_state, 0, sizeof (prot->chip_state));
+			prot->chip_state.running = 1;
+			if (told < 16)
+				HL_PRINT ("actel: the stream started (control %08X)%s", val,
+				          ++told == 16 ? " (the next ones not told)" : "");
+		} else if (!(val & 0x80000000) && prot->chip_state.running) {
+			prot->chip_state.running = 0;
+			if (told < 16)
+				HL_PRINT ("actel: the stream stopped after %u bytes%s", prot->chip_state.out,
+				          prot->chip_state.ended ? ", its end reached" : "");
+		}
+	} else if (reg == 0x0C)
+		prot->state.regc = (prot->state.regc & ~mask) | ((val << shift) & mask);
+}
+
 static uint32_t
 prot_get (Hikaru *hikaru, uint32_t reg)
 {
@@ -674,6 +782,12 @@ memctl_bus_get (Memctl *memctl, unsigned size, uint32_t bus_addr, void *val)
 	bool log = false;
 
 	set_ptr (val, size, 0);
+	if (hikaru->rombd_eeprom && bank == hikaru->rombd_config.eeprom_bank) {
+		/* SECURITY_CHIPS: the X76F100, its SDA on bit 0 (MAME's
+		 * hikaru.cpp), the whole page alike */
+		set_ptr (val, size, hikaru->rombd_eeprom->sda_read () ? 1 : 0);
+		return 0;
+	}
 	if (bus_addr >= 0x04000000 && bus_addr <= 0x043FFFFF) {
 		/* TEXRAM Bank 0 */
 		set_ptr (val, size, hikaru->texram[0]->get (size, offs));
@@ -701,6 +815,10 @@ memctl_bus_get (Memctl *memctl, unsigned size, uint32_t bus_addr, void *val)
 		 * A board with the protection (SGNASCAR's): its device, whose
 		 * 0C keeps what was written (19620217 at first). With a
 		 * 315-5881, its RAM and registers, but 08 and 0C as below */
+		if (hikaru->rombd_prot.mode == 1 && hikaru->rombd_prot.chip) {
+			set_ptr (val, size, chip_get (hikaru, size, offs));
+			return 0;
+		}
 		if (hikaru->rombd_prot.mode == 1) {
 			set_ptr (val, size, prot_get (hikaru, offs & 0x1FF));
 			return 0;
@@ -825,6 +943,12 @@ memctl_bus_put (Memctl *memctl, unsigned size, uint32_t bus_addr, uint64_t val)
 	uint32_t offs = bus_addr & 0xFFFFFF;
 	bool log = false;
 
+	if (hikaru->rombd_eeprom && bank == hikaru->rombd_config.eeprom_bank) {
+		/* SECURITY_CHIPS: the X76F100's pins, bit 0 SDA, 1 SCL, 2 /CS,
+		 * 3 /RST */
+		hikaru->rombd_eeprom->set_pins (!(val & 4), !(val & 8), (val >> 1) & 1, val & 1);
+		return 0;
+	}
 	if (bus_addr >= 0x04000000 && bus_addr <= 0x043FFFFF) {
 		/* TEXRAM Bank 0 */
 		texram_put (hikaru, 0, size, offs, val);
@@ -833,7 +957,9 @@ memctl_bus_put (Memctl *memctl, unsigned size, uint32_t bus_addr, uint64_t val)
 		texram_put (hikaru, 1, size, offs, val);
 	} else if (bus_addr >= 0x0A000000 && bus_addr <= 0x0AFFFFFF) {
 		/* The ROM board's protection, else unknown */
-		if (hikaru->rombd_prot.mode == 1)
+		if (hikaru->rombd_prot.mode == 1 && hikaru->rombd_prot.chip)
+			chip_put (hikaru, size, offs, (uint32_t) val);
+		else if (hikaru->rombd_prot.mode == 1)
 			prot_put (hikaru, offs & 0x1FF, (uint32_t) val);
 		else if (hikaru->rombd_prot.mode == 2)
 			crypt_put (hikaru, size, offs, (uint32_t) val);

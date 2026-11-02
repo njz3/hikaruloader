@@ -138,6 +138,7 @@
 #include "hl/games.h"
 #include "hl/driveboard.h"
 #include "hl/driveboard-z80.h"
+#include "hl/ioboard.h"
 #include "hl/paths.h"
 #include "hl/profile.h"
 
@@ -147,6 +148,7 @@
 #include "mach/hikaru/hikaru-memctl.h"
 #include "mach/hikaru/hikaru-mscomm.h"
 #include "mach/hikaru/hikaru-comm.h"
+#include "mach/hikaru/hikaru-commbd.h"
 #include "mach/hikaru/hikaru-mie.h"
 #include "mach/hikaru/hikaru-aica.h"
 #include "mach/hikaru/hikaru-gpu.h"
@@ -180,12 +182,16 @@ namespace hikaru {
 
 /* These functions get called by the SH-4 core */
 
+/* With SECURITY_CHIPS, the MAINBD EEPROM is there: its DO on bit 5 (MAME's
+ * hikaru.cpp, main_io_r) */
 static int
 porta_get_m (Sh4 *ctx, uint16_t *val)
 {
 	hl::Device *dev = (hl::Device *) ctx;
 	Hikaru *hikaru = (Hikaru *) dev->mach;
 	*val = hikaru->porta_m;
+	if (hikaru->mainbd_eeprom)
+		*val = (uint16_t) ((*val & ~0x20) | (hikaru->mainbd_eeprom->data_out () ? 0x20 : 0));
 	return 0;
 }
 
@@ -206,6 +212,11 @@ porta_put_m (Sh4 *ctx, uint16_t val)
 	hl::Device *dev = (hl::Device *) ctx;
 	Hikaru *hikaru = (Hikaru *) dev->mach;
 	hikaru->porta_m = val;
+
+	/* The MAINBD EEPROM, with SECURITY_CHIPS: bit 2 DI, 3 SK, 4 CS (MAME's
+	 * main_io_w) */
+	if (hikaru->mainbd_eeprom)
+		hikaru->mainbd_eeprom->write_lines ((val & 0x10) != 0, (val & 0x08) != 0, (val & 0x04) != 0);
 
 	/* This is a simple hack to detect three consecutive cycles of
 	 * low-high-low pin; the pattern 000-111-000[0000] is there because
@@ -487,6 +498,13 @@ hikaru_run_cycles (hl::Machine *mach, int cycles)
 	/* The AICAs' ARM7s and timers (their own sections) */
 	hikaru->aica_m->exec (cycles);
 	hikaru->aica_s->exec (cycles);
+
+	/* The communication board's 68000, a line at a time: the ring of
+	 * cabinets keeps in step at that grain (hikaru-commbd.cpp) */
+	if (hikaru->comm_board) {
+		HL_PROFILE (COMM);
+		hikaru->comm_board->line ();
+	}
 }
 
 /* The GPU's events, in their section of HR_PROFILE */
@@ -546,10 +564,15 @@ hikaru_mix_audio (Hikaru *hikaru)
  * none (hl::Paths). The earlier versions kept the
  * EEPROM alone, in nvram/<game>.eeprom: still read when the game has no
  * .nvram yet.
+ *
+ * Block CLCK keeps the board's clock: how many seconds it is ahead of the
+ * PC's local time (a signed 32-bit word), which the BIOS's CLOCK SETTING
+ * changes; without it the clock shows the PC's time (hikaru-aica.h).
  */
 
 #define NVRAM_EEPROM	"EEPR"
 #define NVRAM_BRAM	"BRAM"
+#define NVRAM_CLOCK	"CLCK"
 /* The EEPROM saved half a second after its last write (the BIOS and the
  * games write it a byte at a time), the backup RAM looked at every ten
  * seconds; both on the way out */
@@ -614,6 +637,15 @@ hikaru_load_nvram (Hikaru *hikaru)
 		memcpy (hikaru->bram->ptr (0), block->data (),
 		        MIN2 (block->size (), (size_t) hikaru->bram->size ()));
 	}
+	block = hikaru->nvram.get (NVRAM_CLOCK);
+	if (block && block->size () == 4) {
+		const uint8_t *b = block->data ();
+		int32_t ahead = (int32_t) (b[0] | (b[1] << 8) | (b[2] << 16) | ((uint32_t) b[3] << 24));
+
+		((Aica *) hikaru->aica_m)->set_clock (ahead);
+		((Aica *) hikaru->aica_s)->set_clock (ahead);
+		HL_PRINT ("hikaru: the board's clock %d seconds ahead of the PC's", ahead);
+	}
 }
 
 void
@@ -626,6 +658,15 @@ Hikaru::save_nvram ()
 		return;
 	nvram.set (NVRAM_EEPROM, m->eeprom.mem, sizeof (m->eeprom.mem));
 	nvram.set (NVRAM_BRAM, bram->ptr (0), bram->size ());
+	{
+		/* As the BIOS last set it: the difference now would take in the
+		 * time the game ran slower than the PC, or paused */
+		uint32_t ahead = (uint32_t) ((Aica *) aica_m)->rtc_ahead;
+		uint8_t b[4] = { (uint8_t) ahead, (uint8_t) (ahead >> 8),
+		                 (uint8_t) (ahead >> 16), (uint8_t) (ahead >> 24) };
+
+		nvram.set (NVRAM_CLOCK, b, sizeof (b));
+	}
 	/* The first failure of a row told (a rejected write directory fails
 	 * them all) */
 	static bool failing = false;
@@ -643,6 +684,20 @@ hikaru_keep_nvram (Hikaru *hikaru)
 	Mie *mie = (Mie *) hikaru->mie;
 	const std::vector<uint8_t> *saved;
 
+	Aica *aica_m = (Aica *) hikaru->aica_m, *aica_s = (Aica *) hikaru->aica_s;
+
+	/* The clock set in the BIOS: saved with the EEPROM's delay, and the
+	 * other board's clock set the same */
+	if (aica_m->rtc_set || aica_s->rtc_set) {
+		Aica *set = aica_m->rtc_set ? aica_m : aica_s;
+		int32_t ahead = set->clock_ahead ();
+
+		aica_m->rtc_set = aica_s->rtc_set = false;
+		aica_m->rtc_ahead = aica_s->rtc_ahead = ahead;
+		(set == aica_m ? aica_s : aica_m)->rtc_seconds = set->rtc_seconds;
+		HL_PRINT ("hikaru: the board's clock set, %d seconds ahead of the PC's", ahead);
+		mie->eeprom.changed = true;
+	}
 	if (mie->eeprom.changed) {
 		mie->eeprom.changed = false;
 		hikaru->nvram_due = NVRAM_EEPROM_DELAY;
@@ -704,7 +759,10 @@ Hikaru::run_frame ()
 
 	{
 		HL_PROFILE (COMM);
-		((Comm *) hikaru->comm)->vblank ();
+		if (hikaru->comm_board)
+			hikaru->comm_board->frame ();
+		else
+			((Comm *) hikaru->comm)->vblank ();
 	}
 	hikaru_mix_audio (hikaru);
 	hikaru_keep_nvram (hikaru);
@@ -734,6 +792,12 @@ Hikaru::on_reset (hl::ResetType type)
 	hikaru->rombd_prot.state.regc = 0x19620217;
 	memset (hikaru->rombd_prot.ram, 0, sizeof (hikaru->rombd_prot.ram));
 	hikaru->rombd_prot.crypt.reset ();
+	memset (&hikaru->rombd_prot.chip_state, 0, sizeof (hikaru->rombd_prot.chip_state));
+	/* SECURITY_CHIPS': their contents stay */
+	if (hikaru->rombd_eeprom)
+		hikaru->rombd_eeprom->reset ();
+	if (hikaru->mainbd_eeprom && type == hl::RESET_HARD)
+		hikaru->mainbd_eeprom->power_on ();
 }
 
 const char *
@@ -783,6 +847,13 @@ Hikaru::on_load_state (hl::State *state)
 		LOAD (hikaru->rombd_prot.ram);
 		LOAD (hikaru->rombd_prot.crypt.s);
 	}
+	/* SECURITY_CHIPS', with it only */
+	if (hikaru->rombd_eeprom) {
+		ret |= hikaru->rombd_eeprom->load_state (state);
+		ret |= hikaru->mainbd_eeprom->load_state (state);
+		if (hikaru->rombd_prot.chip)
+			LOAD (hikaru->rombd_prot.chip_state);
+	}
 
 	/* Another TEXRAM: the textures uploaded again, the drawing thread's
 	 * copy taken again */
@@ -809,6 +880,14 @@ Hikaru::on_save_state (hl::State *state)
 	if (hikaru->rombd_prot.mode == 2) {
 		SAVE (hikaru->rombd_prot.ram);
 		SAVE (hikaru->rombd_prot.crypt.s);
+	}
+	/* SECURITY_CHIPS', with it only: the states saved without keep
+	 * loading */
+	if (hikaru->rombd_eeprom) {
+		ret |= hikaru->rombd_eeprom->save_state (state);
+		ret |= hikaru->mainbd_eeprom->save_state (state);
+		if (hikaru->rombd_prot.chip)
+			SAVE (hikaru->rombd_prot.chip_state);
 	}
 
 	return ret;
@@ -1139,6 +1218,72 @@ Hikaru::~Hikaru ()
 		((Aica *) aica_s)->report_arm_profile ();
 	if (mie)
 		((Mie *) mie)->report_z80_profile ();
+	delete rombd_eeprom;
+	delete mainbd_eeprom;
+}
+
+/* [Emulation] SECURITY_CHIPS: the ROM board's X76F100 and the main board's
+ * 93C46 (port A), from the images of MAME's newer hikaru set, blank
+ * without; true when both images are there, the BOOTROM's check of them
+ * then left to run */
+static bool
+hikaru_attach_security_chips (Hikaru *hikaru)
+{
+	hl::Game *game = hikaru->game;
+	hl::Buffer *x76 = game->section_data ("rombd_eeprom");
+	hl::Buffer *c46 = game->section_data ("mainbd_eeprom");
+	bool images = true;
+
+	if (!hl::Config::get ()->security_chips)
+		return false;
+	hikaru->rombd_eeprom = new hl::X76F100 ();
+	hikaru->mainbd_eeprom = new hl::Eeprom93C46 ();
+	hikaru->mainbd_eeprom->log_name = "93c46 (main board)";
+	if (x76 && hikaru->rombd_eeprom->load ((const uint8_t *) x76->ptr (0), x76->size ()))
+		HL_PRINT ("ROM board: the X76F100 from x76f100.ic85 (SECURITY_CHIPS)");
+	else {
+		HL_PRINT ("ROM board: the X76F100 blank (SECURITY_CHIPS: no x76f100.ic85, MAME's newer hikaru set)");
+		images = false;
+	}
+	if (c46 && c46->size () == sizeof (hikaru->mainbd_eeprom->mem)) {
+		memcpy (hikaru->mainbd_eeprom->mem, c46->ptr (0), sizeof (hikaru->mainbd_eeprom->mem));
+		HL_PRINT ("main board: the 93C46 from 93c46.ic115 (SECURITY_CHIPS)");
+	} else {
+		HL_PRINT ("main board: the 93C46 blank (SECURITY_CHIPS: no 93c46.ic115, MAME's newer hikaru set)");
+		images = false;
+	}
+	return images;
+}
+
+/* [Emulation] IO_BOARD_PROGRAM: the I/O board's CPU running its program on
+ * the JVS line (hl/ioboard.h), the simulated board left for the cabinet's
+ * inputs and outputs. NASCAR Arcade's board is an 837-13741 (its program
+ * epr-21868, from MAME's 18wheelr set; the simulation answers as an
+ * 837-13844), the others' an 837-13551 (315-6215, the jvs13551 set). Without
+ * the program, the simulation */
+static void
+hikaru_attach_io_program (Hikaru *hikaru)
+{
+	hl::Game *game = hikaru->game;
+	const char *name = game->parent[0] ? game->parent : game->name;
+	bool nascar = !strcmp (name, "sgnascar");
+	hl::Buffer *rom = game->section_data ("io_rom");
+	hl::SegaIoBoard *cabinet = (hl::SegaIoBoard *) hikaru->io_board;
+	const char *file = nascar ? "epr-21868.ic7" : "315-6215.bin";
+	size_t size = nascar ? hl::IoBoard13741::EPROM_SIZE : hl::Tmp90ph44::ROM_SIZE;
+
+	if (!rom || rom->size () != size) {
+		HL_PRINT ("I/O board: simulated (IO_BOARD_PROGRAM: no %s, MAME's %s set)",
+		          file, nascar ? "18wheelr" : "jvs13551");
+		return;
+	}
+	if (nascar)
+		hikaru->jvs->attach_line (new hl::IoBoard13741 ((const uint8_t *) rom->ptr (0), rom->size (),
+		                                                hikaru->jvs, cabinet));
+	else
+		hikaru->jvs->attach_line (new hl::IoBoard13551 ((const uint8_t *) rom->ptr (0), rom->size (),
+		                                                hikaru->jvs, cabinet));
+	HL_PRINT ("I/O board: %s running %s (IO_BOARD_PROGRAM)", hikaru->jvs->line_board ()->name (), file);
 }
 
 static int
@@ -1186,22 +1331,33 @@ hikaru_init (Hikaru *hikaru)
 		hikaru->eprom   	= game->section_data ("eprom");
 		hikaru->maskrom 	= game->section_data ("maskrom");
 
-		/* Patch theBOOTROM  EEPROM check. Allows games to load. */
-		HL_PRINT ("patching BOOTROM");
-
+		/* Patch theBOOTROM  EEPROM check. Allows games to load. It
+		 * checks the main board's 93C46 and the ROM board's X76F100
+		 * (their serial numbers and CRCs, @0C00087C and @0C0008A2), a
+		 * status bit for each: the patch returns them all good. With
+		 * SECURITY_CHIPS and both images, the check is left to run */
 		version = (char *) hikaru->bootrom->ptr (0xD4);
-		if (!strcmp (version, "SAMURAI BootROM Version 0.84") ||
-		    !strcmp (version, "SAMURAI BootROM Version 0.92"))
-			hikaru->bootrom->put (2, 0x8AE, 0xE00F); /* MOV R0, 0xFFFFFFFF */
-		else if (!strcmp (version, "SAMURAI BootROM Version 0.96"))
-			hikaru->bootrom->put (2, 0x8E6, 0xE00F); /* MOV R0, 0xFFFFFFFF */
+		if (hikaru_attach_security_chips (hikaru))
+			HL_PRINT ("BOOTROM: its check of the EEPROMs left to run (SECURITY_CHIPS)");
 		else {
-			HL_ERROR ("unknown BOOTROM version!");
-			return -1;
+			HL_PRINT ("patching BOOTROM");
+			if (!strcmp (version, "SAMURAI BootROM Version 0.84") ||
+			    !strcmp (version, "SAMURAI BootROM Version 0.92"))
+				hikaru->bootrom->put (2, 0x8AE, 0xE00F); /* MOV R0, 0xFFFFFFFF */
+			else if (!strcmp (version, "SAMURAI BootROM Version 0.96"))
+				hikaru->bootrom->put (2, 0x8E6, 0xE00F); /* MOV R0, 0xFFFFFFFF */
+			else {
+				HL_ERROR ("unknown BOOTROM version!");
+				return -1;
+			}
 		}
 
 		if (hikaru_set_rombd_config (hikaru))
 			return -1;
+		/* SECURITY_CHIPS: SGNASCAR's FPGA answers as the chip */
+		hikaru->rombd_prot.chip = hikaru->rombd_eeprom && hikaru->rombd_prot.mode == 1;
+		if (hikaru->rombd_prot.chip)
+			HL_PRINT ("ROM board: the Actel FPGA (317-0283-COM) as the chip (SECURITY_CHIPS)");
 	} else {
 		/* Create a mock bootrom */                                     
 		hikaru->bootrom = hl::Buffer::create (2*MB, 0, hl::Buffer::LE32);
@@ -1217,7 +1373,13 @@ hikaru_init (Hikaru *hikaru)
 	if (!hikaru->mscomm)
 		return -1;
 
-	hikaru->comm = new hikaru::Comm (mach);
+	/* [Network] COMM_BOARD: simulated, or its program run */
+	if (hl::Config::get ()->comm_board == hl::COMM_BOARD_PROGRAM) {
+		hikaru->comm_board = new hikaru::CommBoard (mach);
+		hikaru->comm = hikaru->comm_board;
+		HL_PRINT ("hikaru: the communication board's 68000 runs the game's program");
+	} else
+		hikaru->comm = new hikaru::Comm (mach);
 
 	/* The cabinet's JVS bus, its I/O board first, then the MIE driving
 	 * it. NASCAR's has the drive board of a Model 3 (Sega Rally 2's) on
@@ -1239,6 +1401,8 @@ hikaru_init (Hikaru *hikaru)
 		hikaru->io_board = new hl::SegaIoBoard13844 (mach, hikaru->jvs, hikaru->drive_board);
 	} else
 		hikaru->io_board = new hl::SegaIoBoard (mach, hikaru->jvs);
+	if (hl::Config::get ()->io_board_program)
+		hikaru_attach_io_program (hikaru);
 	hikaru->mie = new hikaru::Mie (mach, hikaru->mie_ram, hikaru->jvs);
 	if (!hikaru->mie)
 		return -1;
@@ -1253,6 +1417,7 @@ hikaru_init (Hikaru *hikaru)
 		((Mie *) hikaru->mie)->card_reader = hikaru->card_reader;
 	}
 
+	Renderer::set_game (mach->game ? mach->game->name : NULL);
 	hikaru->renderer = new Renderer (hikaru->fb, hikaru->texram);
 
 	hikaru->gpu = new Gpu (mach, hikaru->cmdram, hikaru->fb, hikaru->texram, (Renderer *) hikaru->renderer);

@@ -160,6 +160,8 @@ screen_layout (ScreenLayout *l, int tw, int th, int pw, int ph)
 
 	to_pixels (l->frame, fx, fy, fw, fh, tw, th);
 	to_pixels (l->image, image[0], image[1], image[2], image[3], tw, th);
+	/* No bezel: bezel_layout () places one */
+	l->bezel[0] = l->bezel[1] = l->bezel[2] = l->bezel[3] = 0;
 }
 
 } /* namespace hl */

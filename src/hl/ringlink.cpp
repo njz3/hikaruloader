@@ -35,6 +35,9 @@
 #endif
 
 #include <chrono>
+#if defined(_M_X64) || defined(__x86_64__) || defined(_M_IX86) || defined(__i386__)
+#include <immintrin.h>
+#endif
 
 #include "hl/core.h"
 #include "hl/ringlink.h"
@@ -50,6 +53,28 @@ now_ms ()
 {
 	return (uint64_t) std::chrono::duration_cast<std::chrono::milliseconds> (
 		std::chrono::steady_clock::now ().time_since_epoch ()).count ();
+}
+
+/* A recv () that found nothing yet, not an error */
+static bool
+would_block ()
+{
+#ifdef _WIN32
+	return WSAGetLastError () == WSAEWOULDBLOCK;
+#else
+	return errno == EAGAIN || errno == EWOULDBLOCK;
+#endif
+}
+
+/* A spinning thread's breath, kind to the other thread of its core */
+static inline void
+pause_cpu ()
+{
+#if defined(_M_X64) || defined(__x86_64__) || defined(_M_IX86) || defined(__i386__)
+	_mm_pause ();
+#else
+	std::this_thread::yield ();
+#endif
 }
 
 static void
@@ -70,7 +95,17 @@ RingLink::RingLink () :
 	connecting (false),
 	next_try (0),
 	lost (false),
-	port_out (0)
+	port_out (0),
+	rx_at (0),
+	in_count (0),
+	out_count_plain (0),
+	queued (false),
+	sender_quit (false),
+	sender_idle (false),
+	spin_us (0),
+	tx_pending (false),
+	out_ok (false),
+	out_count (0)
 {
 }
 
@@ -85,6 +120,23 @@ RingLink::drop (uintptr_t &sock)
 	if (sock != NO_SOCKET)
 		closesocket (sock);
 	sock = NO_SOCKET;
+}
+
+void
+RingLink::put_header (std::vector<uint8_t> &msg, uint32_t type, uint32_t size)
+{
+	for (int i = 0; i < 4; i++)
+		msg.push_back ((uint8_t) (size >> (i * 8)));
+	for (int i = 0; i < 4; i++)
+		msg.push_back ((uint8_t) (type >> (i * 8)));
+}
+
+void
+RingLink::set_hello (uint32_t type, const void *data, uint32_t size)
+{
+	hello.clear ();
+	put_header (hello, type, size);
+	hello.insert (hello.end (), (const uint8_t *) data, (const uint8_t *) data + size);
 }
 
 bool
@@ -129,6 +181,10 @@ RingLink::open (unsigned port_in, const char *addr_out, unsigned port_out)
 	next_try = 0;
 	HL_PRINT ("ring: listening on port %u, the next node at %s:%u",
 	          port_in, addr_out, port_out);
+	if (queued) {
+		sender_quit = false;
+		sender = std::thread (&RingLink::send_loop, this);
+	}
 	return true;
 }
 
@@ -137,11 +193,22 @@ RingLink::close ()
 {
 	if (listener == NO_SOCKET)
 		return;
+	if (sender.joinable ()) {
+		{
+			std::lock_guard<std::mutex> hold (out_lock);
+			sender_quit = true;
+		}
+		out_wake.notify_one ();
+		sender.join ();
+	}
 	drop (in);
 	drop (out);
 	drop (listener);
 	connecting = false;
+	out_ok = false;
 	rx.clear ();
+	rx_at = 0;
+	tx.clear ();
 #ifdef _WIN32
 	WSACleanup ();
 #endif
@@ -164,14 +231,20 @@ RingLink::poll ()
 			break;
 		drop (in);
 		in = sock;
-		set_nonblocking (in, false);
+		/* Queued, its reads never wait either (receive () without a
+		 * timeout, a call instead of two) */
+		set_nonblocking (in, queued);
 		setsockopt (in, IPPROTO_TCP, TCP_NODELAY, (const char *) &yes, sizeof (yes));
 		rx.clear ();
+		rx_at = 0;
 		lost = false;
+		in_count++;
 		HL_PRINT ("ring: the previous node is connected");
 	}
 
-	/* The next node */
+	/* The next node: queued, the sender thread's */
+	if (queued)
+		return in != NO_SOCKET && out_ok && !lost;
 	if (out == NO_SOCKET && now_ms () >= next_try) {
 		struct addrinfo hints, *res = NULL;
 		char port[8];
@@ -212,6 +285,7 @@ RingLink::poll ()
 				set_nonblocking (out, false);
 				setsockopt (out, IPPROTO_TCP, TCP_NODELAY, (const char *) &yes, sizeof (yes));
 				lost = false;
+				out_count_plain++;
 				HL_PRINT ("ring: connected to the next node");
 			}
 		}
@@ -222,17 +296,29 @@ RingLink::poll ()
 bool
 RingLink::send (uint32_t type, const void *data, uint32_t size)
 {
-	std::vector<uint8_t> msg (8 + size);
+	std::vector<uint8_t> msg;
 	size_t done = 0;
 
+	if (queued) {
+		std::lock_guard<std::mutex> hold (out_lock);
+		/* No next node, or it stopped taking them: lost, as on a
+		 * fibre pulled out or jammed */
+		if (!out_ok || tx.size () + 8 + size > QUEUE_MOST)
+			return false;
+		put_header (tx, type, size);
+		if (size)
+			tx.insert (tx.end (), (const uint8_t *) data, (const uint8_t *) data + size);
+		tx_pending.store (true, std::memory_order_release);
+		if (sender_idle)
+			out_wake.notify_one ();
+		return true;
+	}
 	if (out == NO_SOCKET || connecting)
 		return false;
-	for (int i = 0; i < 4; i++) {
-		msg[i] = (uint8_t) (size >> (i * 8));
-		msg[4 + i] = (uint8_t) (type >> (i * 8));
-	}
+	msg.reserve (8 + size);
+	put_header (msg, type, size);
 	if (size)
-		memcpy (&msg[8], data, size);
+		msg.insert (msg.end (), (const uint8_t *) data, (const uint8_t *) data + size);
 	while (done < msg.size ()) {
 		int sent = ::send (out, (const char *) &msg[done], (int) (msg.size () - done), MSG_NOSIGNAL);
 		if (sent <= 0) {
@@ -246,20 +332,186 @@ RingLink::send (uint32_t type, const void *data, uint32_t size)
 	return true;
 }
 
+/* Queued: the next node, from the sender thread, a second at most */
+bool
+RingLink::connect_out ()
+{
+	struct addrinfo hints, *res = NULL;
+	struct timeval second = { 1, 0 };
+	fd_set set, failed;
+	char port[8];
+	int yes = 1, err = 0;
+	socklen_t len = sizeof (err);
+	size_t done = 0;
+
+	memset (&hints, 0, sizeof (hints));
+	hints.ai_family = AF_INET;
+	hints.ai_socktype = SOCK_STREAM;
+	snprintf (port, sizeof (port), "%u", port_out);
+	if (getaddrinfo (addr_out.c_str (), port, &hints, &res) || !res) {
+		HL_ERROR ("ring: unknown address '%s'", addr_out.c_str ());
+		return false;
+	}
+	out = (uintptr_t) socket (AF_INET, SOCK_STREAM, IPPROTO_TCP);
+	if (out == NO_SOCKET) {
+		freeaddrinfo (res);
+		return false;
+	}
+	set_nonblocking (out, true);
+	connect (out, res->ai_addr, (int) res->ai_addrlen);
+	freeaddrinfo (res);
+	FD_ZERO (&set);
+	FD_SET (out, &set);
+	FD_ZERO (&failed);
+	FD_SET (out, &failed);
+	if (select ((int) out + 1, NULL, &set, &failed, &second) <= 0 || FD_ISSET (out, &failed) ||
+	    getsockopt (out, SOL_SOCKET, SO_ERROR, (char *) &err, &len) || err) {
+		/* Not there yet: again later */
+		drop (out);
+		return false;
+	}
+	/* This thread's own: it may wait */
+	set_nonblocking (out, false);
+	setsockopt (out, IPPROTO_TCP, TCP_NODELAY, (const char *) &yes, sizeof (yes));
+	while (done < hello.size ()) {
+		int sent = ::send (out, (const char *) &hello[done], (int) (hello.size () - done), MSG_NOSIGNAL);
+		if (sent <= 0) {
+			drop (out);
+			return false;
+		}
+		done += sent;
+	}
+	{
+		std::lock_guard<std::mutex> hold (out_lock);
+		tx.clear ();
+		out_ok = true;
+	}
+	out_count++;
+	HL_PRINT ("ring: connected to the next node");
+	return true;
+}
+
+/* Queued: the sender thread, which owns out */
+void
+RingLink::send_loop ()
+{
+	std::vector<uint8_t> batch;
+
+	for (;;) {
+		size_t done = 0;
+
+		/* While the ring runs, a message comes every few tens of
+		 * microseconds: looked for a while before sleeping */
+		if (spin_us && out != NO_SOCKET) {
+			auto until = std::chrono::steady_clock::now () + std::chrono::microseconds (spin_us);
+			while (!tx_pending.load (std::memory_order_acquire) &&
+			       std::chrono::steady_clock::now () < until)
+				pause_cpu ();
+		}
+		{
+			std::unique_lock<std::mutex> hold (out_lock);
+			if (sender_quit)
+				break;
+			if (out != NO_SOCKET && tx.empty ()) {
+				sender_idle = true;
+				out_wake.wait_for (hold, std::chrono::milliseconds (100),
+				                   [this] { return sender_quit || !tx.empty (); });
+				sender_idle = false;
+				if (sender_quit)
+					break;
+			}
+			batch.swap (tx);
+			tx_pending.store (false, std::memory_order_relaxed);
+		}
+		if (out == NO_SOCKET) {
+			batch.clear ();
+			if (!connect_out ()) {
+				std::unique_lock<std::mutex> hold (out_lock);
+				out_wake.wait_for (hold, std::chrono::seconds (1), [this] { return sender_quit; });
+			}
+			continue;
+		}
+		while (done < batch.size ()) {
+			int sent = ::send (out, (const char *) &batch[done], (int) (batch.size () - done), MSG_NOSIGNAL);
+			if (sent <= 0) {
+				HL_ERROR ("ring: the link to the next node broke");
+				out_ok = false;
+				drop (out);
+				break;
+			}
+			done += sent;
+		}
+		batch.clear ();
+	}
+}
+
+bool
+RingLink::read_in ()
+{
+	char buf[16384];
+	int got = recv (in, buf, sizeof (buf), 0);
+
+	/* Queued: nothing there yet */
+	if (got < 0 && would_block ())
+		return false;
+	if (got <= 0) {
+		HL_ERROR ("ring: the link from the previous node broke");
+		drop (in);
+		lost = true;
+		return false;
+	}
+	rx.insert (rx.end (), buf, buf + got);
+	return true;
+}
+
+bool
+RingLink::wait_us (unsigned timeout_us)
+{
+	struct timeval wait;
+	fd_set set;
+
+	if (in == NO_SOCKET)
+		return false;
+	wait.tv_sec = (long) (timeout_us / 1000000);
+	wait.tv_usec = (long) (timeout_us % 1000000);
+	FD_ZERO (&set);
+	FD_SET (in, &set);
+	if (select ((int) in + 1, &set, NULL, NULL, &wait) <= 0)
+		return false;
+	return read_in ();
+}
+
 /* A whole message from rx, if there is one */
 bool
 RingLink::take (uint32_t *type, std::vector<uint8_t> &data)
 {
 	uint32_t size;
+	const uint8_t *p = rx.data () + rx_at;
 
-	if (rx.size () < 8)
+	if (rx.size () - rx_at < 8)
 		return false;
-	size = rx[0] | (rx[1] << 8) | (rx[2] << 16) | ((uint32_t) rx[3] << 24);
-	if (rx.size () < 8 + (size_t) size)
+	size = p[0] | (p[1] << 8) | (p[2] << 16) | ((uint32_t) p[3] << 24);
+	if (size > QUEUE_MOST) {
+		/* Not one of ours (a frame is 64 KB at most): the link is
+		 * dropped rather than waiting for gigabytes */
+		HL_ERROR ("ring: a message of %u bytes from the previous node: its link dropped", size);
+		drop (in);
+		rx.clear ();
+		rx_at = 0;
+		lost = true;
 		return false;
-	*type = rx[4] | (rx[5] << 8) | (rx[6] << 16) | ((uint32_t) rx[7] << 24);
-	data.assign (rx.begin () + 8, rx.begin () + 8 + size);
-	rx.erase (rx.begin (), rx.begin () + 8 + size);
+	}
+	if (rx.size () - rx_at < 8 + (size_t) size)
+		return false;
+	*type = p[4] | (p[5] << 8) | (p[6] << 16) | ((uint32_t) p[7] << 24);
+	data.assign (p + 8, p + 8 + size);
+	/* The messages taken dropped at once at the end of a read, else a
+	 * read's worth of them at a time */
+	rx_at += 8 + size;
+	if (rx_at == rx.size () || rx_at >= 16384) {
+		rx.erase (rx.begin (), rx.begin () + rx_at);
+		rx_at = 0;
+	}
 	return true;
 }
 
@@ -272,13 +524,17 @@ RingLink::receive (uint32_t *type, std::vector<uint8_t> &data, unsigned timeout_
 		struct timeval wait;
 		uint64_t now;
 		fd_set set;
-		char buf[16384];
-		int got;
 
 		if (take (type, data))
 			return true;
 		if (in == NO_SOCKET)
 			return false;
+		if (queued && !timeout_ms) {
+			/* A read that does not wait */
+			if (!read_in ())
+				return false;
+			continue;
+		}
 		now = now_ms ();
 		if (now > end)
 			return false;
@@ -286,16 +542,15 @@ RingLink::receive (uint32_t *type, std::vector<uint8_t> &data, unsigned timeout_
 		wait.tv_usec = (long) ((end - now) % 1000) * 1000;
 		FD_ZERO (&set);
 		FD_SET (in, &set);
-		if (select ((int) in + 1, &set, NULL, NULL, &wait) <= 0)
+		if (select ((int) in + 1, &set, NULL, NULL, &wait) <= 0) {
+			/* Without a timeout, a look and no more (it spun for up
+			 * to a millisecond) */
+			if (!timeout_ms)
+				return false;
 			continue;
-		got = recv (in, buf, sizeof (buf), 0);
-		if (got <= 0) {
-			HL_ERROR ("ring: the link from the previous node broke");
-			drop (in);
-			lost = true;
-			return false;
 		}
-		rx.insert (rx.end (), buf, buf + got);
+		if (!read_in ())
+			return false;
 	}
 }
 

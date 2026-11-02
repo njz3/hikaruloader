@@ -83,9 +83,11 @@ namespace hikaru {
  * and the others' from 100 + slot, the nodes' in a row, and copies the
  * header's 32 bytes at 0: its word at 4 changes each frame.
  *
- * The board's program is not run: the board is emulated from what it
- * gives the game. The header, in the 68000's words (a 16-bit word at h of
- * the host is the 68000's at h ^ 2, the 32-bit words alike):
+ * The board's program is not run here ([Network] COMM_BOARD = SIMULATED,
+ * the default): the board is emulated from what it gives the game. With
+ * COMM_BOARD = PROGRAM, hikaru-commbd.cpp runs it on the board's 68000,
+ * for more than two cabinets. The header, in the 68000's words (a 16-bit
+ * word at h of the host is the 68000's at h ^ 2, the 32-bit words alike):
  *
  *  0	the mode
  *  2	the nodes (bits 8-15, and 0-7)

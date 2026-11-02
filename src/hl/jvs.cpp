@@ -84,8 +84,16 @@ JvsBus::JvsBus (Machine *mach) :
 	Device (mach),
 	packets (0),
 	in_pos (0),
-	log (false)
+	log (false),
+	line (NULL),
+	line_free (0),
+	line_addressed (false)
 {
+}
+
+JvsBus::~JvsBus ()
+{
+	delete line;
 }
 
 void
@@ -94,9 +102,18 @@ JvsBus::attach (JvsDevice *dev)
 	chain.push_back (dev);
 }
 
+void
+JvsBus::attach_line (JvsLine *board)
+{
+	delete line;
+	line = board;
+}
+
 bool
 JvsBus::all_addressed () const
 {
+	if (line)
+		return line_addressed;
 	for (JvsDevice *dev : chain)
 		if (dev->address == 0xFF)
 			return false;
@@ -228,6 +245,101 @@ JvsBus::handle (const std::vector<uint8_t> &packet)
 		HL_PRINT ("jvs: > %s\njvs: < %s", hex_string (packet).c_str (), hex_string (answer).c_str ());
 }
 
+/* The line */
+
+void
+JvsBus::line_send (uint8_t byte, uint64_t tick, uint64_t char_ticks)
+{
+	uint64_t start = MAX2 (tick, line_free);
+	LineEvent ev = { start, 0, byte };
+
+	line_free = start + char_ticks;
+	to_board.push_back (ev);
+	packets += (byte == JVS_SYNC);
+	if (log)
+		HL_PRINT ("jvs: > %02X (line, at %llu)", byte, (unsigned long long) start);
+}
+
+/* A 16550's FIFO keeps the bytes not started: empty once the last one has */
+bool
+JvsBus::line_fifo_empty (uint64_t tick) const
+{
+	return to_board.empty () || to_board.back ().tick <= tick;
+}
+
+void
+JvsBus::line_flush_send (uint64_t tick)
+{
+	while (!to_board.empty () && to_board.back ().tick > tick) {
+		line_free = to_board.back ().tick;
+		to_board.pop_back ();
+	}
+}
+
+void
+JvsBus::line_run (uint64_t tick)
+{
+	if (line && line->now () < tick)
+		line->run_until (tick);
+}
+
+uint64_t
+JvsBus::line_next_event () const
+{
+	return to_host.empty () ? UINT64_MAX : to_host.front ().tick;
+}
+
+void
+JvsBus::line_deliver (uint64_t tick)
+{
+	size_t n = 0;
+
+	for (; n < to_host.size () && to_host[n].tick <= tick; n++) {
+		if (to_host[n].sense) {
+			line_addressed = to_host[n].value != 0;
+			if (log)
+				HL_PRINT ("jvs: %s (line)", line_addressed ? "addressed" : "not addressed");
+		} else {
+			/* What was read of the last answer goes */
+			if (in_pos == in.size ()) {
+				in.clear ();
+				in_pos = 0;
+			}
+			in.push_back (to_host[n].value);
+			if (log)
+				HL_PRINT ("jvs: < %02X (line)", to_host[n].value);
+		}
+	}
+	to_host.erase (to_host.begin (), to_host.begin () + n);
+}
+
+uint64_t
+JvsBus::line_next_byte () const
+{
+	return to_board.empty () ? UINT64_MAX : to_board.front ().tick;
+}
+
+uint8_t
+JvsBus::line_take_byte ()
+{
+	uint8_t byte = to_board.front ().value;
+
+	to_board.erase (to_board.begin ());
+	return byte;
+}
+
+void
+JvsBus::line_event (uint64_t tick, bool sense, uint8_t value)
+{
+	LineEvent ev = { tick, (uint8_t) sense, value };
+	size_t n = to_host.size ();
+
+	/* In the order of their ticks; the same tick, in the order given */
+	while (n > 0 && to_host[n - 1].tick > tick)
+		n--;
+	to_host.insert (to_host.begin () + n, ev);
+}
+
 int
 JvsBus::get (unsigned size, uint32_t addr, void *val)
 {
@@ -258,6 +370,8 @@ JvsBus::put (unsigned size, uint32_t addr, uint64_t val)
 	return 0;
 }
 
+/* The board on the line resets with the machine; the line's time goes on, as
+ * the MIE's (its Z80's cycles) does */
 void
 JvsBus::reset (ResetType type)
 {
@@ -266,6 +380,21 @@ JvsBus::reset (ResetType type)
 	in.clear ();
 	in_pos = 0;
 	packets = 0;
+	if (line) {
+		to_board.clear ();
+		to_host.clear ();
+		line_addressed = false;
+		line->reset ();
+	}
+}
+
+static int
+save_events (State *state, const void *events, uint32_t count, size_t size)
+{
+	int ret = state->put (&count, sizeof (count));
+	if (!ret && count)
+		ret = state->put (events, (uint32_t) (count * size));
+	return ret;
 }
 
 int
@@ -276,7 +405,27 @@ JvsBus::save_state (State *state)
 	ret |= save_bytes (state, in);
 	ret |= state->put (&pos, sizeof (pos));
 	ret |= state->put (&packets, sizeof (packets));
+	/* The line's, after the rest: none without it, so that the states
+	 * saved without IO_BOARD_PROGRAM keep loading */
+	if (line) {
+		uint8_t addressed = line_addressed;
+		ret |= save_events (state, to_board.data (), (uint32_t) to_board.size (), sizeof (LineEvent));
+		ret |= save_events (state, to_host.data (), (uint32_t) to_host.size (), sizeof (LineEvent));
+		ret |= state->put (&line_free, sizeof (line_free));
+		ret |= state->put (&addressed, sizeof (addressed));
+		ret |= line->save_state (state);
+	}
 	return ret;
+}
+
+static int
+load_events (State *state, std::vector<uint8_t> &raw, uint32_t *count, size_t size)
+{
+	int ret = state->get (count, sizeof (*count));
+	if (ret || *count > 4096)
+		return -1;
+	raw.resize (*count * size);
+	return *count ? state->get (raw.data (), (uint32_t) raw.size ()) : 0;
 }
 
 int
@@ -288,14 +437,39 @@ JvsBus::load_state (State *state)
 	ret |= state->get (&pos, sizeof (pos));
 	ret |= state->get (&packets, sizeof (packets));
 	in_pos = pos;
+	if (line) {
+		std::vector<uint8_t> raw;
+		uint32_t count;
+		uint8_t addressed;
+
+		ret |= load_events (state, raw, &count, sizeof (LineEvent));
+		to_board.resize (count);
+		if (count)
+			memcpy (to_board.data (), raw.data (), raw.size ());
+		ret |= load_events (state, raw, &count, sizeof (LineEvent));
+		to_host.resize (count);
+		if (count)
+			memcpy (to_host.data (), raw.data (), raw.size ());
+		ret |= state->get (&line_free, sizeof (line_free));
+		ret |= state->get (&addressed, sizeof (addressed));
+		line_addressed = addressed != 0;
+		ret |= line->load_state (state);
+	}
 	return ret;
 }
 
 const char *
 JvsBus::debug_string ()
 {
-	static char text[128];
+	static char text[160];
 
+	if (line) {
+		const char *board = line->debug_string ();
+		snprintf (text, sizeof (text), "%s running its program%s, %u packets%s%s",
+		          line->name (), line_addressed ? " addressed" : "", packets,
+		          board ? ", " : "", board ? board : "");
+		return text;
+	}
 	snprintf (text, sizeof (text), "%u devices%s, %u packets",
 	          (unsigned) chain.size (), all_addressed () ? " addressed" : "", packets);
 	return text;
@@ -465,14 +639,28 @@ SegaIoBoard::count_coins ()
 	}
 }
 
-bool
-SegaIoBoard::switches (unsigned players, unsigned bytes, std::vector<uint8_t> &out)
+/* A player's switches, closed at 1. Bits from the top: start, service, up,
+ * down, left, right, push 1 to 7; the controls are player 1's */
+static uint16_t
+switch_word (unsigned player)
 {
-	/* Bits from the top: start, service, up, down, left, right, push 1 to 7 */
 	static const Action player1[] = {
 		ACTION_START1, ACTION_SERVICE, ACTION_UP, ACTION_DOWN, ACTION_LEFT,
 		ACTION_RIGHT, ACTION_BUTTON1, ACTION_BUTTON2, ACTION_BUTTON3, ACTION_BUTTON4,
 	};
+	uint16_t bits = 0;
+	unsigned i;
+
+	if (player == 0)
+		for (i = 0; i < NUMELEM (player1); i++)
+			if (Input::action (player1[i]))
+				bits |= 0x8000 >> i;
+	return bits;
+}
+
+bool
+SegaIoBoard::switches (unsigned players, unsigned bytes, std::vector<uint8_t> &out)
+{
 	unsigned p, i;
 
 	if (players > 2 || bytes > 2)
@@ -481,15 +669,44 @@ SegaIoBoard::switches (unsigned players, unsigned bytes, std::vector<uint8_t> &o
 	count_coins ();
 	out.push_back (Input::action (ACTION_TEST) ? 0x80 : 0x00);
 	for (p = 0; p < players; p++) {
-		uint16_t bits = 0;
-		if (p == 0)
-			for (i = 0; i < NUMELEM (player1); i++)
-				if (Input::action (player1[i]))
-					bits |= 0x8000 >> i;
+		uint16_t bits = switch_word (p);
 		for (i = 0; i < bytes; i++)
 			out.push_back ((uint8_t) (bits >> (8 - 8 * i)));
 	}
 	return true;
+}
+
+uint8_t
+SegaIoBoard::system_bits ()
+{
+	return Input::action (ACTION_TEST) ? 0x80 : 0x00;
+}
+
+uint16_t
+SegaIoBoard::player_bits (unsigned player)
+{
+	return switch_word (player);
+}
+
+/* The wheel and the pedals read from the controllers once a call for
+ * channel 0, as the analog command reads them all */
+uint16_t
+SegaIoBoard::analog_bits (unsigned channel)
+{
+	if (channel == 0)
+		read_controls ();
+	return (channel < 8) ? analog[channel] : 0x8000;
+}
+
+void
+SegaIoBoard::take_coins (unsigned presses[2])
+{
+	uint16_t before[2] = { coin[0], coin[1] };
+	unsigned i;
+
+	count_coins ();
+	for (i = 0; i < 2; i++)
+		presses[i] = (unsigned) ((coin[i] - before[i]) & 0x3FFF);
 }
 
 bool
@@ -702,6 +919,27 @@ SegaIoBoard13844::switches (unsigned players, unsigned bytes, std::vector<uint8_
 	return true;
 }
 
+/* The drive board's reply read with player 1's switches, kept for player
+ * 2's: each bit's inverse on a switch (see the class) */
+uint16_t
+SegaIoBoard13844::player_bits (unsigned player)
+{
+	uint16_t bits = SegaIoBoard::player_bits (player);
+	unsigned k;
+
+	if (!drive || player > 1)
+		return bits;
+	if (player == 0) {
+		drive->set_wheel ((uint8_t) (analog[0] >> 8));
+		line_reply = drive->read ();
+		Outputs::get ()->drive_reply (&line_reply);
+	}
+	for (k = 0; k < 4; k++)
+		if (!(line_reply & ((player ? 0x10 : 0x01) << k)))
+			bits |= 0x80 >> k;
+	return bits;
+}
+
 bool
 SegaIoBoard13844::outputs (unsigned bytes, const uint8_t *data)
 {
@@ -735,6 +973,7 @@ SegaIoBoard13844::reset (ResetType type)
 {
 	SegaIoBoard::reset (type);
 	output2 = 0;
+	line_reply = 0xFF;
 }
 
 int

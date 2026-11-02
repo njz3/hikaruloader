@@ -44,7 +44,7 @@ static const char *default_file =
 	"P1_Coin = KEY_5\n"
 	"P2_Coin = KEY_6\n"
 	"P1_Start = KEY_Return, GC0_BUTTON_START\n"
-	"ExitGame = KEY_F9\n"
+	"ExitGame = KEY_F9, GC0_BUTTON_GUIDE + GC0_BUTTON_START\n"
 	"\n"
 	"[Digital]\n"
 	"P1_Up = KEY_Up, GC0_BUTTON_DPUP, GC0_AXIS_LEFTY_NEGATIVE, JOY0_HAT0_UP\n"
@@ -55,7 +55,7 @@ static const char *default_file =
 	"P1_Button2 = KEY_LeftAlt, GC0_BUTTON_B\n"
 	"P1_Button3 = KEY_LeftShift, GC0_BUTTON_X\n"
 	"P1_Button4 = KEY_Z, GC0_BUTTON_Y\n"
-	"P1_Card1Insert = KEY_F7\n"
+	"P1_Card1Insert = KEY_F7, GC0_BUTTON_GUIDE + GC0_BUTTON_Y\n"
 	"\n"
 	"[Driving]\n"
 	"P1_Steer = GC0_AXIS_LEFTX, JOY0_AXIS_0\n"
@@ -67,10 +67,11 @@ static const char *default_file =
 	"P1_Brake_Digital = KEY_Down\n"
 	"\n"
 	"[Emulator]\n"
-	"Pause = KEY_Space\n"
-	"SaveState = KEY_F4\n"
-	"LoadState = KEY_F1\n"
-	"Menu = KEY_Tab, GC0_BUTTON_BACK\n"
+	"Pause = KEY_Space, GC0_BUTTON_GUIDE + GC0_BUTTON_X\n"
+	"SaveState = KEY_F4, GC0_BUTTON_GUIDE + GC0_BUTTON_RIGHTSHOULDER\n"
+	"LoadState = KEY_F1, GC0_BUTTON_GUIDE + GC0_BUTTON_LEFTSHOULDER\n"
+	"Menu = KEY_Tab, GC0_BUTTON_BACK, GC0_BUTTON_GUIDE + GC0_BUTTON_BACK\n"
+	"Back = KEY_Escape, GC0_BUTTON_GUIDE + GC0_BUTTON_B\n"
 	"ShowFps = KEY_F12\n"
 	"\n"
 	"[ControllerGUIDs]\n";
@@ -98,7 +99,11 @@ static const char *file_notes =
 	"#   the middle); _INVERTED, the axis the other way round.\n"
 	"# <n> is the player's controller, from 0: JOY0 is [ControllerGUIDs] P1_GUID's\n"
 	"#   (GC0 too when SDL knows it as a game controller); the others follow in\n"
-	"#   SDL's order.\n";
+	"#   SDL's order.\n"
+	"# Hotkeys, as RetroArch has them: GC<n>_BUTTON_GUIDE + GC<n>_BUTTON_<name>.\n"
+	"#   While a game controller's Guide is held, its buttons and its hat are the\n"
+	"#   hotkeys' alone: the game sees none of them (a button pressed then stays\n"
+	"#   hidden until let go).\n";
 
 static const struct {
 	const char *section, *key, *note;
@@ -115,7 +120,7 @@ static const struct {
 	{ "Common", "P1_Coin", "Coin 1" },
 	{ "Common", "P2_Coin", "Coin 2" },
 	{ "Common", "P1_Start", "Start" },
-	{ "Common", "ExitGame", "Quits the emulator" },
+	{ "Common", "ExitGame", "Quits the emulator (Guide + Start on a controller)" },
 	{ "Digital", NULL, "Player 1's stick and buttons" },
 	{ "Digital", "P1_Up", "Up" },
 	{ "Digital", "P1_Down", "Down" },
@@ -129,7 +134,9 @@ static const struct {
 	  "The card, at the card reader's slot (Virtual-On 4), or taken back" },
 	{ "Driving", NULL,
 	  "The wheel and the pedals: the I/O board's analog channels 0, 1 and 2" },
-	{ "Driving", "P1_Steer", "The steering wheel: an axis, to the left negative" },
+	{ "Driving", "P1_Steer",
+	  "The steering wheel: an axis, to the left negative. hikaruloader.ini's\n"
+	  "[Input] WHEEL_ROTATION sets how far a wheel turns for the game's" },
 	{ "Driving", "P1_Gas", "The accelerator: a trigger, an axis or half of one" },
 	{ "Driving", "P1_Brake", "The brake: a trigger, an axis or half of one" },
 	{ "Driving", "P1_Steer_Left", "The wheel turned all the way to the left" },
@@ -143,6 +150,7 @@ static const struct {
 	{ "Emulator", "SaveState", "Saves the state" },
 	{ "Emulator", "LoadState", "Loads the state" },
 	{ "Emulator", "Menu", "Opens and closes the settings" },
+	{ "Emulator", "Back", "Back to the picker the game was started from, else quits" },
 	{ "Emulator", "ShowFps", "Shows and hides the frame rate" },
 	{ "ControllerGUIDs", NULL,
 	  "P<n>_GUID = an SDL joystick GUID: that controller is player n's, JOY<n-1>,\n"
@@ -462,6 +470,9 @@ Controls::load (const char *path, const char *save_to)
 	if (save_to)
 		file = save_to;
 
+	/* The rows the file has stay as the user left them, older ones too
+	 * (an earlier version's file gets no hotkey on its rows: the user
+	 * binds them, or deletes the file for the defaults) */
 	/* The default lines it lacks: a newer version's actions */
 	for (const auto &ds : defaults) {
 		auto it = std::find_if (sections.begin (), sections.end (),
@@ -713,7 +724,7 @@ Controls::open_devices ()
 	close_devices ();
 	if (count <= 0)
 		return;
-	players.assign (count, Player { -1, NULL, NULL, "" });
+	players.assign (count, Player { -1, NULL, NULL, "", 0, 0 });
 
 	/* The players named by their GUID first */
 	for (p = 0; p < count; p++) {
@@ -791,6 +802,102 @@ keyboard_focus ()
 	return SDL_GetKeyboardFocus () != NULL;
 }
 
+/* An alternative with a game controller's Guide in it: a hotkey */
+static bool
+is_hotkey (const std::vector<Controls::Source> &alt)
+{
+	for (const auto &s : alt)
+		if (s.kind == SRC_GC_BUTTON && s.index == SDL_CONTROLLER_BUTTON_GUIDE)
+			return true;
+	return false;
+}
+
+/* The player of an SDL joystick instance, -1 none */
+int
+Controls::player_of (int instance) const
+{
+	for (size_t p = 0; p < players.size (); p++)
+		if (instance >= 0 && players[p].instance == instance)
+			return (int) p;
+	return -1;
+}
+
+bool
+Controls::guide_held (int player) const
+{
+	const Player *p = (player >= 0 && player < (int) players.size ()) ? &players[player] : NULL;
+
+	return p && p->controller &&
+	       SDL_GameControllerGetButton ((SDL_GameController *) p->controller, SDL_CONTROLLER_BUTTON_GUIDE);
+}
+
+/* The hotkeys' alone, not the game's: a button or the hat of a game
+ * controller whose Guide is held, or a button pressed while it was, until
+ * let go (Guide let go first, the game would see it pressed) */
+bool
+Controls::hidden (const Source &s) const
+{
+	const Player *p;
+
+	if (s.kind != SRC_JOY_BUTTON && s.kind != SRC_JOY_HAT && s.kind != SRC_GC_BUTTON)
+		return false;
+	if (s.kind == SRC_GC_BUTTON && s.index == SDL_CONTROLLER_BUTTON_GUIDE)
+		return false;
+	if (s.player < 0 || s.player >= (int) players.size ())
+		return false;
+	p = &players[s.player];
+	if (guide_held (s.player))
+		return true;
+	if (s.kind == SRC_GC_BUTTON)
+		return s.index < 32 && ((p->hidden_gc >> s.index) & 1);
+	if (s.kind == SRC_JOY_BUTTON)
+		return s.index < 64 && ((p->hidden_joy >> s.index) & 1);
+	return false;
+}
+
+void
+Controls::track (const SDL_Event *event)
+{
+	int p, button;
+	bool down;
+
+	switch (event->type) {
+	case SDL_CONTROLLERBUTTONDOWN:
+	case SDL_CONTROLLERBUTTONUP:
+		p = player_of (event->cbutton.which);
+		button = event->cbutton.button;
+		down = event->type == SDL_CONTROLLERBUTTONDOWN;
+		if (p < 0 || button >= 32 || button == SDL_CONTROLLER_BUTTON_GUIDE)
+			return;
+		if (down && guide_held (p))
+			players[p].hidden_gc |= 1u << button;
+		else if (!down)
+			players[p].hidden_gc &= ~(1u << button);
+		break;
+	case SDL_JOYBUTTONDOWN:
+	case SDL_JOYBUTTONUP:
+		/* Guide's own number among a joystick's buttons is not known:
+		 * Guide too, pressed, is hidden as such until let go */
+		p = player_of (event->jbutton.which);
+		button = event->jbutton.button;
+		down = event->type == SDL_JOYBUTTONDOWN;
+		if (p < 0 || button >= 64)
+			return;
+		if (down && guide_held (p))
+			players[p].hidden_joy |= 1ull << button;
+		else if (!down)
+			players[p].hidden_joy &= ~(1ull << button);
+		break;
+	}
+}
+
+double
+Controls::steer (double axis, double scale)
+{
+	double v = axis * scale;
+	return (v < -1.0) ? -1.0 : (v > 1.0) ? 1.0 : v;
+}
+
 double
 Controls::source_axis (const Source &s)
 {
@@ -808,10 +915,12 @@ Controls::source_axis (const Source &s)
 }
 
 bool
-Controls::source_pressed (const Source &s)
+Controls::source_pressed (const Source &s, bool hotkey)
 {
 	const Player *p = (s.player >= 0 && s.player < (int) players.size ()) ? &players[s.player] : NULL;
 
+	if (!hotkey && hidden (s))
+		return false;
 	switch (s.kind) {
 	case SRC_KEY: {
 		int n = 0;
@@ -887,9 +996,9 @@ Controls::pressed (const char *section, const char *key)
 	if (!b)
 		return false;
 	for (const auto &alt : b->alternatives) {
-		bool all = true;
+		bool all = true, hotkey = is_hotkey (alt);
 		for (const auto &s : alt)
-			all = all && source_pressed (s);
+			all = all && source_pressed (s, hotkey);
 		if (all)
 			return true;
 	}
@@ -930,7 +1039,6 @@ Controls::pressed_by (const char *section, const char *key, const SDL_Event *eve
 {
 	const Binding *b = enabled ? binding (section, key) : NULL;
 	int player = -1, which = -1;
-	size_t p;
 
 	if (!b)
 		return false;
@@ -947,14 +1055,13 @@ Controls::pressed_by (const char *section, const char *key, const SDL_Event *eve
 	default:
 		return false;
 	}
-	for (p = 0; p < players.size (); p++)
-		if (which >= 0 && players[p].instance == which)
-			player = (int) p;
+	player = player_of (which);
 
 	/* The event's own input is read from the event: SDL may have seen its
-	 * release already (a tap within a frame); the others' from their state */
+	 * release already (a tap within a frame); the others' from their state.
+	 * With Guide held, the controller's buttons are the hotkeys' alone */
 	for (const auto &alt : b->alternatives) {
-		bool mine = false, all = true;
+		bool mine = false, all = true, hotkey = is_hotkey (alt);
 		for (const auto &s : alt) {
 			bool hit = false;
 			switch (event->type) {
@@ -988,8 +1095,10 @@ Controls::pressed_by (const char *section, const char *key, const SDL_Event *eve
 				break;
 			}
 			}
+			if (!hotkey && hidden (s))
+				hit = false;
 			mine |= hit;
-			all = all && (hit || source_pressed (s));
+			all = all && (hit || source_pressed (s, hotkey));
 		}
 		if (mine && all)
 			return true;
@@ -1002,16 +1111,22 @@ Controls::axis (const char *section, const char *key)
 {
 	const Binding *b = enabled ? binding (section, key) : NULL;
 	double v = 0.0, dz = deadzone (key);
+	/* The steering wheel: a wheel's axis goes that much further ([Input]
+	 * WHEEL_ROTATION), a game controller's stick its own way */
+	double scale = (!strcasecmp (section, "Driving") && !strcasecmp (key, "P1_Steer")) ?
+	               Config::get ()->wheel_scale () : 1.0;
 
 	/* The input turned furthest wins */
 	if (b)
 		for (const auto &alt : b->alternatives) {
 			const Source &s = alt[0];
 			double a;
-			if ((s.kind == SRC_JOY_AXIS || s.kind == SRC_GC_AXIS) && s.part == PART_FULL)
+			if ((s.kind == SRC_JOY_AXIS || s.kind == SRC_GC_AXIS) && s.part == PART_FULL) {
 				a = apply_deadzone (source_axis (s), dz);
-			else
-				a = source_pressed (s) ? ((s.part == PART_NEGATIVE) ? -1.0 : 1.0) : 0.0;
+				if (s.kind == SRC_JOY_AXIS)
+					a = steer (a, scale);
+			} else
+				a = source_pressed (s, is_hotkey (alt)) ? ((s.part == PART_NEGATIVE) ? -1.0 : 1.0) : 0.0;
 			if (fabs (a) > fabs (v))
 				v = a;
 		}
@@ -1073,7 +1188,7 @@ Controls::input_state (const std::string &token, bool *on, int *raw)
 	}
 	*on = true;
 	for (const auto &part : parts)
-		*on = *on && source_pressed (part);
+		*on = *on && source_pressed (part, is_hotkey (parts));
 	return 1;
 }
 
@@ -1117,9 +1232,26 @@ Controls::capture_event (const SDL_Event *event)
 			capture_found = key_token (sc);
 		break;
 	case SDL_JOYBUTTONDOWN:
+		/* With Guide held, the game controller's event names the hotkey */
 		if (capture_player >= 0 && capture_player < (int) players.size () &&
-		    players[capture_player].instance == event->jbutton.which && capture_kind == CAPTURE_BUTTON) {
+		    players[capture_player].instance == event->jbutton.which && capture_kind == CAPTURE_BUTTON &&
+		    !guide_held (capture_player)) {
 			snprintf (found, sizeof (found), "JOY%d_BUTTON_%d", capture_player, event->jbutton.button);
+			capture_found = found;
+		}
+		break;
+	case SDL_CONTROLLERBUTTONDOWN:
+		/* Guide held and another button: a hotkey */
+		if (capture_player >= 0 && capture_player < (int) players.size () &&
+		    players[capture_player].instance == event->cbutton.which && capture_kind == CAPTURE_BUTTON &&
+		    event->cbutton.button != SDL_CONTROLLER_BUTTON_GUIDE && guide_held (capture_player)) {
+			const char *name = SDL_GameControllerGetStringForButton ((SDL_GameControllerButton) event->cbutton.button);
+			std::string upper = name ? name : "";
+			std::transform (upper.begin (), upper.end (), upper.begin (), ::toupper);
+			if (upper.empty ())
+				break;
+			snprintf (found, sizeof (found), "GC%d_BUTTON_GUIDE + GC%d_BUTTON_%s",
+			          capture_player, capture_player, upper.c_str ());
 			capture_found = found;
 		}
 		break;
@@ -1175,8 +1307,9 @@ Controls::capture_step (std::string &token)
 		}
 	}
 
+	/* Not while Guide is held: a hotkey, which its event names */
 	p = capture_player;
-	if (p >= 0 && p < (int) players.size () && players[p].joystick && !found[0]) {
+	if (p >= 0 && p < (int) players.size () && players[p].joystick && !found[0] && !guide_held (p)) {
 		SDL_Joystick *j = (SDL_Joystick *) players[p].joystick;
 		for (i = 0; i < SDL_JoystickNumButtons (j) && i < (int) base_buttons[p].size () && !found[0]; i++)
 			if (SDL_JoystickGetButton (j, i) && !base_buttons[p][i])

@@ -31,7 +31,9 @@ namespace hl {
  * trigonometric way, as the agent protocol has it; the others are strengths,
  * 0 to 1. Each effect plays until changed; STOP stops them all. Options:
  * FFB_GAIN, a percentage (100), FFB_INVERT, the constant force the other
- * way. */
+ * way. The servo board's spring is the one effect the device works out from
+ * the wheel's position: with [Input] WHEEL_ROTATION, the game's wheel is
+ * shorter than the device's, and the spring as much stiffer. */
 class ForceFeedback {
 public:
 	enum Effect {
@@ -59,7 +61,17 @@ public:
 
 	/* A joystick plugged in or out: looks for a device again */
 	static void	 devices_changed ();
+	/* [Input] WHEEL_ROTATION or WHEEL_RANGE changed: the spring again */
+	static void	 wheel_changed ();
 	static void	 shutdown ();
+
+	/* The spring of the given strength (0 to 1) on a device whose travel
+	 * is scale times the game's wheel's (Config::wheel_scale): its
+	 * coefficient, scale times the strength, 1 at most, and its dead band
+	 * about the centre, scale times narrower; both fractions of the
+	 * device's full scale */
+	static void	 spring_on_wheel (float strength, double scale,
+			                  float *coefficient, float *deadband);
 };
 
 } /* namespace hl */

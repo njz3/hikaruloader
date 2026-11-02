@@ -8,7 +8,7 @@ cmake_minimum_required (VERSION 3.21)
 
 # The version in preparation, until git has a tag vX.Y.Z (cmake/version.cmake;
 # DEVELOPMENT.md, "Versions and releases")
-project (hikaruloader VERSION 0.3.1 LANGUAGES CXX)
+project (hikaruloader VERSION 0.3.1 LANGUAGES C CXX)
 
 # A release's version given by hand, for a trial release without a commit
 # nor a tag: cmake -DHL_FORCE_VERSION=0.1.0 (empty: git's tags)
@@ -39,6 +39,7 @@ set (HL_SRC
 	src/hl/mmap.cpp
 	src/hl/machine.cpp
 	src/hl/games.cpp
+	src/hl/archive.cpp
 	src/hl/romset.cpp
 	src/hl/config.cpp
 	src/hl/input.cpp
@@ -46,9 +47,14 @@ set (HL_SRC
 	src/hl/renderer.cpp
 	src/hl/window.cpp
 	src/hl/aspect.cpp
+	src/hl/bezel.cpp
+	src/hl/crt_preset.cpp
+	src/hl/crt_filter.cpp
+	src/hl/presentation.cpp
 	src/hl/compat.cpp
 	src/hl/jvs.cpp
 	src/hl/eeprom.cpp
+	src/hl/x76f100.cpp
 	src/hl/nvram.cpp
 	src/hl/paths.cpp
 	src/hl/profile.cpp
@@ -64,10 +70,14 @@ set (HIKARU_SRC
 	src/cpu/sh/sh4-x64.cpp
 	src/cpu/x64/x64-emitter.cpp
 	src/cpu/z80/z80.cpp
+	src/cpu/tlcs90/tlcs90.cpp
 	src/cpu/arm/arm7.cpp
+	src/cpu/m68k/m68000.cpp
+	src/cpu/m68k/m68000-ops.cpp
 	src/mach/hikaru/hikaru.cpp
 	src/mach/hikaru/hikaru-mscomm.cpp
 	src/mach/hikaru/hikaru-comm.cpp
+	src/mach/hikaru/hikaru-commbd.cpp
 	src/mach/hikaru/hikaru-mie.cpp
 	src/mach/hikaru/hikaru-memctl.cpp
 	src/mach/hikaru/hikaru-5881.cpp
@@ -78,6 +88,8 @@ set (HIKARU_SRC
 	src/mach/hikaru/hikaru-aica.cpp
 	src/mach/gaelco/gaelco.cpp
 	src/hl/driveboard-z80.cpp
+	src/hl/tmp90ph44.cpp
+	src/hl/ioboard.cpp
 	src/mach/gaelco/gaelco-gpu.cpp)
 
 # The ARM7 interpreter runs some 20 million instructions a second (the two
@@ -116,6 +128,21 @@ else ()
 	target_link_libraries (lua PUBLIC m)
 endif ()
 
+# The LZMA SDK 26.04's 7z decoder, from 3rdparty/lzma (public domain, Igor
+# Pavlov; lzma-sdk.txt): the romsets in .7z (src/hl/archive.cpp). PPMd too,
+# which 7-Zip can be asked for.
+set (LZMA_NAMES 7zAlloc 7zArcIn 7zBuf 7zBuf2 7zCrc 7zCrcOpt 7zDec 7zFile
+	7zStream Bcj2 Bra Bra86 BraIA64 CpuArch Delta Lzma2Dec LzmaDec Ppmd7
+	Ppmd7Dec)
+list (TRANSFORM LZMA_NAMES PREPEND 3rdparty/lzma/ OUTPUT_VARIABLE LZMA_SRC)
+list (TRANSFORM LZMA_SRC APPEND .c)
+add_library (lzma STATIC ${LZMA_SRC})
+target_include_directories (lzma PUBLIC 3rdparty/lzma)
+target_compile_definitions (lzma PRIVATE Z7_PPMD_SUPPORT)
+if (MSVC)
+	target_compile_definitions (lzma PRIVATE _CRT_SECURE_NO_WARNINGS)
+endif ()
+
 # hl_version.h: the version from git's tags, refreshed at each build
 set (HL_GENERATED ${CMAKE_BINARY_DIR}/generated)
 set (HL_VERSION_ARGS -DSRC=${CMAKE_SOURCE_DIR} -DOUT=${HL_GENERATED}/hl_version.h
@@ -129,9 +156,11 @@ add_custom_target (hl_version ALL
 add_library (hl STATIC ${HL_SRC})
 add_dependencies (hl hl_version)
 target_include_directories (hl PUBLIC src ${HL_GENERATED})
+# stb_image, the bezels' pictures (src/hl/bezel.cpp, a static copy)
+target_include_directories (hl PRIVATE ${STB_INCLUDE_DIRS})
 target_compile_definitions (hl PUBLIC HL_HAVE_HIKARU)
 target_link_libraries (hl PUBLIC
-	OpenGL::GL GLEW::GLEW SDL2::SDL2 jansson::jansson miniz::miniz)
+	OpenGL::GL GLEW::GLEW SDL2::SDL2 jansson::jansson miniz::miniz lzma)
 if (WIN32)
 	# The outputs' server (src/hl/outputs.cpp)
 	target_link_libraries (hl PUBLIC ws2_32)
@@ -169,7 +198,8 @@ if (TARGET SDL2::SDL2main)
 endif ()
 
 # Keep the game list next to the binary, where hikaruloader looks first; the
-# example of init.lua; the interface's languages (data/lang/*.po).
+# example of init.lua; the interface's languages (data/lang/*.po); the CRT
+# presets (data/crt, Lola Retro's with its licence).
 add_custom_command (TARGET hikaruloader POST_BUILD
 	COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:hikaruloader>/data
 	COMMAND ${CMAKE_COMMAND} -E copy_if_different
@@ -177,7 +207,9 @@ add_custom_command (TARGET hikaruloader POST_BUILD
 	COMMAND ${CMAKE_COMMAND} -E copy_if_different
 		${CMAKE_SOURCE_DIR}/data/init.example.lua $<TARGET_FILE_DIR:hikaruloader>/data/init.example.lua
 	COMMAND ${CMAKE_COMMAND} -E copy_directory
-		${CMAKE_SOURCE_DIR}/data/lang $<TARGET_FILE_DIR:hikaruloader>/data/lang)
+		${CMAKE_SOURCE_DIR}/data/lang $<TARGET_FILE_DIR:hikaruloader>/data/lang
+	COMMAND ${CMAKE_COMMAND} -E copy_directory
+		${CMAKE_SOURCE_DIR}/data/crt $<TARGET_FILE_DIR:hikaruloader>/data/crt)
 
 # The CPU cores' tests: ctest -C RelWithDebInfo
 enable_testing ()
@@ -187,12 +219,30 @@ if (TARGET SDL2::SDL2main)
 	target_link_libraries (z80test PRIVATE SDL2::SDL2main)
 endif ()
 add_test (NAME z80 COMMAND z80test)
+add_executable (tlcs90test tests/tlcs90_test.cpp src/cpu/tlcs90/tlcs90.cpp)
+target_link_libraries (tlcs90test PRIVATE hl)
+if (TARGET SDL2::SDL2main)
+	target_link_libraries (tlcs90test PRIVATE SDL2::SDL2main)
+endif ()
+add_test (NAME tlcs90 COMMAND tlcs90test)
+add_executable (x76f100test tests/x76f100_test.cpp)
+target_link_libraries (x76f100test PRIVATE hl)
+if (TARGET SDL2::SDL2main)
+	target_link_libraries (x76f100test PRIVATE SDL2::SDL2main)
+endif ()
+add_test (NAME x76f100 COMMAND x76f100test)
 add_executable (arm7test tests/arm7_test.cpp src/cpu/arm/arm7.cpp)
 target_link_libraries (arm7test PRIVATE hl)
 if (TARGET SDL2::SDL2main)
 	target_link_libraries (arm7test PRIVATE SDL2::SDL2main)
 endif ()
 add_test (NAME arm7 COMMAND arm7test)
+add_executable (m68000test tests/m68000_test.cpp src/cpu/m68k/m68000.cpp src/cpu/m68k/m68000-ops.cpp)
+target_link_libraries (m68000test PRIVATE hl)
+if (TARGET SDL2::SDL2main)
+	target_link_libraries (m68000test PRIVATE SDL2::SDL2main)
+endif ()
+add_test (NAME m68000 COMMAND m68000test)
 add_executable (aicatest tests/aica_test.cpp)
 target_include_directories (aicatest PRIVATE ${CMAKE_SOURCE_DIR}/src)
 if (TARGET SDL2::SDL2main)
@@ -243,6 +293,14 @@ if (TARGET SDL2::SDL2main)
 	target_link_libraries (romsettest PRIVATE SDL2::SDL2main)
 endif ()
 add_test (NAME romset COMMAND romsettest)
+# The wheel's rotation and the controllers' hotkeys, on SDL's virtual
+# joysticks
+add_executable (controlstest tests/controls_test.cpp)
+target_link_libraries (controlstest PRIVATE hl)
+if (TARGET SDL2::SDL2main)
+	target_link_libraries (controlstest PRIVATE SDL2::SDL2main)
+endif ()
+add_test (NAME controls COMMAND controlstest)
 add_executable (driveboardtest tests/driveboard_test.cpp)
 target_link_libraries (driveboardtest PRIVATE hl)
 if (TARGET SDL2::SDL2main)
@@ -261,6 +319,18 @@ if (TARGET SDL2::SDL2main)
 	target_link_libraries (aspecttest PRIVATE SDL2::SDL2main)
 endif ()
 add_test (NAME aspect COMMAND aspecttest)
+add_executable (crtpresettest tests/crt_preset_test.cpp)
+target_link_libraries (crtpresettest PRIVATE hl)
+if (TARGET SDL2::SDL2main)
+	target_link_libraries (crtpresettest PRIVATE SDL2::SDL2main)
+endif ()
+add_test (NAME crt_preset COMMAND crtpresettest ${CMAKE_SOURCE_DIR}/data/crt)
+add_executable (bezeltest tests/bezel_test.cpp)
+target_link_libraries (bezeltest PRIVATE hl)
+if (TARGET SDL2::SDL2main)
+	target_link_libraries (bezeltest PRIVATE SDL2::SDL2main)
+endif ()
+add_test (NAME bezel COMMAND bezeltest)
 add_executable (potest tests/po_test.cpp src/ui/ui_po.cpp)
 target_include_directories (potest PRIVATE ${CMAKE_SOURCE_DIR}/src)
 add_test (NAME po COMMAND potest ${CMAKE_SOURCE_DIR}/data/lang/fr.po)

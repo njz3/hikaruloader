@@ -22,6 +22,7 @@
 #include <algorithm>
 #include <chrono>
 #include <condition_variable>
+#include <filesystem>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -29,6 +30,8 @@
 
 #include "hl/config.h"
 #include "hl/input.h"
+#include "hl/paths.h"
+#include "hl/presentation.h"
 #include "hl/profile.h"
 
 #include "mach/hikaru/hikaru-renderer.h"
@@ -714,6 +717,8 @@ struct light_t {								\n \
 	vec3 diffuse;								\n \
 	vec2 cone;	/* a spot's: the edge's cosine, 1 / the rise */	\n \
 	vec2 extents;								\n \
+	float ambient;	/* 051's level / 16 */				\n \
+	float table[16];	/* a spot's, from its cone's edge (194) */	\n \
 };										\n \
 										\n \
 uniform light_t		u_lights[4];						\n \
@@ -724,6 +729,16 @@ uniform vec3		u_fog_color;						\n \
 uniform vec2		u_alpha_range;						\n \
 uniform vec3		u_depth;						\n \
 uniform ivec2		u_pattern;						\n \
+									\n \
+#if COLLECT									\n \
+/* Translucency: the fragments in their pixels' lists (#version 430) */	\n \
+layout (binding = 0, offset = 0) uniform atomic_uint u_count;			\n \
+layout (binding = 0, r32ui) uniform coherent uimage2D u_heads;		\n \
+layout (std430, binding = 0) buffer Nodes { uvec4 nodes[]; };		\n \
+uniform sampler2D	u_opaque_depth;						\n \
+uniform uint		u_max_nodes;						\n \
+uniform uint		u_tag;							\n \
+#endif										\n \
 										\n \
 in vec4 p_position;								\n \
 in vec3 p_normal;								\n \
@@ -745,6 +760,13 @@ apply_light (inout vec3 diffuse,						\n \
 {										\n \
 	vec3 light_direction;							\n \
 	float distance, attenuation, intensity;					\n \
+									\n \
+	/* A parallel light without a direction: its whole colour, every	\n \
+	 * side */								\n \
+	if (type == 3) {							\n \
+		diffuse += light.diffuse;					\n \
+		return;								\n \
+	}									\n \
 										\n \
 	if (type == 0) {							\n \
 		light_direction = normalize (light.direction);			\n \
@@ -772,11 +794,19 @@ apply_light (inout vec3 diffuse,						\n \
 	if (type == 2) {							\n \
 		vec3 spot_direction = normalize (light.direction);		\n \
 		float c = dot (spot_direction, -light_direction);		\n \
-		attenuation *= clamp ((c - light.cone.x) * light.cone.y, 0.0, 1.0);	\n \
+		/* Over the rise, the spot's table (194, US patent 6,333,742 of	\n \
+		 * SEGA): sixteen points from the cone's edge to its full light,	\n \
+		 * straight lines between them, nothing outside the edge */	\n \
+		float where = 15.0 * clamp ((c - light.cone.x) * light.cone.y, 0.0, 1.0);	\n \
+		int point = min (int (where), 14);				\n \
+		attenuation *= (where > 0.0) ?					\n \
+		               mix (light.table[point], light.table[point + 1], where - float (point)) : 0.0;	\n \
 	}									\n \
 										\n \
-	/* No material diffuse here: it is the base colour (see main) */	\n \
-	diffuse += attenuation * intensity * light.diffuse;			\n \
+	/* No material diffuse here: it is the base colour (see main). The	\n \
+	 * light's ambient level (051) adds a share of its colour, facing it	\n \
+	 * or not, cut by the distance and the cone as the rest */		\n \
+	diffuse += attenuation * (intensity + light.ambient) * light.diffuse;	\n \
 										\n \
 	/* The light's own colour, if the material shines */			\n \
 	if (p_specular.a > 0.0 && intensity > 0.0) {						\n \
@@ -878,7 +908,14 @@ main (void)									\n \
 	 * its OHOSOHO sign, magenta, a white one) */				\n \
 	color = vec4 (base, alpha);						\n \
 #endif										\n \
+#if HAS_WEIGHT									\n \
+	/* Blended by its alpha: weighted by it before the clamp (at the	\n \
+	 * end), so that a lit colour above 1 keeps its excess: the veils of	\n \
+	 * PHARRIER's logo galaxy burn to white on the board */		\n \
+	color.a = clamp (color.a, 0.0, 1.0);					\n \
+#else										\n \
 	color = clamp (color, 0.0, 1.0);					\n \
+#endif										\n \
 										\n \
 #if HAS_PATTERN									\n \
 	/* The dot pattern (501): the pixels of each 4 x 4 square of the	\n \
@@ -906,16 +943,45 @@ main (void)									\n \
 	 * its slope across a pixel times u_depth.z */				\n \
 	float z = abs (p_position.z);						\n \
 	z = z / (1.0 + u_depth.y + u_depth.z * slope * z);			\n \
-	gl_FragDepth = log2 (1.0 + z) * u_depth.x;				\n \
+	float frag_depth = log2 (1.0 + z) * u_depth.x;				\n \
+	gl_FragDepth = frag_depth;						\n \
 										\n \
 #if HAS_FOG									\n \
-	/* The viewport's fog (621), linear in 1/z: clear up to 1/x, its	\n \
-	 * colour from 1/y on */						\n \
-	float clear = clamp ((inv_z - u_fog.y) / max (u_fog.x - u_fog.y, 1e-12),	\n \
-	                     0.0, 1.0);						\n \
-	frag_color = vec4 (mix (u_fog_color, color.rgb, clear), color.a);	\n \
+	/* The viewport's fog (621): linear in the eye's depth, clear up to	\n \
+	 * u_fog.x, its colour whole 1 / u_fog.y farther (fog_params) */	\n \
+	float fog = clamp ((abs (p_position.z) - u_fog.x) * u_fog.y, 0.0, 1.0);	\n \
+	frag_color = vec4 (mix (color.rgb, u_fog_color, fog), color.a);	\n \
 #else										\n \
 	frag_color = color;							\n \
+#endif										\n \
+									\n \
+#if HAS_CUE									\n \
+	/* The viewport's depth queue without a colour (621 D): the pixel	\n \
+	 * fades into what is behind it, linearly in the eye's depth from	\n \
+	 * u_fog.x on, over 1 / u_fog.y; the blending takes its alpha */	\n \
+	float cue = clamp ((abs (p_position.z) - u_fog.x) * u_fog.y, 0.0, 1.0);	\n \
+	if (cue >= 1.0)								\n \
+		discard;							\n \
+	frag_color.a = 1.0 - cue;						\n \
+#endif										\n \
+#if HAS_WEIGHT									\n \
+	frag_color.rgb = clamp (frag_color.rgb * frag_color.a, 0.0, 1.0);	\n \
+#endif										\n \
+									\n \
+#if COLLECT									\n \
+	/* Translucency: the fragment into its pixel's list, unless the	\n \
+	 * opaque meshes hide it (the depth test is the shader's own here:	\n \
+	 * the buffer's runs after it, which would keep what is hidden) */	\n \
+	ivec2 pixel = ivec2 (gl_FragCoord.xy);					\n \
+	if (frag_depth > texelFetch (u_opaque_depth, pixel, 0).r + 1e-7)	\n \
+		discard;							\n \
+	uint node = atomicCounterIncrement (u_count);				\n \
+	if (node < u_max_nodes) {						\n \
+		uint next = imageAtomicExchange (u_heads, pixel, node + 1u);	\n \
+		nodes[node] = uvec4 (packUnorm4x8 (clamp (frag_color, 0.0, 1.0)),	\n \
+		                     floatBitsToUint (frag_depth), next,		\n \
+		                     u_tag + (uint (gl_PrimitiveID) << 2));		\n \
+	}									\n \
 #endif										\n \
 }";
 
@@ -936,14 +1002,55 @@ get_light_type (hikaru_light_t *lit)
 	 * at the wrong base, and poof. */
 	if (!lit->has_direction && !lit->has_position)
 		HL_ERROR_FEW ("recalling light with no direction nor position!");
+	/* A parallel light sent with a null direction lights every side, as
+	 * Odin's author, Réda Chérif-Touil, saw on a BRAVEFF cabinet (the
+	 * light its stages add to every lightset); normalized, the shader's
+	 * direction was no number */
 	if (get_light_attenuation_type (lit) == HIKARU_LIGHT_ATT_INF)
-		return HIKARU_LIGHT_TYPE_DIRECTIONAL;
+		return (lit->direction[0] == 0.0f && lit->direction[1] == 0.0f &&
+		        lit->direction[2] == 0.0f) ?
+		       HIKARU_LIGHT_TYPE_UNDIRECTED : HIKARU_LIGHT_TYPE_DIRECTIONAL;
 	/* A spot has its cone (451); without, a light at a point */
 	else if (lit->has_direction && lit->has_position && lit->has_specular)
 		return HIKARU_LIGHT_TYPE_SPOT;
 	else if (lit->has_position)
 		return HIKARU_LIGHT_TYPE_POSITIONAL;
 	return HIKARU_LIGHT_TYPE_DIRECTIONAL;
+}
+
+/* A depth queue without a colour (621 D, type 0, its start and range
+ * given) fades the meshes that do not blend into what is behind them: the
+ * background is drawn first. PHARRIER's library builds it (0C015A3E); its
+ * demo play loses the far scenery and keeps the mountains, translucent, as
+ * Odin's author, Réda Chérif-Touil, saw on a cabinet */
+static bool
+is_faded_by_depth (Renderer *hr, hikaru_mesh_t *mesh)
+{
+	hikaru_viewport_t *vp;
+
+	if (mesh->vp_index == ~0u || hr->debug.flags[HR_DEBUG_FOG])
+		return false;
+	vp = &hr->vp_list[mesh->vp_index];
+	return !vp->depth.q_enabled && vp->depth.q_type == 0 &&
+	       vp->depth.density > 0.0f && vp->depth.bias > 0.0f &&
+	       mesh->polytype != HIKARU_POLYTYPE_BACKGROUND &&
+	       mesh->polytype != HIKARU_POLYTYPE_TRANSLUCENT;
+}
+
+/* The blended meshes (background, translucent) of the modes that weight the
+ * source by its alpha (set_blending's 0 and 2): the shader does it before
+ * the clamp, the blending takes the source as it is, as Odin's author found
+ * the board does */
+static bool
+weighs_by_alpha (Renderer *hr, hikaru_mesh_t *mesh)
+{
+	unsigned mode;
+
+	if (mesh->polytype != HIKARU_POLYTYPE_BACKGROUND &&
+	    mesh->polytype != HIKARU_POLYTYPE_TRANSLUCENT)
+		return false;
+	mode = mesh->mat_index != ~0u ? hr->mat_list[mesh->mat_index].blending_mode : 0;
+	return mode == 0 || mode == 2;
 }
 
 static hikaru_glsl_variant_t
@@ -979,6 +1086,9 @@ get_glsl_variant (Renderer *hr, hikaru_mesh_t *mesh)
 	variant.has_alpha_test	= mesh->has_alpha_test;
 	/* 0 and 16 are every pixel */
 	variant.has_pattern	= (mesh->pattern & 15) != 0;
+	variant.has_cue		= is_faded_by_depth (hr, mesh);
+	variant.collect		= hr->oit.collecting;
+	variant.has_weight	= weighs_by_alpha (hr, mesh);
 	/* With all its lights off, a lit material still takes the ambient */
 	variant.has_lighting	= mat->shading_mode != 0 &&
 	                          !hr->debug.flags[HR_DEBUG_NO_LIGHTING];
@@ -1020,7 +1130,9 @@ get_glsl_variant (Renderer *hr, hikaru_mesh_t *mesh)
 	return variant;
 }
 
-#define MAX_PROGRAMS	256
+#define MAX_PROGRAMS	512
+/* Translucency's copy of the opaque depth, for the collecting shaders */
+#define OIT_DEPTH_UNIT	7
 
 static struct {
 	hikaru_glsl_variant_t variant;
@@ -1028,8 +1140,8 @@ static struct {
 } program_cache[MAX_PROGRAMS];
 unsigned num_programs;
 
-static void
-upload_glsl_program (Renderer *hr, hikaru_mesh_t *mesh)
+static GLuint
+compile_mesh_program (hikaru_glsl_variant_t variant)
 {
 	static const char *definitions_template =
 	"#define HAS_TEXTURE %d\n"
@@ -1056,24 +1168,14 @@ upload_glsl_program (Renderer *hr, hikaru_mesh_t *mesh)
 	"#define LIGHT3_ATT_TYPE %d\n"
 	"#define HAS_LIGHT3_SPECULAR %d\n"
 	"#define HAS_FOG %d\n"
-	"#define HAS_PATTERN %d\n";
+	"#define HAS_PATTERN %d\n"
+	"#define HAS_CUE %d\n"
+	"#define COLLECT %d\n"
+	"#define HAS_WEIGHT %d\n";
 
-	hikaru_glsl_variant_t variant;
 	char *definitions, *vs_source, *fs_source;
-	int ret, i;
-
-	variant = get_glsl_variant (hr, mesh);
-	if (hr->meshes.variant.full == variant.full)
-		return;
-
-	hr->meshes.variant.full = variant.full;
-
-	for (i = 0; i < num_programs; i++) {
-		if (program_cache[i].variant.full == variant.full) {
-			hr->meshes.program = program_cache[i].program;
-			goto update_locations;
-		}
-	}
+	GLuint program;
+	int ret;
 
 	HL_LOG ("compiling shader for variant %lX", variant.full);
 
@@ -1102,7 +1204,10 @@ upload_glsl_program (Renderer *hr, hikaru_mesh_t *mesh)
 	                variant.light3_att_type,
 	                variant.has_light3_specular,
 	                variant.has_fog,
-	                variant.has_pattern);
+	                variant.has_pattern,
+	                variant.has_cue,
+	                variant.collect,
+	                variant.has_weight);
 	HL_ASSERT (ret >= 0);
 
 	ret = asprintf (&vs_source, mesh_vs_source, definitions);
@@ -1111,12 +1216,242 @@ upload_glsl_program (Renderer *hr, hikaru_mesh_t *mesh)
 	ret = asprintf (&fs_source, mesh_fs_source, definitions);
 	HL_ASSERT (ret >= 0);
 
-	hr->meshes.variant = variant;
-	hr->meshes.program = hl::gl::compile_program (vs_source, fs_source);
+	if (variant.collect) {
+		/* Storage buffers, images and atomics: GLSL 4.30 */
+		std::string vs (vs_source), fs (fs_source);
+
+		vs.replace (vs.find ("#version 140"), 12, "#version 430");
+		fs.replace (fs.find ("#version 140"), 12, "#version 430");
+		program = hl::gl::compile_program (vs.c_str (), fs.c_str ());
+	} else
+		program = hl::gl::compile_program (vs_source, fs_source);
 
 	free (definitions);
 	free (vs_source);
 	free (fs_source);
+	return program;
+}
+
+/*
+ * The programs' cache
+ * ===================
+ *
+ * A variant met for the first time is compiled there and then, which stops
+ * the game for a moment (a stutter the first time an effect shows). So each
+ * game's variants are listed in cache/shaders/<game>.txt as they are met (hex,
+ * one a line), and compiled before its first frame is drawn; and each
+ * program's binary, as the driver gives it (program binaries, OpenGL 4.1),
+ * kept in cache/shaders/<variant>.bin with the driver's name, so that the next
+ * start reads it instead of compiling. A binary of another driver or version
+ * is compiled again. As Odin does (its lists of a game's programs, the
+ * driver's cache).
+ */
+
+static std::string shader_game;
+static bool programs_warmed;
+
+void
+Renderer::set_game (const char *name)
+{
+	shader_game = name ? name : "";
+}
+
+static std::string
+shader_cache_file (const std::string &name)
+{
+	std::string path = hl::Paths::config_write ("cache/shaders/" + name);
+	std::error_code ec;
+
+	std::filesystem::create_directories (std::filesystem::path (path).parent_path (), ec);
+	return path;
+}
+
+/* The driver the binaries were made by */
+static std::string
+driver_name ()
+{
+	const char *v = (const char *) glGetString (GL_VENDOR);
+	const char *r = (const char *) glGetString (GL_RENDERER);
+	const char *g = (const char *) glGetString (GL_VERSION);
+
+	return std::string (v ? v : "") + "|" + (r ? r : "") + "|" + (g ? g : "");
+}
+
+static bool
+binaries_supported ()
+{
+	GLint formats = 0;
+
+	if (!GLEW_VERSION_4_1 && !GLEW_ARB_get_program_binary)
+		return false;
+	glGetIntegerv (GL_NUM_PROGRAM_BINARY_FORMATS, &formats);
+	return formats > 0;
+}
+
+static std::string
+binary_name (uint64_t variant)
+{
+	char name[32];
+
+	snprintf (name, sizeof (name), "%016llX.bin", (unsigned long long) variant);
+	return name;
+}
+
+/* The program of the variant from its binary: 0 when there is none, or of
+ * another driver, or the driver refuses it */
+static GLuint
+load_program_binary (uint64_t variant)
+{
+	FILE *fp = fopen (shader_cache_file (binary_name (variant)).c_str (), "rb");
+	std::string want = driver_name (), have;
+	std::vector<uint8_t> data;
+	uint32_t len = 0, format = 0, size = 0;
+	GLint status = GL_FALSE;
+	GLuint program;
+	bool ok;
+
+	if (!fp)
+		return 0;
+	ok = fread (&len, 4, 1, fp) == 1 && len < 4096;
+	if (ok) {
+		have.resize (len);
+		ok = fread (&have[0], 1, len, fp) == len && have == want;
+	}
+	ok = ok && fread (&format, 4, 1, fp) == 1 && fread (&size, 4, 1, fp) == 1 &&
+	     size > 0 && size < (64u << 20);
+	if (ok) {
+		data.resize (size);
+		ok = fread (data.data (), 1, size, fp) == size;
+	}
+	fclose (fp);
+	if (!ok)
+		return 0;
+	program = glCreateProgram ();
+	glProgramBinary (program, (GLenum) format, data.data (), (GLsizei) size);
+	glGetProgramiv (program, GL_LINK_STATUS, &status);
+	if (status != GL_TRUE) {
+		glDeleteProgram (program);
+		hl::gl::clear_errors ();
+		return 0;
+	}
+	return program;
+}
+
+static void
+save_program_binary (GLuint program, uint64_t variant)
+{
+	std::string name = driver_name ();
+	std::vector<uint8_t> data;
+	GLint length = 0;
+	GLsizei size = 0;
+	GLenum format = 0;
+	uint32_t len = (uint32_t) name.size ();
+	FILE *fp;
+
+	glGetProgramiv (program, GL_PROGRAM_BINARY_LENGTH, &length);
+	if (length <= 0)
+		return;
+	data.resize ((size_t) length);
+	glGetProgramBinary (program, length, &size, &format, data.data ());
+	if (size <= 0) {
+		hl::gl::clear_errors ();
+		return;
+	}
+	fp = fopen (shader_cache_file (binary_name (variant)).c_str (), "wb");
+	if (!fp)
+		return;
+	uint32_t f = format, n = (uint32_t) size;
+	fwrite (&len, 4, 1, fp);
+	fwrite (name.data (), 1, len, fp);
+	fwrite (&f, 4, 1, fp);
+	fwrite (&n, 4, 1, fp);
+	fwrite (data.data (), 1, (size_t) size, fp);
+	fclose (fp);
+}
+
+/* The variant's program, from its binary or compiled (its binary then
+ * kept); met in a game for the first time, added to the game's list */
+static GLuint
+mesh_program (hikaru_glsl_variant_t variant, bool met)
+{
+	bool binaries = binaries_supported ();
+	GLuint program = binaries ? load_program_binary (variant.full) : 0;
+	FILE *fp;
+
+	if (!program) {
+		program = compile_mesh_program (variant);
+		if (binaries)
+			save_program_binary (program, variant.full);
+	}
+	if (met && !shader_game.empty ()) {
+		fp = fopen (shader_cache_file (shader_game + ".txt").c_str (), "a");
+		if (fp) {
+			fprintf (fp, "%016llX\n", (unsigned long long) variant.full);
+			fclose (fp);
+		}
+	}
+	return program;
+}
+
+/* Before the game's first frame: the programs of its list. Those that need
+ * OpenGL 4.3 (translucency's) only when the card has it */
+static void
+warm_up_programs ()
+{
+	auto start = std::chrono::steady_clock::now ();
+	unsigned count = 0;
+	char line[64];
+	FILE *fp;
+
+	if (programs_warmed || shader_game.empty ())
+		return;
+	programs_warmed = true;
+	fp = fopen (shader_cache_file (shader_game + ".txt").c_str (), "r");
+	if (!fp)
+		return;
+	while (fgets (line, sizeof (line), fp) && num_programs < MAX_PROGRAMS - 1) {
+		hikaru_glsl_variant_t variant;
+		unsigned i;
+
+		variant.full = strtoull (line, NULL, 16);
+		if (!variant.full || (variant.collect && !GLEW_VERSION_4_3))
+			continue;
+		for (i = 0; i < num_programs; i++)
+			if (program_cache[i].variant.full == variant.full)
+				break;
+		if (i < num_programs)
+			continue;
+		program_cache[num_programs].variant.full = variant.full;
+		program_cache[num_programs].program = mesh_program (variant, false);
+		num_programs++;
+		count++;
+	}
+	fclose (fp);
+	HL_PRINT ("HR %u shader programs of %s ready in %.1f s", count, shader_game.c_str (),
+	          std::chrono::duration<double> (std::chrono::steady_clock::now () - start).count ());
+}
+
+static void
+upload_glsl_program (Renderer *hr, hikaru_mesh_t *mesh)
+{
+	hikaru_glsl_variant_t variant;
+	int i;
+
+	variant = get_glsl_variant (hr, mesh);
+	if (hr->meshes.variant.full == variant.full)
+		return;
+
+	hr->meshes.variant.full = variant.full;
+
+	for (i = 0; i < num_programs; i++) {
+		if (program_cache[i].variant.full == variant.full) {
+			hr->meshes.program = program_cache[i].program;
+			goto update_locations;
+		}
+	}
+
+	hr->meshes.variant = variant;
+	hr->meshes.program = mesh_program (variant, true);
 
 	if (0) {
 		hl::gl::print_uniforms (hr->meshes.program);
@@ -1161,6 +1496,12 @@ update_locations:
 		sprintf (temp, "u_lights[%d].extents", i);
 		hr->meshes.locs.u_lights[i].extents =
 			glGetUniformLocation (hr->meshes.program, temp);
+		sprintf (temp, "u_lights[%d].ambient", i);
+		hr->meshes.locs.u_lights[i].ambient =
+			glGetUniformLocation (hr->meshes.program, temp);
+		sprintf (temp, "u_lights[%d].table", i);
+		hr->meshes.locs.u_lights[i].table =
+			glGetUniformLocation (hr->meshes.program, temp);
 	}
 	hr->meshes.locs.u_ambient =
 		glGetUniformLocation (hr->meshes.program, "u_ambient");
@@ -1176,6 +1517,14 @@ update_locations:
 		glGetUniformLocation (hr->meshes.program, "u_depth");
 	hr->meshes.locs.u_pattern =
 		glGetUniformLocation (hr->meshes.program, "u_pattern");
+	hr->meshes.locs.u_max_nodes =
+		glGetUniformLocation (hr->meshes.program, "u_max_nodes");
+	hr->meshes.locs.u_tag =
+		glGetUniformLocation (hr->meshes.program, "u_tag");
+	hr->meshes.locs.u_opaque_depth =
+		glGetUniformLocation (hr->meshes.program, "u_opaque_depth");
+	if (hr->meshes.variant.collect)
+		glUniform1i (hr->meshes.locs.u_opaque_depth, OIT_DEPTH_UNIT);
 	HL_ASSERT_NO_GL_ERROR ();
 }
 
@@ -1251,16 +1600,37 @@ upload_viewport (Renderer *hr, hikaru_mesh_t *mesh)
 		vec2f_t fog;
 		vec3f_t fog_color;
 
-		/* In 1/z: the draw distance's factor takes it that much
-		 * farther */
-		fog[0] = vp->depth.density / hr->view.distance;
-		fog[1] = vp->depth.bias / hr->view.distance;
+		/* P is 1 / (end - start) and Q near / end, in the eye's
+		 * depth (the VON4 library builds them so, 0C716320; the X360
+		 * port fogs linearly from start to end), as Odin's author
+		 * found them. Taken before as 1/z where the fog starts and
+		 * where it is whole: SGNASCAR's (P 0.0002, Q 0.00001, near
+		 * 0.1) then went from 5000 to 100000, now 5000 to 10000. The
+		 * draw distance's factor takes it that much farther */
+		if (vp->depth.density > 0.0f && vp->depth.bias > 0.0f) {
+			fog[0] = (vp->clip.n / vp->depth.bias - 1.0f / vp->depth.density) *
+			         hr->view.distance;
+			fog[1] = vp->depth.density / hr->view.distance;
+		} else {
+			fog[0] = 1e30f;
+			fog[1] = 0.0f;
+		}
 		glUniform2fv (hr->meshes.locs.u_fog, 1, fog);
 
 		fog_color[0] = vp->depth.mask[0] * INV255;
 		fog_color[1] = vp->depth.mask[1] * INV255;
 		fog_color[2] = vp->depth.mask[2] * INV255;
 		glUniform3fv (hr->meshes.locs.u_fog_color, 1, fog_color);
+	} else if (hr->meshes.variant.has_cue) {
+		vec2f_t cue;
+
+		/* Without a colour, P is 1 / (end - start) and Q near / start
+		 * in the eye's depth (PHARRIER's library, 0C015A3E), as Odin's
+		 * author found them; the draw distance's factor takes both
+		 * farther */
+		cue[0] = vp->clip.n / vp->depth.bias * hr->view.distance;
+		cue[1] = vp->depth.density / hr->view.distance;
+		glUniform2fv (hr->meshes.locs.u_fog, 1, cue);
 	}
 }
 
@@ -1477,6 +1847,29 @@ upload_lightset (Renderer *hr, hikaru_mesh_t *mesh)
 
 		glUniform2fv (hr->meshes.locs.u_lights[i].extents, 1,
 		              lt->attenuation);
+		glUniform1f (hr->meshes.locs.u_lights[i].ambient,
+		             lt->ambient_level * (1.0f / 16.0f));
+
+		/* A spot's table, 0x400 for 1.0; none loaded (all 0), the
+		 * straight rise it had before */
+		if (hr->meshes.variant.light0_type == HIKARU_LIGHT_TYPE_SPOT ||
+		    hr->meshes.variant.light1_type == HIKARU_LIGHT_TYPE_SPOT ||
+		    hr->meshes.variant.light2_type == HIKARU_LIGHT_TYPE_SPOT ||
+		    hr->meshes.variant.light3_type == HIKARU_LIGHT_TYPE_SPOT) {
+			const uint16_t *points = hr->ls_tables[mesh->ls_index].points[i];
+			float table[16];
+			bool loaded = false;
+			unsigned k;
+
+			for (k = 0; k < 16; k++) {
+				table[k] = points[k] * (1.0f / 1024.0f);
+				loaded |= points[k] != 0;
+			}
+			if (!loaded)
+				for (k = 0; k < 16; k++)
+					table[k] = k / 15.0f;
+			glUniform1fv (hr->meshes.locs.u_lights[i].table, 16, table);
+		}
 	}
 }
 
@@ -1728,6 +2121,16 @@ update_and_set_rendstate (Renderer *hr, hikaru_mesh_t *mesh)
 	HL_ASSERT (hr->num_texs < MAX_TEXHEADS);
 
 	LOG ("RENDSTATE updating ls %u/%u", hr->num_lss, MAX_LIGHTSETS);
+	/* With its lights' spot tables: light i takes the first of its four
+	 * (LTABLE[i], words 0 to 7, the even point in a word's upper half),
+	 * as Odin does; the games load the same ramp in all four */
+	for (unsigned i = 0; i < 4; i++)
+		for (unsigned j = 0; j < 8; j++) {
+			uint32_t word = LTABLE[i][j].full;
+
+			hr->ls_tables[hr->num_lss].points[i][j * 2] = (uint16_t) (word >> 16);
+			hr->ls_tables[hr->num_lss].points[i][j * 2 + 1] = (uint16_t) word;
+		}
 	hr->ls_list[hr->num_lss++] = LS0;
 	HL_ASSERT (hr->num_lss < MAX_LIGHTSETS);
 
@@ -1776,6 +2179,7 @@ update_and_set_rendstate (Renderer *hr, hikaru_mesh_t *mesh)
 
 	/* The alpha range of the material's entry (C81) in the table (154):
 	 * 7F..FF in AIRTRIX; the high byte only (the others are FFFF or 0) */
+	mesh->polytype = POLY.type;
 	mesh->has_alpha_test = POLY.type == HIKARU_POLYTYPE_TRANSPARENT;
 	mesh->alpha_thresh[0] = ATABLE[MAT0.alpha_index].part.lo * INV255;
 	mesh->alpha_thresh[1] = (ATABLE[MAT0.alpha_index].part.hi & 0xFF) * INV255;
@@ -1824,6 +2228,10 @@ draw_mesh (Renderer *hr, hikaru_mesh_t *mesh)
 
 	upload_depth (hr, mesh);
 	upload_pattern (hr, mesh);
+	if (hr->meshes.variant.collect) {
+		glUniform1ui (hr->meshes.locs.u_tag, hr->oit.tag);
+		glUniform1ui (hr->meshes.locs.u_max_nodes, hr->oit.max_nodes);
+	}
 
 	hr->debug.draws += mesh->num_instances;
 	hr->debug.tris += (uint64_t) mesh->num_tris * mesh->num_instances;
@@ -2069,22 +2477,338 @@ set_blending (Renderer *hr, hikaru_mesh_t *mesh)
 	if (mesh->mat_index != ~0u)
 		mode = hr->mat_list[mesh->mat_index].blending_mode;
 
+	/* Modes 0 and 2 weight the source by its alpha: the shader has done it
+	 * (weighs_by_alpha) */
 	switch (mode) {
 	case 0:	/* by its alpha */
-		glBlendFuncSeparate (GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA,
+		glBlendFuncSeparate (GL_ONE, GL_ONE_MINUS_SRC_ALPHA,
 		                     GL_CONSTANT_ALPHA, GL_ONE);
 		break;
 	case 1:	/* times the scene */
 		glBlendFuncSeparate (GL_DST_COLOR, GL_ZERO, GL_CONSTANT_ALPHA, GL_ONE);
 		break;
 	case 2:	/* added, by its alpha: AIRTRIX's trick trails, lights */
-		glBlendFuncSeparate (GL_SRC_ALPHA, GL_ONE, GL_CONSTANT_ALPHA, GL_ONE);
+		glBlendFuncSeparate (GL_ONE, GL_ONE, GL_CONSTANT_ALPHA, GL_ONE);
 		break;
 	case 3:	/* added, the scene dimmed by its alpha */
 		glBlendFuncSeparate (GL_ONE, GL_ONE_MINUS_SRC_ALPHA,
 		                     GL_CONSTANT_ALPHA, GL_ONE);
 		break;
 	}
+}
+
+/*
+ * Translucency
+ * ============
+ *
+ * The board blends the translucent polygons from the farthest at each pixel,
+ * so that two crossing meshes each cover the other where it is nearer.
+ * Sorting whole meshes by their middle gets it wrong where they cross or
+ * overlap in depth. With OpenGL 4.3 (and without MSAA), the translucent
+ * meshes of a viewport are drawn twice:
+ *
+ *  - collected: each fragment shaded as usual, then tested against a copy of
+ *    the opaque meshes' depth by the shader itself, and kept in its pixel's
+ *    list (a storage buffer of uvec4: colour, depth, next + 1, the mesh's
+ *    blending mode and order; an r32ui image holds each pixel's last + 1);
+ *  - resolved: a pass over the whole picture blends each pixel's list over
+ *    a copy of the picture drawn so far, the farthest first, equal depths in
+ *    the order sent (the mesh's, then its triangle's), with set_blending's
+ *    four modes, in the arithmetic of an 8-bit colour buffer: each result
+ *    rounded to the nearest before the next. Eight fragments are put in
+ *    order at a time, again until the list is done: none is lost. The pass
+ *    empties the heads for the next list.
+ *
+ * The buffer, 4 fragments a pixel at first, grows when a frame fills it. As
+ * Odin's author, Réda Chérif-Touil, blends them.
+ */
+
+#define OIT_MAX_NODES		(16u << 20)
+#define OIT_BELOW_UNIT		6
+
+static GLuint make_color_texture (unsigned w, unsigned h, GLint filter);
+
+static const char *oit_vs_source =
+"#version 430									\n \
+										\n \
+void										\n \
+main (void)									\n \
+{										\n \
+	vec2 p = vec2 ((gl_VertexID << 1) & 2, gl_VertexID & 2);		\n \
+	gl_Position = vec4 (p * 2.0 - 1.0, 0.0, 1.0);				\n \
+}";
+
+static const char *oit_fs_source =
+"#version 430									\n \
+										\n \
+#define KEPT 8									\n \
+										\n \
+layout (binding = 0, r32ui) uniform coherent uimage2D u_heads;		\n \
+layout (std430, binding = 0) readonly buffer Nodes { uvec4 nodes[]; };	\n \
+uniform sampler2D u_below;							\n \
+out vec4 frag_color;								\n \
+										\n \
+/* Whether a fragment (depth, order, node) is blended before another: the	\n \
+ * farther, then the first sent; the node only tells two apart */		\n \
+bool										\n \
+before (float d, uint o, uint i, float d2, uint o2, uint i2)		\n \
+{										\n \
+	return d > d2 || (d == d2 && (o < o2 || (o == o2 && i < i2)));	\n \
+}										\n \
+										\n \
+void										\n \
+main (void)									\n \
+{										\n \
+	ivec2 pixel = ivec2 (gl_FragCoord.xy);					\n \
+	uint head = imageAtomicExchange (u_heads, pixel, 0u);			\n \
+	float depth[KEPT], last_d = 2.0;					\n \
+	uint order[KEPT], index[KEPT], last_o = 0u, last_i = 0u, i;		\n \
+	int num, j;								\n \
+	bool more;								\n \
+	vec3 color;								\n \
+										\n \
+	if (head == 0u)								\n \
+		discard;							\n \
+	color = floor (texelFetch (u_below, pixel, 0).rgb * 255.0 + 0.5);	\n \
+	for (;;) {								\n \
+		/* The next KEPT in order, after the last blended */		\n \
+		num = 0;							\n \
+		more = false;							\n \
+		for (i = head; i != 0u; i = nodes[i - 1u].z) {			\n \
+			float d = uintBitsToFloat (nodes[i - 1u].y);		\n \
+			uint o = nodes[i - 1u].w >> 2;				\n \
+										\n \
+			if (!before (last_d, last_o, last_i, d, o, i))		\n \
+				continue;					\n \
+			if (num < KEPT) {					\n \
+				j = num++;					\n \
+			} else {						\n \
+				more = true;					\n \
+				if (!before (d, o, i, depth[KEPT - 1], order[KEPT - 1], index[KEPT - 1]))	\n \
+					continue;				\n \
+				j = KEPT - 1;					\n \
+			}							\n \
+			for (; j > 0 && before (d, o, i, depth[j - 1], order[j - 1], index[j - 1]); j--) {	\n \
+				depth[j] = depth[j - 1];			\n \
+				order[j] = order[j - 1];			\n \
+				index[j] = index[j - 1];			\n \
+			}							\n \
+			depth[j] = d;						\n \
+			order[j] = o;						\n \
+			index[j] = i;						\n \
+		}								\n \
+		/* Blended in turn, as an 8-bit buffer would (set_blending's	\n \
+		 * modes; 0 and 2 come weighted by their alpha) */		\n \
+		for (j = 0; j < num; j++) {					\n \
+			uvec4 n = nodes[index[j] - 1u];				\n \
+			vec4 c = unpackUnorm4x8 (n.x);				\n \
+			uint mode = n.w & 3u;					\n \
+										\n \
+			if (mode == 1u)						\n \
+				color = c.rgb * color;				\n \
+			else if (mode == 2u)					\n \
+				color = c.rgb * 255.0 + color;			\n \
+			else							\n \
+				color = c.rgb * 255.0 + color * (1.0 - c.a);	\n \
+			color = floor (clamp (color, 0.0, 255.0) + 0.5);	\n \
+		}								\n \
+		if (!more)							\n \
+			break;							\n \
+		last_d = depth[KEPT - 1];					\n \
+		last_o = order[KEPT - 1];					\n \
+		last_i = index[KEPT - 1];					\n \
+	}									\n \
+	frag_color = vec4 (color / 255.0, 1.0);					\n \
+}";
+
+static void
+destroy_oit_buffers (Renderer *hr)
+{
+	auto &o = hr->oit;
+
+	if (o.heads)
+		glDeleteTextures (1, &o.heads);
+	if (o.depth_tex)
+		glDeleteTextures (1, &o.depth_tex);
+	if (o.depth_fb)
+		glDeleteFramebuffers (1, &o.depth_fb);
+	if (o.color_tex)
+		glDeleteTextures (1, &o.color_tex);
+	if (o.color_fb)
+		glDeleteFramebuffers (1, &o.color_fb);
+	o.color_tex = o.color_fb = 0;
+	if (o.nodes)
+		glDeleteBuffers (1, &o.nodes);
+	if (o.counter)
+		glDeleteBuffers (1, &o.counter);
+	o.heads = o.depth_tex = o.depth_fb = o.nodes = o.counter = 0;
+	o.w = o.h = 0;
+}
+
+/* The lists' buffers at the scene's size (and the nodes' count): 0 when
+ * ready */
+static int
+build_oit_buffers (Renderer *hr)
+{
+	auto &o = hr->oit;
+	unsigned w = hr->framebuffer.w, h = hr->framebuffer.h;
+	uint32_t zero = 0;
+	GLint bound = 0;
+
+	if (o.heads && o.w == w && o.h == h && o.nodes)
+		return 0;
+	destroy_oit_buffers (hr);
+	if (!o.max_nodes)
+		o.max_nodes = MIN2 ((uint32_t) (w * h * 4), OIT_MAX_NODES);
+
+	std::vector<uint32_t> zeros ((size_t) w * h, 0);
+	glGetIntegerv (GL_FRAMEBUFFER_BINDING, &bound);
+	glGenTextures (1, &o.heads);
+	glBindTexture (GL_TEXTURE_2D, o.heads);
+	glTexStorage2D (GL_TEXTURE_2D, 1, GL_R32UI, w, h);
+	glTexSubImage2D (GL_TEXTURE_2D, 0, 0, 0, w, h, GL_RED_INTEGER, GL_UNSIGNED_INT, zeros.data ());
+
+	glGenTextures (1, &o.depth_tex);
+	glBindTexture (GL_TEXTURE_2D, o.depth_tex);
+	glTexStorage2D (GL_TEXTURE_2D, 1, GL_DEPTH_COMPONENT24, w, h);
+	glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_NONE);
+	glBindTexture (GL_TEXTURE_2D, 0);
+	glGenFramebuffers (1, &o.depth_fb);
+	glBindFramebuffer (GL_FRAMEBUFFER, o.depth_fb);
+	glFramebufferTexture2D (GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, o.depth_tex, 0);
+	glDrawBuffer (GL_NONE);
+	glReadBuffer (GL_NONE);
+	if (glCheckFramebufferStatus (GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+		HL_ERROR ("HR translucency: no depth copy; each mesh sorted whole");
+		glBindFramebuffer (GL_FRAMEBUFFER, bound);
+		destroy_oit_buffers (hr);
+		o.available = false;
+		return -1;
+	}
+	o.color_tex = make_color_texture (w, h, GL_NEAREST);
+	glGenFramebuffers (1, &o.color_fb);
+	glBindFramebuffer (GL_FRAMEBUFFER, o.color_fb);
+	glFramebufferTexture2D (GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, o.color_tex, 0);
+	if (glCheckFramebufferStatus (GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+		HL_ERROR ("HR translucency: no picture copy; each mesh sorted whole");
+		glBindFramebuffer (GL_FRAMEBUFFER, bound);
+		destroy_oit_buffers (hr);
+		o.available = false;
+		return -1;
+	}
+	glBindFramebuffer (GL_FRAMEBUFFER, bound);
+
+	glGenBuffers (1, &o.nodes);
+	glBindBuffer (GL_SHADER_STORAGE_BUFFER, o.nodes);
+	glBufferData (GL_SHADER_STORAGE_BUFFER, (GLsizeiptr) o.max_nodes * 16, NULL, GL_DYNAMIC_DRAW);
+	glBindBuffer (GL_SHADER_STORAGE_BUFFER, 0);
+	glGenBuffers (1, &o.counter);
+	glBindBuffer (GL_ATOMIC_COUNTER_BUFFER, o.counter);
+	glBufferData (GL_ATOMIC_COUNTER_BUFFER, sizeof (zero), &zero, GL_DYNAMIC_DRAW);
+	glBindBuffer (GL_ATOMIC_COUNTER_BUFFER, 0);
+	if (glGetError () != GL_NO_ERROR) {
+		HL_ERROR ("HR translucency: no room for %u fragments; each mesh sorted whole", o.max_nodes);
+		destroy_oit_buffers (hr);
+		o.available = false;
+		return -1;
+	}
+	o.w = w;
+	o.h = h;
+	HL_PRINT ("HR translucency sorted at each pixel: %ux%u, %u fragments (%u MB)",
+	          w, h, o.max_nodes, (unsigned) ((uint64_t) o.max_nodes * 16 >> 20));
+	return 0;
+}
+
+/* The translucent meshes of a viewport, sorted at each pixel (see above) */
+static void
+draw_translucent_per_pixel (Renderer *hr, hikaru_mesh_t *meshes, unsigned num)
+{
+	auto &o = hr->oit;
+	GLint scene_fb = 0;
+	uint32_t zero = 0;
+	unsigned j;
+
+	/* The opaque meshes' depth, for the collecting shaders */
+	glGetIntegerv (GL_DRAW_FRAMEBUFFER_BINDING, &scene_fb);
+	glDisable (GL_SCISSOR_TEST);
+	glBindFramebuffer (GL_READ_FRAMEBUFFER, scene_fb);
+	glBindFramebuffer (GL_DRAW_FRAMEBUFFER, o.depth_fb);
+	glBlitFramebuffer (0, 0, o.w, o.h, 0, 0, o.w, o.h, GL_DEPTH_BUFFER_BIT, GL_NEAREST);
+	glBindFramebuffer (GL_FRAMEBUFFER, scene_fb);
+	glEnable (GL_SCISSOR_TEST);
+
+	glBindBuffer (GL_ATOMIC_COUNTER_BUFFER, o.counter);
+	glBufferSubData (GL_ATOMIC_COUNTER_BUFFER, 0, sizeof (zero), &zero);
+	glBindBufferBase (GL_ATOMIC_COUNTER_BUFFER, 0, o.counter);
+	glBindBufferBase (GL_SHADER_STORAGE_BUFFER, 0, o.nodes);
+	glBindImageTexture (0, o.heads, 0, GL_FALSE, 0, GL_READ_WRITE, GL_R32UI);
+	glActiveTexture (GL_TEXTURE0 + OIT_DEPTH_UNIT);
+	glBindTexture (GL_TEXTURE_2D, o.depth_tex);
+	glActiveTexture (GL_TEXTURE0);
+
+	/* Collected: no colour, no depth; the shaders test the depth */
+	glColorMask (GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
+	glDepthMask (GL_FALSE);
+	glDisable (GL_DEPTH_TEST);
+	o.collecting = true;
+	for (j = 0; j < num; j++) {
+		unsigned mode = 0;
+
+		if (meshes[j].mat_index != ~0u)
+			mode = hr->mat_list[meshes[j].mat_index].blending_mode;
+		/* The order: the mesh's in the list, then (the shader) its
+		 * triangle's */
+		o.tag = (mode & 3) | (j << 18);
+		draw_mesh (hr, &meshes[j]);
+	}
+	o.collecting = false;
+	glColorMask (GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+	glMemoryBarrier (GL_SHADER_STORAGE_BARRIER_BIT | GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+
+	/* The picture drawn so far, which the lists are blended over */
+	glDisable (GL_SCISSOR_TEST);
+	glBindFramebuffer (GL_READ_FRAMEBUFFER, scene_fb);
+	glBindFramebuffer (GL_DRAW_FRAMEBUFFER, o.color_fb);
+	glBlitFramebuffer (0, 0, o.w, o.h, 0, 0, o.w, o.h, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+	glBindFramebuffer (GL_FRAMEBUFFER, scene_fb);
+	glEnable (GL_SCISSOR_TEST);
+	glActiveTexture (GL_TEXTURE0 + OIT_BELOW_UNIT);
+	glBindTexture (GL_TEXTURE_2D, o.color_tex);
+	glActiveTexture (GL_TEXTURE0);
+
+	/* Resolved, over the whole picture, the pixels with a list written
+	 * whole (their scene's alpha 1, as the meshes' blending gave it) */
+	glUseProgram (o.resolve);
+	glUniform1i (glGetUniformLocation (o.resolve, "u_below"), OIT_BELOW_UNIT);
+	hr->meshes.variant.full = ~0ull;	/* the next mesh's program again */
+	glBindVertexArray (o.vao);
+	glViewport (0, 0, o.w, o.h);
+	glDisable (GL_CULL_FACE);
+	glDisable (GL_BLEND);
+	glDrawArrays (GL_TRIANGLES, 0, 3);
+	glEnable (GL_BLEND);
+	glMemoryBarrier (GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+	glEnable (GL_CULL_FACE);
+	glEnable (GL_DEPTH_TEST);
+	glBindVertexArray (hr->meshes.vao);
+	HL_ASSERT_NO_GL_ERROR ();
+
+	/* Now and then, whether a frame filled the buffer: then twice as
+	 * many, from the next frame (it stalls, so not every frame) */
+	if (++o.frames % 120 == 0 && o.max_nodes < OIT_MAX_NODES) {
+		uint32_t used = 0;
+
+		glBindBuffer (GL_ATOMIC_COUNTER_BUFFER, o.counter);
+		glGetBufferSubData (GL_ATOMIC_COUNTER_BUFFER, 0, sizeof (used), &used);
+		if (used > o.max_nodes) {
+			HL_PRINT ("HR translucency: %u fragments for %u places, more made", used, o.max_nodes);
+			o.max_nodes = MIN2 (MAX2 (o.max_nodes * 2, used + used / 4), OIT_MAX_NODES);
+			destroy_oit_buffers (hr);
+		}
+	}
+	glBindBuffer (GL_ATOMIC_COUNTER_BUFFER, 0);
 }
 
 static void
@@ -2129,10 +2853,15 @@ draw_meshes_for_polytype (Renderer *hr, unsigned vpi, int polytype)
 		break;
 	}
 	
-	/* The translucent meshes from back to front, as the hardware draws
-	 * them: AIRTRIX's OHOSOHO sign is a panel with its letters cut out,
-	 * then a magenta quad behind it, which in the list's order covered
-	 * the panel (these meshes write no depth) */
+	/* Sorted at each pixel when the card can (see "Translucency") */
+	if (polytype == HIKARU_POLYTYPE_TRANSLUCENT && hr->oit.on) {
+		draw_translucent_per_pixel (hr, meshes, num);
+		return;
+	}
+	/* Else the translucent meshes from back to front, as the hardware
+	 * draws them: AIRTRIX's OHOSOHO sign is a panel with its letters cut
+	 * out, then a magenta quad behind it, which in the list's order
+	 * covered the panel (these meshes write no depth) */
 	if (polytype == HIKARU_POLYTYPE_TRANSLUCENT) {
 		std::vector<std::pair<float, unsigned>> order;
 
@@ -2165,6 +2894,12 @@ draw_meshes_for_polytype (Renderer *hr, unsigned vpi, int polytype)
 		hikaru_mesh_t *mesh = &meshes[j];
 		if (polytype == HIKARU_POLYTYPE_BACKGROUND)
 			set_blending (hr, mesh);
+		else if (is_faded_by_depth (hr, mesh))
+			/* Into what is behind, by the shader's alpha (621 D) */
+			glBlendFuncSeparate (GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA,
+			                     GL_CONSTANT_ALPHA, GL_ONE);
+		else
+			glBlendFuncSeparate (GL_ONE, GL_ZERO, GL_CONSTANT_ALPHA, GL_ONE);
 		draw_mesh (hr, mesh);
 	}
 }
@@ -2189,6 +2924,25 @@ draw_scene (Renderer *hr)
 
 	if (!upload_frame_vertices (hr))
 		return;
+
+	/* Translucency sorted at each pixel: OpenGL 4.3, the setting, no
+	 * MSAA (the lists are a pixel's, not a sample's) */
+	if (!hr->oit.checked) {
+		hr->oit.checked = true;
+		hr->oit.available = GLEW_VERSION_4_3 != 0;
+		if (hr->oit.available) {
+			hr->oit.resolve = hl::gl::compile_program (oit_vs_source, oit_fs_source);
+			glGenVertexArrays (1, &hr->oit.vao);
+		}
+		HL_PRINT ("HR translucency %s", hr->oit.available ?
+		          "sorted at each pixel (OpenGL 4.3)" : "sorted by mesh (no OpenGL 4.3)");
+	}
+	hr->oit.on = hr->oit.available && hr->view.sort_pixels && !hr->framebuffer.ms_fb &&
+	             build_oit_buffers (hr) == 0;
+	/* The game's programs, before its first frame (see "The programs'
+	 * cache") */
+	warm_up_programs ();
+	hr->meshes.variant.full = ~0ull;
 
 	/* Note that "the pixel ownership test, the scissor test, dithering,
 	 * and the buffer writemasks affect the operation of glClear". */
@@ -2237,6 +2991,7 @@ destroy_3d_state (Renderer *hr)
 	free (hr->mat_list);
 	free (hr->tex_list);
 	free (hr->ls_list);
+	free (hr->ls_tables);
 
 	for (vpi = 0; vpi < 8; vpi++)
 		for (i = 0; i < 8; i++)
@@ -2244,6 +2999,11 @@ destroy_3d_state (Renderer *hr)
 
 	hl::gl::destroy_program (hr->meshes.program);
 	HL_ASSERT_NO_GL_ERROR ();
+
+	destroy_oit_buffers (hr);
+	hl::gl::destroy_program (hr->oit.resolve);
+	if (hr->oit.vao)
+		glDeleteVertexArrays (1, &hr->oit.vao);
 
 	if (hr->meshes.vbo)
 		glDeleteBuffers (1, &hr->meshes.vbo);
@@ -2268,9 +3028,14 @@ build_3d_state (Renderer *hr)
 			malloc (sizeof (hikaru_texhead_t) * MAX_TEXHEADS);
 	hr->ls_list = (hikaru_lightset_t *)
 			malloc (sizeof (hikaru_lightset_t) * MAX_LIGHTSETS);
+	hr->ls_tables = (Renderer::hikaru_light_tables_t *)
+			malloc (sizeof (Renderer::hikaru_light_tables_t) * MAX_LIGHTSETS);
 
-	if (!hr->vp_list || !hr->mv_list || !hr->mat_list || !hr->tex_list || !hr->ls_list)
+	if (!hr->vp_list || !hr->mv_list || !hr->mat_list || !hr->tex_list || !hr->ls_list ||
+	    !hr->ls_tables)
 		return -1;
+	/* Its GL objects at the first scene, in the context that draws it */
+	memset ((void *) &hr->oit, 0, sizeof (hr->oit));
 
 	for (vpi = 0; vpi < 8; vpi++) {
 		for (i = 0; i < 8; i++) {
@@ -2637,6 +3402,77 @@ make_post_target (hikaru_target_t &t, unsigned w, unsigned h)
 	t.h = h;
 }
 
+/* The frames' blending (781/181): the picture drawn in fb[n1] and the one kept
+ * in fb[n2], the kept one's share `rate` (0 to FF), as the board's blender
+ * draws it (US patent 6,549,209, fig. 11): the rate counts one more from 0x80
+ * up, so that FF keeps the kept picture whole, and each product loses its
+ * fraction before the sum. A blending in floats rounded each pixel to the
+ * nearest: a trail at FC never died out, stuck one step above the new
+ * picture. As Odin's author, Réda Chérif-Touil, does it */
+static const char *blend_vs_source =
+"#version 140									\n"
+"										\n"
+"void										\n"
+"main (void)									\n"
+"{										\n"
+"	vec2 p = vec2 ((gl_VertexID << 1) & 2, gl_VertexID & 2);		\n"
+"	gl_Position = vec4 (p * 2.0 - 1.0, 0.0, 1.0);				\n"
+"}										\n";
+
+static const char *blend_fs_source =
+"#version 140									\n"
+"										\n"
+"uniform sampler2D u_drawn;							\n"
+"uniform sampler2D u_kept;							\n"
+"uniform int u_rate;								\n"
+"out vec4 frag_color;								\n"
+"										\n"
+"void										\n"
+"main (void)									\n"
+"{										\n"
+"	ivec2 at = ivec2 (gl_FragCoord.xy);					\n"
+"	ivec4 drawn = ivec4 (texelFetch (u_drawn, at, 0) * 255.0 + 0.5);	\n"
+"	ivec4 kept = ivec4 (texelFetch (u_kept, at, 0) * 255.0 + 0.5);		\n"
+"	int k = u_rate + (u_rate >> 7);						\n"
+"										\n"
+"	frag_color = vec4 (((kept * k) >> 8) + ((drawn * (256 - k)) >> 8)) / 255.0;	\n"
+"}										\n";
+
+static void
+blend_frames (Renderer *hr, unsigned n1, unsigned n2, unsigned rate)
+{
+	auto &fb = hr->framebuffer;
+
+	if (!fb.blend.program) {
+		fb.blend.program = hl::gl::compile_program (blend_vs_source, blend_fs_source);
+		fb.blend.u_drawn = glGetUniformLocation (fb.blend.program, "u_drawn");
+		fb.blend.u_kept = glGetUniformLocation (fb.blend.program, "u_kept");
+		fb.blend.u_rate = glGetUniformLocation (fb.blend.program, "u_rate");
+	}
+	/* The picture drawn, copied: the blending writes over it */
+	make_post_target (fb.drawn, fb.w, fb.h);
+	glBindFramebuffer (GL_READ_FRAMEBUFFER, fb.fb[n1]);
+	glBindFramebuffer (GL_DRAW_FRAMEBUFFER, fb.drawn.fb);
+	glBlitFramebuffer (0, 0, fb.w, fb.h, 0, 0, fb.w, fb.h, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+	glBindFramebuffer (GL_FRAMEBUFFER, fb.fb[n1]);
+	glViewport (0, 0, fb.w, fb.h);
+
+	glUseProgram (fb.blend.program);
+	glActiveTexture (GL_TEXTURE0 + 0);
+	glBindTexture (GL_TEXTURE_2D, fb.drawn.tex);
+	glActiveTexture (GL_TEXTURE0 + 1);
+	glBindTexture (GL_TEXTURE_2D, fb.cb[n2]);
+	glActiveTexture (GL_TEXTURE0);
+	glUniform1i (fb.blend.u_drawn, 0);
+	glUniform1i (fb.blend.u_kept, 1);
+	glUniform1i (fb.blend.u_rate, (GLint) (rate & 0xFF));
+	glDisable (GL_BLEND);
+	glBindVertexArray (fb.vao);
+	glDrawArrays (GL_TRIANGLES, 0, 3);
+	glBindVertexArray (0);
+	HL_ASSERT_NO_GL_ERROR ();
+}
+
 static void
 destroy_post_target (hikaru_target_t &t)
 {
@@ -2674,7 +3510,8 @@ build_scene_buffers (Renderer *hr)
 
 		glGenRenderbuffers (1, &db);
 		glBindRenderbuffer (GL_RENDERBUFFER, db);
-		glRenderbufferStorage (GL_RENDERBUFFER, GL_DEPTH_COMPONENT, w, h);
+		/* 24 bits, as translucency's copy of it (a blit needs the same) */
+		glRenderbufferStorage (GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, w, h);
 		HL_ASSERT_NO_GL_ERROR ();
 
 		glBindFramebuffer (GL_FRAMEBUFFER, fb.fb[i]);
@@ -2821,6 +3658,7 @@ build_fb_state (Renderer *hr)
 	build_post_program (hr->framebuffer.fxaa, fxaa_fs_source);
 	build_post_program (hr->framebuffer.bright, bright_fs_source);
 	build_post_program (hr->framebuffer.blur, blur_fs_source);
+	hr->presentation = new hl::Presentation ();
 
 	/* What the card can: MSAA's samples, the anisotropy */
 	glGetIntegerv (GL_MAX_SAMPLES, &hr->framebuffer.max_samples);
@@ -2889,9 +3727,14 @@ destroy_fb_state (Renderer *hr)
 	destroy_post_target (hr->framebuffer.post);
 	destroy_post_target (hr->framebuffer.bloom[0]);
 	destroy_post_target (hr->framebuffer.bloom[1]);
+	destroy_post_target (hr->framebuffer.drawn);
+	hl::gl::destroy_program (hr->framebuffer.blend.program);
+	hr->framebuffer.blend.program = 0;
 	hl::gl::destroy_program (hr->framebuffer.fxaa.program);
 	hl::gl::destroy_program (hr->framebuffer.bright.program);
 	hl::gl::destroy_program (hr->framebuffer.blur.program);
+	delete hr->presentation;
+	hr->presentation = NULL;
 	HL_ASSERT_NO_GL_ERROR ();
 
 	hl::gl::destroy_program (hr->framebuffer.program);
@@ -3030,8 +3873,11 @@ copy_view (Renderer *hr)
 	hr->view.anisotropy = cfg->anisotropy;
 	hr->view.texture_scale = cfg->texture_scale;
 	hr->view.fxaa = cfg->fxaa;
+	hr->view.sort_pixels = cfg->sort_translucent_pixels;
 	hr->view.bloom = cfg->bloom * 0.01f;
 	hr->view.crt = cfg->crt_filter * 0.01f;
+	if (hr->presentation)
+		hr->presentation->copy_view ();
 }
 
 /* A post effect's pass: its program on src, into dst; LINEAR on src while
@@ -3119,7 +3965,7 @@ static void
 draw (Renderer *hr)
 {
 	auto *gpu = &hr->frame_gpu;
-	GLuint n1, n2, f, b, layer1 = 0, layer2 = 0, bloom = 0;
+	GLuint n1, n2, f, b, layer1 = 0, layer2 = 0, bloom = 0, crt_fb;
 	float factor, mult1 = 0.0f, mult2 = 0.0f;
 	bool on1, on2, drawn = false, minified;
 	GLint out[4], filter, scene_filter;
@@ -3237,14 +4083,10 @@ draw (Renderer *hr)
 			glUniform1i (hr->framebuffer.locs.u_barrel, -1);
 			HL_ASSERT_NO_GL_ERROR ();
 
-			/* front = back * factor + front * (1 - factor) */
-			glEnable (GL_BLEND);
-			glBlendColor (0.0f, 0.0f, 0.0f, factor);
-			glBlendFunc (GL_CONSTANT_ALPHA, GL_ONE_MINUS_CONSTANT_ALPHA);
-			glBindVertexArray (hr->framebuffer.vao);
-			glDrawArrays (GL_TRIANGLE_STRIP, 0, 4);
-			glBindVertexArray (0);
-			glDisable (GL_BLEND);
+			/* front = back * factor + front * (1 - factor), as the
+			 * board's blender does it (blend_frames) */
+			blend_frames (hr, n1, n2, gpu->fb_config.alpha);
+			glUseProgram (hr->framebuffer.program);
 			HL_ASSERT_NO_GL_ERROR ();
 
 			glBindFramebuffer (GL_FRAMEBUFFER, hr->target_fb);
@@ -3260,10 +4102,22 @@ draw (Renderer *hr)
 		HL_ASSERT_NO_GL_ERROR ();
 	}
 
+	/* CRT_PRESET: the picture composed at its own size, for the preset's
+	 * passes (hl/presentation.h) */
+	crt_fb = hr->presentation->begin (hr->scene_w, 480);
+
 	/* Where the picture goes in the window, after the aspect ratio; out,
 	 * its whole size there (larger than the window where cropped) */
 	set_output_viewport (hr);
 	memcpy (out, hr->target_layout.image, sizeof (out));
+	if (crt_fb) {
+		glDisable (GL_SCISSOR_TEST);
+		glBindFramebuffer (GL_FRAMEBUFFER, crt_fb);
+		glViewport (0, 0, hr->scene_w, 480);
+		out[0] = out[1] = 0;
+		out[2] = hr->scene_w;
+		out[3] = 480;
+	}
 
 	/* Figure out the GPU framebuffer assignments. */
 	glActiveTexture (GL_TEXTURE0 + 0);
@@ -3329,11 +4183,13 @@ draw (Renderer *hr)
 		glUniform1i (hr->framebuffer.locs.u_bloom, 4);
 	}
 	glUniform1f (hr->framebuffer.locs.u_bloom_k, bloom ? hr->view.bloom : 0.0f);
-	glUniform1f (hr->framebuffer.locs.u_crt, hr->view.crt);
+	/* A CRT preset draws its own tube in CRT_FILTER's place, and its
+	 * passes cannot bend the picture's edges */
+	glUniform1f (hr->framebuffer.locs.u_crt, crt_fb ? 0.0f : hr->view.crt);
 	glUniform2f (hr->framebuffer.locs.u_out, (float) out[2], (float) out[3]);
 	{
 		const hl::ScreenLayout &l = hr->target_layout;
-		glUniform1i (hr->framebuffer.locs.u_barrel, l.barrel_axis);
+		glUniform1i (hr->framebuffer.locs.u_barrel, crt_fb ? -1 : l.barrel_axis);
 		glUniform4f (hr->framebuffer.locs.u_frame, (float) l.frame[0], (float) l.frame[1],
 		             (float) l.frame[2], (float) l.frame[3]);
 		glUniform4f (hr->framebuffer.locs.u_barrel1, l.edge, l.center, l.start, l.scale);
@@ -3373,6 +4229,10 @@ draw (Renderer *hr)
 
 	glBindVertexArray (0);
 	glUseProgram (0);
+	HL_ASSERT_NO_GL_ERROR ();
+
+	/* CRT_PRESET's passes into the window's picture, then BEZEL */
+	hr->presentation->end (hr->target_fb, hr->target_width, hr->target_height, hr->target_layout);
 	HL_ASSERT_NO_GL_ERROR ();
 }
 
@@ -3591,6 +4451,7 @@ Renderer::hand_over ()
 	std::swap (mat_list, d->mat_list);
 	std::swap (tex_list, d->tex_list);
 	std::swap (ls_list, d->ls_list);
+	std::swap (ls_tables, d->ls_tables);
 	for (vpi = 0; vpi < 8; vpi++)
 		for (i = 0; i < 8; i++) {
 			hikaru_mesh_t *drawn = mesh_list[vpi][i];
@@ -3898,11 +4759,14 @@ Renderer::Renderer (hl::Buffer *fb, hl::Buffer *texram[2]) :
 	HL_ASSERT_NO_GL_ERROR ();
 
 	memset ((void *) program_cache, 0, sizeof (program_cache));
+	programs_warmed = false;
 	num_programs = 0;
 	meshes.vao = 0;
 	meshes.vbo = 0;
 	/* Not the GPU's count: the first frame clears the buffers */
 	framebuffer.lists_drawn = ~0u;
+	memset ((void *) &framebuffer.drawn, 0, sizeof (framebuffer.drawn));
+	memset ((void *) &framebuffer.blend, 0, sizeof (framebuffer.blend));
 	memset ((void *) &textures, 0, sizeof (textures));
 	texram_src[0] = texram[0];
 	texram_src[1] = texram[1];
@@ -3940,6 +4804,8 @@ Renderer::Renderer (Renderer *owner) :
 	meshes.vao = 0;
 	meshes.vbo = 0;
 	framebuffer.lists_drawn = ~0u;
+	memset ((void *) &framebuffer.drawn, 0, sizeof (framebuffer.drawn));
+	memset ((void *) &framebuffer.blend, 0, sizeof (framebuffer.blend));
 	texram_src[0] = owner->texram_shadow[0];
 	texram_src[1] = owner->texram_shadow[1];
 	fb_src = owner->fb_shadow;

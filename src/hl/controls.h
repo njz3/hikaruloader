@@ -47,7 +47,12 @@ namespace hl {
  *
  * <n> is the player: P1_GUID's device is JOY0 (and GC0 for a game controller),
  * the other devices follow in SDL's order. [Emulator] is ours: the other
- * loaders leave it alone. */
+ * loaders leave it alone.
+ *
+ * The hotkeys, RetroArch's way: GC<n>_BUTTON_GUIDE + GC<n>_BUTTON_<name>.
+ * While a game controller's Guide is held, its buttons and its hat (JOY<n>_
+ * as well) are the hotkeys' alone, the other bindings see them let go; a
+ * button pressed meanwhile stays so until let go, Guide let go first. */
 class Controls {
 public:
 	static Controls &get ();
@@ -92,8 +97,15 @@ public:
 	 * of one of its bindings, the binding's other inputs held */
 	bool		 pressed_by (const char *section, const char *key, const SDL_Event *event);
 	/* An axis's row: -1 (left) ... +1 (right), its dead zone applied; its
-	 * _Left and _Right rows add the keys' full turns */
+	 * _Left and _Right rows add the keys' full turns. [Driving] P1_Steer's
+	 * joystick axes (a wheel's) go Config::wheel_scale () times further */
 	double		 axis (const char *section, const char *key);
+	/* A wheel's axis, -1 ... +1, as the game's wheel: scale times further,
+	 * held at its ends */
+	static double	 steer (double axis, double scale);
+	/* Each event, before the actions it presses are looked for: the
+	 * buttons pressed while their controller's Guide is held */
+	void		 track (const SDL_Event *event);
 	/* A pedal's row: 0 (up) ... 1 (pressed); its _Digital row adds a key */
 	double		 pedal (const char *section, const char *key);
 
@@ -140,7 +152,12 @@ private:
 	void		 save () const;
 	void		 parse_all ();
 	const Binding	*binding (const char *section, const char *key);
-	bool		 source_pressed (const Source &s);
+	/* hotkey: for a binding with Guide in it, which sees the buttons
+	 * hidden () from the others */
+	bool		 source_pressed (const Source &s, bool hotkey = false);
+	bool		 hidden (const Source &s) const;
+	bool		 guide_held (int player) const;
+	int		 player_of (int instance) const;
 	double		 source_axis (const Source &s);
 	double		 source_pedal (const Source &s);
 	double		 deadzone (const char *key) const;
@@ -160,6 +177,10 @@ private:
 		void		*joystick;	/* SDL_Joystick * */
 		void		*controller;	/* SDL_GameController *, or NULL */
 		std::string	 name;
+		/* The buttons pressed while Guide was held, not let go since:
+		 * by their joystick numbers, and their game controller's */
+		uint64_t	 hidden_joy;
+		uint32_t	 hidden_gc;
 	};
 	std::vector<Player> players;
 

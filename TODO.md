@@ -6,11 +6,13 @@ PROCESSORS AND CHIPS (Hikaruloader, October 2026)
 | 2 x SH-4 (Hitachi SH7750, 200 MHz) | Main board | Dynamic recompiler (the default; the settings' "SH-4 processors" switches to the interpreter at the next frame), at the clock of the `SH4_CLOCK` setting (100 MHz by default since November 2026, AIRTRIX's slave needing it; formerly 57, and 50 before; 200 MHz as on the board, but the games' busy waits then cost about real time and the boots fall below 60 fps), the timers (TMU) at the board's Pφ (50 MHz) whatever the clock, and their prescalers: the code decoded once in blocks (`src/cpu/sh/sh4-blocks.*`), translated to x86-64 by our own emitter (`src/cpu/x64/`, `src/cpu/sh/sh4-x64.*`): the frequent ALU instructions and branches written out, the loads and stores of every size and the FPU's moves too (FPSCR.SZ tested as they run), the others calls to the interpreter's handlers; those reach RAM and ROM straight as the translations do (Mmap::direct). The logs' CPU and machine state (debug_string, two strdup and a sprintf) is no longer made when the log is off: it was, at each on-chip register's and each logged device's access. With these, about a third less time a frame in every game, the same pictures (the six games' frames 900-3600, the interpreter's too). Same machine as the interpreter, frame for frame (SGNASCAR, SWRACER checked). The idle and delay loops run forward (`cpu:option ('idle', 0)`). The interpreter stays for the debugger, and runs alone while the MMU is on (its TLBs, their exceptions run again after their handler, LDTLB, the TLB arrays; TRAPA; `tests/sh4_mmu_test.cpp`): Smashing Drive's. Also the operand cache as RAM (CCR.ORA, 7C000000) and the SCIF's and SCI's output in the log. The FPU's fmov moves 32 bits unless SZ, whatever PR, and DRn is FRn (high half) and FRn+1, a 64-bit move taking FRn from the lower address (pairs of singles): the compilers' unsigned division (2^31 loaded in DR4 by two fmov.s) gave 0 or 1, and PHARRIER unpacked its sound data a kilobyte a frame, 15 s of black screen (`tests/sh4_mmu_test.cpp`) |
 | Z80 of the MIE (315-6146) | Main board | Emulated (`src/cpu/z80`, 16 MHz); the MIE's 2 KB internal ROM is not dumped, a stub plays its part; the SH-4s request its bus (local bus 02000000) to reach its RAM, which stops it. Its idle loops run at once, exactly (`MIE_IDLE_SKIP=0`: one instruction at a time) |
 | 93C46 serial EEPROM | Main board, on the MIE's GPIO 5/6 | Emulated (`src/hl/eeprom.cpp`), kept with the backup RAM in `nvram/<game>.nvram` |
+| 93C46 serial EEPROM (IC115) | Main board, on the master SH-4's port A (bits 2-5) | Emulated with `SECURITY_CHIPS` (November 2026, off by default; `src/hl/eeprom.cpp`, on `hikaru.cpp`'s port A): its image `93c46.ic115` from MAME's newer hikaru set, the main board's serial number (AABE-...), which the BOOTROM reads (16 READs) and checks with a CRC-16 (@0C00087C). Without the option, that check is patched out of the BOOTROM (Valkyrie's patch at 0x8AE, 0x8E6 in 0.96) |
 | 2 x ARM7DI, in the two AICAs (Yamaha, 315-6232) | AICA board, main board | Interpreted (`src/cpu/arm/arm7.*`, `tests/arm7_test.cpp`), each with its AICA's 8 MB of RAM, timers and interrupts; the drivers' scan of their 64 slots run at once, exactly (`SOUND_CORE = OPTIMIZED`) |
 | AICA voices, DSP, filter, LFO | In each AICA | Emulated (`src/mach/hikaru/hikaru-aica.*`): the 64 channels (PCM 16/8, ADPCM), envelopes, filter, LFOs, the DSP's effects and its ring buffer; out to the host's speakers (`src/hl/audio.*`: front and rear, resampled, its clock followed). The RTC reads a fixed time |
-| 68000 | Communication board 837-13404 (linked cabinets) | Not run: the board is emulated from what it gives the games (`src/mach/hikaru/hikaru-comm.*`), the ring over TCP (`src/hl/ringlink.*`, `[Network]`). Two instances play together in SWRACER, SGNASCAR, PHARRIER and VON4 |
-| TMP90PH44 (Toshiba TLCS-90) | JVS I/O board | Not needed: the 837-13551 is emulated at the JVS level |
-| 315-5881, X76F100 secure EEPROM, Lattice CPLDs | ROM board | The protection on the bus at 0A000000 (November 2026, `hikaru-memctl.cpp`): SGNASCAR's streams a MASKROM block, decrypted and decompressed (the NAOMI "M1" scheme, key 56DEDF33); SWRACER's is a 315-5881 (`hikaru-5881.cpp`, from MAME's), its 64 KB of RAM and registers at 0A010000 as the NAOMI "M3" carts. When their check failed, SGNASCAR and SWRACER raised their motion blur (181) to FC: the night race and the text crawl smeared. AIRTRIX's and PHARRIER's are on too (November 2026). PHARRIER's (2912C68A) is checked at the game's start (@0C103460): a ROM block (2FEE6000) written to it, subkey 5784, and the 0x273C bytes read back compared with the clear one at 103FD000; the patch that skipped the check is gone. AIRTRIX's decrypts right (12 blocks, @0C0440F0, the same words across their ends): the slave's real program, copied to its 0C010000 through aperture 16, which poses the skater itself from the bones' table (48100000) into the routine the CP calls. Some 875,000 instructions a frame: at 57 MHz it ends after the CP called the routine (the body not drawn). The recompiler now takes about 4 ms a frame for it (25 ms before November 2026): over 80 s of attract, 147 frames a second with the chip, 176 without, here. With it the CP's posing is off (gpu->skin.slave_poses), and the SH-4s need 100 MHz (SH4_CLOCK) for the slave to end before the CP's call: the skater drawn whole, posed as the board does, his shadow his whole silhouette; at 57 MHz his body is missing. At 100 MHz the six games stay above 60 frames a second here (80 s of attract: AIRTRIX 100, SWRACER 83, VON4 113; SWRACER's boot the slowest, 69), their attract a little ahead, closer to the board's (PHARRIER unpacks its sounds sooner). Without the chip the slave runs a plain program that leaves the rest pose, which the CP poses ("Skinning" in hikaru-gpu-cp.cpp). The default clock is 100 MHz since; an ini written before keeps its own (57). The secure EEPROM is not emulated |
+| 68000 | Communication board 837-13404 (linked cabinets) | Two ways (`[Network] COMM_BOARD`): simulated by default, the board emulated from what it gives the games (`src/mach/hikaru/hikaru-comm.*`), two instances playing together in SWRACER, SGNASCAR, PHARRIER and VON4; or run, `PROGRAM`, the 68000 (`src/cpu/m68k/`, from Odin's) running the program the game uploads, with the board's 315-5917s as Odin has them (`src/mach/hikaru/hikaru-commbd.*`), the instances in step at 2 lines: 3 and 4 instances link (SWRACER races of 4, VON4's 4 sites). The ring over TCP either way (`src/hl/ringlink.*`, `[Network]`) |
+| TMP90PH44 (Toshiba TLCS-90) | JVS I/O board 837-13551 | Simulated at the JVS level by default (`src/hl/jvs.cpp`); with `IO_BOARD_PROGRAM` (November 2026, off by default) its CPU runs its program, 315-6215 from MAME's jvs13551 set (`src/cpu/tlcs90`, `src/hl/tmp90ph44.*`, `src/hl/ioboard.*`, from Odin's, by Réda Chérif-Touil): the timers, the watchdog, the serial channel, the A/D converter and the ports as the program uses them, its bytes on the MIE's line one at a time at 115200 bauds. The TLCS-90 core decodes the PROM's instructions once (`tests/tlcs90_test.cpp`). The JVS TEST then shows the board's own answers |
+| 315-6146 (Z80) and D71054 | NASCAR's JVS I/O board 837-13741 | Simulated as an 837-13844 by default; with `IO_BOARD_PROGRAM`, the 315-6146 runs epr-21868 from MAME's 18wheelr set (`src/hl/ioboard.*`): its UART 1 on the MIE's line, its interrupts (the UART at level 3, the D71054's 1 ms pulse at vector FE), its GPIO (the switches, the coins, the 22 outputs: the drive board's command on 15-22, its reply on the switches, as on the cabinet), its converter (the wheel, the pedals). Its waiting loop (03A2-041A, polling the UART's LSR) runs at once, exactly, as the MIE's do |
+| 315-5881, X76F100 secure EEPROM, Lattice CPLDs | ROM board | The protection on the bus at 0A000000 (November 2026, `hikaru-memctl.cpp`): SGNASCAR's streams a MASKROM block, decrypted and decompressed (the NAOMI "M1" scheme, key 56DEDF33); SWRACER's is a 315-5881 (`hikaru-5881.cpp`, from MAME's), its 64 KB of RAM and registers at 0A010000 as the NAOMI "M3" carts. When their check failed, SGNASCAR and SWRACER raised their motion blur (181) to FC: the night race and the text crawl smeared. AIRTRIX's and PHARRIER's are on too (November 2026). PHARRIER's (2912C68A) is checked at the game's start (@0C103460): a ROM block (2FEE6000) written to it, subkey 5784, and the 0x273C bytes read back compared with the clear one at 103FD000; the patch that skipped the check is gone. AIRTRIX's decrypts right (12 blocks, @0C0440F0, the same words across their ends): the slave's real program, copied to its 0C010000 through aperture 16, which poses the skater itself from the bones' table (48100000) into the routine the CP calls. Some 875,000 instructions a frame: at 57 MHz it ends after the CP called the routine (the body not drawn). The recompiler now takes about 4 ms a frame for it (25 ms before November 2026): over 80 s of attract, 147 frames a second with the chip, 176 without, here. With it the CP's posing is off (gpu->skin.slave_poses), and the SH-4s need 100 MHz (SH4_CLOCK) for the slave to end before the CP's call: the skater drawn whole, posed as the board does, his shadow his whole silhouette; at 57 MHz his body is missing. At 100 MHz the six games stay above 60 frames a second here (80 s of attract: AIRTRIX 100, SWRACER 83, VON4 113; SWRACER's boot the slowest, 69), their attract a little ahead, closer to the board's (PHARRIER unpacks its sounds sooner). Without the chip the slave runs a plain program that leaves the rest pose, which the CP poses ("Skinning" in hikaru-gpu-cp.cpp). The default clock is 100 MHz since; an ini written before keeps its own (57). The X76F100 secure EEPROM is emulated with `SECURITY_CHIPS` (November 2026, off by default; `src/hl/x76f100.*`, from Odin's and MAME's; `tests/x76f100_test.cpp`) on bus page 14: its image `x76f100.ic85` from MAME's newer hikaru set (no passwords, the ROM board's serial number BBAE-...), which the BOOTROM reads (command 81, page 0) and checks (@0C0008A2): blank, it stops on ERROR 2. With the option, SGNASCAR's protection also answers as its Actel FPGA (317-0283-COM): the status (80008000 while a stream runs), the stream started and stopped by the control's bit 31 and ended by symbol 111, read a byte at a time as wide as the access, the registers at 00-13 only; the games play the same (frames identical). Without the option, unchanged |
 | Drive board (force feedback) | SGNASCAR | A Model 3 board on the 837-13844's outputs and switches: its Z80 running its EPROM, EPR-20512 (`src/hl/driveboard-z80.cpp`, from Supermodel's), taken from the user's `srally2.zip`; without it, the program simulated (`src/hl/driveboard.cpp`). SWRACER has none: its output test lists lamps and a boost lock only. `-L` and the picker tell which games have one, and which link (`data/games.json`, from the games' test menus) |
 
 
@@ -22,11 +24,13 @@ details and what is left.
 
 - The program: C++20 and CMake, built on Windows with MSVC and vcpkg (the
   Makefile runs CMake); a picker of the games and a settings window (Dear
-  ImGui), in English and French; MAME romsets found by CRC32; `-L` lists
-  the games and their files ([README.md](README.md), [INSTALL.md](INSTALL.md)).
+  ImGui), in English and French; MAME romsets, zips or 7z (the LZMA SDK),
+  found by CRC32; `-L` lists the games and their files ([README.md](README.md),
+  [INSTALL.md](INSTALL.md)).
 - The controls: keys, controllers, wheel and pedals, bound in the settings,
   saved to `controls.ini` (linuxloader's syntax); Test and Service, coins,
-  Start, four buttons, the analog channels.
+  Start, four buttons, the analog channels; the controllers' hotkeys (Guide
+  + a button) and a wheel's rotation for the game's wheel, as Odin has them.
 - The saves: each game's EEPROM and backup RAM in `nvram/<game>.nvram` (a
   container: header, directory, blocks); the save states of the whole
   machine (F4, F1, `-l`); a write directory (`--write-dir`) for read-only
@@ -34,7 +38,11 @@ details and what is left.
 - The I/O: the MIE's Z80, the JVS bus and an 837-13551 I/O board (an
   837-13844 for SGNASCAR, with its Model 3 drive board and the force
   feedback); VON4's card reader; the EEPROM's system settings (region,
-  attract sound, link mode) from the settings.
+  attract sound, link mode) from the settings. Optionally (November 2026,
+  off by default): the I/O boards' CPUs running their own programs
+  (315-6215 on the 837-13551's TLCS-90, epr-21868 on NASCAR's 837-13741),
+  and the security chips (the ROM board's X76F100, the main board's 93C46,
+  SGNASCAR's Actel FPGA), the BOOTROM's check of them run.
 - The outputs (November 2026, `src/hl/outputs.cpp`): the I/O board's lamps
   and SGNASCAR's drive board commands in MAME's network protocol, as
   Supermodel, Flycast and sm2-emu send them (TCP 8000, the UDP announcement
@@ -58,7 +66,8 @@ details and what is left.
   2D layers, AIRTRIX's skinning; the drawing on a thread of its own;
   widescreen 3D, a smooth scaling filter, a longer draw distance; the
   enhancements: the 3D at 2x to 6x, MSAA, FXAA, anisotropic filtering,
-  textures enlarged by Scale2x, bloom, a CRT filter.
+  textures enlarged by Scale2x, bloom, a CRT filter; libretro CRT presets
+  (Lola Retro's shipped) and bezels around the picture, from Odin's.
 - Speed: the MIE's and the ARM7s' idle loops run at once, exactly; the
   sound chips' registers and DSP program kept decoded (`SOUND_CORE`).
 - The tools: a Lua shell with breakpoints, watchpoints and hooks, an agent
@@ -101,6 +110,19 @@ The outputs (`src/hl/outputs.cpp`), what is left:
   and the outputs in the agent protocol (shared with Supermodel and
   sm2-emu), not done.
 
+The controls (`src/hl/controls.cpp`), what is left:
+
+- The controllers' hotkeys (Guide + a button, November 2026) are checked on
+  SDL's virtual game controller (tests/controls_test.cpp), not yet on real
+  pads: an Xbox pad's Guide through XInput (the Game Bar takes it too), a
+  DualShock's PS button. A joystick that SDL knows no mapping for has no
+  Guide, hence no hotkeys.
+- The wheel's rotation ([Input] WHEEL_ROTATION and WHEEL_RANGE, November
+  2026) is checked on a virtual wheel, not felt on a real one; SDL 2 cannot
+  read the turn a wheel's driver is set to, hence WHEEL_RANGE. The servo
+  board's spring gets as much stiffer, up to the device's strongest; its
+  friction, which follows the speed, is left as it was.
+
 
 HIKARU
 ------
@@ -115,6 +137,38 @@ as the SH-4 sees them (00800000). Left: the MIE's other ports (40, 80, 81,
 84); the interrupts it routes to the SH-4's IRL2 (GPIO B, C, F); GPIO E's
 bits 0-3, which the BIOS waits for at boot (Valkyrie's toggle kept). It
 runs at 16 MHz (MAME's figure; some 13.5 measured on a NAOMI).
+
+The I/O boards running their own programs (`IO_BOARD_PROGRAM`, November
+2026, off by default; `src/hl/ioboard.*`, ported from Odin): the 837-13551's
+TMP90PH44 running 315-6215, NASCAR's 837-13741 running epr-21868, at the far
+end of the MIE's UART (hl::JvsLine): each byte the MIE sends reaches the
+board a character later (86.8 us at 115200 bauds), the board's come back the
+same way, the board run a piece (64 us) ahead of the MIE, the MIE stopped at
+each of its bytes; the MIE's LSR tells when its bytes are gone. Checked: the
+six games boot, count their coins, start and play; the BIOS's JVS TEST shows
+the board's own name and inputs (BRAVEFF's test menu has none: its service
+credits counted); NASCAR's INPUT and OUTPUT TESTs show its wheel, pedals and
+lamps, its drive board taking the same commands; the save states replay the
+same. Left, or guessed (as in Odin, whose notes these are):
+- The cabinet's Test and Service go to the I/O board only in that mode: on
+  both boards at once, the BIOS took one press for two, the board's
+  reaching the game a few frames after the main board's switches.
+- The inputs are read every millisecond of the board's time; a coin closes
+  its switch 50 ms, then leaves it open 50 ms.
+- 837-13551: its 14.7456 MHz crystal taken as the MIE's UART's; the
+  TMP90C844's registers where MAME has them, T01MOD and T23MOD as MAME reads
+  them; timers 0 and 2 ask for nothing; INTEH bit 2 enables 0028 and bit 0
+  0038; the serial interrupts' enables, the bits of IRFH but bit 2, guessed;
+  P5 reads its latch, P3's latch at 1 after the reset, ADMOD F7 converts AN0
+  to AN3 over and over; INTWD waits for the interrupts to be open. P3 bits
+  0-1 read 3 (no board after it).
+- 837-13741: its 315-6146 at the MIE's clock; vector F8 its UART, FE its
+  timer every 1 ms (the D71054's wiring, and its first pulse a period after
+  the load, guessed); port 91 reads FF (no board after it, the DIP switches
+  off); ports 40, 60, 80, 81 and 0E, written at the start, and 90 read, are
+  only logged.
+- The reply's delay of a simulated board is still none: the simulation
+  answers when the MIE releases the line.
 
 The drive board: done in Hikaruloader, its Z80 running EPR-20512 (a
 DriveBoardProgram, DriveBoardZ80, as the simulation is), the EPROM from the
@@ -138,8 +192,12 @@ settings in the settings window; a network output of the command for a real
 drive board.
 
 Proper AICA emulation (especially the RTC and IRQs.) Done in Hikaruloader:
-the ARM7s, the 64 voices, the DSP, the timers and interrupts. Left:
-- The RTC: a fixed time.
+the ARM7s, the 64 voices, the DSP, the timers and interrupts, the RTC (the
+PC's local time counted from 1964-01-01 as the BOOTROM's date routine does,
+by the samples; CLOCK SETTING's difference kept in the nvram's CLCK block;
+HR_CLOCK and the agent fix its start). Left:
+- The RTC: at frame 1584 from power-on the BIOS showed 15 s more than the
+  frames' time (the samples before the first frame?).
 - The levels against a real board's (no recording yet). On 66 s of attract
   the outputs stay under full scale (AIRTRIX's rear: 3 samples clipped);
   in play each board reaches it. Folded to two speakers at full gain, the
@@ -155,17 +213,59 @@ the ARM7s, the 64 voices, the DSP, the timers and interrupts. Left:
   never set by the drivers); SWRACER and SGNASCAR restart their drivers
   4-5 times in 4000 frames, AIRTRIX once.
 
-Implement the three EEPROMs (MAINBD, ROMBD, MIE.) The MIE's is done.
+Implement the three EEPROMs (MAINBD, ROMBD, MIE.) The MIE's is done. The
+MAINBD's (a 93C46 on port A) and the ROMBD's (an X76F100 on bus page 14)
+with `SECURITY_CHIPS` (November 2026, off by default), from MAME's images,
+with SGNASCAR's Actel FPGA as the chip; the BOOTROM's check of them then
+runs and passes. Left: their writes are not kept from a session to the next
+(the BIOS and the games only read them: no write seen); whether the
+X76F100's SDA floats once it is deselected (it reads high, as in MAME), and
+whether a read goes past the data's end; the Actel's other status bits,
+what bits 30, 1 and 0 of its control do, and the value of its register 0C
+at the power-on (19620217 kept, which the BOOTROM's probe finds there).
 
-The communication board (hikaru-comm.cpp): the four linked games play
-together, two instances on one PC: a race of two in SWRACER and SGNASCAR,
-PHARRIER's twin cabinet game, a battle of two in VON4 (each one's life the
-other's enemy's). Left: more than two nodes (SWRACER and VON4 take 4,
-SGNASCAR 8); the relay (SGNASCAR's monitor); two PCs; the status words'
-bits after the link (status 1's high byte taken as the nodes, the games
-showing 1/1 alone), the 68000's RAM at 1F000 the games read (zeros), the
-registers 00 and 40 the games set at the start; the settings window's
-Network tab. The 68000's program (uploaded by the games) is not run.
+The communication board, simulated (hikaru-comm.cpp, `COMM_BOARD =
+SIMULATED`, the default): the four linked games play together, two
+instances on one PC: a race of two in SWRACER and SGNASCAR, PHARRIER's twin
+cabinet game, a battle of two in VON4 (each one's life the other's
+enemy's). Its program's work is guessed: the status words' bits after the
+link (status 1's high byte taken as the nodes, the games showing 1/1
+alone), the 68000's RAM at 1F000 the games read (zeros), the registers 00
+and 40 the games set at the start.
+
+The communication board's program run (hikaru-commbd.cpp, `COMM_BOARD =
+PROGRAM`, November 2026): the 68000 (src/cpu/m68k/, tests/m68000_test.cpp)
+and the board's 315-5917s as Odin emulates them (by Réda Chérif-Touil), the
+program the games upload running on them; the instances of a ring in step
+at 2 lines of the Hikaru's, a fibre of 8 lines (0.25 ms), their frames
+aligned. Done on one PC: SWRACER with 2, 3 and 4 instances (CONNECTION WAS
+ESTABLISHED, NODE ID n/4, a race of four, POSITION 1st/4 to 4th/4); VON4
+with 4 (THIS IS MASTER SITE, SLAVE SITE, seats A to D, packet size
+11E4/1200, then its title). Left:
+- SGNASCAR with more than 2 (up to 8: a hop of 0.25 ms leaves its small
+  frame 2 ms round 8 boards, within its turn's 4.5 ms; not tried), the
+  relay (its monitor); PHARRIER and VON4's battle with the program (not
+  tried yet).
+- Two PCs: the hops over a network take longer than the 0.25 ms of the
+  fibre (HR_COMM_LATENCY to try; 16 lines already halve VON4's frames a
+  turn with 4 cabinets, the program skipping every other turn).
+- The cost: in step, a ring runs as fast as its slowest instance, and four
+  instances saturate an 8-core laptop (four SWRACERs racing each other at
+  about 25 fps unthrottled, four racing alone at 37; see
+  hikaru-commbd.cpp). Shared memory between the instances of one PC would
+  spare the TCP sends (15 us each on Windows, a thread of the link's own
+  sends them); the spins (HR_COMM_SPIN, HR_COMM_SEND_SPIN) are to tune on
+  a quiet PC.
+- On Windows, SO_REUSEADDR lets two instances listen on the same PORT_IN,
+  the connections then going to either (a ring of 4 took a stale
+  instance's time, 29 s ahead): SO_EXCLUSIVEADDRUSE, if it lets a quit
+  instance's port be taken again at once.
+- Odin's guesses stand (its TODO, "Network board"): the 68000 at 10 MHz,
+  IRQ5's counter, a frame held 1 ms at most, the status registers' 05.
+- Save states keep the board but not the frames on their way: a cabinet
+  loaded goes out of step and takes the ring's time again.
+- The seats are set in each game's test menu; the settings window has no
+  Network tab.
 
 
 SH-4
@@ -234,6 +334,65 @@ ambient. The ambient light (011) stays through viewport recalls (AIRTRIX's
 skater, in viewport 1 committed without one, was black under its spots).
 Left: mode 3 unknown; 091 (diffuse) falls through to 291 too, as in
 Valkyrie; no game seen uses the poly types "shadow A/B" (103 types 2, 3).
+
+From Odin's decoding (Réda Chérif-Touil), November 2026, checked against
+the board videos:
+- A light's ambient level (051 bits 16-19, PHARRIER's light editor's
+  "amb"): level / 16 of its colour on every polygon it reaches, facing it
+  or not, cut by its distance and cone. SGNASCAR's sun (directional, 4 and
+  6) brought its track up to the board's: median 154-190 before, 195-231
+  after, 207-224 on the board video's ENTRY DRIVERS. BRAVEFF's point lights
+  (its fire's orange at 15, flickers at 4): its platform scene closer (mean
+  48 before, 65 after, the board 61-78), its burning wall farther (31
+  before, 42 after, the board 32). Left: why the wall; the D bit (BRAVEFF's
+  reticles' light, not off).
+- A parallel light with a null direction lights every side (BRAVEFF's
+  stages, as Odin saw on a cabinet); the shader's direction was no number.
+  Not seen in the attracts' frames compared.
+- The depth queue without a colour (621 D, type 0): the opaque and
+  punch-through meshes fade into what is behind them, linearly in the
+  eye's depth (start near / Q, range 1 / P). PHARRIER's far mountains fade
+  into the sky. Its type is 3 bits (2, 4, 6 a density: not done).
+- The coloured fog is linear in the eye's depth too: P = 1 / (end - start),
+  Q = near / end, as the VON4 library builds them (it was linear in 1/z
+  from 1/P to 1/Q). AIRTRIX's ranking screen (P 0.0025, Q 0.0000833, near
+  0.1: white from 800 to 1200) went from grey (109/130/169 in its top,
+  middle and bottom bands) to black and olive (0 / 37,36,30 /
+  104,101,83), the board video's 0 / 19,19,10 / 82,81,61. SGNASCAR's
+  attract frames unchanged.
+- The spots' tables (194): the light rises from its cone's edge along its
+  table's 16 points (the first of a light's four, 0x400 = 1.0), as US
+  patent 6,333,742 draws it. AIRTRIX and SGNASCAR load 0.05, 0.10, 0.20 ...
+  0.50, then 0.05 a point to 1.0, in all their lights: AIRTRIX's halfpipe a
+  few percent brighter. A table never loaded (all 0) keeps the straight
+  rise. The rise's width (451's eeeemmmm, ours 32 / (32 - m) x 2^e, Odin's
+  1 + m / 16 x 2^e) differs by 13 % at most: kept.
+- The blended meshes of modes 0 and 2 weighted by their alpha before the
+  clamp: a lit colour above 1 keeps its excess (PHARRIER's logo galaxy).
+- The frames' blending (781/181) in integers, as the patent's blender: a
+  rate from 0x80 counting one more, each product's fraction dropped. Blended
+  in floats, a pixel rounded to the nearest could stay one step above the
+  new picture at FC, a trail that never died out.
+- The level of detail's sizes in 1/16 of a pixel (32 x radius x f /
+  distance; SGNASCAR's sizes are those of 300, 400 and 500 units at 60
+  degrees): 1/8 before, so the finer models now come at twice the distance.
+
+Translucency (November 2026): with OpenGL 4.3 and no MSAA, the translucent
+meshes' fragments are kept in a list a pixel, then blended over a copy of
+the picture, the farthest first, ties in the order sent (the mesh's, then
+its triangle's), in an 8-bit buffer's arithmetic, each blend rounded to the
+nearest; eight at a time, again until the list is done, none lost
+(SORT_TRANSLUCENT_PIXELS, "Translucency" in hikaru-renderer.cpp), as Odin
+does; else each mesh sorted whole by its middle. The context asks for 4.3
+first, 3.1 then (NVIDIA gave 3.1 as asked). The buffer, 4 fragments a pixel
+at first, grows when a frame fills it. Left: MSAA (the lists are a
+pixel's).
+
+Shader programs (November 2026): each game's variants listed in
+cache/shaders/<game>.txt as they are met and compiled before its first
+frame; each program's binary (OpenGL 4.1 program binaries) kept in
+cache/shaders/<variant>.bin with the driver's name. AIRTRIX's 81 programs
+ready in 0.5 s at its second start.
 
 Dot patterns (501, November 2026): the meshes after a 501 are drawn on the
 pixels of each 4 x 4 square of the screen that its pattern keeps (the 32
@@ -335,6 +494,28 @@ SCALING_FILTER = LINEAR averages the rows down to 240. DRAW_DISTANCE divides
 561's LOD distance (the CP's choice of levels of detail, 055 and 005) and
 the fog's 1/z (621) by its factor; the renderer already draws to 1e5, past
 the viewports' far plane. Left: what each game gains, to see.
+
+CRT presets and bezels, done in Hikaruloader (November 2026, from Odin's
+picture_preset, picture_filter_gl and display_bezel): CRT_PRESET runs a
+libretro .glslp's passes by 86Box's OpenGL rules (`src/hl/crt_preset.*`, the
+reader, `tests/crt_preset_test.cpp`; `src/hl/crt_filter.*`, the passes), the
+picture composed for them at its own size (scene_w x 480) instead of into
+the window; Lola Retro's twelve presets in `data/crt`. CRT_FILTER is not
+drawn with one (greyed in the settings): the preset's mask and ours would
+beat. BEZEL (`src/hl/bezel.*`, `src/hl/presentation.*`, `tests/bezel_test.cpp`):
+BLUR, the picture's edges spread over the sides at two of its mipmap levels,
+dimmed (Odin's sides shader); IMAGE, Batocera's `artwork/bezels/<set>.png`
+and `.info` (else the see-through middle), the picture laid out by
+screen_layout in the bezel's screen as in a window of that size. Left: the
+presets' tube stays 4:3 (their LR_FIT_43), a widescreen picture squeezed in
+it; CROP_BARREL's bent edges are not drawn with a preset (the composition
+goes to the preset's frame, unbent); the window's context is GL 3.1 and the
+passes are GLSL 1.50, which NVIDIA's driver takes (checked on the RTX 3050):
+Intel's and AMD's may refuse them, the preset then logged and not used
+(asking the window for a 3.3 context would settle it); the larger presets'
+cost on the Intel UHD, unmeasured; the bezel shows only beside a frame
+narrower than the window, not above or below one; a game's bezel picture
+is read when the game starts, not again if the file changes.
 
 GL errors that abort a game, now and then (October 2026, Intel UHD): AIRTRIX
 at frame 2633 on the HL_ASSERT_NO_GL_ERROR at the end of upload_layer (agent

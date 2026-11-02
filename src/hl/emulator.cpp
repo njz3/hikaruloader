@@ -27,6 +27,7 @@
 #include "hl/shell.h"
 #include "hl/agent.h"
 #include "hl/audio.h"
+#include "hl/bezel.h"
 #include "hl/cpu.h"
 #include "hl/input.h"
 #include "hl/outputs.h"
@@ -161,6 +162,8 @@ Emulator::load_game (const char *rom_path, const char *name, const char *log_pat
 		} else {
 			/* The machine's I/O board declares its outputs */
 			Outputs::get ()->stop ();
+			/* Its bezel picture (BEZEL = IMAGE), read at its first frame */
+			Bezel::set_game (game->name, game->parent);
 			mach = create_machine ();
 			cpu_core = -1;
 			memory_access = -1;
@@ -188,6 +191,7 @@ Emulator::unload_game ()
 	Outputs::get ()->stop ();
 	destroy (mach);
 	destroy (game);
+	Bezel::set_game (NULL, NULL);
 	/* The next output opens with the next game */
 	audio->close ();
 	paused = false;
@@ -277,22 +281,23 @@ Emulator::process_events ()
 		/* Tab, and everything while the settings are open */
 		if (ui::Interface::process_event (&event))
 			continue;
-		/* Escape: back to the picker the game came from, else out; not
-		 * for an agent nor a shell, which drive the machine */
-		if (event.type == SDL_KEYDOWN && !event.key.repeat &&
-		    event.key.keysym.sym == SDLK_ESCAPE && !agent && !shell) {
-			back_to_picker = from_picker;
-			if (back_to_picker)
-				HL_PRINT ("back to the picker: Escape was pressed");
-			else
-				HL_PRINT ("quitting: Escape was pressed");
-			quit = true;
-			continue;
-		}
 		/* XXX use CTRL+[1,5] for saving, SHIFT+[1,5] for loading */
 		switch (Input::handle_event (&event)) {
 		case ACTION_QUIT:
 			HL_PRINT ("quitting: the Quit input was pressed");
+			quit = true;
+			break;
+		case ACTION_BACK:
+			/* Escape, Guide + B: back to the picker the game came
+			 * from, else out; not for an agent nor a shell, which
+			 * drive the machine */
+			if (agent || shell)
+				break;
+			back_to_picker = from_picker;
+			if (back_to_picker)
+				HL_PRINT ("back to the picker: the Back input was pressed");
+			else
+				HL_PRINT ("quitting: the Back input was pressed");
 			quit = true;
 			break;
 		case ACTION_PAUSE:

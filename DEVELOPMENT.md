@@ -174,16 +174,29 @@ In the environment:
   ("GL: ..."): without it, Intel's says nothing (about 10% slower).
 - `HR_NO_AUDIO=1` opens no sound output; `HR_WAV=<path>` writes all the
   sound to a WAV file as well.
+- `HR_CLOCK=<count>`: the board's clock starts at that count (seconds since
+  1964-01-01 00:00, decimal or 0x hex) whatever the PC's time. In agent
+  mode it starts at 0x5BFC8900 (26 Nov 2012 00:00) without it, so that runs
+  repeat.
 - `MIE_HACK=1`: Valkyrie's hack instead of the MIE (below); `MIE_SPEED` and
   `MIE_IDLE_SKIP=0`, see below.
 - `FFB_GAIN`, `FFB_INVERT`: the force feedback (see README.md);
   `DRIVEBOARD_SIMULATED=1`: the drive board's program simulated even with
   the srally2 set.
+- `COMM_BOARD = PROGRAM`'s ring (hikaru-commbd.cpp): `HR_COMM_LATENCY`, the
+  fibre's latency in the board's clocks (2450, 8 lines); `HR_COMM_SLICE`,
+  the lines between two times sent (2); `HR_COMM_SPIN`, the microseconds a
+  wait looks for the next time before sleeping (300); `HR_COMM_SEND_SPIN`,
+  the same for the link's sender thread (300). Each cabinet logs
+  what went round every 10 s ("frames out, in, held, lost, late", its
+  waits).
 
 The unit tests run with `ctest -C RelWithDebInfo` in `build` (the SH-4's
-MMU and its FPU's moves, the Z80, the ARM7, the AICA's arithmetic, the sound output, the EEPROM,
-the nvram file, the write directory, the games folders, the drive board,
-the card reader, the aspect ratio's layouts, the translations).
+MMU and its FPU's moves, the Z80, the TLCS-90, the 68000, the ARM7, the AICA's arithmetic, the sound output, the EEPROM,
+the X76F100, the nvram file, the write directory, the games folders and their 7z, the
+controls' hotkeys and wheel rotation on SDL's virtual joysticks, the drive
+board, the card reader, the aspect ratio's layouts, the CRT presets' reader
+and the shipped presets, the bezels' layouts, the translations).
 `driveboardz80test` is not among them: it needs EPR-20512 (`epr-20512.bin`),
 a script and a journal of Supermodel's, and is run by hand.
 
@@ -226,6 +239,29 @@ channel n at 2n), checked in the game's JVS TEST screen.
 - `machine.devices.jvs:option ('log', 1)` logs every packet and its answer;
   `machine.devices.mie:option ('log_ports', 1)` the port accesses, the Z80's
   and the SH-4's; `machine.devices.mie:info ()` its PC and interrupts.
+- `IO_BOARD_PROGRAM` (off by default): the I/O board's own CPU runs its
+  program at the far end of the MIE's UART (`src/hl/ioboard.*`, an
+  hl::JvsLine the JvsBus keeps): the 837-13551's TMP90PH44
+  (`src/hl/tmp90ph44.*` around the TLCS-90 of `src/cpu/tlcs90`, its tests
+  `tlcs90test`) running 315-6215 (the jvs13551 set), NASCAR's 837-13741 (a
+  315-6146: a Z80, its UART, GPIO, converter, and a D71054) running
+  epr-21868 (the 18wheelr set). Each the section `io_rom` of the game in
+  `data/games.json`, optional. The line counts ticks of 1/9.216 GHz, in
+  which the MIE's Z80 (576) and the UARTs' crystal (625) are whole: each
+  byte the MIE writes starts once the one before has gone and reaches the
+  board a character later; the board runs 64 us ahead of the MIE, which
+  stops at each byte or sense change the board has for it. The simulated
+  board stays, for the inputs and outputs (`SegaIoBoard::player_bits`,
+  `drive_outputs`). The line's queues and the board are saved after the
+  bus's own state, with the option only; `jvs:info ()` tells the board's
+  PC and outputs, `jvs:option ('log', 1)` each byte.
+- `SECURITY_CHIPS` (off by default): the ROM board's X76F100 on bus page 14
+  (`src/hl/x76f100.*`, `x76f100test`) and the main board's 93C46 on the
+  master's port A, from the sections `rombd_eeprom` and `mainbd_eeprom`
+  (MAME's newer hikaru set); with both images, the BOOTROM's check of them
+  is no longer patched out. SGNASCAR's protection then answers as its Actel
+  FPGA (`hikaru-memctl.cpp`, `chip_get`). Their commands go to the log (the
+  first ones), their state into the save states with the option only.
 - VON4's card reader (`src/hl/cardreader.cpp`), on the MIE's serial line
   (ports 09-0D, which the game's program at the Z80's 9000 drives):
   `machine.devices.card_reader:option ('log', 1)` logs its frames,

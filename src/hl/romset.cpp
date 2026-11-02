@@ -59,12 +59,10 @@ RomSet::split_folders (const char *path)
 }
 
 RomSet::RomSet (const char *path, const char * const *names, unsigned num_names) :
-	roots (split_folders (path)),
-	num_zips (0)
+	roots (split_folders (path))
 {
-	unsigned i;
+	unsigned i, k;
 
-	memset (zips, 0, sizeof (zips));
 	for (i = 0; i < num_names && dirs.size () < MAX_DIRS; i++) {
 		if (!names[i] || !names[i][0])
 			continue;
@@ -72,49 +70,46 @@ RomSet::RomSet (const char *path, const char * const *names, unsigned num_names)
 			continue;
 		dirs.push_back (names[i]);
 
-		/* In each folder that has it, the first folders first */
-		for (const std::string &root : roots) {
-			std::string zip_path = root + "/" + names[i] + ".zip";
+		/* In each folder that has them, the first folders first; in a
+		 * folder, the zip before the 7z */
+		for (const std::string &root : roots)
+			for (k = 0; k < Archive::num_extensions; k++) {
+				Archive *archive;
 
-			if (num_zips == MAX_ZIPS)
-				break;
-			if (mz_zip_reader_init_file (&zips[num_zips], zip_path.c_str (), 0))
-				zip_names[num_zips++] = zip_path;
-		}
+				if (archives.size () == MAX_ARCHIVES)
+					break;
+				archive = Archive::open (root + "/" + names[i] + Archive::extensions[k]);
+				if (archive)
+					archives.push_back (archive);
+			}
 	}
 }
 
 RomSet::~RomSet ()
 {
-	unsigned i;
-	for (i = 0; i < num_zips; i++)
-		mz_zip_reader_end (&zips[i]);
+	for (Archive *archive : archives)
+		delete archive;
 }
 
 /* Finds the member holding the file: by CRC when known, else by name. */
 bool
-RomSet::find_in_zips (const char *name, uint32_t crc, unsigned size,
-                      unsigned *zip, unsigned *index)
+RomSet::find_in_archives (const char *name, uint32_t crc, unsigned size,
+                          Archive **archive, const Archive::Member **member)
 {
-	unsigned pass, i, j;
+	unsigned pass;
 
 	for (pass = crc ? 0 : 1; pass < 2; pass++)
-		for (i = 0; i < num_zips; i++) {
-			unsigned n = mz_zip_reader_get_num_files (&zips[i]);
-			for (j = 0; j < n; j++) {
-				mz_zip_archive_file_stat stat;
-				if (!mz_zip_reader_file_stat (&zips[i], j, &stat) ||
-				    stat.m_is_directory ||
-				    stat.m_uncomp_size != size)
+		for (Archive *a : archives)
+			for (const Archive::Member &m : a->members ()) {
+				if (m.size != size)
 					continue;
-				if ((pass == 0 && stat.m_crc32 == crc) ||
-				    (pass == 1 && !strcasecmp (base_name (stat.m_filename), name))) {
-					*zip = i;
-					*index = j;
+				if ((pass == 0 && m.has_crc && m.crc == crc) ||
+				    (pass == 1 && !strcasecmp (base_name (m.name.c_str ()), name))) {
+					*archive = a;
+					*member = &m;
 					return true;
 				}
 			}
-		}
 	return false;
 }
 
@@ -151,9 +146,10 @@ bool
 RomSet::has (const char *name, const char *alias, uint32_t crc, unsigned size)
 {
 	char found[1024];
-	unsigned zip, index;
+	Archive *archive;
+	const Archive::Member *member;
 
-	return find_in_zips (name, crc, size, &zip, &index) ||
+	return find_in_archives (name, crc, size, &archive, &member) ||
 	       find_in_dirs (name, alias, size, found, sizeof (found));
 }
 
@@ -161,23 +157,19 @@ Buffer *
 RomSet::load (const char *name, const char *alias, uint32_t crc, unsigned size)
 {
 	char found[1024];
-	unsigned zip, index;
+	Archive *archive;
+	const Archive::Member *member;
 
-	if (find_in_zips (name, crc, size, &zip, &index)) {
-		mz_zip_archive_file_stat stat;
+	if (find_in_archives (name, crc, size, &archive, &member)) {
 		Buffer *buffer = Buffer::create (size, 0);
 
 		if (!buffer)
 			return NULL;
-		mz_zip_reader_file_stat (&zips[zip], index, &stat);
 		HL_PRINT ("Loading %u bytes of '%s' from '%s' [%s]",
-		          size, name, zip_names[zip].c_str (), stat.m_filename);
-		if (!mz_zip_reader_extract_to_mem (&zips[zip], index, buffer->ptr (0), size, 0)) {
-			HL_ERROR ("could not extract '%s' from '%s': %s", stat.m_filename,
-			          zip_names[zip].c_str (),
-			          mz_zip_get_error_string (mz_zip_get_last_error (&zips[zip])));
+		          size, name, archive->path ().c_str (), member->name.c_str ());
+		/* The reason, in the log */
+		if (!archive->read (*member, buffer->ptr (0)))
 			destroy (buffer);
-		}
 		return buffer;
 	}
 

@@ -21,6 +21,7 @@
 #include <vector>
 
 #include "hl/window.h"
+#include "hl/bezel.h"
 #include "hl/renderer.h"
 #include "hl/config.h"
 
@@ -90,7 +91,8 @@ Window::layout (ScreenLayout *l)
 	int dw, dh;
 
 	Window::drawable_size (&dw, &dh);
-	screen_layout (l, dw, dh, native_w, native_h);
+	/* In the game's bezel picture's screen under BEZEL = IMAGE */
+	Bezel::layout (l, dw, dh, native_w, native_h);
 }
 
 void
@@ -584,7 +586,18 @@ Window::open (unsigned width, unsigned height)
 		return -1;
 	}
 
+	/* OpenGL 4.3 when the card has it, for the translucent meshes sorted
+	 * at each pixel (storage buffers and atomics); else 3.1, which drivers
+	 * give as asked (NVIDIA's 3.1 has none of it), the meshes then sorted
+	 * whole. The drawing thread's context is made with the same */
+	SDL_GL_SetAttribute (SDL_GL_CONTEXT_MAJOR_VERSION, 4);
+	SDL_GL_SetAttribute (SDL_GL_CONTEXT_MINOR_VERSION, 3);
 	shared_context = SDL_GL_CreateContext (shared_window);
+	if (!shared_context) {
+		SDL_GL_SetAttribute (SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+		SDL_GL_SetAttribute (SDL_GL_CONTEXT_MINOR_VERSION, 1);
+		shared_context = SDL_GL_CreateContext (shared_window);
+	}
 	if (!shared_context) {
 		HL_ERROR ("could not create GL context: '%s'", SDL_GetError ());
 		return -1;

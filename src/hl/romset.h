@@ -22,23 +22,22 @@
 #include <string>
 #include <vector>
 
-#include <miniz.h>
-
 #include "hl/core.h"
+#include "hl/archive.h"
 #include "hl/buffer.h"
 
 namespace hl {
 
 /* The ROM files of a game, looked for in MAME-style sets under the games
- * folders: the zips <name>.zip of the game, of its parent and of its BIOS
- * (merged, split or non-merged alike), then the folders <dir>/<name>/ of the
- * older layout. Several folders, separated by ';', are looked in in their
- * order, a set's zip in each that has it: the BIOS can be in one, the games
- * in another.
+ * folders: the archives <name>.zip and <name>.7z of the game, of its parent
+ * and of its BIOS (merged, split or non-merged alike), then the folders
+ * <dir>/<name>/ of the older layout. Several folders, separated by ';', are
+ * looked in in their order, a set's archives in each that has them: the
+ * BIOS can be in one, the games in another.
  *
  * As in sm2-emu, a file is identified by its CRC32 first and by its name
  * second: the clones of a merged set, which MAME keeps in sub-folders of the
- * parent's zip, are found that way, and a renamed file still loads. */
+ * parent's archive, are found that way, and a renamed file still loads. */
 class RomSet {
 public:
 	RomSet (const char *path, const char * const *names, unsigned num_names);
@@ -58,20 +57,18 @@ public:
 
 private:
 	static const unsigned MAX_DIRS = 4;
-	/* A set's zip in each of several folders */
-	static const unsigned MAX_ZIPS = 16;
+	/* A set's archives in each of several folders */
+	static const unsigned MAX_ARCHIVES = 16;
 
-	bool	 find_in_zips (const char *name, uint32_t crc, unsigned size,
-		               unsigned *zip, unsigned *index);
+	bool	 find_in_archives (const char *name, uint32_t crc, unsigned size,
+		                   Archive **archive, const Archive::Member **member);
 	bool	 find_in_dirs (const char *name, const char *alias, unsigned size,
 		               char *found, size_t found_size);
 
 	/* The games folders, in order */
 	std::vector<std::string> roots;
 	std::vector<std::string> dirs;
-	mz_zip_archive zips[MAX_ZIPS];
-	std::string zip_names[MAX_ZIPS];
-	unsigned num_zips;
+	std::vector<Archive *> archives;
 };
 
 } /* namespace hl */

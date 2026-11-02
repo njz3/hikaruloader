@@ -49,6 +49,13 @@ enum Aspect {
 /* RENDER_SCALE's most: 3840x2880, 4K's class */
 static const int MAX_RENDER_SCALE = 6;
 
+/* WHEEL_ROTATION's choices, Odin's: the degrees the player's wheel turns for
+ * the game's wheel from one end to the other, 0 its whole turn */
+static const int WHEEL_ROTATIONS[] = { 0, 270, 360, 540, 900, 1080 };
+/* WHEEL_RANGE's: the turns the wheels' drivers offer (Logitech's 900,
+ * Thrustmaster's and Fanatec's 1080, a direct drive's more) */
+static const int WHEEL_RANGES[] = { 180, 270, 360, 540, 720, 900, 1080, 1440, 1800, 2520 };
+
 /* The 2D layers in widescreen: 4:3 in the middle, or stretched to 16:9 */
 enum Widescreen2d {
 	WIDESCREEN_2D_CENTERED,
@@ -64,6 +71,16 @@ enum ScaleFilter {
 	FILTER_LINEAR,
 
 	NUM_FILTERS
+};
+
+/* BEZEL: what is around the picture where the window is wider than its
+ * frame (hl/bezel.h) */
+enum BezelMode {
+	BEZEL_OFF,	/* black, as before */
+	BEZEL_BLUR,	/* the picture's own edges, blurred and dimmed */
+	BEZEL_IMAGE,	/* the game's bezel picture, Batocera's format */
+
+	NUM_BEZEL_MODES
 };
 
 /* The graphics API the window and the renderers use. Only OpenGL is there
@@ -85,6 +102,16 @@ enum MemoryAccess {
 	MEMORY_FASTMEM,
 
 	NUM_MEMORY_ACCESSES
+};
+
+/* [Network] COMM_BOARD: the communication board simulated (its program's
+ * work done by Hikaruloader, two cabinets), or its 68000 running the
+ * program the game uploads (hikaru-commbd.cpp, up to 8) */
+enum CommBoard {
+	COMM_BOARD_SIMULATED,
+	COMM_BOARD_PROGRAM,
+
+	NUM_COMM_BOARDS
 };
 
 /* The settings of hikaruloader.ini, edited by the settings window */
@@ -134,6 +161,9 @@ public:
 	/* The frames drawn by a thread of their own, a frame later; taken at
 	 * the game's start */
 	bool		threaded_rendering;
+	/* The translucent polygons sorted at each pixel (OpenGL 4.3, without
+	 * MSAA), else each mesh as a whole; taken at once */
+	bool		sort_translucent_pixels;
 	/* The 3D at 16:9 (854x480), the 2D layers as widescreen_2d says;
 	 * taken at the game's start */
 	bool		widescreen;
@@ -142,6 +172,7 @@ public:
 	/* The 3D scenery's distance, 1 to 4 times the game's: its levels of
 	 * detail and its fog that much farther */
 	float		draw_distance;
+	int		bezel;		/* a BezelMode, taken at once */
 
 	/* [Enhancements]: beyond the board's own picture, all off by default,
 	 * taken at once */
@@ -151,6 +182,10 @@ public:
 	bool		fxaa;		/* the 3D's edges smoothed */
 	int		bloom;		/* 0 ... 100 %: a glow around the bright */
 	int		crt_filter;	/* 0 ... 100 %: a CRT's scanlines and mask */
+	/* A CRT's look by a libretro preset's passes (hl/crt_preset.h): its
+	 * name in data/crt ("lola-retro/sega-monitor-29") or a .glslp file;
+	 * empty: none. It takes CRT_FILTER's place */
+	char		crt_preset[512];
 
 	/* [Picker] */
 	/* Empty: "roms" beside the program; several separated by ';', looked
@@ -182,6 +217,14 @@ public:
 					 * own, else 0 Japan, 1 USA, 2 Export,
 					 * 3 Australia, 4 Korea; at the game's
 					 * start */
+	/* The low-level emulations, off by default; at the game's start. The
+	 * JVS I/O board's CPU running its own program (315-6215, epr-21868)
+	 * instead of its simulation (hl/ioboard.h) */
+	bool		io_board_program;
+	/* The security chips answering as the boards' do: the ROM board's
+	 * X76F100 and the main board's 93C46 from their images, SGNASCAR's
+	 * Actel FPGA as the chip (hikaru-memctl.cpp) */
+	bool		security_chips;
 
 	/* [Sound] */
 	int		sound_output;	/* an Audio::Output: 0 the sound card's
@@ -203,6 +246,7 @@ public:
 					 * EEPROM's own, else 0 no link, 1
 					 * master, 2 slave, 3 relay; at the
 					 * game's start */
+	int		comm_board;	/* CommBoard, at the game's start */
 	unsigned	port_in;	/* the previous cabinet comes in there */
 	char		address_out[64];/* the next cabinet, and its port */
 	unsigned	port_out;
@@ -218,6 +262,16 @@ public:
 	bool		buttons_from_one; /* a joystick's buttons shown from 1,
 					   * as Windows and vJoy number them;
 					   * controls.ini keeps SDL's, from 0 */
+	/* The degrees the player's wheel turns for the game's wheel from one
+	 * end to the other: 0 its whole turn, else that many of the
+	 * wheel_range degrees it turns end to end, as its driver is set */
+	int		wheel_rotation;
+	int		wheel_range;
+	/* How many times further than its axis the game's wheel goes: 1 for
+	 * rotation 0, range / rotation else, never below 1 (the game's wheel
+	 * always reaches its ends) */
+	static double	 wheel_scale (int rotation, int range);
+	double		 wheel_scale () const { return wheel_scale (wheel_rotation, wheel_range); }
 
 	/* The old [Controls], read but no longer written: carried over into a
 	 * new controls.ini (hl::Controls), which holds the controls now */

@@ -50,6 +50,8 @@ enum Action {
 	ACTION_SETTINGS,
 	ACTION_SHOW_FPS,
 	ACTION_QUIT,
+	/* Back to the picker, or out (Escape) */
+	ACTION_BACK,
 
 	NUM_ACTIONS
 };
@@ -79,7 +81,8 @@ public:
 
 	/* True while one of the action's inputs is held */
 	static bool		 action (Action action);
-	/* The action the SDL event presses (not a key repeat), or -1 */
+	/* The action the SDL event presses (not a key repeat), or -1; with a
+	 * controller's Guide held, its hotkey's (hl::Controls) */
 	static int		 event_action (const SDL_Event *event);
 
 	/* Feeds an SDL event to the debug keys and the devices (a controller

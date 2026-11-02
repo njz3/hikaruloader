@@ -28,6 +28,10 @@
 #include "hl/window.h"
 #include "mach/hikaru/hikaru-gpu-private.h"
 
+namespace hl {
+class Presentation;
+}
+
 namespace hikaru {
 
 
@@ -85,6 +89,13 @@ typedef union {
 
 		uint64_t has_fog		: 1;
 		uint64_t has_pattern		: 1;	/* 501's, not every pixel */
+		uint64_t has_cue		: 1;	/* 621 D: faded by depth */
+		/* A translucent mesh's fragments kept in their pixels' lists
+		 * (OpenGL 4.3), not drawn: see "Translucency" */
+		uint64_t collect		: 1;
+		/* Blended by its alpha, weighted in the shader before the
+		 * clamp (weighs_by_alpha) */
+		uint64_t has_weight		: 1;
 	};
 	uint64_t full;
 } hikaru_glsl_variant_t;
@@ -125,6 +136,7 @@ typedef struct {
 	uint16_t		depth_bias;
 	/* 501: the dot pattern it is drawn with, 0 to 31 (upload_pattern) */
 	uint8_t			pattern;
+	uint8_t			polytype;	/* HIKARU_POLYTYPE_* */
 	bool			has_two_sided_lighting;
 	uint32_t		num;
 	/* The middle of its vertices, in the model: for the back to front
@@ -141,6 +153,9 @@ class Renderer : public hl::Renderer {
 public:
 	Renderer (hl::Buffer *fb, hl::Buffer *texram[2]);
 	~Renderer ();
+	/* The game's set name, for its list of shader programs (see "The
+	 * programs' cache" in the .cpp) */
+	static void set_game (const char *name);
 
 	void invalidate_texcache (hikaru_texhead_t *th);
 	/* The MEMCTL's write to a bank of the TEXRAM, at offs; the whole
@@ -195,7 +210,11 @@ public:
 		unsigned scale, msaa, anisotropy, texture_scale;
 		bool fxaa;
 		float bloom, crt;
+		bool sort_pixels;	/* SORT_TRANSLUCENT_PIXELS */
 	} view;
+	/* CRT_PRESET and BEZEL around the composition (hl/presentation.h):
+	 * the GL objects of the context that draws (build_fb_state ()) */
+	hl::Presentation *presentation;
 
 	hikaru_viewport_t	*vp_list;
 	uint32_t		 num_vps;
@@ -211,6 +230,11 @@ public:
 	uint32_t		 num_texs;
 
 	hikaru_lightset_t	*ls_list;
+	/* Each lightset's spot tables (194): a light's 16 points, 0x400 is
+	 * 1.0, from the edge of its cone to its full light (upload_lightset) */
+	struct hikaru_light_tables_t {
+		uint16_t points[4][16];
+	}			*ls_tables;
 	uint32_t		 num_lss;
 
 	hikaru_mesh_t		*mesh_list[8][8];
@@ -248,6 +272,8 @@ public:
 				GLuint	diffuse;
 				GLuint	cone;
 				GLuint	extents;
+				GLuint	ambient;
+				GLuint	table;
 			} u_lights[4];
 			GLuint		u_ambient;
 			GLuint		u_texture;
@@ -256,8 +282,32 @@ public:
 			GLuint		u_alpha_range;
 			GLuint		u_depth;
 			GLuint		u_pattern;
+			GLuint		u_max_nodes;
+			GLuint		u_tag;
+			GLuint		u_opaque_depth;
 		} locs;
 	} meshes;
+
+	/* Translucency: the translucent meshes' fragments kept in a list a
+	 * pixel, then blended from the farthest (OpenGL 4.3, without MSAA;
+	 * else each mesh sorted whole). See "Translucency" in the .cpp */
+	struct {
+		bool checked;		/* the card asked, at the first scene */
+		bool available;		/* the card's OpenGL has it */
+		bool on;		/* for this frame's scene */
+		bool collecting;	/* the meshes drawn now go to the lists */
+		uint32_t tag;		/* the mesh's: blending mode, order << 18 */
+		unsigned w, h;
+		/* Each pixel's last fragment + 1 (0: none), the fragments
+		 * (uvec4: colour, depth, the next + 1, tag), their count */
+		GLuint heads, nodes, counter;
+		uint32_t max_nodes;
+		/* The opaque meshes' depth, copied for the shader's own test;
+		 * the picture before the lists, which they are blended over */
+		GLuint depth_tex, depth_fb, color_tex, color_fb;
+		GLuint resolve, vao;
+		unsigned frames;
+	} oit;
 
 	struct {
 		hikaru_texture_t cache[2][0x40][0x80];
@@ -284,6 +334,13 @@ public:
 		/* The post effects: FXAA's picture, the buffers' size; the
 		 * bloom's two, a quarter of the scene's */
 		hikaru_target_t post, bloom[2];
+		/* The frames' blending (781/181) in integers, as the board's
+		 * blender: a copy of the picture drawn, and its program */
+		hikaru_target_t drawn;
+		struct {
+			GLuint program;
+			GLint u_drawn, u_kept, u_rate;
+		} blend;
 		struct {
 			GLuint program;
 			GLuint u_texture, u_texel, u_down;
