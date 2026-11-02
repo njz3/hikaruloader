@@ -84,6 +84,7 @@ typedef union {
 		uint64_t has_light3_specular	: 1;
 
 		uint64_t has_fog		: 1;
+		uint64_t has_pattern		: 1;	/* 501's, not every pixel */
 	};
 	uint64_t full;
 } hikaru_glsl_variant_t;
@@ -122,6 +123,8 @@ typedef struct {
 	float			alpha_thresh[2];
 	/* 101: the depth bias, its mode and amount (upload_depth) */
 	uint16_t		depth_bias;
+	/* 501: the dot pattern it is drawn with, 0 to 31 (upload_pattern) */
+	uint8_t			pattern;
 	bool			has_two_sided_lighting;
 	uint32_t		num;
 	/* The middle of its vertices, in the model: for the back to front
@@ -252,6 +255,7 @@ public:
 			GLuint		u_fog_color;
 			GLuint		u_alpha_range;
 			GLuint		u_depth;
+			GLuint		u_pattern;
 		} locs;
 	} meshes;
 

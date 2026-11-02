@@ -361,7 +361,7 @@ public:
 	} fb_config;
 
 	uint16_t depth_bias;
-	uint16_t _501;
+	uint16_t pattern;	/* 501, the meshes' dot pattern (formerly _501) */
 	uint16_t texoffset_x, texoffset_y;
 
 	struct {
@@ -470,6 +470,12 @@ public:
 		bool has_pushed;		/* since the current matrix */
 		bool valid;			/* pushed before the current one */
 	} link;
+
+	/* The dot patterns (501) of the callers, 5 bits each, the last call's
+	 * lowest: a return takes its caller's back (see 501 in
+	 * hikaru-gpu-cp.cpp). Emptied when a list begins; not in the save
+	 * states either */
+	uint32_t patterns;
 
 	struct {
 		uint32_t log_dma	: 1;

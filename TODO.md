@@ -54,11 +54,11 @@ details and what is left.
 - The SH-4s: a dynamic recompiler to x86-64, their idle and timer loops run
   forward, the clock a setting (100 MHz by default); their MMU (interpreter).
 - The rendering: shading, lights, blending, punch-through and translucent
-  meshes sorted, fog, mipmaps, levels of detail, the 2D layers, AIRTRIX's
-  skinning; the drawing on a thread of its own; widescreen 3D, the screen's
-  shape for CRT super resolutions, a smooth scaling filter, a longer draw
-  distance; the enhancements: the 3D at 2x to 4x, MSAA, FXAA, anisotropic
-  filtering, textures enlarged by Scale2x, bloom, a CRT filter.
+  meshes sorted, the dot patterns (501), fog, mipmaps, levels of detail, the
+  2D layers, AIRTRIX's skinning; the drawing on a thread of its own;
+  widescreen 3D, a smooth scaling filter, a longer draw distance; the
+  enhancements: the 3D at 2x to 6x, MSAA, FXAA, anisotropic filtering,
+  textures enlarged by Scale2x, bloom, a CRT filter.
 - Speed: the MIE's and the ARM7s' idle loops run at once, exactly; the
   sound chips' registers and DSP program kept decoded (`SOUND_CORE`).
 - The tools: a Lua shell with breakpoints, watchpoints and hooks, an agent
@@ -234,6 +234,16 @@ ambient. The ambient light (011) stays through viewport recalls (AIRTRIX's
 skater, in viewport 1 committed without one, was black under its spots).
 Left: mode 3 unknown; 091 (diffuse) falls through to 291 too, as in
 Valkyrie; no game seen uses the poly types "shadow A/B" (103 types 2, 3).
+
+Dot patterns (501, November 2026): the meshes after a 501 are drawn on the
+pixels of each 4 x 4 square of the screen that its pattern keeps (the 32
+patterns of the Xbox 360 port, as Odin's author Réda Chérif-Touil found
+them), at the board's pixel size whatever RENDER_SCALE; a call keeps the
+caller's pattern, its return takes it back. PHARRIER's and BRAVEFF's
+shadows, solid black before, are dotted, the ground seen through; AIRTRIX's
+combo labels come and go in dots; SWRACER's far scenery comes in dotted.
+Left: not compared with a board video yet; in widescreen the squares start
+at the 3D's left edge, not the 4:3 picture's.
 
 Spotlights: a spot's direction goes from the light to the scene, a
 directional light's to the light. Its cone is its 451: the low 16 bits the

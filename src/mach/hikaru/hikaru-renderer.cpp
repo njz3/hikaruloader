@@ -3,7 +3,8 @@
  * Copyright (C) 2026, Benjamin Maurin (njz3)
  *
  * Derived from src/mach/hikaru/hikaru-renderer.c, Copyright (C) 2011-2013, Stefano Teso.
- * 
+ * The 501 dot patterns (PATTERNS) from Odin, Copyright (C) 2026, Réda Chérif-Touil.
+ *
  * Hikaruloader is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
@@ -722,6 +723,7 @@ uniform vec2		u_fog;							\n \
 uniform vec3		u_fog_color;						\n \
 uniform vec2		u_alpha_range;						\n \
 uniform vec3		u_depth;						\n \
+uniform ivec2		u_pattern;						\n \
 										\n \
 in vec4 p_position;								\n \
 in vec3 p_normal;								\n \
@@ -878,6 +880,17 @@ main (void)									\n \
 #endif										\n \
 	color = clamp (color, 0.0, 1.0);					\n \
 										\n \
+#if HAS_PATTERN									\n \
+	/* The dot pattern (501): the pixels of each 4 x 4 square of the	\n \
+	 * board's screen its bits leave out are not drawn, bit 0 at the	\n \
+	 * top left; u_pattern.y is the render scale, so that the dots keep	\n \
+	 * the board's size (the scene's 480 rows, a multiple of 4, end on a	\n \
+	 * square's top row) */							\n \
+	ivec2 dot = ivec2 (gl_FragCoord.xy) / u_pattern.y & 3;			\n \
+	if (((u_pattern.x >> ((3 - dot.y) * 4 + dot.x)) & 1) == 0)		\n \
+		discard;							\n \
+#endif										\n \
+									\n \
 #if HAS_ALPHA_TEST								\n \
 	/* Punch-through: in its range, opaque; out, not drawn */		\n \
 	if (color.a < u_alpha_range.x || color.a > u_alpha_range.y)		\n \
@@ -964,7 +977,8 @@ get_glsl_variant (Renderer *hr, hikaru_mesh_t *mesh)
 		variant.tex_mode = hr->tex_list[mesh->tex_index].mode;
 	variant.has_alpha_mode	= mat->has_alpha;
 	variant.has_alpha_test	= mesh->has_alpha_test;
-
+	/* 0 and 16 are every pixel */
+	variant.has_pattern	= (mesh->pattern & 15) != 0;
 	/* With all its lights off, a lit material still takes the ambient */
 	variant.has_lighting	= mat->shading_mode != 0 &&
 	                          !hr->debug.flags[HR_DEBUG_NO_LIGHTING];
@@ -1041,7 +1055,8 @@ upload_glsl_program (Renderer *hr, hikaru_mesh_t *mesh)
 	"#define LIGHT3_TYPE %d\n"
 	"#define LIGHT3_ATT_TYPE %d\n"
 	"#define HAS_LIGHT3_SPECULAR %d\n"
-	"#define HAS_FOG %d\n";
+	"#define HAS_FOG %d\n"
+	"#define HAS_PATTERN %d\n";
 
 	hikaru_glsl_variant_t variant;
 	char *definitions, *vs_source, *fs_source;
@@ -1086,7 +1101,8 @@ upload_glsl_program (Renderer *hr, hikaru_mesh_t *mesh)
 	                variant.light3_type,
 	                variant.light3_att_type,
 	                variant.has_light3_specular,
-	                variant.has_fog);
+	                variant.has_fog,
+	                variant.has_pattern);
 	HL_ASSERT (ret >= 0);
 
 	ret = asprintf (&vs_source, mesh_vs_source, definitions);
@@ -1158,6 +1174,8 @@ update_locations:
 		glGetUniformLocation (hr->meshes.program, "u_alpha_range");
 	hr->meshes.locs.u_depth =
 		glGetUniformLocation (hr->meshes.program, "u_depth");
+	hr->meshes.locs.u_pattern =
+		glGetUniformLocation (hr->meshes.program, "u_pattern");
 	HL_ASSERT_NO_GL_ERROR ();
 }
 
@@ -1354,6 +1372,29 @@ upload_depth (Renderer *hr, hikaru_mesh_t *mesh)
 	else
 		depth[1] = amount * 2000.0f / 16777216.0f / logf (2.0f);
 	glUniform3fv (hr->meshes.locs.u_depth, 1, depth);
+}
+
+/* The 32 dot patterns of 501 (see hikaru-gpu-cp.cpp), a bit a pixel of a
+ * 4 x 4 square, bit 0 at the top left: those of the Xbox 360 port, as Odin
+ * (Réda Chérif-Touil, GPL v3+) found them */
+static const uint16_t PATTERNS[32] = {
+	0xFFFF, 0xFBFE, 0xFAFA, 0x7ADA, 0x5A5A, 0x5258, 0x5050, 0x1040,
+	0x0000, 0x0401, 0x0505, 0x8525, 0xA5A5, 0xADA7, 0xAFAF, 0xEFBF,
+	0xFFFF, 0xFDF7, 0xF5F5, 0xE5B5, 0xA5A5, 0xA4A1, 0xA0A0, 0x8020,
+	0x0000, 0x0208, 0x0A0A, 0x1A4A, 0x5A5A, 0x5B5E, 0x5F5F, 0x7FDF,
+};
+
+/* The mesh's dot pattern (the shader's u_pattern), and the render scale,
+ * so that its dots keep the board's pixels */
+static void
+upload_pattern (Renderer *hr, hikaru_mesh_t *mesh)
+{
+	if (!hr->meshes.variant.has_pattern)
+		return;
+
+	glUniform2i (hr->meshes.locs.u_pattern, PATTERNS[mesh->pattern & 31],
+	             (GLint) MAX2 (1u, hr->framebuffer.scale));
+	HL_ASSERT_NO_GL_ERROR ();
 }
 
 static void
@@ -1726,6 +1767,7 @@ update_and_set_rendstate (Renderer *hr, hikaru_mesh_t *mesh)
 	}
 
 	mesh->depth_bias = gpu->depth_bias;
+	mesh->pattern = gpu->pattern & 0x1F;
 
 	mesh->vp_index = hr->num_vps - 1;
 	mesh->mat_index = hr->num_mats - 1;
@@ -1781,6 +1823,7 @@ draw_mesh (Renderer *hr, hikaru_mesh_t *mesh)
 	HL_ASSERT_NO_GL_ERROR ();
 
 	upload_depth (hr, mesh);
+	upload_pattern (hr, mesh);
 
 	hr->debug.draws += mesh->num_instances;
 	hr->debug.tris += (uint64_t) mesh->num_tris * mesh->num_instances;

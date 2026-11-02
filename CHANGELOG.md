@@ -8,6 +8,12 @@ and released: [DEVELOPMENT.md](DEVELOPMENT.md), "Versions and releases".
 0.3.1 (not released yet)
 ------------------------
 
+- Fixed: what the games draw through a pattern of dots was drawn whole:
+  Planet Harriers' and Brave Firefighters' shadows (solid black, now
+  dotted, the ground seen through), Air Trix's combo labels coming and
+  going in dots, Star Wars Racer Arcade's far scenery coming in. The dots
+  keep the board's size at every internal resolution. The patterns were
+  found by Odin's author, Réda Chérif-Touil.
 - Fixed: Planet Harriers' asteroids were twice as bright as on the board,
   flat, with grey shade: the materials' ambient colour now tints and dims
   their shade, olive as on the board. The other games are a few percent

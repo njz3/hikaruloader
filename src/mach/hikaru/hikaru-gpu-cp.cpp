@@ -123,6 +123,7 @@ on_cp_begin (Gpu *gpu)
 	SP(1) = REG15 (0x78);
 	gpu->skin.sp = 0;
 	gpu->link.valid = gpu->link.has_pushed = false;
+	gpu->patterns = 0;
 }
 
 static void
@@ -719,6 +720,8 @@ I (0x052)
 	check_self_loop (gpu, addr);
 	if (jump) {
 		push_pc (gpu);
+		/* The caller's dot pattern, for the return (see 501) */
+		gpu->patterns = ((gpu->patterns << 5) | (gpu->pattern & 0x1F)) & 0x3FFFFFFF;
 		if (begin_skinning (gpu, addr))
 			gpu->skin.sp = SP(0);
 		PC = addr;
@@ -769,6 +772,8 @@ I (0x082)
 
 	if (jump) {
 		pop_pc (gpu);
+		gpu->pattern = gpu->patterns & 0x1F;
+		gpu->patterns >>= 5;
 		/* Out of the skinned routine */
 		if (gpu->skin.sp && SP(0) > gpu->skin.sp)
 			gpu->skin.sp = 0;
@@ -2419,17 +2424,27 @@ D (0x043)
  * U, N = Unknown (N != 1)
  *
  *
- * 501	Mesh: Set Unknown                                                             
- *                                                                             
+ * 501	Mesh: Set Pattern
+ *
  *	-------- ---PPPPP -------o oooooooo
- *                                                                             
- * P = Unknown parameter.
- *                                                                             
- * Used by the BOOTROM.                                                        
- *                                                                             
- * See AT:@0C0C841C, the table that holds the constant parameters to the 501   
- * command, set by the routine AT:@0C049BA6 in variable AT:@0C61404C, which    
- * is wrapped into the 501 command in AT:@0C049D08.                            
+ *
+ * P = Dot pattern: the meshes that follow are drawn on some pixels of each
+ *     4 x 4 square of the screen only, whatever their type. 0 is every
+ *     pixel, 8 none: 1 to 7 leave out more and more, 8 + n draws what n
+ *     leaves out; bit 4 mirrors the pattern left to right (the 32
+ *     patterns: PATTERNS in hikaru-renderer.cpp). The objects that fade
+ *     in or out show what lies behind them through the dots.
+ *
+ * AIRTRIX keeps the codes of nine levels (AT:@0C0C841C, set by
+ * AT:@0C049BA6 in AT:@0C61404C) and wraps a model between a 501 and a 501 0
+ * (AT:@0C049D08): its combo labels come and go in dots. PHARRIER draws the
+ * player's shadow with C and 4 in turn, BRAVEFF its smoke; SWRACER sends
+ * -7 to -1 on 16 bits for the far scenery it brings in (the low 5 bits
+ * taken). A pattern holds across the material definitions, and a return
+ * (082) takes back the caller's (the call, 052, keeps it): a model of
+ * BRAVEFF's burning hall sets C in its own list and never clears it, while
+ * the firemen that follow are drawn whole. Decoded by Odin (Réda
+ * Chérif-Touil, GPL v3+), from the patterns of the Xbox 360 port.
  *
  *
  * 901	Mesh: Set Precision (Static)
@@ -2450,7 +2465,7 @@ I (0x101)
 	case 3:
 		break;
 	case 5:
-		gpu->_501 = inst[0] >> 16;
+		gpu->pattern = (inst[0] >> 16) & 0x1F;
 		break;
 	case 9:
 		log = (inst[0] >> 16) & 0xFF;
@@ -2483,7 +2498,7 @@ D (0x101)
 	case 5:	
 		UNHANDLED |= !!(inst[0] & 0xFFE0F000);
 
-		DISASM ("mesh: set unknown [%u]", (inst[0] >> 16) & 0x1F);
+		DISASM ("mesh: set pattern [%X]", (inst[0] >> 16) & 0x1F);
 		break;
 	case 9:
 		log = (inst[0] >> 16) & 0xFF;

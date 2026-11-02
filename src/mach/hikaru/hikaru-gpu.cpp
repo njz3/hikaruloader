@@ -1270,6 +1270,7 @@ Gpu::reset (hl::ResetType type)
 	gpu->cp.is_running = 0;
 	gpu->skin.sp = 0;
 	gpu->link.valid = gpu->link.has_pushed = false;
+	gpu->patterns = 0;
 }
 
 const char *
@@ -1318,7 +1319,7 @@ Gpu::save_state (hl::State *state)
 	SAVE (gpu->cp);
 	SAVE (gpu->fb_config);
 	SAVE (gpu->depth_bias);
-	SAVE (gpu->_501);
+	SAVE (gpu->pattern);
 	SAVE (gpu->texoffset_x);
 	SAVE (gpu->texoffset_y);
 	SAVE (gpu->state);
@@ -1337,12 +1338,13 @@ Gpu::load_state (hl::State *state)
 	LOAD (gpu->cp);
 	LOAD (gpu->fb_config);
 	LOAD (gpu->depth_bias);
-	LOAD (gpu->_501);
+	LOAD (gpu->pattern);
 	LOAD (gpu->texoffset_x);
 	LOAD (gpu->texoffset_y);
 	LOAD (gpu->state);
 	gpu->skin.sp = 0;
 	gpu->link.valid = gpu->link.has_pushed = false;
+	gpu->patterns = 0;
 
 	return ret;
 }
