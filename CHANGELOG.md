@@ -5,6 +5,24 @@ What each version brings, for those who play. How the versions are numbered
 and released: [DEVELOPMENT.md](DEVELOPMENT.md), "Versions and releases".
 
 
+0.3.1 (not released yet)
+------------------------
+
+- Fixed: Planet Harriers' asteroids were twice as bright as on the board,
+  flat, with grey shade: the materials' ambient colour now tints and dims
+  their shade, olive as on the board. The other games are a few percent
+  darker where their materials have such a colour.
+- Fixed: with the log on a network drive, Planet Harriers fell to 6-15
+  frames a second in its attract's demos and in a game. Some games repeat
+  a message at each frame (Planet Harriers some 80 a frame, Star Wars Racer
+  Arcade up to 1300, Virtual-On 4 and Brave Firefighters a few): each is
+  now written 8 times at most, and the log goes to the disk once a second
+  at most.
+- The Display tab's "Screen shape" is gone: on a CRT driven at a super
+  resolution (1920x240), its real shape as the aspect ratio (4:3 or 16:9,
+  black bars) in a stretched display mode does the same.
+
+
 0.3.0 (2026-11-01)
 ------------------
 

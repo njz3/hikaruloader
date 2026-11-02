@@ -253,6 +253,8 @@ void drawDisplayTab()
         cfg->display_stretch = mode % 2;
         changed = true;
     }
+    wrappedNote(tr("On a CRT driven at a super resolution (1920x240): its real shape as the aspect ratio (4:3 or 16:9, black bars) "
+                   "and a stretched mode. The frame then covers the screen, whatever the shape of its pixels."));
 
     ImGui::BeginDisabled(cfg->display_mode != hl::DISPLAY_WINDOW);
     if (ImGui::BeginCombo(tr("Window size"), windowSizeLabel(cfg->window_scale)))
@@ -271,15 +273,8 @@ void drawDisplayTab()
     // INTEGER_SCALE, as Flycast's "Integer Scaling"
     ImGui::Checkbox(tr("Whole multiples only (integer scaling)"), &cfg->integer_scale);
     wrappedNote(tr("The picture at 1x, 2x, 3x... its size only, for even pixels, with larger black bars. Not with a stretched or cropped "
-                   "picture, nor a screen shape of its own."));
+                   "picture, nor a stretched display mode."));
 
-    // The screen's own shape, for a CRT's super resolutions (hl/aspect.cpp)
-    const char *shapeLabels[] = {tr("Its resolution's (square pixels)"), "4:3", "16:9"};
-    ImGui::Combo(tr("Screen shape"), &cfg->screen_shape, shapeLabels, IM_ARRAYSIZE(shapeLabels));
-    ImGui::PushTextWrapPos(0.0f);
-    ImGui::TextDisabled("%s", tr("The picture is placed by the screen's shape: that of its resolution, or 4:3 or 16:9 whatever its "
-                                 "resolution, for a CRT's super resolutions (1920x240): the black bars right, and stretched from 4:3 to 16:9 no more."));
-    ImGui::PopTextWrapPos();
     // SCALING_FILTER, as linuxloader lists it: read at each frame
     const char *filterLabels[] = {tr("Smooth"), tr("Sharp pixels")};
     int filter = cfg->scale_filter == hl::FILTER_LINEAR ? 0 : 1;

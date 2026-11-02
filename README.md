@@ -181,11 +181,11 @@ becomes *Original* with whole multiples, `STRETCH` *Original* in a
 stretched display mode, `SCALE_FILTER` is read as `SCALING_FILTER`, and
 `RENDER_SCALE` from `[Enhancements]`.
 
-- *Screen shape*: the aspect ratio places the picture by the screen's shape,
-  by default that of its resolution (square pixels). On a CRT driven at a
-  super resolution (1920x240, say), choose its real shape, 4:3 or 16:9: the
-  black bars then fall right, and a 4:3 picture is no longer stretched on a
-  16:9 screen.
+- *A CRT driven at a super resolution* (1920x240, say): choose its real
+  shape as the aspect ratio, *4:3* or *16:9, black bars*, and a stretched
+  display mode. The frame then covers the screen whatever the shape of its
+  pixels: the black bars fall right, and a 4:3 picture is not stretched on
+  a 16:9 screen.
 - *Scaling filter* (`SCALING_FILTER`): Sharp pixels, or Smooth. Down to 240
   rows on a CRT, Smooth makes each row the mean of two, where Sharp pixels
   drops one in two (thin lines, small texts).

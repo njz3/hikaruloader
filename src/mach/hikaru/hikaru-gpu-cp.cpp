@@ -1356,9 +1356,10 @@ I (0x161)
 	switch ((inst[0] >> 8) & 0xF) {
 
 	case 0x1:
-		/* Ignore conditional version. */
+		/* Ignore conditional version. PHARRIER's and SWRACER's attracts
+		 * send 30 to 1300 a frame */
 		if (inst[0] & 0x0008F000) {
-			HL_ERROR ("@%08X: conditional modelview", PC);
+			HL_ERROR_FEW ("@%08X: conditional modelview", PC);
 			return;
 		}
 
@@ -1648,9 +1649,11 @@ D (0x091)
  * S = Shading mode
  *
  *	0 = Unlit.
- *	1 = Lit: the lights, plus the scene's ambient light times 691.
+ *	1 = Lit: the lights, plus the scene's ambient light times 291 and
+ *	    691 (PHARRIER's asteroids, 291 olive: their shade olive and dark
+ *	    on the board).
  *	2 = Lit: the lights, plus 691 alone (used for FX and some
- *	    geometry in PHARRIER).
+ *	    geometry in PHARRIER: its flames orange, magenta with 291).
  *
  *	Lighting multiplies the base colour (see 2C1's mode) and adds the
  *	specular. With all its lights off, a lit material still takes its

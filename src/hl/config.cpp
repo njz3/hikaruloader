@@ -44,10 +44,6 @@ static const char *aspect_names[NUM_ASPECTS] = {
 	"ORIGINAL", "4:3", "16:9", "4:3_STRETCH", "16:9_STRETCH", "4:3_CROP", "16:9_CROP"
 };
 
-static const char *screen_shape_names[NUM_SCREEN_SHAPES] = {
-	"AUTO", "4:3", "16:9"
-};
-
 static const char *widescreen_2d_names[NUM_WIDESCREEN_2D] = {
 	"CENTERED", "STRETCHED"
 };
@@ -121,7 +117,6 @@ Config::set_defaults ()
 	cfg->threaded_rendering = true;
 	cfg->widescreen = false;
 	cfg->widescreen_2d = WIDESCREEN_2D_CENTERED;
-	cfg->screen_shape = SCREEN_AUTO;
 	cfg->scale_filter = FILTER_NEAREST;
 	cfg->draw_distance = 1.0f;
 	cfg->render_scale = 1;
@@ -317,8 +312,6 @@ Config::set_value (const char *section, const char *key, const char *value)
 			cfg->widescreen = parse_bool (value);
 		else if (!strcasecmp (key, "WIDESCREEN_2D"))
 			cfg->widescreen_2d = parse_name (value, widescreen_2d_names, NUM_WIDESCREEN_2D, cfg->widescreen_2d);
-		else if (!strcasecmp (key, "SCREEN_SHAPE"))
-			cfg->screen_shape = parse_name (value, screen_shape_names, NUM_SCREEN_SHAPES, cfg->screen_shape);
 		/* Linuxloader's name; SCALE_FILTER before November 2026 */
 		else if (!strcasecmp (key, "SCALING_FILTER") || !strcasecmp (key, "SCALE_FILTER"))
 			cfg->scale_filter = parse_name (value, filter_names, NUM_FILTERS, cfg->scale_filter);
@@ -508,7 +501,9 @@ Config::save () const
 	         "\n# WINDOW; FULLSCREEN, the whole screen at the desktop's resolution;\n"
 	         "# BORDERLESS, a window without borders covering the screen: the frame\n"
 	         "# at its shape in the middle. Each also _STRETCH (WINDOW_STRETCH...): the\n"
-	         "# frame fills the window or the screen. Default: %s\n", display_names[def.display_mode]);
+	         "# frame fills the window or the screen. On a CRT at a super resolution\n"
+	         "# (1920x240), the screen's real shape as ASPECT_RATIO (4:3 or 16:9) and a\n"
+	         "# _STRETCH mode. Default: %s\n", display_names[def.display_mode]);
 	fprintf (fp, "DISPLAY_MODE = %s%s\n", display_names[cfg->display_mode],
 	         cfg->display_stretch ? "_STRETCH" : "");
 	fprintf (fp,
@@ -518,7 +513,7 @@ Config::save () const
 	fprintf (fp,
 	         "\n# The picture at whole multiples of its size only (1x, 2x, 3x...), for\n"
 	         "# even pixels, the frame's bars larger: true or false. Not with a\n"
-	         "# stretched or cropped picture, nor SCREEN_SHAPE. Default: %s\n",
+	         "# stretched or cropped picture, nor a stretched DISPLAY_MODE. Default: %s\n",
 	         bool_name (def.integer_scale));
 	fprintf (fp, "INTEGER_SCALE = %s\n", bool_name (cfg->integer_scale));
 	fprintf (fp,
@@ -563,11 +558,6 @@ Config::save () const
 	         "# middle; STRETCHED, to the whole width. Default: %s\n",
 	         widescreen_2d_names[def.widescreen_2d]);
 	fprintf (fp, "WIDESCREEN_2D = %s\n", widescreen_2d_names[cfg->widescreen_2d]);
-	fprintf (fp,
-	         "\n# The screen's own shape, for ASPECT_RATIO: AUTO, that of its resolution\n"
-	         "# (square pixels); 4:3 or 16:9 whatever its resolution, for a CRT's super\n"
-	         "# resolutions (1920x240). Default: %s\n", screen_shape_names[def.screen_shape]);
-	fprintf (fp, "SCREEN_SHAPE = %s\n", screen_shape_names[cfg->screen_shape]);
 	fprintf (fp,
 	         "\n# The picture scaled to the window: NEAREST, sharp pixels (even at whole\n"
 	         "# multiples only); LINEAR, smooth (down to 240 rows, each the mean of two\n"

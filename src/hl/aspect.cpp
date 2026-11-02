@@ -89,17 +89,8 @@ screen_layout (ScreenLayout *l, int tw, int th, int pw, int ph)
 	float picture = (float) MAX2 (pw, 1) / MAX2 (ph, 1);
 	float shape = fit == FIT_ORIGINAL ? picture : kinds[aspect].shape;
 	float W = (float) MAX2 (tw, 1), H = (float) MAX2 (th, 1);
-	float sx = 1.0f, fw, fh, fx, fy, iw = 1.0f, ih = 1.0f, ix, iy, place;
+	float fw, fh, fx, fy, iw = 1.0f, ih = 1.0f, ix, iy, place;
 	float image[4];
-
-	/* The screen's shape: its pixels' (square), or 4:3 or 16:9 whatever
-	 * its resolution (a CRT's 1920x240): the layout made on a screen of
-	 * that shape, sx of its pixels a unit across */
-	if (cfg->screen_shape == SCREEN_4_3)
-		sx = W / (H * 4.0f / 3.0f);
-	else if (cfg->screen_shape == SCREEN_16_9)
-		sx = W / (H * 16.0f / 9.0f);
-	W /= sx;
 
 	/* The frame: the whole screen when stretched, else the largest of its
 	 * shape in the middle */
@@ -136,8 +127,8 @@ screen_layout (ScreenLayout *l, int tw, int th, int pw, int ph)
 
 	/* INTEGER_SCALE: whole multiples of the picture, of square pixels,
 	 * where it is whole and undeformed; smaller than 1x, as it was */
-	if (cfg->integer_scale && cfg->screen_shape == SCREEN_AUTO &&
-	    (fit == FIT_ORIGINAL || fit == FIT_LETTERBOX) && !cfg->display_stretch) {
+	if (cfg->integer_scale && (fit == FIT_ORIGINAL || fit == FIT_LETTERBOX) &&
+	    !cfg->display_stretch) {
 		int k = (int) floorf (MIN2 (image[2] / MAX2 (pw, 1), image[3] / MAX2 (ph, 1)) + 0.001f);
 		if (k >= 1) {
 			image[0] += (image[2] - (float) pw * k) / 2.0f;
@@ -167,8 +158,8 @@ screen_layout (ScreenLayout *l, int tw, int th, int pw, int ph)
 		}
 	}
 
-	to_pixels (l->frame, fx * sx, fy, fw * sx, fh, tw, th);
-	to_pixels (l->image, image[0] * sx, image[1], image[2] * sx, image[3], tw, th);
+	to_pixels (l->frame, fx, fy, fw, fh, tw, th);
+	to_pixels (l->image, image[0], image[1], image[2], image[3], tw, th);
 }
 
 } /* namespace hl */

@@ -736,6 +736,7 @@ void										\n \
 apply_light (inout vec3 diffuse,						\n \
              inout vec3 specular,						\n \
              in light_t light,							\n \
+             in vec3 normal,							\n \
              in int type,							\n \
              in int att_type,							\n \
              in int has_specular)						\n \
@@ -761,13 +762,7 @@ apply_light (inout vec3 diffuse,						\n \
 	attenuation = light.extents.x * (light.extents.y + distance);		\n \
 	attenuation = clamp (attenuation, 0.0, 1.0);				\n \
 										\n \
-	vec3 normal = normalize (p_normal);					\n \
-										\n \
-#if HAS_TWO_SIDED_LIGHTING							\n \
-	intensity = abs (dot (normal, light_direction));			\n \
-#else										\n \
 	intensity = max (dot (normal, light_direction), 0.0);			\n \
-#endif										\n \
 	/* A spot's direction goes from the light to the scene (AIRTRIX's	\n \
 	 * skater: lights above it pointing down), unlike a directional	\n \
 	 * light's, which points to the light. Its light rises from the	\n \
@@ -802,6 +797,21 @@ main (void)									\n \
 	float inv_z = 1.0 / max (abs (p_position.z), 1e-6);			\n \
 	float slope = max (abs (dFdx (inv_z)), abs (dFdy (inv_z)));		\n \
 										\n \
+	/* The normal lit. Two-sided lighting lights a face seen from behind	\n \
+	 * on its back: its normal turned to the eye when the triangle's own	\n \
+	 * (from the position's slopes, here too before any discard) faces	\n \
+	 * away. The side away from the light stays dark: abs () lit both	\n \
+	 * sides, and PHARRIER's asteroids (culled, two-sided) showed no	\n \
+	 * shade, half as bright again as the reference's */			\n \
+	vec3 normal = normalize (p_normal);					\n \
+#if HAS_TWO_SIDED_LIGHTING							\n \
+	vec3 face = cross (dFdx (p_position.xyz), dFdy (p_position.xyz));	\n \
+	if (dot (face, p_position.xyz) > 0.0)					\n \
+		face = -face;							\n \
+	if (dot (normal, face) < 0.0)						\n \
+		normal = -normal;						\n \
+#endif										\n \
+										\n \
 	/* The base colour: the texture's, by 2C1's mode, with the diffuse	\n \
 	 * (091) and the ambient (291) */					\n \
 #if HAS_TEXTURE									\n \
@@ -834,24 +844,28 @@ main (void)									\n \
 #if HAS_LIGHTING								\n \
 	vec3 diffuse  = vec3 (0.0);						\n \
 	vec3 specular = vec3 (0.0);						\n \
-	/* The material's ambient (691), lit by the scene's in mode 1 */	\n \
+	/* The ambient: in mode 1 the scene's (011) times the material's	\n \
+	 * ambient colour (291) and reflectance (691); in mode 2 the 691	\n \
+	 * alone (PHARRIER's flames, orange: magenta with the 291). Without	\n \
+	 * the 291, PHARRIER's asteroids (291 olive, 691 FF) were twice as	\n \
+	 * bright as the board's and their shade grey, the board's olive */	\n \
 #if HAS_FIXED_AMBIENT								\n \
 	vec3 ambient  = p_unknown;						\n \
 #else										\n \
-	vec3 ambient  = u_ambient * p_unknown;					\n \
+	vec3 ambient  = u_ambient * p_ambient * p_unknown;			\n \
 #endif										\n \
 										\n \
 #if HAS_LIGHT0									\n \
-	apply_light (diffuse, specular, u_lights[0], LIGHT0_TYPE, LIGHT0_ATT_TYPE, HAS_LIGHT0_SPECULAR);		\n \
+	apply_light (diffuse, specular, u_lights[0], normal, LIGHT0_TYPE, LIGHT0_ATT_TYPE, HAS_LIGHT0_SPECULAR);		\n \
 #endif										\n \
 #if HAS_LIGHT1									\n \
-	apply_light (diffuse, specular, u_lights[1], LIGHT1_TYPE, LIGHT1_ATT_TYPE, HAS_LIGHT1_SPECULAR);		\n \
+	apply_light (diffuse, specular, u_lights[1], normal, LIGHT1_TYPE, LIGHT1_ATT_TYPE, HAS_LIGHT1_SPECULAR);		\n \
 #endif										\n \
 #if HAS_LIGHT2									\n \
-	apply_light (diffuse, specular, u_lights[2], LIGHT2_TYPE, LIGHT2_ATT_TYPE, HAS_LIGHT2_SPECULAR);		\n \
+	apply_light (diffuse, specular, u_lights[2], normal, LIGHT2_TYPE, LIGHT2_ATT_TYPE, HAS_LIGHT2_SPECULAR);		\n \
 #endif										\n \
 #if HAS_LIGHT3									\n \
-	apply_light (diffuse, specular, u_lights[3], LIGHT3_TYPE, LIGHT3_ATT_TYPE, HAS_LIGHT3_SPECULAR);		\n \
+	apply_light (diffuse, specular, u_lights[3], normal, LIGHT3_TYPE, LIGHT3_ATT_TYPE, HAS_LIGHT3_SPECULAR);		\n \
 #endif										\n \
 										\n \
 	/* The specular colour has 6 bits (491: 3F at most) */			\n \
@@ -908,7 +922,7 @@ get_light_type (hikaru_light_t *lit)
 	/* Violated by BRAVEFF, in the intro sequence; it recalls a lightset
 	 * at the wrong base, and poof. */
 	if (!lit->has_direction && !lit->has_position)
-		HL_ERROR ("recalling light with no direction nor position!");
+		HL_ERROR_FEW ("recalling light with no direction nor position!");
 	if (get_light_attenuation_type (lit) == HIKARU_LIGHT_ATT_INF)
 		return HIKARU_LIGHT_TYPE_DIRECTIONAL;
 	/* A spot has its cone (451); without, a light at a point */
@@ -1180,28 +1194,25 @@ upload_viewport (Renderer *hr, hikaru_mesh_t *mesh)
 
 	HL_ASSERT (mesh->vp_index != ~0);
 
+	/* Negative planes and offsets outside the screen are the games' own
+	 * (VON4's, BRAVEFF's, at each frame), drawn as they say: logged with
+	 * HR_LOG only */
 	if (!isnonnegative (vp->clip.l) || !isnonnegative (vp->clip.r) ||
 	    !isnonnegative (vp->clip.b) || !isnonnegative (vp->clip.t) ||
-	    !isnonnegative (vp->clip.f) || !isnonnegative (vp->clip.n)) {
-		HL_ERROR ("non-positive viewport clipping planes: %s",
-		          get_viewport_str (vp));
-		/* continue anyway */
-	}
+	    !isnonnegative (vp->clip.f) || !isnonnegative (vp->clip.n))
+		LOG ("non-positive viewport clipping planes: %s", get_viewport_str (vp));
 
 	if ((vp->clip.l >= vp->clip.r) ||
 	    (vp->clip.b >= vp->clip.t) ||
 	    (vp->clip.n >= vp->clip.f)) {
-		HL_ERROR ("inverted viewport clipping planes: %s",
-		          get_viewport_str (vp));
+		HL_ERROR_FEW ("inverted viewport clipping planes: %s",
+		              get_viewport_str (vp));
 		/* continue anyway */
 	}
 
 	if (!isnonnegative (vp->offset.x) || (vp->offset.x >= 640.0f) ||
-	    !isnonnegative (vp->offset.y) || (vp->offset.y >= 480.0f)) {
-		HL_ERROR ("invalid viewport offset: %s",
-		          get_viewport_str (vp));
-		/* continue anyway */
-	}
+	    !isnonnegative (vp->offset.y) || (vp->offset.y >= 480.0f))
+		LOG ("viewport offset outside the screen: %s", get_viewport_str (vp));
 
 	LOG ("vp  = %s : [w=%f h=%f dcx=%f dcy=%f]",
 	     get_viewport_str (vp), w, h, dcx, dcy);
@@ -1521,9 +1532,11 @@ add_triangle (Renderer *hr)
 
 		HL_ASSERT ((index + 2) < MAX_VERTICES_PER_MESH);
 
+		/* Culled and lit on two sides: PHARRIER's asteroids, some 50 a
+		 * frame; the shader lights the side seen (mesh_fs_source) */
 		if (hr->push.tmp[2].info.twosided &&
 		    !hr->push.tmp[2].info.nocull)
-			HL_ERROR ("got a vertex with culling and two-sided lighting!");
+			LOG ("a vertex with culling and two-sided lighting");
 
 		if (hr->push.tmp[2].info.twosided)
 			hr->meshes.current->has_two_sided_lighting = 1;

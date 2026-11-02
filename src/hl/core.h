@@ -350,6 +350,20 @@ public:
 		hl::Log::write (stderr, "ERROR: " fmt_ "\n", ##__VA_ARGS__); \
 	} while (0)
 
+/** The same, its first 8 times only, the 8th saying so: for what a game may
+ * do at each frame (a line each, the log on a network drive, took a game
+ * down to 10 frames a second) */
+#define HL_ERROR_FEW(fmt_, ...) \
+	do { \
+		static unsigned count_ = 0; \
+		if (count_ < 7) \
+			HL_ERROR (fmt_, ##__VA_ARGS__); \
+		else if (count_ == 7) \
+			HL_ERROR (fmt_ " (and the next ones, not shown)", ##__VA_ARGS__); \
+		if (count_ < 8) \
+			count_++; \
+	} while (0)
+
 /** Prints a formatted message, prefixed by 'FATAL', to stderr, and aborts; see
  * hl::Log::fatal */
 #define HL_ABORT(fmt_, ...) \

@@ -291,6 +291,10 @@ msgid "Display mode"
 msgstr "Mode d'affichage"
 
 #: src/ui/ui_common.cpp
+msgid "On a CRT driven at a super resolution (1920x240): its real shape as the aspect ratio (4:3 or 16:9, black bars) and a stretched mode. The frame then covers the screen, whatever the shape of its pixels."
+msgstr "Sur un CRT piloté en super-résolution (1920x240) : sa vraie forme comme rapport d'aspect (4:3 ou 16:9, bandes noires) et un mode étiré. Le cadre couvre alors l'écran, quelle que soit la forme de ses pixels."
+
+#: src/ui/ui_common.cpp
 msgid "Window size"
 msgstr "Taille de la fenêtre"
 
@@ -303,20 +307,8 @@ msgid "Whole multiples only (integer scaling)"
 msgstr "Multiples entiers seulement (mise à l'échelle entière)"
 
 #: src/ui/ui_common.cpp
-msgid "The picture at 1x, 2x, 3x... its size only, for even pixels, with larger black bars. Not with a stretched or cropped picture, nor a screen shape of its own."
-msgstr "L'image à 1x, 2x, 3x... sa taille seulement, pour des pixels réguliers, avec des bandes noires plus larges. Pas avec une image étirée ou recadrée, ni une forme d'écran choisie."
-
-#: src/ui/ui_common.cpp
-msgid "Its resolution's (square pixels)"
-msgstr "Celle de sa résolution (pixels carrés)"
-
-#: src/ui/ui_common.cpp
-msgid "Screen shape"
-msgstr "Forme de l'écran"
-
-#: src/ui/ui_common.cpp
-msgid "The picture is placed by the screen's shape: that of its resolution, or 4:3 or 16:9 whatever its resolution, for a CRT's super resolutions (1920x240): the black bars right, and stretched from 4:3 to 16:9 no more."
-msgstr "L'image est placée d'après la forme de l'écran : celle de sa résolution, ou 4:3 ou 16:9 quelle que soit sa résolution, pour les super-résolutions d'un CRT (1920x240) : les bandes noires justes, et plus d'étirement du 4:3 vers le 16:9."
+msgid "The picture at 1x, 2x, 3x... its size only, for even pixels, with larger black bars. Not with a stretched or cropped picture, nor a stretched display mode."
+msgstr "L'image à 1x, 2x, 3x... sa taille seulement, pour des pixels réguliers, avec des bandes noires plus larges. Pas avec une image étirée ou recadrée, ni un mode d'affichage étiré."
 
 #: src/ui/ui_common.cpp
 msgid "Smooth"
@@ -1225,3 +1217,15 @@ msgstr "Chargement de %s..."
 
 #~ msgid "Off, the MIE's Z80 runs the game's program and drives the JVS bus, where the I/O board has the controls. On, Valkyrie's hack fakes its answers, with the Test and Service switches alone. The MIE_HACK environment variable, when set, wins over this setting."
 #~ msgstr "Désactivé, le Z80 du MIE exécute le programme du jeu et pilote le bus JVS, où la carte d'entrées-sorties porte les commandes. Activé, le hack de Valkyrie simule ses réponses, avec seulement les boutons Test et Service. La variable d'environnement MIE_HACK, si elle est définie, l'emporte sur ce réglage."
+
+#~ msgid "The picture at 1x, 2x, 3x... its size only, for even pixels, with larger black bars. Not with a stretched or cropped picture, nor a screen shape of its own."
+#~ msgstr "L'image à 1x, 2x, 3x... sa taille seulement, pour des pixels réguliers, avec des bandes noires plus larges. Pas avec une image étirée ou recadrée, ni une forme d'écran choisie."
+
+#~ msgid "Its resolution's (square pixels)"
+#~ msgstr "Celle de sa résolution (pixels carrés)"
+
+#~ msgid "Screen shape"
+#~ msgstr "Forme de l'écran"
+
+#~ msgid "The picture is placed by the screen's shape: that of its resolution, or 4:3 or 16:9 whatever its resolution, for a CRT's super resolutions (1920x240): the black bars right, and stretched from 4:3 to 16:9 no more."
+#~ msgstr "L'image est placée d'après la forme de l'écran : celle de sa résolution, ou 4:3 ou 16:9 quelle que soit sa résolution, pour les super-résolutions d'un CRT (1920x240) : les bandes noires justes, et plus d'étirement du 4:3 vers le 16:9."

@@ -20,6 +20,9 @@
 #include "hl/types.h"
 #include "hl/core.h"
 
+#include <atomic>
+#include <chrono>
+
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -45,8 +48,19 @@ hl::Log::write (FILE *stream, const char *fmt, ...)
 		va_start (va, fmt);
 		vfprintf (log_file, fmt, va);
 		va_end (va);
-		if (stream == stderr)
-			fflush (log_file);
+		/* The errors on the disk for a crash's log, but at most once a
+		 * second: a game writing errors at each frame, the log on a
+		 * network drive, went down to 10 frames a second. A crash's
+		 * handlers (below) and the end write the rest */
+		if (stream == stderr) {
+			static std::atomic<int64_t> last_flush (0);
+			int64_t now = std::chrono::duration_cast<std::chrono::milliseconds> (
+				std::chrono::steady_clock::now ().time_since_epoch ()).count ();
+			if (now - last_flush.load () >= 1000) {
+				last_flush.store (now);
+				fflush (log_file);
+			}
+		}
 	}
 }
 

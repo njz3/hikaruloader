@@ -49,17 +49,6 @@ enum Aspect {
 /* RENDER_SCALE's most: 3840x2880, 4K's class */
 static const int MAX_RENDER_SCALE = 6;
 
-/* The screen's own shape, which the aspect ratio places the picture by:
- * AUTO, square pixels (its resolution's shape); 4:3 or 16:9 whatever its
- * resolution (a CRT's super resolutions, 1920x240) */
-enum ScreenShape {
-	SCREEN_AUTO,
-	SCREEN_4_3,
-	SCREEN_16_9,
-
-	NUM_SCREEN_SHAPES
-};
-
 /* The 2D layers in widescreen: 4:3 in the middle, or stretched to 16:9 */
 enum Widescreen2d {
 	WIDESCREEN_2D_CENTERED,
@@ -149,7 +138,6 @@ public:
 	 * taken at the game's start */
 	bool		widescreen;
 	int		widescreen_2d;
-	int		screen_shape;
 	int		scale_filter;
 	/* The 3D scenery's distance, 1 to 4 times the game's: its levels of
 	 * detail and its fog that much farther */

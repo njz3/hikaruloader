@@ -219,10 +219,17 @@ times the "ambient" 291 (2: most of AIRTRIX's scenery, its blue
 "restaurant" sign), the diffuse with the texel's alpha (4), from the
 diffuse to 291 by the texel (5); 881's alpha mode mixes by the alpha. Unlit
 meshes (881 shading mode 0) show it as is: AIRTRIX's shadows dark, its
-OHOSOHO sign magenta. Lit, it is multiplied by the lights plus 691 (the
-ambient reflectance, 7F common) times the scene's ambient light (011; mode
-2: 691 alone), and the specular is added: the light's colour times 491's
-6-bit colour. A material lit with all its lights off still takes the
+OHOSOHO sign magenta. Lit, it is multiplied by the lights plus the scene's
+ambient light (011) times 291 and 691 (the ambient reflectance, 7F common;
+mode 2: 691 alone), and the specular is added: the light's colour times
+491's 6-bit colour. The 291 in mode 1 since November 2026: PHARRIER's
+asteroids (291 olive, 691 FF) were twice as bright as on the board's video,
+their shade grey where the board's is olive (35.5 s, the rock's luminance
+percentiles 22/48/89 on the board, 54/99/168 before, 27/59/120 after); in
+mode 2 it turned PHARRIER's orange flames magenta. SWRACER and SGNASCAR
+(291 FF) are unchanged, AIRTRIX, VON4 and BRAVEFF a few percent darker.
+Two-sided lighting lights the side seen (its normal turned for a triangle
+seen from behind), no longer abs (N.L). A material lit with all its lights off still takes the
 ambient. The ambient light (011) stays through viewport recalls (AIRTRIX's
 skater, in viewport 1 committed without one, was black under its spots).
 Left: mode 3 unknown; 091 (diffuse) falls through to 291 too, as in
@@ -312,8 +319,9 @@ moved to the middle; the 2D layers 640x480 in the middle or stretched. Left:
 the games' own culling (on the SH-4) leaves objects out at the sides, and the
 3D backgrounds or fades made for 4:3 leave bands there; to see game by game.
 
-SCREEN_SHAPE places the picture by the screen's own shape (a CRT's 1920x240);
-SCALE_FILTER = LINEAR averages the rows down to 240. DRAW_DISTANCE divides
+A CRT's super resolution (1920x240) takes its real shape as ASPECT_RATIO and
+a _STRETCH DISPLAY_MODE (SCREEN_SHAPE until November 2026, now ignored);
+SCALING_FILTER = LINEAR averages the rows down to 240. DRAW_DISTANCE divides
 561's LOD distance (the CP's choice of levels of detail, 055 and 005) and
 the fog's 1/z (621) by its factor; the renderer already draws to 1e5, past
 the viewports' far plane. Left: what each game gains, to see.

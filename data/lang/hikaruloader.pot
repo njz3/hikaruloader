@@ -288,6 +288,10 @@ msgid "Display mode"
 msgstr ""
 
 #: src/ui/ui_common.cpp
+msgid "On a CRT driven at a super resolution (1920x240): its real shape as the aspect ratio (4:3 or 16:9, black bars) and a stretched mode. The frame then covers the screen, whatever the shape of its pixels."
+msgstr ""
+
+#: src/ui/ui_common.cpp
 msgid "Window size"
 msgstr ""
 
@@ -300,19 +304,7 @@ msgid "Whole multiples only (integer scaling)"
 msgstr ""
 
 #: src/ui/ui_common.cpp
-msgid "The picture at 1x, 2x, 3x... its size only, for even pixels, with larger black bars. Not with a stretched or cropped picture, nor a screen shape of its own."
-msgstr ""
-
-#: src/ui/ui_common.cpp
-msgid "Its resolution's (square pixels)"
-msgstr ""
-
-#: src/ui/ui_common.cpp
-msgid "Screen shape"
-msgstr ""
-
-#: src/ui/ui_common.cpp
-msgid "The picture is placed by the screen's shape: that of its resolution, or 4:3 or 16:9 whatever its resolution, for a CRT's super resolutions (1920x240): the black bars right, and stretched from 4:3 to 16:9 no more."
+msgid "The picture at 1x, 2x, 3x... its size only, for even pixels, with larger black bars. Not with a stretched or cropped picture, nor a stretched display mode."
 msgstr ""
 
 #: src/ui/ui_common.cpp

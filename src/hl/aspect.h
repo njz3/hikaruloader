@@ -31,8 +31,9 @@ namespace hl {
  * DISPLAY_MODE's _STRETCH), and how the picture fills it: whole with black
  * bars, stretched, or cropped (CROP_POSITION the part kept), the cropped
  * parts possibly bent onto the edges as on a cylinder seen from the front
- * (CROP_BARREL, BARREL_CENTER, BARREL_RADIUS). Also INTEGER_SCALE, and
- * SCREEN_SHAPE for a CRT's super resolutions. */
+ * (CROP_BARREL, BARREL_CENTER, BARREL_RADIUS). Also INTEGER_SCALE. The
+ * layout is in frame units: a frame stretched over a CRT driven at a super
+ * resolution (1920x240) has the CRT's shape, whatever its pixels'. */
 struct ScreenLayout {
 	/* In the target's pixels, origin at the bottom left (OpenGL's): the
 	 * frame, what shows (black around it); the whole picture, larger than
