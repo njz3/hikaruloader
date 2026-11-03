@@ -274,7 +274,7 @@ Emulator::process_events ()
 	bool quit = false;
 
 	while (SDL_PollEvent (&event)) {
-		if (event.type == SDL_QUIT) {
+		if (Window::closing (&event)) {
 			HL_PRINT ("quitting: the window was closed");
 			quit = true;
 			continue;

@@ -37,6 +37,10 @@ class Window {
 public:
 	static int		 open (unsigned width, unsigned height);
 	static SDL_Window	*sdl_window ();
+	/* The window closed (its close button, Alt+F4) or the program asked
+	 * to quit: SDL_QUIT alone does not come while the drawing thread's
+	 * hidden window is open */
+	static bool		 closing (const SDL_Event *event);
 	static void		 drawable_size (int *width, int *height);
 	/* Full screen, window size, v-sync, cursor */
 	static void		 apply_display ();

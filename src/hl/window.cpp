@@ -57,6 +57,15 @@ Window::sdl_window ()
 	return shared_window;
 }
 
+bool
+Window::closing (const SDL_Event *event)
+{
+	if (event->type == SDL_QUIT)
+		return true;
+	return event->type == SDL_WINDOWEVENT && event->window.event == SDL_WINDOWEVENT_CLOSE &&
+	       shared_window && event->window.windowID == SDL_GetWindowID (shared_window);
+}
+
 void
 Window::set_overlay (void (* hook) (int width, int height))
 {

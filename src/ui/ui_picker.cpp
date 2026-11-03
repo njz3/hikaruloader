@@ -325,7 +325,7 @@ bool ui::Interface::pick_game (hl::GameList *list, char *name, size_t size, cons
         SDL_Event event;
         while (SDL_PollEvent(&event))
         {
-            if (event.type == SDL_QUIT)
+            if (hl::Window::closing(&event))
                 return false;
             if (ui::controlsCaptureEvent(&event))
                 continue;

@@ -16,6 +16,8 @@ In preparation
   (`ViewChange` in `controls.ini`, linuxloader's and windowsloader's name),
   V or a controller's Y by default; before, only Down changed the view, and
   a `ViewChange` binding was ignored.
+- The window's close button quits again, in a game and in the game list
+  after one: the drawing thread's hidden window kept the program open.
 
 
 0.4.1 (2026-11-03)
