@@ -49,6 +49,9 @@ public:
 	static bool	 settings_open ();
 	/* The window's overlay hook: the settings and the frame rate */
 	static void	 draw_overlay (int width, int height);
+	/* It has something to draw over the frames (the settings, a notice,
+	 * the frame rate) */
+	static bool	 overlay_wanted ();
 };
 
 } /* namespace ui */

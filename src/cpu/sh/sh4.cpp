@@ -39,6 +39,7 @@
 
 #include "hl/core.h"
 #include "hl/cpu.h"
+#include "hl/profile.h"
 #include "hl/state.h"
 
 #include "sh4.h"
@@ -578,8 +579,10 @@ sh4_tmu_polled (Sh4 *ctx)
 	ctx->poll.sp = ctx->regs.r[15];
 	ctx->poll.far_stores = ctx->far_stores;
 	if (again && ctx->idle.enabled && !cpu->profile && cpu->breakpoints.empty () &&
-	    cpu->watchpoints.empty () && cpu->remaining > 1)
+	    cpu->watchpoints.empty () && cpu->remaining > 1) {
+		ctx->cycles_skipped += (uint64_t) (cpu->remaining - 1);
 		cpu->remaining = 1;
+	}
 }
 
 static void
@@ -1466,6 +1469,9 @@ sh4_put (Sh4 *ctx, unsigned size, uint32_t addr, uint64_t val)
 	ctx->stores++;
 	if (addr - ctx->regs.r[15] + 0x200 >= 0x400)
 		ctx->far_stores++;
+	/* A store through the memory map, the on-chip DMA's, the store
+	 * queues', the debugger's: on code compared in this epoch, a new one */
+	ctx->blocks.written (addr, size);
 	if (IS_ON_CHIP (addr))
 		ret = sh4_ireg_put (ctx, size, addr, val);
 	else if (addr >= 0xF0000000 && addr < 0xF8000000) {
@@ -1541,6 +1547,7 @@ sh4_write (Sh4 *ctx, uint32_t addr, Word val)
 
 	if (p) {
 		memcpy (p, &val, sizeof (Word));
+		ctx->blocks.written (addr, sizeof (Word));
 		ctx->stores++;
 		if (addr - ctx->regs.r[15] + 0x200 >= 0x400)
 			ctx->far_stores++;
@@ -1549,6 +1556,9 @@ sh4_write (Sh4 *ctx, uint32_t addr, Word val)
 	p = sh4_oc_ram (ctx, addr, sizeof (Word));
 	if (p) {
 		memcpy (p, &val, sizeof (Word));
+		ctx->stores++;
+		if (addr - ctx->regs.r[15] + 0x200 >= 0x400)
+			ctx->far_stores++;
 		return;
 	}
 	sh4_put (ctx, sizeof (Word), DATA_ADDR (addr, true), val);
@@ -1571,7 +1581,7 @@ static inline void W64 (Sh4 *ctx, uint32_t addr, uint64_t val) { sh4_write<uint6
  * not.
  */
 static void
-sh4_update_irqs (Sh4 *ctx)
+sh4_update_pending (Sh4 *ctx)
 {
 	unsigned priority, i;
 	int maxi;
@@ -1614,6 +1624,16 @@ sh4_update_irqs (Sh4 *ctx)
 		ctx->intc.pending = true;
 		ctx->intc.index = maxi;
 	}
+}
+
+/* intc.pending, and irq_ready: the one pending taken now (NMI's priority
+ * above any SR.I) */
+static void
+sh4_update_irqs (Sh4 *ctx)
+{
+	sh4_update_pending (ctx);
+	ctx->irq_ready = ctx->intc.pending &&
+	                 ctx->intc.irqs[ctx->intc.index].priority > SR.bit.i;
 }
 
 /* sh4_iesource_t's */
@@ -1909,6 +1929,13 @@ sh4_step (Sh4 *ctx, uint32_t pc)
 	ctx->remaining --;
 }
 
+void
+Sh4::step_one ()
+{
+	sh4_step (this, regs.pc);
+	regs.pc += 2;
+}
+
 static void
 delay_slot (Sh4 *ctx, uint32_t pc)
 {
@@ -1937,8 +1964,12 @@ delay_slot (Sh4 *ctx, uint32_t pc)
  * anyway (run ()). A loop's branch back may skip its body (MAX_SPAN: VON4's
  * waits on a ring buffer, 9 instructions over 58 bytes). The loops that
  * call functions (stores to their stack) and read the timer are waited
- * another way: see sh4_tmu_polled (). Off while profiling or with
- * breakpoints; cpu:option ('idle', 0) turns it off. */
+ * another way: see sh4_tmu_polled (). The translations take three kinds
+ * themselves, without this look: a delay loop "dt Rn; bf" alone in its
+ * block (sh4-x64.cpp), a wait on memory "load; compare; branch"
+ * (sh4_poll_skip ()), the turns of a loop let be (Sh4Block::quiet). Off
+ * while profiling or with breakpoints; cpu:option ('idle', 0) turns it
+ * off. */
 
 void
 Sh4::IdleLoop::start (Sh4 *ctx, uint32_t tail_, uint32_t head_)
@@ -1946,7 +1977,7 @@ Sh4::IdleLoop::start (Sh4 *ctx, uint32_t tail_, uint32_t head_)
 	tail = tail_;
 	head = head_;
 	seen = 0;
-	dead = 0;
+	misses = 0;
 	tracking = true;
 	length = 0;
 	last_length = 0;
@@ -1958,40 +1989,99 @@ void
 Sh4::IdleLoop::back_edge (Sh4 *ctx, uint32_t tail_, uint32_t head_)
 {
 	unsigned i;
-	bool alike;
+	bool same_regs, alike, known_turn;
+	Known &known_one = known_of (tail_, head_);
 
-	if (tail_ != tail || head_ != head) {
-		start (ctx, tail_, head_);
-		return;
-	}
-	/* A loop found busy is looked at again every so often: the slave's
-	 * writes once (its port bit) in millions of iterations, and stays */
-	if (dead) {
-		if (--dead == 0)
+	/* A loop found busy is let be, looked at again every so often (the
+	 * slave's writes once, its port bit, in millions of iterations, and
+	 * stays); the one noted, around it, given up */
+	if (known_one.tail == tail_ && known_one.head == head_ && known_one.dead) {
+		tracking = false;
+		if (--known_one.dead == 0)
 			start (ctx, tail_, head_);
 		return;
 	}
+
+	if (tail_ != tail || head_ != head) {
+		/* Started again and again, never a turn closed (another loop's
+		 * way back each time between: two loops one within the other,
+		 * which started each other again, never let be; SWRACER's
+		 * master noted 3600 blocks a frame so): let be as busy */
+		if (known_one.tail != tail_ || known_one.head != head_) {
+			known_one = Known ();
+			known_one.tail = tail_;
+			known_one.head = head_;
+		}
+		if (++known_one.opened >= 8) {
+			known_one.opened = 0;
+			let_be (tail_, head_);
+			return;
+		}
+		start (ctx, tail_, head_);
+		return;
+	}
+	known_one.opened = 0;
 	if (ctx->stores != stores || !tracking) {
 		/* It writes, or is too long: not an idle loop */
-		dead = 64;
-		tracking = false;
+		let_be (tail_, head_);
 		return;
 	}
 
 	/* The same path, the same registers but the GPRs, which move as in
-	 * the iteration before */
-	alike = length == last_length &&
-	        !memcmp (path, last_path, length * sizeof (path[0])) &&
-	        !memcmp (&ctx->regs.pc, &regs.pc,
-	                 sizeof (regs) - offsetof (decltype (regs), pc));
+	 * the iteration before (the registers compared once for both looks:
+	 * the comparisons took a tenth of the idle slaves' time) */
+	same_regs = !memcmp (&ctx->regs.pc, &regs.pc, sizeof (regs) - offsetof (decltype (regs), pc));
+	alike = same_regs && length == last_length &&
+	        !memcmp (path, last_path, length * sizeof (path[0]));
 	for (i = 0; alike && i < 16; i++)
 		alike = (int32_t) (ctx->regs.r[i] - regs.r[i]) == delta[i];
 	for (i = 0; i < 16; i++)
 		delta[i] = (int32_t) (ctx->regs.r[i] - regs.r[i]);
 	seen = alike ? seen + 1 : 0;
+	misses = alike ? 0 : misses + 1;
+	/* The turn of a loop run forward before: at once; looked at when it
+	 * serves (not alike, or for the plan of one run forward) */
+	known_turn = same_regs && (!alike || seen >= 2) &&
+	             known_one.tail == tail_ && known_one.head == head_ &&
+	             known_one.length && known_one.length == length &&
+	             !memcmp (delta, known_one.delta, sizeof (delta)) &&
+	             !memcmp (path, known_one.path, length * sizeof (path[0]));
+	if (!alike && known_turn)
+		seen = 2;
 
-	if (seen >= 2)
-		run_forward (ctx);
+	/* Busy, though it stores nothing: never alike (a search, a sum), or
+	 * alike but never run forward (a counter read): looked at again
+	 * later, as one that writes; the look at each turn took a tenth of
+	 * the SH-4s' time in the games' boots */
+	if (seen >= 2) {
+		Plan plan;
+		int ran = run_forward (ctx, known_turn && known_one.plan_epoch == ctx->blocks.epoch ?
+		                            &known_one : NULL, &plan);
+
+
+		/* Run forward: its turn kept */
+		if (ran > 0) {
+			if (known_one.tail != tail_ || known_one.head != head_) {
+				known_one.tail = tail_;
+				known_one.head = head_;
+				known_one.dead = 0;
+			}
+			known_one.busy = 0;
+			known_one.length = length;
+			memcpy (known_one.path, path, length * sizeof (path[0]));
+			memcpy (known_one.delta, delta, sizeof (delta));
+			known_one.plan = plan;
+			known_one.plan_epoch = ctx->blocks.epoch;
+		}
+		if (ran < 0) {
+			let_be (tail_, head_);
+			return;
+		}
+	}
+	if (misses >= 8) {
+		let_be (tail_, head_);
+		return;
+	}
 
 	regs = ctx->regs;
 	memcpy (last_path, path, length * sizeof (path[0]));
@@ -2000,26 +2090,85 @@ Sh4::IdleLoop::back_edge (Sh4 *ctx, uint32_t tail_, uint32_t head_)
 }
 
 void
-Sh4::IdleLoop::run_forward (Sh4 *ctx)
+Sh4::IdleLoop::restart (Sh4 *ctx, uint32_t tail_, uint32_t head_)
 {
-	uint32_t counters = 0, carried = 0, added = 0, counted = 0;
+	Known &known_one = known_of (tail_, head_);
+
+	/* One let be counts its turn down all the same */
+	if (known_one.tail == tail_ && known_one.head == head_ && known_one.dead)
+		back_edge (ctx, tail_, head_);
+	else
+		start (ctx, tail_, head_);
+}
+
+void
+Sh4::IdleLoop::let_be (uint32_t t, uint32_t h)
+{
+	Known &k = known_of (t, h);
+
+	if (k.tail != t || k.head != h) {
+		k.tail = t;
+		k.head = h;
+		k.busy = 0;
+		k.length = 0;
+	}
+	k.dead = 64u << k.busy;
+	if (k.busy < 4)
+		k.busy++;
+	tracking = false;
+}
+
+/* The instruction reads or writes r0 without naming it: the indexed and
+ * displacement moves, those of GBR, MOVA, MOVCA.L, the logic with an
+ * immediate, CMP/EQ #imm and the FPU's indexed moves */
+static bool
+uses_r0 (uint16_t op)
+{
+	switch (op & 0xF00F) {
+	case 0x0004: case 0x0005: case 0x0006:	/* mov.x Rm,@(R0,Rn) */
+	case 0x000C: case 0x000D: case 0x000E:	/* mov.x @(R0,Rm),Rn */
+	case 0xF006: case 0xF007:		/* fmov @(R0,Rm), @(R0,Rn) */
+		return true;
+	}
+	if ((op & 0xF0FF) == 0x00C3)		/* movca.l R0,@Rn */
+		return true;
+	switch (op & 0xFF00) {
+	case 0x8000: case 0x8100:		/* mov.x R0,@(disp,Rn) */
+	case 0x8400: case 0x8500:		/* mov.x @(disp,Rm),R0 */
+	case 0x8800:				/* cmp/eq #imm,R0 */
+		return true;
+	}
+	/* C0-C2, C4-CF: GBR's moves, MOVA, the logic with #imm (C3: trapa) */
+	return (op & 0xF000) == 0xC000 && (op & 0x0F00) != 0x0300;
+}
+
+/* 1 when run forward; 0 not now (near the slice's end, a countdown's);
+ * -1 never (a counter read otherwise). known_turn: the same turn's, its
+ * plan found before; plan: this one's */
+int
+Sh4::IdleLoop::run_forward (Sh4 *ctx, const Known *known_turn, Plan *plan)
+{
+	uint32_t counters = 0, carried = 0, added = 0, counted = 0, compared = 0;
 	int64_t k;
 	unsigned i, c;
 
 	for (i = 0; i < 16; i++)
 		if (delta[i])
 			counters |= 1u << i;
-	/* r0 is read implicitly by many instructions */
-	if (counters & 1)
-		return;
-
-	/* Each instruction of the path: a counter added to, or not there */
-	for (i = 0; i < length; i++) {
+	/* Each instruction of the path: a counter added to, or not there; r0
+	 * not used without being named either (SWRACER's delay loop "dt r0;
+	 * bf" ran, each turn through sh4_chain ()) */
+	for (i = 0; i < length && !known_turn; i++) {
+		const uint8_t *at = ((hl::Cpu *) ctx)->mmap->direct (path[i] & ADDR_MASK, false);
 		uint16_t op;
 		unsigned n, m;
 
-		if (ctx->read (2, path[i] & ADDR_MASK, &op))
-			return;
+		if (at)
+			memcpy (&op, at, sizeof (op));
+		else if (ctx->read (2, path[i] & ADDR_MASK, &op))
+			return -1;
+		if ((counters & 1) && uses_r0 (op))
+			return -1;
 		n = (op >> 8) & 15;
 		m = (op >> 4) & 15;
 		if ((op & 0xF000) == 0x7000) {
@@ -2029,7 +2178,7 @@ Sh4::IdleLoop::run_forward (Sh4 *ctx)
 		} else if ((op & 0xF00F) == 0x300C || (op & 0xF00F) == 0x300E) {
 			/* add Rm,Rn, addc Rm,Rn */
 			if (counters & (1u << m))
-				return;
+				return -1;
 			if ((op & 0xF00F) == 0x300E)
 				carried |= counters & (1u << n);
 			added |= 1u << n;
@@ -2038,14 +2187,29 @@ Sh4::IdleLoop::run_forward (Sh4 *ctx)
 			/* dt Rn: a countdown, T when it reaches 0 */
 			counted |= counters & (1u << n);
 			continue;
+		} else if ((op & 0xF0FF) == 0x4015 || (op & 0xF0FF) == 0x4011 ||
+		           ((op & 0xF00F) == 0x2008 && n == m)) {
+			/* cmp/pl Rn, cmp/pz Rn, tst Rn,Rn: a counter compared
+			 * with zero, a wait's time out (SWRACER's on its sound
+			 * board's mailbox, 2700 turns a frame) */
+			compared |= counters & (1u << n);
+			continue;
 		}
 		if ((counters & (1u << n)) || (counters & (1u << m)))
-			return;
+			return -1;
 	}
 
 	/* A countdown counts down alone */
 	if (counted & added)
-		return;
+		return -1;
+	if (known_turn) {
+		carried = known_turn->plan.carried;
+		counted = known_turn->plan.counted;
+		compared = known_turn->plan.compared;
+	}
+	plan->carried = carried;
+	plan->counted = counted;
+	plan->compared = compared;
 
 	/* Whole iterations, the one under way left to run */
 	k = ctx->remaining / (int) length - 1;
@@ -2054,24 +2218,37 @@ Sh4::IdleLoop::run_forward (Sh4 *ctx)
 			/* An addc's carry comes when the counter wraps: stop
 			 * short */
 			if (delta[c] <= 0)
-				return;
+				return -1;
 			k = MIN2 (k, (int64_t) ((0xFFFFFFFFu - ctx->regs.r[c]) / (uint32_t) delta[c]) - 2);
 		}
 		if (counted & (1u << c)) {
 			/* dt sets T at 0: stop short of it (the delay loops
 			 * "dt Rn; bf", SGNASCAR's 8192 a frame); one that
 			 * did set it is not alike */
-			if (delta[c] != -1 || ctx->regs.r[c] < 3)
-				return;
+			if (delta[c] != -1)
+				return -1;
+			if (ctx->regs.r[c] < 3)
+				return 0;
 			k = MIN2 (k, (int64_t) ctx->regs.r[c] - 2);
+		}
+		if (compared & (1u << c)) {
+			/* The comparison the same to the end: one counted
+			 * down stops short of zero */
+			if (delta[c] >= 0)
+				return -1;
+			if ((int32_t) ctx->regs.r[c] <= 0)
+				return 0;
+			k = MIN2 (k, (int64_t) ((int32_t) ctx->regs.r[c] / -delta[c]) - 2);
 		}
 	}
 	if (k <= 0)
-		return;
+		return 0;
 
 	for (c = 0; c < 16; c++)
 		ctx->regs.r[c] += (uint32_t) (k * delta[c]);
 	ctx->remaining -= (int) (k * length);
+	ctx->cycles_skipped += (uint64_t) (k * length);
+	return 1;
 }
 
 /* After an instruction at pc: the idle loops' look at it */
@@ -2080,8 +2257,158 @@ sh4_watch_idle (Sh4 *ctx, uint32_t pc, int before)
 {
 	ctx->idle.step (pc, before - ctx->remaining);
 	/* A short way back */
-	if (PC <= pc && pc - PC < Sh4::IdleLoop::MAX_SPAN)
-		ctx->idle.back_edge (ctx, pc, PC);
+	if (PC <= pc && pc - PC < Sh4::IdleLoop::MAX_SPAN) {
+		if (ctx->remaining > 16)
+			ctx->idle.back_edge (ctx, pc, PC);
+		else
+			ctx->idle.restart (ctx, pc, PC);
+	}
+}
+
+/* Chaining
+ *
+ * A translation's end goes on to the next block's translation itself,
+ * without the run loop, when the loop would only call it: no interrupt to
+ * take, the CPU running, the MMU off, the next block decoded and its code
+ * still in memory, translated, the slice with room for it. Some 40 000
+ * blocks a frame of each SH-4, of 8 instructions or so: the loop's lookups
+ * between them took as long as the blocks. The idle loops keep their look,
+ * taken here as the run loop takes it (idle_look ()): the turn noted, a
+ * short way back that stored nothing (a loop that may only wait) looked at
+ * but for one found busy, while it is let be. The translations' probe
+ * leaves the blocks to this call while a turn is noted (it took 8000 trips
+ * a frame back to the run loop in SWRACER). HR_SH4_CHAIN=0 turns it off. */
+
+/* After a translation of n instructions from pc0 (the cycles left before
+ * it, before): the idle loops' look at it, the run loop's or sh4_chain ()'s,
+ * the same */
+static inline void
+idle_look (Sh4 *ctx, uint32_t pc0, int n, int before, bool chained)
+{
+	/* The last one took a delay slot's cycle too (its handler's) */
+	int slot = before - ctx->remaining - n;
+	uint32_t last = pc0 + 2 * (uint32_t) (n - 1);
+	bool back = PC <= last && last - PC < Sh4::IdleLoop::MAX_SPAN;
+
+
+	/* A wait on memory whose turns were taken off (sh4_poll_skip ()), a
+	 * delay loop's taken by its translation at once (sh4-x64.cpp): no turn
+	 * of its own to look at, the one noted given up */
+	if (ctx->chain.polled == pc0) {
+		ctx->chain.polled = ~0u;
+		ctx->idle.drop ();
+		return;
+	}
+	if (slot > 1 && ctx->idle.noting ()) {
+		const Sh4Block *block = ctx->blocks.peek (pc0);
+
+		if (block && block->delay_loop) {
+			ctx->idle.drop ();
+			return;
+		}
+	}
+	if (ctx->idle.noting ()) {
+		for (int i = 0; i < n; i++)
+			ctx->idle.step (pc0 + 2 * (uint32_t) i, i == n - 1 ? 1 + slot : 1);
+	} else if (chained && !(back && ctx->stores == ctx->chain.stores))
+		/* Gone along without a look: a loop that stores */
+		return;
+	else if (chained && !ctx->idle.watches (last, PC)) {
+		/* One let be: its translation's way back goes on without
+		 * this call for its other turns (a busy loop that stores
+		 * nothing came here at each turn: 3000 times a frame in
+		 * SWRACER) */
+		Sh4Block *block = ctx->blocks.peek (pc0);
+
+		if (block)
+			block->quiet = ctx->idle.hand_over (last, PC);
+		return;
+	}
+	if (back && ctx->remaining > 16)
+		ctx->idle.back_edge (ctx, last, PC);
+	else if (back)
+		ctx->idle.restart (ctx, last, PC);
+}
+
+/* A wait on memory, "load; compare; bt or bf" back to the block's start
+ * (Sh4Block::poll_loop: SWRACER's master waits on a byte so at each slice,
+ * "mov.b @(0,gbr),r0; cmp/pl r0; bt"), at its translation's way back: the
+ * turn that went back, the same as all the others to the slice's end (it
+ * stores nothing, nothing else runs, its load reads a RAM or ROM in place,
+ * as the translations' fast paths do: no device). They are taken off at
+ * once, but the last cycles (one at least): what the idle loops did after
+ * two turns noted and compared, their look at each slice. Not while the
+ * idle loops are off */
+int
+sh4_poll_skip (Sh4 *ctx, uint32_t inst)
+{
+	const unsigned m = (inst >> 4) & 15, disp = inst & 15;
+	static const unsigned sizes[4] = { 1, 2, 4, 4 };
+	uint32_t addr, size;
+	int k;
+
+	if (!ctx->chain.idle)
+		return 0;
+	switch (inst & 0xF000) {
+	case 0xC000:				/* mov.x @(disp,GBR),R0 */
+		size = 1u << ((inst >> 8) & 3);
+		addr = ctx->regs.gbr + (inst & 0xFF) * size;
+		break;
+	case 0x8000:				/* mov.x @(disp,Rm),R0 */
+		size = 1u << ((inst >> 8) & 1);
+		addr = ctx->regs.r[m] + disp * size;
+		break;
+	case 0x5000:				/* mov.l @(disp,Rm),Rn */
+		size = 4;
+		addr = ctx->regs.r[m] + disp * 4;
+		break;
+	default:				/* mov.x @Rm,Rn */
+		size = sizes[inst & 3];
+		addr = ctx->regs.r[m];
+		break;
+	}
+	if (addr >= 0xC0000000 || (addr & ADDR_MASK) >= 0x1C000000 || (addr & (size - 1)) ||
+	    !((hl::Cpu *) ctx)->mmap->direct (addr & ADDR_MASK, false))
+		return 0;
+	/* The cycles left once the turn that ran is counted (its 3) */
+	k = (ctx->remaining - 3 - 1) / 3;
+	if (k <= 0)
+		return 0;
+	ctx->remaining -= 3 * k;
+	ctx->cycles_skipped += (uint64_t) (3 * k);
+	ctx->chain.polled = ctx->regs.pc;
+	return 1;
+}
+
+uintptr_t
+sh4_chain (Sh4 *ctx, uint32_t pc0, int n)
+{
+	hl::Cpu *cpu = ctx;
+	Sh4Block *block;
+	void *body;
+
+	ctx->chain.pc0 = pc0;
+	ctx->chain.n = n;
+	if (!ctx->chain.enabled || cpu->state != hl::CPU_STATE_RUN || ctx->mmu.on ||
+	    ctx->irq_ready)
+		return 0;
+	if (ctx->chain.idle) {
+		idle_look (ctx, pc0, n, ctx->chain.before, true);
+		/* Told: the run loop looks no more */
+		ctx->chain.n = 0;
+	}
+	block = ctx->blocks.peek (PC);
+	if (!block || cpu->remaining <= (int) block->ops.size ())
+		return 0;
+	body = ctx->jit->body (block);
+	if (!body)
+		return 0;
+	ctx->jit->note (PC, block, ctx->blocks.epoch);
+	ctx->chain.stores = ctx->stores;
+	ctx->chain.before = cpu->remaining;
+	ctx->chain.links++;
+	ctx->chain.gone++;
+	return (uintptr_t) body;
 }
 
 /* run ()'s loop over decoded blocks (sh4-blocks.h): the same steps, an
@@ -2093,6 +2420,8 @@ sh4_run_blocks (Sh4 *ctx, bool skip_idle)
 {
 	hl::Cpu *cpu = ctx;
 	bool irqs_done = false;
+
+	ctx->chain.idle = skip_idle;
 
 	/* The backend for the memory map's way (sh4-x64.h): a new one when it
 	 * changed, at a frame's start */
@@ -2115,28 +2444,25 @@ sh4_run_blocks (Sh4 *ctx, bool skip_idle)
 
 		/* Its x86-64 translation, when the slice has room for all of it
 		 * (and a delay slot): the same steps, the idle loops told of
-		 * them afterwards */
+		 * them afterwards (of the last block, when it went on to others:
+		 * none noted then) */
 		if (block && ctx->use_jit && cpu->remaining > (int) block->ops.size ()) {
 			Sh4Native native;
 
 			native = ctx->jit ? ctx->jit->get (ctx, block) : NULL;
 			if (native) {
-				uint32_t pc0 = PC;
 				int before = cpu->remaining;
-				int n = native (ctx, pc0);
+				int n;
 
-				if (skip_idle) {
-					/* The last one took a delay slot's cycle too */
-					int slot = before - cpu->remaining - n;
-					uint32_t last = pc0 + 2 * (n - 1);
-
-					if (ctx->idle.noting ())
-						for (i = 0; i < (size_t) n; i++)
-							ctx->idle.step (pc0 + 2 * (uint32_t) i,
-							                (int) i == n - 1 ? 1 + slot : 1);
-					if (PC <= last && last - PC < Sh4::IdleLoop::MAX_SPAN)
-						ctx->idle.back_edge (ctx, last, PC);
-				}
+				ctx->jit->note (PC, block, ctx->blocks.epoch);
+				ctx->chain.stores = ctx->stores;
+				ctx->chain.before = before;
+				ctx->chain.links = 0;
+				n = native (ctx, PC);
+				/* The last block, unless sh4_chain () looked at
+				 * it (n 0 then) */
+				if (skip_idle && n != 0)
+					idle_look (ctx, ctx->chain.pc0, n, ctx->chain.before, false);
 				continue;
 			}
 		}
@@ -2205,6 +2531,8 @@ Sh4::run (int cycles)
 		blocks.clear ();
 		mmu.flush_blocks = false;
 	}
+	if (slice_hook && skip_idle && !mmu.on && !irq_ready && cpu->state == hl::CPU_STATE_RUN)
+		slice_hook (ctx);
 	/* The debugger's breakpoints and profile look at each fetch */
 	if (use_blocks && !debugging && !mmu.on)
 		sh4_run_blocks (ctx, skip_idle);
@@ -2235,6 +2563,7 @@ Sh4::run (int cycles)
 		if (skip_idle)
 			sh4_watch_idle (ctx, pc, before);
 	}
+	cycles_run += (uint64_t) (cycles - cpu->remaining);
 	/* XXX BSC, SCI */
 	sh4_tmu_run (ctx, cycles);
 	//sh4_dmac_run (ctx, cycles);
@@ -2374,6 +2703,7 @@ Sh4::reset (hl::ResetType type)
 
 	ctx->intc.pending = false;
 	ctx->intc.index = -1;
+	ctx->irq_ready = false;
 	HL_ASSERT (sizeof (ctx->intc.irqs) == sizeof (default_irq_state));
 	memcpy (ctx->intc.irqs, default_irq_state, sizeof (default_irq_state));
 
@@ -2404,6 +2734,8 @@ Sh4::load_state (hl::State *state)
 	LOAD (ctx->regs);
 	ctx->idle.reset ();
 	LOAD (ctx->intc);
+	ctx->irq_ready = ctx->intc.pending &&
+	                 ctx->intc.irqs[ctx->intc.index].priority > SR.bit.i;
 	LOAD (ctx->dmac);
 	LOAD (ctx->tmu);
 	LOAD (ctx->config);
@@ -2473,6 +2805,20 @@ Sh4::set_option (const char *name, int value)
 
 Sh4::~Sh4 ()
 {
+	/* HR_PROFILE: what the idle loops took off */
+	if (hl::Profile::enabled && cycles_run)
+		HL_PRINT ("sh4 %c: %llu cycles, %llu run, %llu skipped by the idle loops (%.1f%%)",
+		          config.master ? 'M' : 'S', (unsigned long long) cycles_run,
+		          (unsigned long long) (cycles_run - cycles_skipped),
+		          (unsigned long long) cycles_skipped, 100.0 * (double) cycles_skipped / (double) cycles_run);
+	if (hl::Profile::enabled && jit)
+		HL_PRINT ("sh4 %c: %u blocks decoded, %u translations in %.0f ms (the arena cleared %u times), %u code epochs",
+		          config.master ? 'M' : 'S', blocks.decoded (), jit->translated (),
+		          1000.0 * jit->translating_time (), jit->clears (), blocks.epoch);
+	if (hl::Profile::enabled && chain.ends)
+		HL_PRINT ("sh4 %c: %llu translated blocks run, %llu of them gone on to the next (%.1f%%)",
+		          config.master ? 'M' : 'S', (unsigned long long) chain.ends,
+		          (unsigned long long) chain.gone, 100.0 * (double) chain.gone / (double) chain.ends);
 }
 
 const char *
@@ -2606,5 +2952,7 @@ Sh4::Sh4 (hl::Machine *mach, hl::Mmap *mmap, bool master, bool le) :
 	HL_ASSERT (iregs);
 	mach->register_buffer (iregs);
 
+	chain.enabled = hl_util_get_bool_option ("HR_SH4_CHAIN", true);
+	blocks.checking = hl_util_get_bool_option ("HR_SH4_EPOCH_CHECK", false);
 	setup_insns_handlers ();
 }

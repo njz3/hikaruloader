@@ -92,10 +92,16 @@ set (HIKARU_SRC
 	src/hl/ioboard.cpp
 	src/mach/gaelco/gaelco-gpu.cpp)
 
-# The ARM7 interpreter runs some 20 million instructions a second (the two
-# AICAs'): its small helpers inlined, in RelWithDebInfo too (/Ob1 there)
+# RelWithDebInfo as fast as Release, its symbols kept (the debugger's, the
+# profiler's): MSVC's inlines there only what is marked inline (/Ob1) and
+# links incrementally, through a jump at each call (the ARM7 interpreter's
+# helpers, the GPU's and the AICAs' code a few percent slower)
 if (MSVC)
-	set_source_files_properties (src/cpu/arm/arm7.cpp PROPERTIES COMPILE_OPTIONS /Ob2)
+	foreach (lang C CXX)
+		string (REPLACE "/Ob1" "/Ob2" CMAKE_${lang}_FLAGS_RELWITHDEBINFO "${CMAKE_${lang}_FLAGS_RELWITHDEBINFO}")
+	endforeach ()
+	string (REPLACE "/INCREMENTAL" "/INCREMENTAL:NO" CMAKE_EXE_LINKER_FLAGS_RELWITHDEBINFO
+	        "${CMAKE_EXE_LINKER_FLAGS_RELWITHDEBINFO}")
 endif ()
 
 # The ImGui interface: the picker and the Tab settings. imgui_impl_sdl2 comes
@@ -162,8 +168,9 @@ target_compile_definitions (hl PUBLIC HL_HAVE_HIKARU)
 target_link_libraries (hl PUBLIC
 	OpenGL::GL GLEW::GLEW SDL2::SDL2 jansson::jansson miniz::miniz lzma)
 if (WIN32)
-	# The outputs' server (src/hl/outputs.cpp)
-	target_link_libraries (hl PUBLIC ws2_32)
+	# The outputs' server (src/hl/outputs.cpp); HR_SAMPLE's names
+	# (src/hl/profile.cpp)
+	target_link_libraries (hl PUBLIC ws2_32 dbghelp)
 endif ()
 
 if (MSVC)
@@ -199,7 +206,8 @@ endif ()
 
 # Keep the game list next to the binary, where hikaruloader looks first; the
 # example of init.lua; the interface's languages (data/lang/*.po); the CRT
-# presets (data/crt, Lola Retro's with its licence).
+# presets (data/crt, Lola Retro's with its licence); the games' lists of
+# shader programs (data/shaders).
 add_custom_command (TARGET hikaruloader POST_BUILD
 	COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:hikaruloader>/data
 	COMMAND ${CMAKE_COMMAND} -E copy_if_different
@@ -209,7 +217,9 @@ add_custom_command (TARGET hikaruloader POST_BUILD
 	COMMAND ${CMAKE_COMMAND} -E copy_directory
 		${CMAKE_SOURCE_DIR}/data/lang $<TARGET_FILE_DIR:hikaruloader>/data/lang
 	COMMAND ${CMAKE_COMMAND} -E copy_directory
-		${CMAKE_SOURCE_DIR}/data/crt $<TARGET_FILE_DIR:hikaruloader>/data/crt)
+		${CMAKE_SOURCE_DIR}/data/crt $<TARGET_FILE_DIR:hikaruloader>/data/crt
+	COMMAND ${CMAKE_COMMAND} -E copy_directory
+		${CMAKE_SOURCE_DIR}/data/shaders $<TARGET_FILE_DIR:hikaruloader>/data/shaders)
 
 # The CPU cores' tests: ctest -C RelWithDebInfo
 enable_testing ()

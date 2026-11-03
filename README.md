@@ -367,6 +367,8 @@ Saves and files
   them and kept compiled for the graphics card, so that the next start
   prepares them before the first frame (no stutter the first time an
   effect shows). Deleting the folder only makes the next start slower.
+- `data\shaders\`: the programs the six games show, listed with the
+  program: the first start prepares them as well.
 
 
 Write directory

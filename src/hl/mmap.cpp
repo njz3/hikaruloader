@@ -224,6 +224,59 @@ Mmap::set_page_table (bool on)
 		read_pages.clear ();
 		write_pages.clear ();
 	}
+	if (wide_read)
+		fill_wide ();
+}
+
+void
+Mmap::make_wide () const
+{
+	const size_t size = sizeof (uint8_t *) << (32 - PAGE_BITS);
+
+	if (wide_read)
+		return;
+#ifdef _WIN32
+	wide_read = (uint8_t **) VirtualAlloc (NULL, size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+	wide_write = (uint8_t **) VirtualAlloc (NULL, size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+#else
+	wide_read = (uint8_t **) calloc (1, size);
+	wide_write = (uint8_t **) calloc (1, size);
+#endif
+	if (!wide_read || !wide_write)
+		HL_ABORT ("out of memory for the page tables");
+	fill_wide ();
+}
+
+/* Each page of the tables at its aliases; those that held one before
+ * cleared (a table made again), the others left untouched (not committed) */
+void
+Mmap::fill_wide () const
+{
+	for (uint32_t page = 0; page < NUM_PAGES; page++)
+		for (unsigned k = 0; k < WIDE_ALIASES; k++) {
+			const uint32_t at = (k << (29 - PAGE_BITS)) | page;
+			uint8_t *r = page < read_pages.size () ? read_pages[page] : NULL;
+			uint8_t *w = page < write_pages.size () ? write_pages[page] : NULL;
+
+			if (r || wide_read[at])
+				wide_read[at] = r;
+			if (w || wide_write[at])
+				wide_write[at] = w;
+		}
+}
+
+Mmap::~Mmap ()
+{
+	set_fastmem (false);
+#ifdef _WIN32
+	if (wide_read)
+		VirtualFree (wide_read, 0, MEM_RELEASE);
+	if (wide_write)
+		VirtualFree (wide_write, 0, MEM_RELEASE);
+#else
+	free (wide_read);
+	free (wide_write);
+#endif
 }
 
 int

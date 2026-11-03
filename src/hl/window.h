@@ -56,8 +56,12 @@ public:
 	static void		 set_output_viewport (const ScreenLayout &l, int width, int height);
 
 	/* Called after each frame, before the buffers are swapped: the
-	 * interface */
+	 * interface; and whether it has something to draw (the settings, a
+	 * notice, the frame rate): while it has not, a drawing thread shows
+	 * its frames itself */
 	static void		 set_overlay (void (* hook) (int width, int height));
+	static void		 set_overlay_wanted (bool (* hook) (void));
+	static bool		 overlay_wanted ();
 	/* The end of a machine's frame (Renderer::end_frame ()) */
 	static void		 frame_done (const char *message);
 	/* The last frame again (paused), or an empty window, with the overlay */
@@ -85,6 +89,14 @@ public:
 	 * calling thread (NULL: none there) */
 	static SDL_GLContext	 create_shared_context ();
 	static bool		 make_current (SDL_GLContext context);
+	/* That context current with the window itself, to show its frames
+	 * there (false: it cannot be, the window's context shows them); its
+	 * buffers swapped from that thread (the settings' swap interval); the
+	 * frame shown so: frame_done () shows and swaps nothing, keeps
+	 * nothing (flush () gives the screenshots and the pause their frame) */
+	static bool		 make_current_on_window (SDL_GLContext context);
+	static void		 swap_from_thread ();
+	static void		 set_presented ();
 	static void		 delete_context (SDL_GLContext context);
 	/* A frame drawn by that thread but not shown yet: hook (data) puts
 	 * it in the window and returns true. The screenshots and the pause

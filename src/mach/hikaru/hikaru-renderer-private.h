@@ -21,6 +21,7 @@
 #ifndef __HIKARU_RENDERER_PRIVATE_H__
 #define __HIKARU_RENDERER_PRIVATE_H__
 
+#include <functional>
 #include <vector>
 
 #include "hl/buffer.h"
@@ -105,8 +106,8 @@ typedef struct {
 	hikaru_texhead_t th;
 	uint32_t gen;		/* its slots' writes when uploaded */
 	/* TEXTURE_SCALE's factor it was uploaded at; ANISOTROPY's, set on
-	 * it */
-	uint8_t scale, aniso;
+	 * it; its wrap set (upload_material_texhead, 0xFF: none yet) */
+	uint8_t scale, aniso, wrap;
 } hikaru_texture_t;
 
 /* A post effect's picture and its framebuffer object */
@@ -155,7 +156,7 @@ public:
 	~Renderer ();
 	/* The game's set name, for its list of shader programs (see "The
 	 * programs' cache" in the .cpp) */
-	static void set_game (const char *name);
+	static void set_game (const char *name, const char *parent);
 
 	void invalidate_texcache (hikaru_texhead_t *th);
 	/* The MEMCTL's write to a bank of the TEXRAM, at offs; the whole
@@ -191,6 +192,22 @@ public:
 	/* The TEXRAM and the framebuffer draw () reads: the GPU's, or the
 	 * drawing thread's copies */
 	hl::Buffer *texram_src[2], *fb_src;
+	/* The drawing thread's layers: the rows of its copy changed since the
+	 * layer's texture was last written (hand_over () tells, the texture
+	 * then written for them alone), all of them when the layer moved;
+	 * where it lay in the framebuffer at the last copy. Without the
+	 * thread, each frame whole */
+	bool layers_tracked = false;
+	/* The framebuffer's 4 KB pages (a row of 2048 pixels each) written
+	 * since the last frame handed over: by the master SH-4 (its watched
+	 * pages, hikaru.cpp) and the GPU's DMA; all of them without the watch
+	 * (fb_rearm, which hand_over () calls, empty) */
+	uint8_t fb_written[2048];
+	std::function<void ()> fb_rearm;
+	void fb_wrote (uint32_t offs, uint32_t size);
+	bool layer_rows[2][480] = {};
+	bool layer_all[2] = { true, true };
+	uint32_t layer_at[2] = { ~0u, ~0u };
 	/* Where draw () puts the picture: the window (0), or the drawing
 	 * thread's texture, with the window's size and the picture's place
 	 * (the aspect ratio's, hl/aspect.h) */
@@ -252,6 +269,14 @@ public:
 
 		hikaru_glsl_variant_t	variant;
 		GLuint			program;
+		/* Its entry in the programs' cache (upload_glsl_program) */
+		int			slot;
+		/* The viewport and the texture the meshes left (known false
+		 * when other drawing may have changed them: forget_mesh_state) */
+		GLint			viewport[4];
+		bool			viewport_known;
+		GLuint			texture;
+		bool			texture_known;
 		GLuint			vao;
 		/* The frame's vertices, all meshes', in one buffer: one
 		 * upload a frame, not one buffer a mesh */

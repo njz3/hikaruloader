@@ -287,6 +287,7 @@ main (const int argc, char **argv)
 	if (!ui::Interface::init (hl::Window::sdl_window ()))
 		HL_ERROR ("could not start the interface");
 	hl::Window::set_overlay (ui::Interface::draw_overlay);
+	hl::Window::set_overlay_wanted (ui::Interface::overlay_wanted);
 
 	/* controls.ini beside hikaruloader.ini, once SDL sees the controllers;
 	 * in agent mode, read for the settings page only: the agent alone

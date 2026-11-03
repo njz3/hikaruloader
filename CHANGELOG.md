@@ -8,6 +8,18 @@ and released: [DEVELOPMENT.md](DEVELOPMENT.md), "Versions and releases".
 0.3.1 (not released yet)
 ------------------------
 
+- Faster: about twice as fast in the six games, the same pictures; as fast
+  as Odin or faster here. The SH-4s' recompiler goes from one block to the
+  next itself, compares the games' code with the memory only when it may
+  have changed, keeps the processors' registers in the PC's through a
+  block, and writes out the jumps and the floating-point arithmetic; the
+  waits are found sooner and cost less (the slave's in the BIOS skipped at
+  once, the delay loops and the waits on a byte taken by the recompiled
+  code itself); the recompiler allocates almost nothing and looks memory
+  up with fewer instructions; the ROMs and the sound boards' mailboxes are read in place. The
+  drawing thread sends the graphics card only what changed from one mesh
+  to the next and shows its frames itself, and gets the 2D layers' written
+  rows alone. Odin's author, Réda Chérif-Touil, showed the way.
 - The translucent polygons (smoke, glass, flames, lights) are blended from
   the farthest at each pixel, as on the board, right where they cross:
   *Sort the translucent polygons at each pixel* in the Display tab, on by
@@ -31,7 +43,8 @@ and released: [DEVELOPMENT.md](DEVELOPMENT.md), "Versions and releases".
 - No more stutter the first time an effect shows: each game's shader
   programs are prepared before its first frame, and kept compiled in
   `cache\shaders\` (with a write directory, there), read at once the next
-  time.
+  time. The six games' lists come with the program (`data\shaders\`), so
+  their very first start prepares them too.
 - These, as Odin's author, Réda Chérif-Touil, found them.
 - Fixed: what the games draw through a pattern of dots was drawn whole:
   Planet Harriers' and Brave Firefighters' shadows (solid black, now

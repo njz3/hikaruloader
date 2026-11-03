@@ -1015,6 +1015,10 @@ hikaru_gpu_begin_dma (Gpu *gpu)
 			gpu->fb->put (2, dst_offs, pixel);
 		}
 	}
+	/* The rows written, for the layers' copy (hand_over ()) */
+	if (w && h)
+		((Renderer *) gpu->renderer)->fb_wrote (dst_y * 4096 + dst_x * 2,
+		                                        (h - 1) * 4096 + w * 2);
 
 	REG1A (0x24) |= 1;
 }

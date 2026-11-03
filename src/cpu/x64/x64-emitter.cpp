@@ -36,8 +36,7 @@ namespace x64 {
 CodeArena::CodeArena (size_t size_) : size (size_), used (0)
 {
 #ifdef _WIN32
-	mem = (uint8_t *) VirtualAlloc (NULL, size, MEM_COMMIT | MEM_RESERVE,
-	                                PAGE_EXECUTE_READWRITE);
+	mem = (uint8_t *) VirtualAlloc (NULL, size, MEM_RESERVE, PAGE_EXECUTE_READWRITE);
 #else
 	mem = (uint8_t *) mmap (NULL, size, PROT_READ | PROT_WRITE | PROT_EXEC,
 	                        MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
@@ -66,6 +65,18 @@ CodeArena::take (size_t n, size_t align)
 
 	if (at + n > size)
 		return NULL;
+#ifdef _WIN32
+	if (at + n > committed) {
+		const size_t chunk = 1u << 20;
+		size_t to = (at + n + chunk - 1) & ~(chunk - 1);
+
+		if (to > size)
+			to = size;
+		if (!VirtualAlloc (mem + committed, to - committed, MEM_COMMIT, PAGE_EXECUTE_READWRITE))
+			return NULL;
+		committed = to;
+	}
+#endif
 	used = at + n;
 	return mem + at;
 }
@@ -406,6 +417,101 @@ Emitter::mov32 (Reg dst, Reg src)
 }
 
 void
+Emitter::shl32_imm (Reg r, uint8_t count)
+{
+	/* C1 /4 ib */
+	rex (false, 0, r);
+	byte (0xC1);
+	byte ((uint8_t) (0xE0 | (r & 7)));
+	byte (count);
+}
+
+void
+Emitter::alu32_reg_reg (Alu op, Reg dst, Reg src)
+{
+	/* op r/m32, r32, register form */
+	rex (false, src, dst);
+	byte ((uint8_t) op);
+	byte ((uint8_t) (0xC0 | ((src & 7) << 3) | (dst & 7)));
+}
+
+void
+Emitter::alu64_reg_reg (Alu op, Reg dst, Reg src)
+{
+	/* REX.W op r/m64, r64, register form */
+	rex (true, src, dst);
+	byte ((uint8_t) op);
+	byte ((uint8_t) (0xC0 | ((src & 7) << 3) | (dst & 7)));
+}
+
+void
+Emitter::alu32_imm (Alu op, Reg r, int32_t imm)
+{
+	/* 81 /digit id: the digit the opcode's bits 3-5 */
+	rex (false, 0, r);
+	byte (0x81);
+	byte ((uint8_t) (0xC0 | (op & 0x38) | (r & 7)));
+	u32 ((uint32_t) imm);
+}
+
+void
+Emitter::test32 (Reg a, Reg b)
+{
+	/* 85 /r */
+	rex (false, b, a);
+	byte (0x85);
+	byte ((uint8_t) (0xC0 | ((b & 7) << 3) | (a & 7)));
+}
+
+/* 0F op /r, register form; a REX for a byte of sil, dil, bpl, spl */
+static void
+reg_0f (Emitter &e, uint8_t op, Reg dst, Reg src, bool byte_src)
+{
+	uint8_t r = 0x40 | ((dst & 8) ? 4 : 0) | ((src & 8) ? 1 : 0);
+
+	if (r != 0x40 || (byte_src && (src & 7) >= 4))
+		e.byte (r);
+	e.byte (0x0F);
+	e.byte (op);
+	e.byte ((uint8_t) (0xC0 | ((dst & 7) << 3) | (src & 7)));
+}
+
+void
+Emitter::movzx16 (Reg dst, Reg src)
+{
+	reg_0f (*this, 0xB7, dst, src, false);
+}
+
+void
+Emitter::movsx8 (Reg dst, Reg src)
+{
+	reg_0f (*this, 0xBE, dst, src, true);
+}
+
+void
+Emitter::movsx16 (Reg dst, Reg src)
+{
+	reg_0f (*this, 0xBF, dst, src, false);
+}
+
+void
+Emitter::imul32 (Reg dst, Reg src)
+{
+	reg_0f (*this, 0xAF, dst, src, false);
+}
+
+void
+Emitter::rot32 (Rot op, Reg r, uint8_t count)
+{
+	/* D1 /digit, C1 /digit ib, register form */
+	rex (false, 0, r);
+	byte (count == 1 ? 0xD1 : 0xC1);
+	byte ((uint8_t) (0xC0 | ((unsigned) op << 3) | (r & 7)));
+	if (count != 1)
+		byte (count);
+}
+
+void
 Emitter::shr32_imm (Reg r, uint8_t count)
 {
 	/* C1 /5 ib */
@@ -605,12 +711,116 @@ Emitter::bt_mem (Reg base, Reg bit)
 }
 
 void
+Emitter::bt_mem_imm (Reg base, int32_t disp, uint8_t bit)
+{
+	/* 0F BA /4 ib */
+	rex (false, 0, base);
+	byte (0x0F);
+	byte (0xBA);
+	mem (4, base, disp);
+	byte (bit);
+}
+
+void
+Emitter::rot_mem (Rot op, Reg base, int32_t disp, uint8_t count)
+{
+	/* D1 /digit, C1 /digit ib */
+	rex (false, 0, base);
+	byte (count == 1 ? 0xD1 : 0xC1);
+	mem ((unsigned) op, base, disp);
+	if (count != 1)
+		byte (count);
+}
+
+void
+Emitter::imul32_mem (Reg r, Reg base, int32_t disp)
+{
+	/* 0F AF /r */
+	rex (false, r, base);
+	byte (0x0F);
+	byte (0xAF);
+	mem (r, base, disp);
+}
+
+/* An SSE instruction: its prefix (none if 0), a REX if needed, 0F op, the
+ * ModRM of [base + disp] */
+void
+Emitter::sse_any_mem (uint8_t prefix, uint8_t op, unsigned reg, Reg base, int32_t disp)
+{
+	if (prefix)
+		byte (prefix);
+	rex (false, reg, base);
+	byte (0x0F);
+	byte (op);
+	mem (reg, base, disp);
+}
+
+void
+Emitter::movss_load (unsigned x, Reg base, int32_t disp)
+{
+	sse_any_mem (0xF3, 0x10, x, base, disp);
+}
+
+void
+Emitter::movss_store (Reg base, int32_t disp, unsigned x)
+{
+	sse_any_mem (0xF3, 0x11, x, base, disp);
+}
+
+void
+Emitter::sse_mem (Sse op, unsigned x, Reg base, int32_t disp)
+{
+	sse_any_mem (0xF3, (uint8_t) op, x, base, disp);
+}
+
+void
+Emitter::sse_reg (Sse op, unsigned x, unsigned y)
+{
+	/* F3 0F op /r, register form */
+	byte (0xF3);
+	rex (false, x, y);
+	byte (0x0F);
+	byte ((uint8_t) op);
+	byte ((uint8_t) (0xC0 | ((x & 7) << 3) | (y & 7)));
+}
+
+void
+Emitter::ucomiss_mem (unsigned x, Reg base, int32_t disp)
+{
+	sse_any_mem (0, 0x2E, x, base, disp);
+}
+
+void
+Emitter::cvtsi2ss_mem (unsigned x, Reg base, int32_t disp)
+{
+	sse_any_mem (0xF3, 0x2A, x, base, disp);
+}
+
+void
+Emitter::cvttss2si_mem (Reg r, Reg base, int32_t disp)
+{
+	sse_any_mem (0xF3, 0x2C, r, base, disp);
+}
+
+void
+Emitter::jmp_reg (Reg r)
+{
+	/* FF /4, register form */
+	rex (false, 0, r);
+	byte (0xFF);
+	byte ((uint8_t) (0xE0 | (r & 7)));
+}
+
+void
 Emitter::rel32_to (Label &l)
 {
 	if (l.target) {
 		u32 ((uint32_t) (l.target - (p + 4)));
 	} else {
-		l.waiting.push_back (p);
+		if (l.num_few < sizeof (l.few) / sizeof (l.few[0]))
+			l.few[l.num_few++] = p;
+		else
+			l.waiting.push_back (p);
 		u32 (0);
 	}
 }
@@ -635,12 +845,19 @@ Emitter::jmp (Label &l)
 void
 Emitter::bind (Label &l)
 {
-	l.target = p;
-	for (uint8_t *at : l.waiting)
+	auto fix = [&] (uint8_t *at) {
 		if (at + 4 <= end) {
 			uint32_t rel = (uint32_t) (l.target - (at + 4));
 			memcpy (at, &rel, 4);
 		}
+	};
+
+	l.target = p;
+	for (unsigned i = 0; i < l.num_few; i++)
+		fix (l.few[i]);
+	for (uint8_t *at : l.waiting)
+		fix (at);
+	l.num_few = 0;
 	l.waiting.clear ();
 }
 

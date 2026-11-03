@@ -150,6 +150,11 @@ bool ui::Interface::process_event (const SDL_Event *event)
     }
 }
 
+bool ui::Interface::overlay_wanted ()
+{
+    return g_ready && (g_open || hl::Config::get ()->fps_overlay || noticeShown());
+}
+
 void ui::Interface::draw_overlay (int width, int height)
 {
     hl::Config *cfg = hl::Config::get ();

@@ -159,6 +159,8 @@ public:
 	/* RAM areas */
 	hl::Buffer *ram_m, *ram_s;
 	hl::Buffer *cmdram;
+	/* 4 KB of zeros: the rest of the bridge's page (setup_master_mmap ()) */
+	hl::Buffer *bridge_zeros = NULL;
 	hl::Buffer *texram[2];
 	hl::Buffer *fb;
 	hl::Buffer *aica_ram_m;

@@ -974,14 +974,16 @@ memctl_bus_put (Memctl *memctl, unsigned size, uint32_t bus_addr, uint64_t val)
 		/* Communication Board */
 		return hikaru->comm->put (size, offs, val);
 	} else if (bus_addr >= 0x40000000 && bus_addr <= 0x41FFFFFF) {
-		/* Slave RAM */
+		/* Slave RAM: its code compared again, when there */
 		hikaru->ram_s->put (size, bus_addr & 0x01FFFFFF, val);
+		((Sh4 *) hikaru->sh_s)->blocks.written (0x0C000000 | (bus_addr & 0x01FFFFFF), size);
 	} else if (bus_addr >= 0x48000000 && bus_addr <= 0x483FFFFF) {
 		/* GPU CMD RAM */
 		hikaru->cmdram->put (size, bus_addr & 0x3FFFFF, val);
 	} else if (bus_addr >= 0x70000000 && bus_addr <= 0x71FFFFFF) {
-		/* Master RAM */
+		/* Master RAM: its code compared again, when there */
 		hikaru->ram_m->put (size, bus_addr & 0x01FFFFFF, val);
+		((Sh4 *) hikaru->sh_m)->blocks.written (0x0C000000 | (bus_addr & 0x01FFFFFF), size);
 	} else if (bank == hikaru->rombd_config.eeprom_bank && offs == 0) {
 		/* ROMBD EEPROM */
 		log = true;
@@ -1047,12 +1049,103 @@ memctl_dma_copy (Memctl *memctl, uint32_t words)
 	return len == 0;
 }
 
+/* The apertures read in place
+ *
+ * The games read their ROMs through the aperture at 02000000, and poll
+ * their sound programs' mailboxes in the AICAs' RAM there (SWRACER
+ * @0C15158E, 2700 reads a frame), a call of the memory map's each. The
+ * master's page table shows a page of an aperture as it is first read when
+ * its bank holds plain memory there, as memctl_bus_get () reads it: a ROM's
+ * (rombd_get ()), a TEXRAM's, an AICA's RAM, a RAM's; its pages hidden
+ * again when the bank changes. The writes go through here all the same
+ * (the TEXRAMs' and the RAMs' are watched). */
+
+/* The host's 4 KB that memctl_bus_get () reads at bus_addr (4 KB aligned),
+ * NULL for anything else */
+static const uint8_t *
+bus_page (Hikaru *hikaru, uint32_t bus_addr)
+{
+	hikaru_rombd_config_t *config = &hikaru->rombd_config;
+	uint32_t bank = bus_addr >> 24;
+	uint32_t offs = bus_addr & 0xFFFFFF;
+
+	if (hikaru->rombd_eeprom && bank == config->eeprom_bank)
+		return NULL;
+	if (bus_addr >= 0x04000000 && bus_addr <= 0x043FFFFF)
+		return (const uint8_t *) hikaru->texram[0]->ptr (offs);
+	if (bus_addr >= 0x06000000 && bus_addr <= 0x063FFFFF)
+		return (const uint8_t *) hikaru->texram[1]->ptr (offs);
+	/* The AICAs' RAMs (Aica::get ()) */
+	if (bus_addr >= 0x0C800000 && bus_addr <= 0x0CFFFFFF)
+		return (const uint8_t *) hikaru->aica_ram_m->ptr (bus_addr & 0x7FFFFF);
+	if (bus_addr >= 0x0D800000 && bus_addr <= 0x0DFFFFFF)
+		return (const uint8_t *) hikaru->aica_ram_s->ptr (bus_addr & 0x7FFFFF);
+	if (bus_addr >= 0x10000000 && bus_addr <= 0x3FFFFFFF) {
+		hl::Buffer *rom = NULL;
+		uint32_t bank_size = 0, num = 0, real_offs;
+
+		if (!config->has_rom)
+			return NULL;
+		if (bank >= config->eprom_bank[0] && bank <= config->eprom_bank[1]) {
+			rom = hikaru->eprom;
+			bank_size = config->eprom_bank_size == 2 ? 4*MB : 8*MB;
+			num = bank - config->eprom_bank[0];
+		} else if (bank >= config->maskrom_bank[0] && bank <= config->maskrom_bank[1]) {
+			rom = hikaru->maskrom;
+			bank_size = 16*MB;
+			num = bank - config->maskrom_bank[0];
+		}
+		if (!rom)
+			return NULL;
+		real_offs = (offs & (bank_size - 1)) + num * bank_size;
+		return real_offs + 4096 <= rom->size () ? (const uint8_t *) rom->ptr (real_offs) : NULL;
+	}
+	if (bus_addr >= 0x40000000 && bus_addr <= 0x41FFFFFF)
+		return (const uint8_t *) hikaru->ram_s->ptr (bus_addr & 0x01FFFFFF);
+	if (bus_addr >= 0x70000000 && bus_addr <= 0x71FFFFFF)
+		return (const uint8_t *) hikaru->ram_m->ptr (bus_addr & 0x01FFFFFF);
+	return NULL;
+}
+
+/* The aperture of addr: 0-3 (02, 03, 16, 17), -1 none */
+static int
+aperture_of (uint32_t addr)
+{
+	switch (addr >> 24) {
+	case 0x02: return 0;
+	case 0x03: return 1;
+	case 0x16: return 2;
+	case 0x17: return 3;
+	}
+	return -1;
+}
+
+static void
+hide_aperture (Memctl *memctl, int k)
+{
+	hl::Mmap *mmap = ((Hikaru *) memctl->mach)->mmap_m;
+
+	for (uint32_t page : memctl->shown[k])
+		if (mmap)
+			mmap->show (page, NULL);
+	memctl->shown[k].clear ();
+}
+
+void
+Memctl::hide_pages ()
+{
+	for (int k = 0; k < 4; k++)
+		hide_aperture (this, k);
+}
+
 int
 Memctl::get (unsigned size, uint32_t addr, void *val)
 {
 	hl::Device *dev = this;
 	Memctl *memctl = (Memctl *) dev;
+	Hikaru *hikaru = (Hikaru *) memctl->mach;
 	uint32_t bank, bus_addr;
+	int k;
 
 	if (addr >= 0x04000000 && addr <= 0x0400003F) {
 		/* MMIOs */
@@ -1066,6 +1159,22 @@ Memctl::get (unsigned size, uint32_t addr, void *val)
 	 * communication board as 8E, PHARRIER the sound board as 8C) */
 	bank &= 0x7F;
 	bus_addr = (bank << 24) | (addr & 0xFFFFFF);
+
+	/* Its page shown from now on, when plain memory (above) */
+	k = aperture_of (addr);
+	if (memctl->master && k >= 0 && hikaru->mmap_m && hikaru->mmap_m->page_table ()) {
+		const uint8_t *host;
+
+		if (bank != memctl->shown_bank[k]) {
+			hide_aperture (memctl, k);
+			memctl->shown_bank[k] = bank;
+		}
+		host = bus_page (hikaru, bus_addr & ~0xFFFu);
+		if (host) {
+			hikaru->mmap_m->show (addr & ~0xFFFu, host);
+			memctl->shown[k].push_back (addr & ~0xFFFu);
+		}
+	}
 	return memctl_bus_get (memctl, size, bus_addr, val);
 }
 
@@ -1099,6 +1208,14 @@ Memctl::put (unsigned size, uint32_t addr, uint64_t val)
 			break;
 		}
 		memctl->regs->put (size, addr & 0x3F, val);
+		/* An aperture's bank changed: its pages hidden */
+		for (int k = 0; k < 4; k++) {
+			static const uint32_t windows[4] = { 0x02000000, 0x03000000, 0x16000000, 0x17000000 };
+
+			if (memctl->master && !memctl->shown[k].empty () &&
+			    (get_bank_for_addr (memctl, windows[k]) & 0x7F) != memctl->shown_bank[k])
+				hide_aperture (memctl, k);
+		}
 		/* A DMA started: its words copied at once, as the real one
 		 * gets ahead of the CPU at once. VON4 starts one, then writes
 		 * its next list over the source, the same buffer, without
@@ -1147,6 +1264,7 @@ Memctl::reset (hl::ResetType type)
 
 	memctl->regs->clear ();
 	memctl->regs->put (4, 0x00, memctl->master ? 0 : 0xFFFFFFFF);
+	memctl->hide_pages ();
 }
 
 Memctl::Memctl (hl::Machine *mach, bool master) :

@@ -19,6 +19,7 @@
 #ifndef __HL_SH4_BLOCKS_H__
 #define __HL_SH4_BLOCKS_H__
 
+#include <functional>
 #include <memory>
 #include <vector>
 
@@ -30,13 +31,29 @@ class Sh4;
  *
  * A block is a straight run of instructions, decoded once: up to MAX_OPS,
  * to the first unconditional jump (its delay slot is the jump's own: the
- * handler runs it), never past a 4 KB page. A conditional branch not taken
- * goes on in the block; any other way, the block is left, and the next
- * one looked up by its address, in a table of pages: no search.
+ * handler runs it, or the translation writes it out), never past a 4 KB
+ * page. A conditional branch not taken goes on in the block; any other
+ * way, the block is left, and the next one looked up by its address, in a
+ * table of pages: no search.
  *
  * Code is rewritten (loaded from ROM, by the CPUs, by DMA): a block keeps
  * the words it was decoded from, and is decoded again when the memory no
- * longer holds them. No write needs watching.
+ * longer holds them. In the CPU's own RAM and ROM (own ()), they are
+ * compared once an epoch, as Odin does: each 256 bytes note the epoch
+ * their code was last compared in, and a write there in that epoch, by the
+ * CPU or by what the machine tells of (written ()), starts a new one.
+ * Elsewhere (a memory others write straight), at each entry. By 4 KB
+ * pages, as Odin has them, the BIOS's variables at 0C00123C-0C0012E8, in
+ * the page of its code at 0C001000-0C001140, started 30 epochs a frame
+ * (SWRACER; each block compared again after each). A store there starts
+ * one only when a block compared in this epoch holds a byte it writes
+ * (covered ()): SWRACER fills 20 bytes beside its code, 2500 times.
+ *
+ * The same table watches 4 KB pages for the machine (watch ()): one armed
+ * (its stamps ARMED, above any epoch) takes the CPU's first store to the
+ * slow path, which tells the machine and leaves the page to the fast one
+ * until rearm (). The Hikaru's framebuffer so: the 2D layers' rows copied
+ * to the drawing thread those written alone.
  *
  * Sh4::run_blocks () runs them one instruction at a time, as run () does
  * (interrupts, the slice's cycles, the patches, the idle loops): the very
@@ -62,14 +79,34 @@ public:
 	 * in a vector apart: each entry compares them) */
 	const uint16_t		*code;
 	unsigned		 num_words = 0;
-	uint16_t		 words[MAX_OPS];
+	uint16_t		 words[MAX_OPS + 1];
 	std::vector<Sh4Op>	 ops;
+	/* The last instruction an unconditional jump, its delay slot kept in
+	 * words after the ops' (words[ops.size ()]), compared with them: in
+	 * the page, not patched */
+	bool			 slot_kept = false;
 	/* Its x86-64 translation (sh4-x64.h), of a generation of the
-	 * backend's code; none yet when 0 */
+	 * backend's code; none yet when 0. body: past the function's
+	 * prologue, where another translation goes on to it (chaining) */
 	void			*native = NULL;
+	void			*native_body = NULL;
 	unsigned		 native_generation = 0;
 	/* An instruction the machine patches: not translated */
 	bool			 patched = false;
+	/* A delay loop, "dt Rn; bf" back to its start: its translation takes
+	 * its turns at once (sh4-x64.cpp) */
+	bool			 delay_loop = false;
+	/* A wait on memory, "load; compare; bt or bf" back to its start: its
+	 * translation's way back takes the slice's other turns off
+	 * (sh4_poll_skip ()) */
+	bool			 poll_loop = false;
+	/* Its way back's turns the idle loops let be, gone on without their
+	 * look (its translation counts them down) */
+	int32_t			 quiet = 0;
+	/* In the CPU's own RAM or ROM: compared once an epoch, the last one
+	 * checked */
+	bool			 checkable = false;
+	uint32_t		 checked = 0;
 
 	/* The memory still holds the code it was decoded from: compared here,
 	 * 8 bytes at a time (each block's entry asks) */
@@ -104,12 +141,57 @@ public:
 	/* The block at pc, decoded if new or its code changed; NULL where the
 	 * code is not in a RAM or ROM (run () then fetches it) */
 	Sh4Block		*get (Sh4 *ctx, uint32_t pc);
+	/* The block at pc as it is, NULL unless decoded and current (in
+	 * line: sh4_chain ()'s, at each block it goes on to by itself) */
+	Sh4Block		*peek (uint32_t pc)
+	{
+		const std::unique_ptr<Page> &page = pages[(pc & 0x1FFFFFFF) >> PAGE_BITS];
+		Sh4Block *block = page ? page->blocks[(pc & ((1u << PAGE_BITS) - 1)) >> 1].get () : NULL;
+
+		if (!block || (block->checked == epoch && !checking))
+			return block;
+		return fresh (block) ? block : NULL;
+	}
 	void			 clear ();
 	unsigned		 decoded () const { return num_decoded; }
+
+	/* Code epochs (above). The CPU's own RAM or ROM, from lo to hi (29
+	 * bits): where nothing writes but the CPU and what the machine tells
+	 * of. Each entry compared all the same, and a rewrite missed told,
+	 * with HR_SH4_EPOCH_CHECK=1 */
+	void			 own (uint32_t lo, uint32_t hi);
+	bool			 checking = false;
+	uint32_t		 epoch = 1;
+	/* The epoch of each 256 bytes (1 << 21 of them, STAMP_BITS), for the
+	 * translations' stores: those at this epoch or above (ARMED) take the
+	 * slow path */
+	static const unsigned STAMP_BITS = 8;
+	uint32_t		*stamps () const { return page_epochs.get (); }
+	void			 new_epoch ();
+	/* A write of size bytes at addr: a new epoch when it falls on code
+	 * compared in this one; a watched page's told */
+	void			 written (uint32_t addr, unsigned size)
+	{
+		uint32_t a = (addr & 0x1FFFFFFF) >> STAMP_BITS;
+		uint32_t b = ((addr + size - 1) & 0x1FFFFFFF) >> STAMP_BITS;
+
+		if (page_epochs[a] >= epoch)
+			hit (a, addr, size);
+		if (b != a && page_epochs[b] >= epoch)
+			hit (b, addr, size);
+	}
+
+	/* The pages from lo to hi watched, told is told the address of each
+	 * page first written after an arm; then armed again */
+	static const uint32_t ARMED = 0xFFFFFFFFu;
+	void			 watch (uint32_t lo, uint32_t hi, std::function<void (uint32_t)> told);
+	void			 rearm ();
 
 private:
 	static const unsigned PAGE_BITS = 12;
 	static const unsigned NUM_PAGES = 1u << (29 - PAGE_BITS);
+	static const unsigned NUM_STAMPS = 1u << (29 - STAMP_BITS);
+	static const unsigned PAGE_STAMPS = 1u << (PAGE_BITS - STAMP_BITS);
 
 	/* A page's blocks, one an instruction address */
 	struct Page {
@@ -117,8 +199,30 @@ private:
 	};
 	std::unique_ptr<Page>	 pages[NUM_PAGES];
 	unsigned		 num_decoded = 0;
+	std::unique_ptr<uint32_t[]> page_epochs { new uint32_t[NUM_STAMPS] () };
+	uint32_t		 own_lo[4], own_hi[4];
+	unsigned		 num_own = 0;
+	/* The pages watched, those told since rearm () */
+	std::vector<uint32_t>	 watched, hits;
+	std::function<void (uint32_t)> watch_told;
+
+	/* A store of size bytes at addr, at or above stamp's epoch */
+	void			 hit (uint32_t stamp, uint32_t addr, unsigned size);
+	/* Its code compared now: the stamps it lies on at this epoch */
+	void			 stamp (const Sh4Block *block);
+	/* A block compared in this epoch holds a byte of those; the last
+	 * answers, while no block is stamped again (stamped counts them) */
+	bool			 covered (uint32_t addr, unsigned size);
+	uint64_t		 stamped = 0;
+	struct Uncovered {
+		uint32_t addr = 0, size = 0, epoch = 0;
+		uint64_t stamped = ~0ull;
+	} uncovered[4];
+	unsigned		 next_uncovered = 0;
 
 	bool			 decode (Sh4 *ctx, uint32_t pc, Sh4Block *block);
+	/* Its code still the memory's: compared when its epoch is old */
+	bool			 fresh (Sh4Block *block);
 };
 
 /* The interpreter's handler for an instruction (sh4.cpp) */

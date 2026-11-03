@@ -3,7 +3,7 @@ PROCESSORS AND CHIPS (Hikaruloader, October 2026)
 
 | Part | Where | State |
 |---|---|---|
-| 2 x SH-4 (Hitachi SH7750, 200 MHz) | Main board | Dynamic recompiler (the default; the settings' "SH-4 processors" switches to the interpreter at the next frame), at the clock of the `SH4_CLOCK` setting (100 MHz by default since November 2026, AIRTRIX's slave needing it; formerly 57, and 50 before; 200 MHz as on the board, but the games' busy waits then cost about real time and the boots fall below 60 fps), the timers (TMU) at the board's Pφ (50 MHz) whatever the clock, and their prescalers: the code decoded once in blocks (`src/cpu/sh/sh4-blocks.*`), translated to x86-64 by our own emitter (`src/cpu/x64/`, `src/cpu/sh/sh4-x64.*`): the frequent ALU instructions and branches written out, the loads and stores of every size and the FPU's moves too (FPSCR.SZ tested as they run), the others calls to the interpreter's handlers; those reach RAM and ROM straight as the translations do (Mmap::direct). The logs' CPU and machine state (debug_string, two strdup and a sprintf) is no longer made when the log is off: it was, at each on-chip register's and each logged device's access. With these, about a third less time a frame in every game, the same pictures (the six games' frames 900-3600, the interpreter's too). Same machine as the interpreter, frame for frame (SGNASCAR, SWRACER checked). The idle and delay loops run forward (`cpu:option ('idle', 0)`). The interpreter stays for the debugger, and runs alone while the MMU is on (its TLBs, their exceptions run again after their handler, LDTLB, the TLB arrays; TRAPA; `tests/sh4_mmu_test.cpp`): Smashing Drive's. Also the operand cache as RAM (CCR.ORA, 7C000000) and the SCIF's and SCI's output in the log. The FPU's fmov moves 32 bits unless SZ, whatever PR, and DRn is FRn (high half) and FRn+1, a 64-bit move taking FRn from the lower address (pairs of singles): the compilers' unsigned division (2^31 loaded in DR4 by two fmov.s) gave 0 or 1, and PHARRIER unpacked its sound data a kilobyte a frame, 15 s of black screen (`tests/sh4_mmu_test.cpp`) |
+| 2 x SH-4 (Hitachi SH7750, 200 MHz) | Main board | Dynamic recompiler (the default; the settings' "SH-4 processors" switches to the interpreter at the next frame), at the clock of the `SH4_CLOCK` setting (100 MHz by default since November 2026, AIRTRIX's slave needing it; formerly 57, and 50 before; 200 MHz as on the board, but the games' busy waits then cost about real time and the boots fall below 60 fps), the timers (TMU) at the board's Pφ (50 MHz) whatever the clock, and their prescalers: the code decoded once in blocks (`src/cpu/sh/sh4-blocks.*`), translated to x86-64 by our own emitter (`src/cpu/x64/`, `src/cpu/sh/sh4-x64.*`): the frequent ALU instructions and branches written out, the loads and stores of every size and the FPU's moves too (since November 2026 for the FPSCR.SZ the block is seen with, a guard at the first), since November 2026 the jumps with their delay slot and the FPU's single-precision arithmetic too, one translation going on to the next (below, "SH-4"), the others calls to the interpreter's handlers; those reach RAM and ROM straight as the translations do (Mmap::direct). The logs' CPU and machine state (debug_string, two strdup and a sprintf) is no longer made when the log is off: it was, at each on-chip register's and each logged device's access. With these, about a third less time a frame in every game, the same pictures (the six games' frames 900-3600, the interpreter's too). Same machine as the interpreter, frame for frame (SGNASCAR, SWRACER checked). The idle and delay loops run forward (`cpu:option ('idle', 0)`). The interpreter stays for the debugger, and runs alone while the MMU is on (its TLBs, their exceptions run again after their handler, LDTLB, the TLB arrays; TRAPA; `tests/sh4_mmu_test.cpp`): Smashing Drive's. Also the operand cache as RAM (CCR.ORA, 7C000000) and the SCIF's and SCI's output in the log. The FPU's fmov moves 32 bits unless SZ, whatever PR, and DRn is FRn (high half) and FRn+1, a 64-bit move taking FRn from the lower address (pairs of singles): the compilers' unsigned division (2^31 loaded in DR4 by two fmov.s) gave 0 or 1, and PHARRIER unpacked its sound data a kilobyte a frame, 15 s of black screen (`tests/sh4_mmu_test.cpp`) |
 | Z80 of the MIE (315-6146) | Main board | Emulated (`src/cpu/z80`, 16 MHz); the MIE's 2 KB internal ROM is not dumped, a stub plays its part; the SH-4s request its bus (local bus 02000000) to reach its RAM, which stops it. Its idle loops run at once, exactly (`MIE_IDLE_SKIP=0`: one instruction at a time) |
 | 93C46 serial EEPROM | Main board, on the MIE's GPIO 5/6 | Emulated (`src/hl/eeprom.cpp`), kept with the backup RAM in `nvram/<game>.nvram` |
 | 93C46 serial EEPROM (IC115) | Main board, on the master SH-4's port A (bits 2-5) | Emulated with `SECURITY_CHIPS` (November 2026, off by default; `src/hl/eeprom.cpp`, on `hikaru.cpp`'s port A): its image `93c46.ic115` from MAME's newer hikaru set, the main board's serial number (AABE-...), which the BOOTROM reads (16 READs) and checks with a CRC-16 (@0C00087C). Without the option, that check is patched out of the BOOTROM (Valkyrie's patch at 0x8AE, 0x8E6 in 0.96) |
@@ -281,12 +281,133 @@ through their regions) and fastmem (RAM and ROM, in sections, mapped in a
 reserved 512 MB at the CPUs' addresses; the settings' "Memory access").
 The translations write the 32-bit loads and stores out, a backend class
 for each way (Sh4X64Calls, Sh4X64Pages, Sh4X64Fastmem), the devices through
-the interpreter's path. Next: the byte and word accesses, the FPU's
-(fmov, a tenth of SGNASCAR's instructions); fastmem without its bit map
-test (the devices through the faults, the faulting code patched to call
-the slow path); blocks chained to each other; unwind
-information for other hosts than Windows (the JIT is off there until
-then); the busy waits that are neither idle loops nor timer polls
+the interpreter's path. Since November 2026 (Odin's ways, by Réda
+Chérif-Touil, studied and measured in Odin itself):
+- the translations write out the jumps with their delay slot, the FPU's
+  single-precision arithmetic (FTRV and FIPR too, SSE in the handlers'
+  order: the same bits), PR's moves, the rotations, MUL.L, MOVA, and the
+  PC-relative loads from RAM and ROM at their host address;
+- a block's code is compared with the memory once a code epoch, no longer
+  at each entry (sh4-blocks.h): a write to code compared in this epoch, by
+  the CPU (its translations' stores look at the epoch of the 256 bytes
+  they write) or through the MEMCTL (the other CPU, the DMA), starts a new
+  one, when a block compared in this epoch holds a byte it writes;
+  `HR_SH4_EPOCH_CHECK=1` tells a rewrite missed. By 4 KB pages, as Odin
+  has them, the BIOS's variables beside its code (0C00123C, in the page of
+  0C001000) started 30 to 50 epochs a frame, every block compared again
+  after each, a tenth of the master's time (SWRACER 196791 epochs in 3600
+  frames, 3 now);
+- the translations' arena reserved larger (128 MB, committed as it fills:
+  VON4 filled 32 MB four times, every block translated again each time),
+  one function table for all of it (the translations share their
+  prologue: one registered a translation took a twentieth of VON4's
+  master, the system's NtProtectVirtualMemory each time);
+- a translation's end goes on to the next block's itself (sh4.cpp,
+  "Chaining"): a probe of a flat table of the blocks met, sh4_chain () for
+  the rest (85-90% of the blocks gone on to; the others for an interrupt,
+  the idle loops' look, a new block);
+- the idle loops' look backs off from a busy loop that stores nothing (a
+  tenth of the SH-4s' time in the boots), 64 loops remembered, one run
+  forward before run forward again after one turn noted (each slice meets
+  the waits again), two loops one within the other that start each other
+  again let be (SWRACER noted 3600 blocks a frame of those), r0 a counter
+  when no instruction of the turn uses it unnamed (SWRACER's delay loop
+  "dt r0; bf"), the look's comparisons made once and skipped as the slice
+  ends (a few cycles left); the slave's wait in the BOOTROM (0C002030)
+  taken off at once as each slice starts (hikaru.cpp, as Odin does it: a
+  turn noted at each slice was its whole time); the look is taken at the end of each block by
+  sh4_chain () itself, the blocks still going on to each other while a
+  turn is noted (it sent 8000 blocks a frame back to the run loop in
+  SWRACER: 98% gone on to now), and a loop that stored goes on through
+  the probe; a loop's turn run forward keeps what its path holds (read
+  once a code epoch: the slave's wait read it through the memory map at
+  each slice, a third of its time); an interrupt to take now is a flag
+  (no call at each access while one waits masked), the accesses' slow
+  paths are written after the block;
+- three loops taken by their translations, without the idle loops' look
+  (which came 7500 times a frame in SWRACER's master, each through
+  sh4_chain (); 970 now): a delay loop "dt Rn; bf" alone in its block, its
+  turns but the last at once (Rn down, two cycles a turn: 700 a frame of
+  26 to 217 turns); a wait on memory "load; compare; bt or bf", the
+  slice's other turns taken off at its way back when its load reads a RAM
+  or ROM (sh4_poll_skip (): the master's wait on a byte, at each slice);
+  a busy loop the look lets be, its turns counted down by its translation
+  (Sh4Block::quiet), which goes on to the next block;
+- the slave's wait in the BOOTROM: the rest of a turn a slice starts
+  within, and the slice's last cycles, stepped through by its hook too (the
+  slices that ended within a turn went to the run loop and the idle loops'
+  look, 360 of SWRACER's 544 a frame: the slave's time halved);
+- the translator allocates nothing for most blocks (its labels keep a few
+  jumps in place and are used again, the slow paths are plain records, no
+  longer std::function with a copy of the offsets each: half of the
+  translations' time, 0.6 s in SWRACER's first minute); a block's first
+  store alone counts in the stores' count (only compared), a store at r15
+  is not counted as far (seven instructions less a store); the chaining's
+  counts written for HR_PROFILE alone;
+- the translations' page table over the 32-bit addresses (Mmap's wide
+  tables: U0's four aliases, P1 and P2 the same pages, none at P3 and P4,
+  8 MB reserved each, the pages written alone used): no test of the area
+  and no 29-bit mask at each access, three instructions less a load (2% of
+  SWRACER's frame). Tried without gain: each way out to a known address
+  with its own link to the next translation, instead of the near table's
+  lookup (the same time);
+- the FPU's moves written for the FPSCR.SZ the block is seen with (FSCHG
+  turns it over), one size, a guard at the first and after a handler: when
+  it differs, that move's handler, then the next block (both sizes and a
+  test each before: AIRTRIX's slave saves its banks in pairs);
+- the MEMCTL's apertures read in place (the master's page table, a page as
+  first read, hidden when its bank changes) where their bank holds plain
+  memory: the ROMs, the TEXRAMs, the RAMs, and the AICAs' RAM, where the
+  games poll their sound programs' mailboxes (SWRACER 2700 reads a frame,
+  a call each); the rest of the bridge's page (04000040-04FFFFFF) reads as
+  zero, as Odin has it (the BIOS reads all of it, 4 million unhandled
+  reads); the slave's CMDRAM written in place (its writes were logged,
+  8000 a frame through the slow path in AIRTRIX);
+- the GPRs a block uses kept in host registers through it (rdi, rbp,
+  r12-r15, Sh4RegCache), written back at each way out, before a handler
+  and on a slow path: a chain of instructions no longer goes through
+  memory at each one.
+The six games' frames the same. Measured on 3 November 2026 against Odin
+(its SH-4s at 200 MHz, ours at 100 MHz; each game from power-on for 3600
+frames, as fast as it goes, no sound out, the best of three runs taken in
+turn; the Release builds), in milliseconds a frame, and the code of
+8ac5f9b before these:
+
+| Game | Odin | Hikaruloader | 8ac5f9b |
+|---|---|---|---|
+| AIRTRIX | 4.01 | 3.75 | 7.43 |
+| BRAVEFF | 3.03 | 2.58 | 5.96 |
+| PHARRIER | 3.76 | 2.78 | 5.24 |
+| SGNASCAR | 3.06 | 2.25 | 4.92 |
+| SWRACER | 2.49 | 2.61 | 5.22 |
+| VON4 | 2.49 | 2.49 | 4.78 |
+
+Then (the afternoon's loops taken by the translations, the slave's hook,
+the translator's allocations, the stores' counts, the 32-bit page table,
+the shipped shader lists), the machine busy with another program's build:
+each game run at the same time as Odin, at the high priority class (the
+same load on both, which favours Odin: the morning's code measured so came
+out 10% slower against it than alone), twice, our frame time over Odin's:
+
+| Game | Ours / Odin | The morning's code / ours |
+|---|---|---|
+| AIRTRIX | 0.87 | 1.11 |
+| BRAVEFF | 0.80 | 1.11 |
+| PHARRIER | 0.74 | 1.05 |
+| SGNASCAR | 0.77 | 1.06 |
+| SWRACER | 0.99 | 1.15 |
+| VON4 | 0.95 | 1.07 |
+
+All six faster than Odin; to measure again alone, the machine idle. Odin's
+master SH-4 still takes less time than ours (SWRACER about 0.57 ms a frame,
+ours about 0.8: the translations two thirds of it), which the MIE, the
+AICAs and the GPU's command processor make up for. Next: the translations
+themselves (T in the host's flags, registers kept across chained blocks);
+DIV1,
+ADDC, the FPU's doubles; fastmem without its bit map test (the devices
+through the faults, the faulting code patched to call the slow path);
+unwind information for other hosts than Windows (the JIT is off there
+until then); the busy waits that are neither idle loops nor timer polls
 (AIRTRIX's loop on the MIE's mailbox, AT:@0C69B358) run forward, to make
 200 MHz as fast as the default.
 
@@ -392,7 +513,12 @@ Shader programs (November 2026): each game's variants listed in
 cache/shaders/<game>.txt as they are met and compiled before its first
 frame; each program's binary (OpenGL 4.1 program binaries) kept in
 cache/shaders/<variant>.bin with the driver's name. AIRTRIX's 81 programs
-ready in 0.5 s at its second start.
+ready in 0.5 s at its second start. The six games' lists shipped too, in
+data/shaders/<game>.txt (a clone takes its parent's), made from three
+minutes of each one's demo: the first start compiles them before the
+machine runs (the drawing thread's, start_thread () waiting); SWRACER's
+drawing thread stopped up to 80 ms at its first race, the machine's thread
+waiting 0.13 ms a frame over its first 3600, 0.05 now.
 
 Dot patterns (501, November 2026): the meshes after a 501 are drawn on the
 pixels of each 4 x 4 square of the screen that its pattern keeps (the 32
@@ -473,7 +599,21 @@ on by default): at a frame's end the lists and what the drawing reads of the
 machine (the GPU's framebuffer settings and layers, the layers' rows, the
 TEXRAM's written slots) go to a thread with its own GL context, which draws
 while the next frame is emulated: 6 to 40% more frames a second, a frame
-later; the screenshots wait for the last frame.
+later; the screenshots wait for the last frame. The layers' rows go over
+when written alone (November 2026): the master's first store to a page of
+the framebuffer after a frame is told (a watched page of its code epochs'
+table, sh4-blocks.h), the GPU's DMA too, and the rows that changed alone
+are copied and written to the layers' textures (the copy of both, 2.4 MB a
+frame, took a twentieth of the machine's thread). The drawing thread shows
+its frames itself while the interface draws nothing over them (the
+driver's present took 0.8 ms of the machine's thread), and each shader
+program's uniforms are looked up once (some forty lookups by name at each
+change of program took half of the drawing thread's time: AIRTRIX and
+BRAVEFF 5 ms a frame there, the frame's pace; 2.7 ms then). A mesh's
+uniforms go to its program only when they differ from what it holds, the
+viewport, the texture and its wrap when they change (BRAVEFF draws up to
+1900 meshes a frame, some thirty uniforms each: 2.2 ms now); GL's errors
+are looked for once a frame (after each call with `HR_GL_CHECK=1`).
 
 Fix texture wrap/repeat (BRAVEFF, AIRTRIX do not work properly yet.)
 Done in Hikaruloader: each texture's own wrap and mirror (2C1 bits 22-25,

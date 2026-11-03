@@ -198,6 +198,12 @@ public:
 		sh4_irq_state_t irqs[SH4_NUM_IESOURCES];
 	} intc;
 
+	/* An interrupt the CPU takes now (intc.pending above SR.I), kept by
+	 * sh4_update_irqs (), which every change of SR.I, of a priority or of
+	 * a source calls: the translations look at it after an access. Not in
+	 * the saved state (made again on a load) */
+	bool		irq_ready = false;
+
 	struct {
 		bool	is_running[4];
 	} dmac;
@@ -260,6 +266,17 @@ public:
 	 * through its calls has none of */
 	uint64_t	stores = 0;
 	uint64_t	far_stores = 0;
+	/* The cycles the slices gave, and those the waits took off without
+	 * running them (the idle loops, a TCNT polled); HR_PROFILE logs them at
+	 * the end */
+	uint64_t	cycles_run = 0;
+	uint64_t	cycles_skipped = 0;
+	/* Called as a slice starts, the idle loops on, no interrupt to take:
+	 * the machine's own waits taken off at once (the Hikaru's slave's) */
+	void		(* slice_hook) (Sh4 *ctx) = NULL;
+	/* One instruction run as the interpreter's loop runs it (a delayed
+	 * branch with its slot), for slice_hook */
+	void		 step_one ();
 	/* The clock its cycles run at, in Hz (the machine's), which the timers
 	 * count against: 200 MHz on the board */
 	uint32_t	cpu_hz = 200000000;
@@ -293,10 +310,19 @@ public:
 
 		bool		 enabled = true;
 
-		void		 reset () { tail = ~0u; }
+		void		 reset ()
+		{
+			tail = ~0u;
+			tracking = false;
+			for (Known &k : known)
+				k = Known ();
+		}
 		/* An iteration's path being noted: step () does nothing
 		 * otherwise */
 		bool		 noting () const { return tracking; }
+		/* The turn noted given up */
+		void		 drop () { tracking = false; }
+		const bool	*noting_flag () const { return &tracking; }
 		/* Each instruction run, with the instructions it took (2 with
 		 * a delay slot) */
 		void		 step (uint32_t pc, int taken)
@@ -310,12 +336,78 @@ public:
 		}
 		/* A branch from tail back to head */
 		void		 back_edge (Sh4 *ctx, uint32_t tail, uint32_t head);
+		/* The same as the slice ends (a few cycles left, no turn to run
+		 * forward): the turn noted again from there, without the look's
+		 * comparisons (the idle slaves' last turn, a third of their time) */
+		void		 restart (Sh4 *ctx, uint32_t tail, uint32_t head);
+		/* The same, gone along by a translation that stored nothing
+		 * (chaining): false while the loop found busy is let be (its
+		 * turns counted down here), true when back_edge () must see it */
+		bool		 watches (uint32_t tail_, uint32_t head_)
+		{
+			Known &k = known_of (tail_, head_);
+
+			if (k.tail == tail_ && k.head == head_ && k.dead > 1) {
+				k.dead--;
+				return false;
+			}
+			return true;
+		}
+		/* The turns watches () would let go yet, handed over to the
+		 * translation (Sh4Block::quiet): the next one looked at */
+		int		 hand_over (uint32_t tail_, uint32_t head_)
+		{
+			Known &k = known_of (tail_, head_);
+			int turns;
+
+			if (k.tail != tail_ || k.head != head_ || k.dead <= 1)
+				return 0;
+			turns = (int) k.dead - 1;
+			k.dead = 1;
+			return turns;
+		}
 
 	private:
+		/* The loops met, 64 of them (by their addresses; 16 before, and
+		 * SWRACER's busy loops took each other's places, their backoff
+		 * started again: 3600 turns a frame noted). Found busy:
+		 * their turns before a new look, 64 then twice as many each
+		 * time again (1024 at most), until one runs forward. One loop
+		 * alone was kept before: one within another made the other
+		 * noted again at each turn, no translation going on to the
+		 * next. Run forward: its turn (path, the GPRs' moves), the
+		 * same one run forward after one turn noted, not three (each
+		 * slice meets the waits again) */
+		/* What run_forward () finds of a turn's counters: those added
+		 * to with a carry, those counted down by dt, those compared with
+		 * zero */
+		struct Plan {
+			uint32_t carried = 0, counted = 0, compared = 0;
+		};
+		struct Known {
+			uint32_t tail = ~0u, head = 0;
+			unsigned dead = 0, busy = 0;
+			unsigned length = 0;	/* 0: none run forward */
+			uint32_t path[MAX_PATH];
+			int32_t	 delta[16];
+			/* Its turn's, found in this code epoch (the slave's wait
+			 * read its path through the memory map at each slice, a
+			 * third of its time) */
+			Plan	 plan;
+			uint32_t plan_epoch = 0;
+			/* Started since a turn closed (back_edge ()) */
+			unsigned opened = 0;
+		} known[64];
+		Known		&known_of (uint32_t t, uint32_t h)
+		{
+			return known[((t >> 1) * 0x9E3779B1u ^ (h >> 1) * 0x85EBCA6Bu) >> 26];
+		}
+		void		 let_be (uint32_t t, uint32_t h);
+
 		uint32_t	 head = 0, tail = ~0u;
 		bool		 tracking = false;
-		unsigned	 dead = 0;	/* iterations before a new look */
 		unsigned	 seen = 0;
+		unsigned	 misses = 0;	/* iterations not alike in a row */
 		uint64_t	 stores = 0;
 		/* The instructions of the last iteration, and the one before */
 		unsigned	 length = 0, last_length = 0;
@@ -325,9 +417,42 @@ public:
 		int32_t		 delta[16];
 
 		void		 start (Sh4 *ctx, uint32_t tail, uint32_t head);
-		void		 run_forward (Sh4 *ctx);
+		int		 run_forward (Sh4 *ctx, const Known *known_turn, Plan *plan);
 	} idle;
+
+	/* A translation's end going straight on to the next block's
+	 * (sh4.cpp, "Chaining"); HR_SH4_CHAIN=0 turns it off */
+	struct {
+		bool		 enabled = true;
+		/* The idle loops look at the blocks run (run ()'s skip_idle) */
+		bool		 idle = false;
+		/* The last block run: its address, the instructions it ran */
+		uint32_t	 pc0 = 0;
+		/* A wait on memory whose turns sh4_poll_skip () took off: its
+		 * address, for the idle loops' look to leave it be */
+		uint32_t	 polled = ~0u;
+		int		 n = 0;
+		/* The stores when it began, the cycles left then; the blocks
+		 * gone on to since the run loop's call */
+		uint64_t	 stores = 0;
+		int		 before = 0;
+		unsigned	 links = 0;
+		/* For HR_PROFILE: the translations' ends, those gone on */
+		uint64_t	 ends = 0, gone = 0;
+	} chain;
+	/* A jump's target, kept across its delay slot by its translation
+	 * (sh4-x64.cpp) */
+	uint32_t	jit_target = 0;
 };
+
+/* At a translation's end (sh4-x64.cpp): the next block's translation, past
+ * its prologue, to go on to; 0 for the run loop. pc0 and n: the block that
+ * ends, the instructions it ran */
+uintptr_t	 sh4_chain (Sh4 *ctx, uint32_t pc0, int n);
+
+/* At a wait on memory's way back (Sh4Block::poll_loop), its load inst:
+ * 1 when the slice's other turns were taken off */
+int		 sh4_poll_skip (Sh4 *ctx, uint32_t inst);
 
 void		 sh4_set_porta_handlers (hl::Cpu *cpu,
 		                         int (* get)(Sh4 *ctx, uint16_t *val),

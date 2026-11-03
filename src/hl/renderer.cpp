@@ -26,6 +26,8 @@
 
 namespace hl {
 
+bool gl::checking = false;
+
 Renderer::Renderer (unsigned width, unsigned height) :
 	width (width),
 	height (height)
@@ -33,6 +35,8 @@ Renderer::Renderer (unsigned width, unsigned height) :
 	HL_ASSERT (width);
 	HL_ASSERT (height);
 
+	gl::checking = hl_util_get_bool_option ("HR_GL_CHECK", false) ||
+	               hl_util_get_bool_option ("HR_GL_DEBUG", false);
 	message[0] = '\0';
 	Window::open (width, height);
 	gl::clear_errors ();
@@ -49,6 +53,7 @@ void
 Renderer::end_frame ()
 {
 	on_end_frame ();
+	HL_ASSERT_NO_GL_ERROR_FRAME ();
 	HL_PROFILE (PRESENT);
 	Window::frame_done (message);
 }

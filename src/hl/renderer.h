@@ -24,14 +24,24 @@
 #include "hl/core.h"
 
 /* GL's error, logged (hl::gl::check_error): a bug stops the machine; the
- * GPU out of memory does not, the frame goes on without what it lacked */
+ * GPU out of memory does not, the frame goes on without what it lacked.
+ * After each call with HR_GL_CHECK=1 (or HR_GL_DEBUG=1) only, else at the
+ * frame's end (HL_ASSERT_NO_GL_ERROR_FRAME): NVIDIA's driver finishes its
+ * own thread's work at each glGetError, some fifteen a mesh took a third
+ * of the drawing thread's time */
 #ifdef NDEBUG
 #define HL_ASSERT_NO_GL_ERROR()
+#define HL_ASSERT_NO_GL_ERROR_FRAME()
 #else
-#define HL_ASSERT_NO_GL_ERROR() \
+#define HL_ASSERT_NO_GL_ERROR_FRAME() \
 	do { \
 		GLenum error_ = hl::gl::check_error (__FILE__, __LINE__); \
 		HL_ASSERT (error_ == GL_NO_ERROR || error_ == GL_OUT_OF_MEMORY); \
+	} while (0)
+#define HL_ASSERT_NO_GL_ERROR() \
+	do { \
+		if (hl::gl::checking) \
+			HL_ASSERT_NO_GL_ERROR_FRAME (); \
 	} while (0)
 #endif
 
@@ -75,6 +85,8 @@ protected:
 
 /* OpenGL helpers of the machine renderers */
 namespace gl {
+/* HL_ASSERT_NO_GL_ERROR's after each call (above) */
+extern bool checking;
 void	clear_errors ();
 /* The error GL holds, logged with where it was found (out of memory the
  * first times, then once in a while) */

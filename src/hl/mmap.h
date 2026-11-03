@@ -78,7 +78,7 @@ public:
 	 * before 1803, other systems): the page table goes on alone */
 	bool	set_fastmem (bool on);
 	bool	fastmem () const { return fast_base != NULL; }
-	~Mmap () { set_fastmem (false); }
+	~Mmap ();
 
 	/* For the dynamic recompilers, which read them from the code they
 	 * write: the tables, the bit maps, the base; layout () changes each
@@ -90,6 +90,15 @@ public:
 	uint8_t	*fastmem_base () const { return fast_base; }
 	unsigned layout () const { return layout_version; }
 	static const unsigned TABLE_PAGE_BITS = 12;
+	/* The tables over the 32-bit addresses as an SH-4 without its MMU
+	 * reads them (sh4_get ()): the 512 MB of the table at each of U0's
+	 * four, P1, P2; none at P3, P4 (the on-chip registers, the store
+	 * queues). The translations' lookups need then no test of the area
+	 * and no 29-bit mask. Made at the first call (8 MB each, reserved:
+	 * only the pages written count), kept with the tables after */
+	static const unsigned WIDE_ALIASES = 6;
+	uint8_t	* const *wide_read_table () const { make_wide (); return wide_read; }
+	uint8_t	* const *wide_write_table () const { make_wide (); return wide_write; }
 
 	/* Where addr lies in the host when get () or put () would go straight
 	 * there (fastmem, then the page table), an access not crossing a 4 KB
@@ -104,6 +113,20 @@ public:
 				return page + (addr & ((1u << PAGE_BITS) - 1));
 		}
 		return NULL;
+	}
+
+	/* A device's 4 KB page at addr read in place, at host, from now on:
+	 * a bank it switches in that holds plain memory, read as the device
+	 * would give it (the page table only; the code written reads the
+	 * table as it runs). NULL: through the device again */
+	void	show (uint32_t addr, const uint8_t *host)
+	{
+		if (use_pages && addr < (NUM_PAGES << PAGE_BITS)) {
+			read_pages[addr >> PAGE_BITS] = (uint8_t *) host;
+			if (wide_read)
+				for (unsigned k = 0; k < WIDE_ALIASES; k++)
+					wide_read[(k << (29 - PAGE_BITS)) | (addr >> PAGE_BITS)] = (uint8_t *) host;
+		}
 	}
 
 	/* A RAM or ROM that holds addr, readable in place (little endian):
@@ -141,6 +164,9 @@ private:
 	std::vector<Region> regions;
 	bool	 use_pages = false;
 	std::vector<uint8_t *> read_pages, write_pages;
+	mutable uint8_t **wide_read = NULL, **wide_write = NULL;
+	void	 make_wide () const;
+	void	 fill_wide () const;
 
 	uint8_t	*fast_base = NULL;
 	unsigned layout_version = 0;

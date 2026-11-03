@@ -597,6 +597,7 @@ get_texture (Renderer *hr, hikaru_texhead_t *th)
 	cached->id = id;
 	cached->gen = writes;
 	cached->scale = hr->view.texture_scale;
+	cached->wrap = 0xFF;
 
 	hr->textures.is_clear[bank] = false;
 	return cached;
@@ -1134,9 +1135,51 @@ get_glsl_variant (Renderer *hr, hikaru_mesh_t *mesh)
 /* Translucency's copy of the opaque depth, for the collecting shaders */
 #define OIT_DEPTH_UNIT	7
 
+/* What a program's uniforms hold, as the upload_* functions below sent
+ * them (their inputs): the same not sent again. BRAVEFF draws up to 1900
+ * meshes a frame, some thirty uniforms each: the driver's work for them took
+ * the drawing thread's whole frame */
+struct MeshSent {
+	bool viewport, lightset, modelview, alpha, depth, pattern, texture;
+	struct {
+		hikaru_viewport_t vp;
+		float scene_w, distance;
+		unsigned scale;
+	} viewport_was;
+	struct {
+		hikaru_lightset_t ls;
+		uint16_t tables[4][16];
+		float ambient[3];
+		bool no_ambient, no_diffuse;
+	} lightset_was;
+	struct {
+		mtx4x4f_t mtx, link;
+	} modelview_was;
+	float alpha_was[2];
+	float depth_was[3];
+	GLint pattern_was[2];
+};
+
+/* True when now differs from what the program holds (then kept) */
+template <typename T> static bool
+differs (bool &known, T &held, const T &now)
+{
+	if (known && !memcmp ((const void *) &held, (const void *) &now, sizeof (T)))
+		return false;
+	memcpy ((void *) &held, (const void *) &now, sizeof (T));
+	known = true;
+	return true;
+}
+
 static struct {
 	hikaru_glsl_variant_t variant;
 	GLuint program;
+	/* Its uniforms' locations, looked up at its first use only: some
+	 * forty lookups by name at each change of program took most of the
+	 * drawing thread's time (AIRTRIX) */
+	bool has_locs;
+	decltype (((Renderer *) NULL)->meshes.locs) locs;
+	MeshSent sent;
 } program_cache[MAX_PROGRAMS];
 unsigned num_programs;
 
@@ -1243,17 +1286,21 @@ compile_mesh_program (hikaru_glsl_variant_t variant)
  * program's binary, as the driver gives it (program binaries, OpenGL 4.1),
  * kept in cache/shaders/<variant>.bin with the driver's name, so that the next
  * start reads it instead of compiling. A binary of another driver or version
- * is compiled again. As Odin does (its lists of a game's programs, the
- * driver's cache).
+ * is compiled again. The program ships a list for each game too, in
+ * data/shaders/<game>.txt (a clone takes its parent's): its first run
+ * compiles them as it starts, not as the effects show (SWRACER's first race
+ * stopped the drawing thread 80 ms, the machine waiting). As Odin does (its
+ * lists of a game's programs, the driver's cache).
  */
 
-static std::string shader_game;
+static std::string shader_game, shader_parent;
 static bool programs_warmed;
 
 void
-Renderer::set_game (const char *name)
+Renderer::set_game (const char *name, const char *parent)
 {
 	shader_game = name ? name : "";
+	shader_parent = parent ? parent : "";
 }
 
 static std::string
@@ -1393,12 +1440,15 @@ mesh_program (hikaru_glsl_variant_t variant, bool met)
 	return program;
 }
 
-/* Before the game's first frame: the programs of its list. Those that need
- * OpenGL 4.3 (translucency's) only when the card has it */
+/* Before the game's first frame: the programs of its lists, its runs' and
+ * the program's (above). Those that need OpenGL 4.3 (translucency's) only
+ * when the card has it */
 static void
 warm_up_programs ()
 {
 	auto start = std::chrono::steady_clock::now ();
+	const std::filesystem::path shipped = std::filesystem::path (hl::Paths::base ()) / "data" / "shaders";
+	std::vector<std::string> lists;
 	unsigned count = 0;
 	char line[64];
 	FILE *fp;
@@ -1406,36 +1456,43 @@ warm_up_programs ()
 	if (programs_warmed || shader_game.empty ())
 		return;
 	programs_warmed = true;
-	fp = fopen (shader_cache_file (shader_game + ".txt").c_str (), "r");
-	if (!fp)
-		return;
-	while (fgets (line, sizeof (line), fp) && num_programs < MAX_PROGRAMS - 1) {
-		hikaru_glsl_variant_t variant;
-		unsigned i;
+	lists.push_back (shader_cache_file (shader_game + ".txt"));
+	lists.push_back ((shipped / (shader_game + ".txt")).string ());
+	if (!shader_parent.empty ())
+		lists.push_back ((shipped / (shader_parent + ".txt")).string ());
+	for (const std::string &list : lists) {
+		fp = fopen (list.c_str (), "r");
+		if (!fp)
+			continue;
+		while (fgets (line, sizeof (line), fp) && num_programs < MAX_PROGRAMS - 1) {
+			hikaru_glsl_variant_t variant;
+			unsigned i;
 
-		variant.full = strtoull (line, NULL, 16);
-		if (!variant.full || (variant.collect && !GLEW_VERSION_4_3))
-			continue;
-		for (i = 0; i < num_programs; i++)
-			if (program_cache[i].variant.full == variant.full)
-				break;
-		if (i < num_programs)
-			continue;
-		program_cache[num_programs].variant.full = variant.full;
-		program_cache[num_programs].program = mesh_program (variant, false);
-		num_programs++;
-		count++;
+			variant.full = strtoull (line, NULL, 16);
+			if (!variant.full || (variant.collect && !GLEW_VERSION_4_3))
+				continue;
+			for (i = 0; i < num_programs; i++)
+				if (program_cache[i].variant.full == variant.full)
+					break;
+			if (i < num_programs)
+				continue;
+			program_cache[num_programs].variant.full = variant.full;
+			program_cache[num_programs].program = mesh_program (variant, false);
+			num_programs++;
+			count++;
+		}
+		fclose (fp);
 	}
-	fclose (fp);
-	HL_PRINT ("HR %u shader programs of %s ready in %.1f s", count, shader_game.c_str (),
-	          std::chrono::duration<double> (std::chrono::steady_clock::now () - start).count ());
+	if (count)
+		HL_PRINT ("HR %u shader programs of %s ready in %.1f s", count, shader_game.c_str (),
+		          std::chrono::duration<double> (std::chrono::steady_clock::now () - start).count ());
 }
 
 static void
 upload_glsl_program (Renderer *hr, hikaru_mesh_t *mesh)
 {
 	hikaru_glsl_variant_t variant;
-	int i;
+	int i, slot;
 
 	variant = get_glsl_variant (hr, mesh);
 	if (hr->meshes.variant.full == variant.full)
@@ -1464,9 +1521,18 @@ upload_glsl_program (Renderer *hr, hikaru_mesh_t *mesh)
 	HL_ASSERT (num_programs < MAX_PROGRAMS);
 
 update_locations:
-
+	/* Its entry (i counts the lights below) */
+	slot = i;
+	hr->meshes.slot = slot;
 	glUseProgram (hr->meshes.program);
 	HL_ASSERT_NO_GL_ERROR ();
+
+	if (program_cache[slot].has_locs) {
+		hr->meshes.locs = program_cache[slot].locs;
+		if (hr->meshes.variant.collect)
+			glUniform1i (hr->meshes.locs.u_opaque_depth, OIT_DEPTH_UNIT);
+		return;
+	}
 
 	hr->meshes.locs.u_projection =
 		glGetUniformLocation (hr->meshes.program, "u_projection");
@@ -1523,9 +1589,21 @@ update_locations:
 		glGetUniformLocation (hr->meshes.program, "u_tag");
 	hr->meshes.locs.u_opaque_depth =
 		glGetUniformLocation (hr->meshes.program, "u_opaque_depth");
+	program_cache[slot].locs = hr->meshes.locs;
+	program_cache[slot].has_locs = true;
 	if (hr->meshes.variant.collect)
 		glUniform1i (hr->meshes.locs.u_opaque_depth, OIT_DEPTH_UNIT);
 	HL_ASSERT_NO_GL_ERROR ();
+}
+
+/* Other drawing comes (or came): the next mesh sets its program, viewport
+ * and texture again */
+static void
+forget_mesh_state (Renderer *hr)
+{
+	hr->meshes.variant.full = ~0ull;
+	hr->meshes.viewport_known = false;
+	hr->meshes.texture_known = false;
 }
 
 static void
@@ -1561,6 +1639,30 @@ upload_viewport (Renderer *hr, hikaru_mesh_t *mesh)
 
 	HL_ASSERT (mesh->vp_index != ~0);
 
+	/* In the scene's buffers, RENDER_SCALE times its pixels */
+	const float s = (float) hr->framebuffer.scale;
+	const GLint rect[4] = {
+		(GLint) ((vp->clip.l + margin - extra) * s), (GLint) (clip_b * s),
+		(GLint) ((vp->clip.r - vp->clip.l + 2.0f * extra) * s), (GLint) ((clip_t - clip_b) * s)
+	};
+	if (!hr->meshes.viewport_known || memcmp (rect, hr->meshes.viewport, sizeof (rect))) {
+		glViewport (rect[0], rect[1], rect[2], rect[3]);
+		memcpy (hr->meshes.viewport, rect, sizeof (rect));
+		hr->meshes.viewport_known = true;
+	}
+
+	/* The program's projection and fog as they were: nothing sent */
+	MeshSent &sent = program_cache[hr->meshes.slot].sent;
+	decltype (sent.viewport_was) was;
+
+	memset ((void *) &was, 0, sizeof (was));
+	was.vp = *vp;
+	was.scene_w = hr->scene_w;
+	was.distance = hr->view.distance;
+	was.scale = hr->framebuffer.scale;
+	if (!differs (sent.viewport, sent.viewport_was, was))
+		return;
+
 	/* Negative planes and offsets outside the screen are the games' own
 	 * (VON4's, BRAVEFF's, at each frame), drawn as they say: logged with
 	 * HR_LOG only */
@@ -1588,13 +1690,6 @@ upload_viewport (Renderer *hr, hikaru_mesh_t *mesh)
 
 	glUniformMatrix4fv (hr->meshes.locs.u_projection, 1, GL_FALSE,
 	                    (const GLfloat *) projection);
-
-	/* In the scene's buffers, RENDER_SCALE times its pixels */
-	const float s = (float) hr->framebuffer.scale;
-	glViewport ((vp->clip.l + margin - extra) * s,
-	            clip_b * s,
-	            (vp->clip.r - vp->clip.l + 2.0f * extra) * s,
-	            (clip_t - clip_b) * s);
 
 	if (hr->meshes.variant.has_fog) {
 		vec2f_t fog;
@@ -1656,6 +1751,18 @@ upload_modelview (Renderer *hr, hikaru_mesh_t *mesh, unsigned i)
 		mv = (hikaru_modelview_t *) &identity_mv;
 	}
 
+	/* The program's matrices as they were: nothing sent */
+	{
+		MeshSent &sent = program_cache[hr->meshes.slot].sent;
+		decltype (sent.modelview_was) was;
+		const hikaru_modelview_t *link = mesh->has_link ? &hr->mv_list[mesh->mv_index + 1] : mv;
+
+		memcpy (was.mtx, mv->mtx, sizeof (was.mtx));
+		memcpy (was.link, link->mtx, sizeof (was.link));
+		if (!differs (sent.modelview, sent.modelview_was, was))
+			return;
+	}
+
 	hl::compute_normal_matrix (normal, mv->mtx);
 
 	LOG ("mv  = [%u+%u] %s", mesh->mv_index, i, get_modelview_str (mv));
@@ -1686,15 +1793,28 @@ upload_material_texhead (Renderer *hr, hikaru_mesh_t *mesh)
 
 	tex = get_texture (hr, &hr->tex_list[mesh->tex_index]);
 
-	glActiveTexture (GL_TEXTURE0 + 0);
-	HL_ASSERT_NO_GL_ERROR ();
+	/* Unit 0 bound to it, unless it was (the other drawing leaves unit 0
+	 * active) */
+	if (!hr->meshes.texture_known || hr->meshes.texture != (tex ? tex->id : 0)) {
+		glActiveTexture (GL_TEXTURE0 + 0);
+		HL_ASSERT_NO_GL_ERROR ();
 
-	glBindTexture (GL_TEXTURE_2D, tex ? tex->id : 0);
-	HL_ASSERT_NO_GL_ERROR ();
+		glBindTexture (GL_TEXTURE_2D, tex ? tex->id : 0);
+		HL_ASSERT_NO_GL_ERROR ();
+		hr->meshes.texture = tex ? tex->id : 0;
+		hr->meshes.texture_known = true;
+	}
 
 	/* The texhead's wrap: textures of the same slot share a GL one */
-	if (tex)
-		set_texture_wrap (&hr->tex_list[mesh->tex_index]);
+	if (tex) {
+		const hikaru_texhead_t *th = &hr->tex_list[mesh->tex_index];
+		uint8_t wrap = (uint8_t) (th->wrapu | (th->repeatu << 1) | (th->wrapv << 2) | (th->repeatv << 3));
+
+		if (tex->wrap != wrap) {
+			set_texture_wrap (&hr->tex_list[mesh->tex_index]);
+			tex->wrap = wrap;
+		}
+	}
 
 	/* ANISOTROPY, when the card has it: set again when it changes */
 	if (tex && tex->aniso != hr->view.anisotropy && hr->framebuffer.max_aniso > 1.0f) {
@@ -1704,14 +1824,20 @@ upload_material_texhead (Renderer *hr, hikaru_mesh_t *mesh)
 		tex->aniso = hr->view.anisotropy;
 	}
 
-	glUniform1i (hr->meshes.locs.u_texture, 0);
-	HL_ASSERT_NO_GL_ERROR ();
+	if (!program_cache[hr->meshes.slot].sent.texture) {
+		glUniform1i (hr->meshes.locs.u_texture, 0);
+		HL_ASSERT_NO_GL_ERROR ();
+		program_cache[hr->meshes.slot].sent.texture = true;
+	}
 }
 
 static void
 upload_alpha_range (Renderer *hr, hikaru_mesh_t *mesh)
 {
-	if (!hr->meshes.variant.has_alpha_test)
+	MeshSent &sent = program_cache[hr->meshes.slot].sent;
+	float now[2] = { mesh->alpha_thresh[0], mesh->alpha_thresh[1] };
+
+	if (!hr->meshes.variant.has_alpha_test || !differs (sent.alpha, sent.alpha_was, now))
 		return;
 
 	glUniform2fv (hr->meshes.locs.u_alpha_range, 1, mesh->alpha_thresh);
@@ -1741,7 +1867,8 @@ upload_depth (Renderer *hr, hikaru_mesh_t *mesh)
 		depth[2] = amount * 6.0f / 256.0f * hr->framebuffer.scale;
 	else
 		depth[1] = amount * 2000.0f / 16777216.0f / logf (2.0f);
-	glUniform3fv (hr->meshes.locs.u_depth, 1, depth);
+	if (differs (program_cache[hr->meshes.slot].sent.depth, program_cache[hr->meshes.slot].sent.depth_was, depth))
+		glUniform3fv (hr->meshes.locs.u_depth, 1, depth);
 }
 
 /* The 32 dot patterns of 501 (see hikaru-gpu-cp.cpp), a bit a pixel of a
@@ -1759,11 +1886,13 @@ static const uint16_t PATTERNS[32] = {
 static void
 upload_pattern (Renderer *hr, hikaru_mesh_t *mesh)
 {
-	if (!hr->meshes.variant.has_pattern)
+	MeshSent &sent = program_cache[hr->meshes.slot].sent;
+	GLint now[2] = { PATTERNS[mesh->pattern & 31], (GLint) MAX2 (1u, hr->framebuffer.scale) };
+
+	if (!hr->meshes.variant.has_pattern || !differs (sent.pattern, sent.pattern_was, now))
 		return;
 
-	glUniform2i (hr->meshes.locs.u_pattern, PATTERNS[mesh->pattern & 31],
-	             (GLint) MAX2 (1u, hr->framebuffer.scale));
+	glUniform2i (hr->meshes.locs.u_pattern, now[0], now[1]);
 	HL_ASSERT_NO_GL_ERROR ();
 }
 
@@ -1816,6 +1945,21 @@ upload_lightset (Renderer *hr, hikaru_mesh_t *mesh)
 
 	if (!hr->meshes.variant.has_lighting)
 		return;
+
+	/* The program's lights as they were: nothing sent */
+	{
+		MeshSent &sent = program_cache[hr->meshes.slot].sent;
+		decltype (sent.lightset_was) was;
+
+		memset ((void *) &was, 0, sizeof (was));
+		was.ls = *ls;
+		memcpy (was.tables, hr->ls_tables[mesh->ls_index].points, sizeof (was.tables));
+		get_light_ambient (hr, mesh, was.ambient);
+		was.no_ambient = hr->debug.flags[HR_DEBUG_NO_AMBIENT] != 0;
+		was.no_diffuse = hr->debug.flags[HR_DEBUG_NO_DIFFUSE] != 0;
+		if (!differs (sent.lightset, sent.lightset_was, was))
+			return;
+	}
 
 	LOG ("lightset = %s", get_lightset_str (ls));
 
@@ -2782,7 +2926,7 @@ draw_translucent_per_pixel (Renderer *hr, hikaru_mesh_t *meshes, unsigned num)
 	 * whole (their scene's alpha 1, as the meshes' blending gave it) */
 	glUseProgram (o.resolve);
 	glUniform1i (glGetUniformLocation (o.resolve, "u_below"), OIT_BELOW_UNIT);
-	hr->meshes.variant.full = ~0ull;	/* the next mesh's program again */
+	forget_mesh_state (hr);	/* the next mesh's program again */
 	glBindVertexArray (o.vao);
 	glViewport (0, 0, o.w, o.h);
 	glDisable (GL_CULL_FACE);
@@ -2942,7 +3086,7 @@ draw_scene (Renderer *hr)
 	/* The game's programs, before its first frame (see "The programs'
 	 * cache") */
 	warm_up_programs ();
-	hr->meshes.variant.full = ~0ull;
+	forget_mesh_state (hr);
 
 	/* Note that "the pixel ownership test, the scissor test, dithering,
 	 * and the buffer writemasks affect the operation of glClear". */
@@ -3753,6 +3897,24 @@ layer_pixels (Renderer *hr, unsigned i, unsigned format, GLint internal, GLenum 
 		glTexSubImage2D (GL_TEXTURE_2D, 0, 0, 0, 640, 480, GL_RGBA, type, data);
 }
 
+/* Each run of a layer's rows changed, from y to y + h */
+template <typename F> static void
+each_rows_run (const bool *rows, F &&f)
+{
+	unsigned y = 0, end;
+
+	while (y < 480) {
+		if (!rows[y]) {
+			y++;
+			continue;
+		}
+		for (end = y; end < 480 && rows[end]; end++)
+			;
+		f (y, end - y);
+		y = end;
+	}
+}
+
 static void
 upload_layer (Renderer *hr, hikaru_layer_t *layer, unsigned i, GLuint *id, float *mult)
 {
@@ -3797,6 +3959,11 @@ upload_layer (Renderer *hr, hikaru_layer_t *layer, unsigned i, GLuint *id, float
 	glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
 	HL_ASSERT_NO_GL_ERROR ();
 
+	/* All its rows (a new storage, the layer moved, no drawing thread), or
+	 * those the drawing thread's copy changed alone */
+	bool all = !hr->layers_tracked || hr->layer_all[i] ||
+	           hr->framebuffer.layer_formats[i] != layer->format + 1;
+
 	glPixelStorei (GL_UNPACK_ALIGNMENT, 1);
 	switch (layer->format) {
 	case HIKARU_FORMAT_ABGR1555: {
@@ -3805,22 +3972,39 @@ upload_layer (Renderer *hr, hikaru_layer_t *layer, unsigned i, GLuint *id, float
 		 * other way round for GL */
 		static uint16_t pixels[640 * 480];
 		const uint16_t *src = (const uint16_t *) data;
-		unsigned x, y;
+		auto convert = [src] (unsigned y0, unsigned h) {
+			unsigned x, y;
 
-		for (y = 0; y < 480; y++)
-			for (x = 0; x < 640; x++)
-				pixels[y * 640 + x] = src[y * 2048 + (x ^ 1)];
-		data = pixels;
+			for (y = y0; y < y0 + h; y++)
+				for (x = 0; x < 640; x++)
+					pixels[y * 640 + x] = src[y * 2048 + (x ^ 1)];
+		};
+
 		glPixelStorei (GL_UNPACK_ROW_LENGTH, 640);
-		layer_pixels (hr, i, layer->format, GL_RGB5_A1,
-		              GL_UNSIGNED_SHORT_1_5_5_5_REV, data);
+		if (all) {
+			convert (0, 480);
+			layer_pixels (hr, i, layer->format, GL_RGB5_A1,
+			              GL_UNSIGNED_SHORT_1_5_5_5_REV, pixels);
+		} else
+			each_rows_run (hr->layer_rows[i], [&] (unsigned y, unsigned h) {
+				convert (y, h);
+				glTexSubImage2D (GL_TEXTURE_2D, 0, 0, (GLint) y, 640, (GLsizei) h,
+				                 GL_RGBA, GL_UNSIGNED_SHORT_1_5_5_5_REV, pixels + y * 640);
+			});
 		*mult = 1.0f;
 		break;
 	}
 	case HIKARU_FORMAT_A2BGR10:
 		glPixelStorei (GL_UNPACK_ROW_LENGTH, 1024);
-		layer_pixels (hr, i, layer->format, GL_RGB10_A2,
-		              GL_UNSIGNED_INT_2_10_10_10_REV, data);
+		if (all)
+			layer_pixels (hr, i, layer->format, GL_RGB10_A2,
+			              GL_UNSIGNED_INT_2_10_10_10_REV, data);
+		else
+			each_rows_run (hr->layer_rows[i], [&] (unsigned y, unsigned h) {
+				glTexSubImage2D (GL_TEXTURE_2D, 0, 0, (GLint) y, 640, (GLsizei) h,
+				                 GL_RGBA, GL_UNSIGNED_INT_2_10_10_10_REV,
+				                 (const uint8_t *) data + y * 4096);
+			});
 		*mult = 4.0f;
 		break;
 	default:
@@ -3828,6 +4012,10 @@ upload_layer (Renderer *hr, hikaru_layer_t *layer, unsigned i, GLuint *id, float
 	}
 	glPixelStorei (GL_UNPACK_ROW_LENGTH, 0);
 	HL_ASSERT_NO_GL_ERROR ();
+	if (hr->layers_tracked) {
+		memset (hr->layer_rows[i], 0, sizeof (hr->layer_rows[i]));
+		hr->layer_all[i] = false;
+	}
 }
 
 /* TODO make use of the framebuffer configuration in the GPU:1A registers,
@@ -4288,6 +4476,9 @@ struct Renderer::Thread {
 	SDL_GLContext		 context = NULL;
 	/* Its renderer: its GL objects are the thread's context's */
 	Renderer		*drawer = NULL;
+	/* HR_PROFILE: its time drawing the frames (and showing them) */
+	double			 drawing_ms = 0.0;
+	uint64_t		 drawn = 0;
 
 	struct {
 		/* The texture, the thread's framebuffer object on it, the
@@ -4302,6 +4493,9 @@ struct Renderer::Thread {
 	} out[2];
 	/* The texture of the next frame, of the last one */
 	unsigned		 next = 0, last = 0;
+	/* Its context current with the window (it can show its frames); this
+	 * job's frame shown by it */
+	bool			 on_window = false, present = false;
 	/* The frames handed over; the last one shown */
 	uint64_t		 jobs = 0, shown_job = 0;
 };
@@ -4377,9 +4571,15 @@ Renderer::thread_main (Renderer *owner)
 	unsigned i;
 
 	HL_PRINT ("renderer: the drawing thread is thread %lu", hl::Log::thread_id ());
-	if (hl::Window::make_current (t->context)) {
+	hl::Profile::sample_this_thread ();
+	t->on_window = hl::Window::make_current_on_window (t->context);
+	if (t->on_window || hl::Window::make_current (t->context)) {
 		try {
 			t->drawer = new Renderer (owner);
+			/* The game's programs now: the machine waits for this
+			 * thread to start (start_thread ()), none compiled in its
+			 * frames */
+			warm_up_programs ();
 		} catch (const hl::Abort &e) {
 			t->error = e.what ();
 		}
@@ -4397,12 +4597,22 @@ Renderer::thread_main (Renderer *owner)
 			t->job = false;
 		}
 		try {
+			auto t0 = std::chrono::steady_clock::now ();
+
 			if (t->drawer)
 				owner->draw_job ();
+			if (hl::Profile::enabled) {
+				t->drawing_ms += std::chrono::duration<double, std::milli> (
+					std::chrono::steady_clock::now () - t0).count ();
+				t->drawn++;
+			}
 		} catch (const hl::Abort &e) {
 			t->error = e.what ();
 		}
 	}
+	if (hl::Profile::enabled && t->drawn)
+		HL_PRINT ("renderer: the drawing thread: %llu frames, %.3f ms each",
+		          (unsigned long long) t->drawn, t->drawing_ms / (double) t->drawn);
 
 	/* Its GL objects, in its context */
 	delete t->drawer;
@@ -4435,6 +4645,15 @@ Renderer::wait_thread (bool rethrow)
 		t->error.clear ();
 		throw hl::Abort (error);
 	}
+}
+
+void
+Renderer::fb_wrote (uint32_t offs, uint32_t size)
+{
+	uint32_t p;
+
+	for (p = offs >> 12; p <= (offs + size - 1) >> 12 && p < 2048; p++)
+		fb_written[p] = 1;
 }
 
 /* The frame to the thread's renderer, the thread waiting */
@@ -4494,22 +4713,55 @@ Renderer::hand_over ()
 			}
 
 	/* The layers draw () uploads: their 480 rows of 640 pixels (four
-	 * bytes at most) */
+	 * bytes at most), copied when they changed (the most often few or
+	 * none: the copy of both, 2.4 MB, took a twentieth of the machine's
+	 * thread, and the comparison of all as much): those on a page written
+	 * since (fb_written), all of a layer that moved or came back; the
+	 * drawer told which (its textures written for those alone). Two
+	 * layers over the same rows: both whole */
+	bool copied[2] = { false, false };
+
 	for (i = 0; i < 2; i++) {
 		hikaru_layer_t *layer = &d->frame_gpu.layers.layer[0][i];
 		unsigned num = 2 + i;
+		uint32_t at;
 
 		if (!(layer->enabled || d->frame_gpu.fb_config.num_1 == num ||
 		      d->frame_gpu.fb_config.num_2 == num) ||
-		    d->debug.flags[i ? HR_DEBUG_NO_LAYER2 : HR_DEBUG_NO_LAYER1])
+		    d->debug.flags[i ? HR_DEBUG_NO_LAYER2 : HR_DEBUG_NO_LAYER1] ||
+		    (uint64_t) (layer->y0 + 479) * 4096 + (layer->x0 + 640) * 4 > fb_src->size ()) {
+			d->layer_at[i] = ~0u;
 			continue;
-		if ((uint64_t) (layer->y0 + 479) * 4096 + (layer->x0 + 640) * 4 >
-		    fb_src->size ())
-			continue;
-		for (row = 0; row < 480; row++) {
-			uint32_t offs = (layer->y0 + row) * 4096 + layer->x0 * 4;
-			memcpy (fb_shadow->ptr (offs), fb_src->ptr (offs), 640 * 4);
 		}
+		at = layer->y0 * 4096 + layer->x0 * 4;
+		if (at != d->layer_at[i]) {
+			d->layer_at[i] = at;
+			d->layer_all[i] = true;
+		}
+		for (row = 0; row < 480; row++) {
+			uint32_t offs = at + row * 4096;
+
+			if (!d->layer_all[i] && !fb_written[offs >> 12] &&
+			    !fb_written[(offs + 640 * 4 - 1) >> 12])
+				continue;
+			if (memcmp (fb_shadow->ptr (offs), fb_src->ptr (offs), 640 * 4)) {
+				memcpy (fb_shadow->ptr (offs), fb_src->ptr (offs), 640 * 4);
+				d->layer_rows[i][row] = true;
+			}
+		}
+		copied[i] = true;
+	}
+	if (copied[0] && copied[1]) {
+		const hikaru_layer_t *a = &d->frame_gpu.layers.layer[0][0];
+		const hikaru_layer_t *b = &d->frame_gpu.layers.layer[0][1];
+
+		if (abs ((int) a->y0 - (int) b->y0) < 480 && abs ((int) a->x0 - (int) b->x0) < 640)
+			d->layer_all[0] = d->layer_all[1] = true;
+	}
+	/* The pages written taken: watched again */
+	if (fb_rearm) {
+		memset (fb_written, 0, sizeof (fb_written));
+		fb_rearm ();
 	}
 
 	/* The window's size, the picture's place in it */
@@ -4557,9 +4809,9 @@ Renderer::draw_job ()
 	}
 
 	d->target_fb = o.fb;
-	d->meshes.variant.full = ~0;
+	forget_mesh_state (d);
 	draw (d);
-	HL_ASSERT_NO_GL_ERROR ();
+	HL_ASSERT_NO_GL_ERROR_FRAME ();
 	print_stats (d);
 	glBindFramebuffer (GL_FRAMEBUFFER, 0);
 
@@ -4569,6 +4821,19 @@ Renderer::draw_job ()
 	o.drawn = glFenceSync (GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
 	/* The fence on its way, for the window's context to wait on */
 	glFlush ();
+
+	/* Shown here, the machine's thread free of it (it took 0.8 ms of its
+	 * frame, the driver's present) */
+	if (t->present) {
+		glBindFramebuffer (GL_READ_FRAMEBUFFER, o.fb);
+		glBindFramebuffer (GL_DRAW_FRAMEBUFFER, 0);
+		glDisable (GL_SCISSOR_TEST);
+		glViewport (0, 0, d->target_width, d->target_height);
+		glBlitFramebuffer (0, 0, o.width, o.height, 0, 0, d->target_width, d->target_height,
+		                   GL_COLOR_BUFFER_BIT, GL_NEAREST);
+		glBindFramebuffer (GL_FRAMEBUFFER, 0);
+		hl::Window::swap_from_thread ();
+	}
 }
 
 /* In the window's context: out[i], drawn, to the window */
@@ -4634,7 +4899,7 @@ Renderer::on_begin_frame ()
 	Renderer *hr = (Renderer *) renderer;
 	unsigned vpi, i;
 
-	hr->meshes.variant.full = ~0;
+	forget_mesh_state (hr);
 
 	hr->num_vps = 0;
 	hr->num_mvs = 0;
@@ -4680,13 +4945,18 @@ Renderer::on_end_frame ()
 		t->last = t->next;
 		t->next ^= 1;
 		t->jobs++;
+		/* Shown by the thread itself, while the interface draws nothing
+		 * over it */
+		t->present = t->on_window && !hl::Window::overlay_wanted ();
 		{
 			std::lock_guard<std::mutex> lock (t->lock);
 			t->busy = true;
 			t->job = true;
 		}
 		t->wake.notify_one ();
-		if (before) {
+		if (t->present)
+			hl::Window::set_presented ();
+		else if (before) {
 			HL_PROFILE (RENDER_SHOW);
 			show (shown);
 			t->shown_job = before;
@@ -4751,6 +5021,8 @@ Renderer::Renderer (hl::Buffer *fb, hl::Buffer *texram[2]) :
 {
 	Renderer *hr = this;
 
+	memset (fb_written, 1, sizeof (fb_written));
+
 	/* WIDESCREEN: the scene at 854x480, the window's picture too */
 	scene_w = width;
 	hl::Window::set_native_size (width, height);
@@ -4809,6 +5081,7 @@ Renderer::Renderer (Renderer *owner) :
 	texram_src[0] = owner->texram_shadow[0];
 	texram_src[1] = owner->texram_shadow[1];
 	fb_src = owner->fb_shadow;
+	layers_tracked = true;
 	target_fb = 0;
 	thread = NULL;
 

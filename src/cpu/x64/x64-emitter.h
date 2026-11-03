@@ -39,7 +39,8 @@ enum Cond {
 	CC_S, CC_NS, CC_P, CC_NP, CC_L, CC_GE, CC_LE, CC_G
 };
 
-/* Memory the host may run: code written there, then called */
+/* Memory the host may run: code written there, then called. Its size is
+ * reserved, and committed as it fills (Windows: by 1 MB) */
 class CodeArena {
 public:
 	explicit CodeArena (size_t size);
@@ -64,14 +65,21 @@ public:
 
 private:
 	uint8_t		*mem;
-	size_t		 size, used;
+	size_t		 size, used, committed = 0;
 };
 
 /* A place in the code a jump goes to, once bound */
 struct Label {
 	uint8_t			*target = NULL;
-	/* The jumps' rel32 fields that wait for it */
+	/* The jumps' rel32 fields that wait for it: a few in place, the
+	 * others in the vector (a translation's thousand labels allocated
+	 * nothing then) */
+	uint8_t			*few[4];
+	unsigned		 num_few = 0;
 	std::vector<uint8_t *>	 waiting;
+
+	/* Unbound again, for another use */
+	void			 reset () { target = NULL; num_few = 0; waiting.clear (); }
 };
 
 class Emitter {
@@ -140,6 +148,19 @@ public:
 	 * an immediate */
 	void		 mov32 (Reg dst, Reg src);
 	void		 shr32_imm (Reg r, uint8_t count);
+	void		 shl32_imm (Reg r, uint8_t count);
+	/* The arithmetic group between registers: 32 bits, and 64; a register
+	 * and an immediate (81 /digit) */
+	void		 alu32_reg_reg (Alu op, Reg dst, Reg src);
+	void		 alu64_reg_reg (Alu op, Reg dst, Reg src);
+	void		 alu32_imm (Alu op, Reg r, int32_t imm);
+	/* 32-bit register forms: test, movzx and movsx from the low byte or
+	 * word of another, imul, a rotation or sar (Rot) by a count */
+	void		 test32 (Reg a, Reg b);
+	void		 movzx16 (Reg dst, Reg src);
+	void		 movsx8 (Reg dst, Reg src);
+	void		 movsx16 (Reg dst, Reg src);
+	void		 imul32 (Reg dst, Reg src);
 	void		 cmp32_imm (Reg r, uint32_t imm);
 	void		 test32_imm (Reg r, uint32_t imm);
 	/* 64-bit test r, r; [base + disp] += imm */
@@ -165,12 +186,39 @@ public:
 	void		 movsx8_mem (Reg dst, Reg base, int32_t disp);
 	void		 movsx16_mem (Reg dst, Reg base, int32_t disp);
 	void		 neg32 (Reg r);
-	/* bt [base], r: CF = the bit r of the bit string at base */
+	/* bt [base], r: CF = the bit r of the bit string at base; bt with an
+	 * immediate bit of [base + disp] */
 	void		 bt_mem (Reg base, Reg bit);
+	void		 bt_mem_imm (Reg base, int32_t disp, uint8_t bit);
+	/* The rotations and sar of [base + disp], 32 bits, by a count (1: the
+	 * D1 form): the digits of the D1 and C1 groups */
+	enum Rot { ROT_ROL = 0, ROT_ROR = 1, ROT_RCL = 2, ROT_RCR = 3, ROT_SAR = 7 };
+	void		 rot_mem (Rot op, Reg base, int32_t disp, uint8_t count);
+	void		 rot32 (Rot op, Reg r, uint8_t count);
+	/* imul r32, [base + disp] */
+	void		 imul32_mem (Reg r, Reg base, int32_t disp);
 
-	/* Jumps to a label, bound before or after */
+	/* SSE, single precision, on xmm0-xmm7 (x): movss from and to
+	 * [base + disp]; the arithmetic (the opcodes below) from memory or
+	 * from another xmm; ucomiss with memory; cvtsi2ss of a 32-bit integer
+	 * in memory; cvttss2si of a single in memory to a 32-bit register */
+	enum Sse {
+		SSE_SQRT = 0x51, SSE_ADD = 0x58, SSE_MUL = 0x59, SSE_SUB = 0x5C,
+		SSE_DIV = 0x5E
+	};
+	void		 movss_load (unsigned x, Reg base, int32_t disp);
+	void		 movss_store (Reg base, int32_t disp, unsigned x);
+	void		 sse_mem (Sse op, unsigned x, Reg base, int32_t disp);
+	void		 sse_reg (Sse op, unsigned x, unsigned y);
+	void		 ucomiss_mem (unsigned x, Reg base, int32_t disp);
+	void		 cvtsi2ss_mem (unsigned x, Reg base, int32_t disp);
+	void		 cvttss2si_mem (Reg r, Reg base, int32_t disp);
+
+	/* Jumps to a label, bound before or after, or to a register's
+	 * address */
 	void		 jcc (Cond c, Label &l);
 	void		 jmp (Label &l);
+	void		 jmp_reg (Reg r);
 	void		 bind (Label &l);
 
 	void		 byte (uint8_t b);
@@ -190,6 +238,9 @@ private:
 	/* The same with a 66 prefix (16 bits) and an opcode after 0F */
 	void		 mem_index_ex (bool p66, bool w, bool esc, uint8_t opcode,
 				       unsigned reg, Reg base, Reg index, unsigned scale);
+	/* An SSE instruction on [base + disp]: prefix (0 none), 0F op */
+	void		 sse_any_mem (uint8_t prefix, uint8_t op, unsigned reg, Reg base,
+				      int32_t disp);
 	void		 rel32_to (Label &l);
 };
 

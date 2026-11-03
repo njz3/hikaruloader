@@ -457,6 +457,83 @@ Hikaru::raise_memctl_irq ()
  * clocks are unknown */
 static const unsigned bus_cycles_per_line = (50 * MHZ) / (60 * 480);
 
+/* The slave's wait, in the BOOTROM (its copy in its RAM): it counts in R7
+ * while the byte the master posts at GBR stays zero (Odin's author, Réda
+ * Chérif-Touil, found and skips it so):
+ *
+ *	0C002030  mov.b @(0,gbr),r0
+ *	          mov   #2,r2
+ *	          shll8 r2
+ *	          addc  r2,r7
+ *	          mov   #-128,r1
+ *	          bf/s  1f
+ *	          shll16 r1
+ *	          (on a carry: writes port A)
+ *	1:        tst   r0,r0
+ *	          mov   #0,r0
+ *	          bt    0C002030
+ *
+ * A turn without a carry takes ten steps and only adds 0x201 to R7, and
+ * nothing else runs before the end of the slice: as a slice starts there,
+ * its whole turns up to the one that carries are counted without being run,
+ * as the idle loops would after a turn noted (each slice met the wait again,
+ * a turn noted each time: 0.19 ms a frame, the slave's whole time). The
+ * slice's last cycles, the next turn's first steps, are stepped through
+ * here too, and so is the rest of a turn a slice starts within: the turns
+ * the slices ended within went to the run loop and the idle loops' look,
+ * 360 slices a frame of 544 in SWRACER. Steps on the counting path only:
+ * a carry leaves the rest to the run loop */
+static void
+hikaru_slave_wait (Sh4 *ctx)
+{
+	Hikaru *hikaru = (Hikaru *) ((hl::Cpu *) ctx)->mach;
+	const uint8_t *ram = (const uint8_t *) hikaru->ram_s->ptr (0);
+	const uint32_t gbr = ctx->regs.gbr;
+	uint16_t code[19];
+	uint32_t tst, turns;
+	unsigned n;
+
+	/* The instruction at PC is one of the counting path's: in the turn,
+	 * before the branch to the test or from the test on */
+	auto counting = [&] () {
+		uint32_t pc = ctx->regs.pc & 0x1FFFFFFF, k = (pc - 0x0C002030) / 2;
+
+		return pc >= 0x0C002030 && (k <= 5 || (k >= tst && k <= tst + 2));
+	};
+
+	if ((ctx->regs.pc & 0x1FFFFFFF) < 0x0C002030 || (ctx->regs.pc & 0x1FFFFFFF) > 0x0C002030 + 2 * 18 ||
+	    ctx->remaining <= 20)
+		return;
+	memcpy (code, ram + 0x2030, sizeof (code));
+	if (code[0] != 0xC400 || code[1] != 0xE202 || code[2] != 0x4218 || code[3] != 0x372E ||
+	    code[4] != 0xE180 || (code[5] & 0xFF80) != 0x8F00 || code[6] != 0x4128)
+		return;
+	tst = 7u + (code[5] & 0x7F);
+	if (tst > 16 || code[tst] != 0x2008 || code[tst + 1] != 0xE000 ||
+	    code[tst + 2] != (0x8900 | ((0 - (tst + 4)) & 0xFF)))
+		return;
+	/* Within a turn: its rest */
+	for (n = 0; n < 10 && (ctx->regs.pc & 0x1FFFFFFF) != 0x0C002030; n++) {
+		if (!counting ())
+			return;
+		ctx->step_one ();
+	}
+	if ((ctx->regs.pc & 0x1FFFFFFF) != 0x0C002030)
+		return;
+	/* The registers a turn leaves, the posted byte still zero */
+	if (ctx->regs.r[0] != 0 || ctx->regs.r[1] != 0xFF800000 || ctx->regs.r[2] != 0x200 ||
+	    !ctx->regs.sr.bit.t || (gbr >> 29) == 7 || (gbr & 0x1E000000) != 0x0C000000 ||
+	    ram[gbr & 0x01FFFFFF])
+		return;
+	turns = MIN2 ((0xFFFFFFFFu - ctx->regs.r[7]) / 0x201, (uint32_t) (ctx->remaining - 1) / 10);
+	ctx->regs.r[7] += turns * 0x201;
+	ctx->remaining -= (int) (turns * 10);
+	ctx->cycles_skipped += turns * 10;
+	/* The slice's last cycles */
+	while (ctx->remaining > 0 && counting ())
+		ctx->step_one ();
+}
+
 static void
 hikaru_run_cycles (hl::Machine *mach, int cycles)
 {
@@ -836,6 +913,9 @@ Hikaru::on_load_state (hl::State *state)
 	Hikaru *hikaru = (Hikaru *) mach;
 	int ret = 0;
 
+	/* The framebuffer as loaded: all its rows copied again */
+	memset (((Renderer *) hikaru->renderer)->fb_written, 1,
+	        sizeof (((Renderer *) hikaru->renderer)->fb_written));
 	LOAD (hikaru->porta_m);
 	LOAD (hikaru->porta_m_bit0_buffer);
 	LOAD (hikaru->porta_s);
@@ -854,6 +934,10 @@ Hikaru::on_load_state (hl::State *state)
 		if (hikaru->rombd_prot.chip)
 			LOAD (hikaru->rombd_prot.chip_state);
 	}
+
+	/* The MEMCTL's banks as loaded: the apertures' pages shown again as
+	 * read */
+	((Memctl *) hikaru->memctl_m)->hide_pages ();
 
 	/* Another TEXRAM: the textures uploaded again, the drawing thread's
 	 * copy taken again */
@@ -964,6 +1048,10 @@ setup_master_mmap (Hikaru *hikaru)
 	ret |= mmap->add_dev (0x01000000, 0x01FFFFFF, 0x00FFFFFF, HL_REGION_RW | HL_REGION_SIZE_16 | HL_REGION_SIZE_32 | HL_REGION_LOG_RW, hikaru->local_m, "MIEBUS/M");
 	ret |= mmap->add_dev (0x02000000, 0x03FFFFFF, 0x01FFFFFF, HL_REGION_RW | HL_REGION_SIZE_ALL, hikaru->memctl_m, "APERTURE02/M");
 	ret |= mmap->add_dev (0x04000000, 0x0400003F, 0x0000003F, HL_REGION_RW | HL_REGION_SIZE_ALL | HL_REGION_LOG_RW, hikaru->memctl_m, "MEMCTL/M");
+	/* The rest of the bridge's page reads as zero (as Odin has it): the
+	 * BIOS reads all of it as it starts, 4 million words, an unhandled
+	 * read each before */
+	ret |= mmap->add_rom (0x04000040, 0x04FFFFFF, 0x00000FFF, 0, hikaru->bridge_zeros, "BRIDGE/M");
 	ret |= mmap->add_dev (0x14000000, 0x1400002F, 0x0000003F, HL_REGION_RW | HL_REGION_SIZE_ALL | HL_REGION_LOG_RW, hikaru->mscomm, "MSCOMM/M");
 	ret |= mmap->add_ram (0x14000030, 0x143FFFFF, 0x003FFFFF, 0, hikaru->cmdram, "CMDRAM/M");
 	ret |= mmap->add_dev (0x15000000, 0x150FFFFF, 0x000FFFFF, HL_REGION_RW | HL_REGION_SIZE_16 | HL_REGION_SIZE_32 | HL_REGION_LOG_RW, hikaru->gpu, "GPU/M");
@@ -1002,7 +1090,9 @@ setup_slave_mmap (Hikaru *hikaru)
 	ret |= mmap->add_rom (0x00000000, 0x001FFFFF, 0x001FFFFF, 0, hikaru->bootrom, "BOOTROM/S");
 	ret |= mmap->add_dev (0x04000000, 0x0400003F, 0x0000003F, HL_REGION_RW | HL_REGION_SIZE_ALL | HL_REGION_LOG_RW, hikaru->memctl_s, "MEMCTL/S");
 	ret |= mmap->add_dev (0x10000000, 0x1000002F, 0x0000003F, HL_REGION_RW | HL_REGION_SIZE_ALL | HL_REGION_LOG_RW, hikaru->mscomm, "MSCOMM/S");
-	ret |= mmap->add_ram (0x10000100, 0x103FFFFF, 0x003FFFFF, HL_REGION_LOG_W, hikaru->cmdram, "CMDRAM/S");
+	/* Written in place (its writes were logged: none in the page table,
+	 * AIRTRIX's slave 8000 a frame through the slow path) */
+	ret |= mmap->add_ram (0x10000100, 0x103FFFFF, 0x003FFFFF, 0, hikaru->cmdram, "CMDRAM/S");
 	ret |= mmap->add_dev (0x14000800, 0x1400083F, 0x0000003F, HL_REGION_RW | HL_REGION_SIZE_ALL | HL_REGION_LOG_RW, hikaru->local_s, "PCICFG/S");
 	ret |= mmap->add_dev (0x1A800000, 0x1A83FFFF, 0x0003FFFF, HL_REGION_RW | HL_REGION_SIZE_ALL | HL_REGION_LOG_RW, hikaru->local_s, "MIE/S");
 	ret |= mmap->add_dev (0x1B000000, 0x1BFFFFFF, 0x00FFFFFF, HL_REGION_RW | HL_REGION_SIZE_ALL | HL_REGION_LOG_RW, hikaru->local_s, "MIEBUS/S");
@@ -1220,6 +1310,7 @@ Hikaru::~Hikaru ()
 		((Mie *) mie)->report_z80_profile ();
 	delete rombd_eeprom;
 	delete mainbd_eeprom;
+	hl::destroy (bridge_zeros);
 }
 
 /* [Emulation] SECURITY_CHIPS: the ROM board's X76F100 and the main board's
@@ -1298,6 +1389,7 @@ hikaru_init (Hikaru *hikaru)
 	hikaru->ram_m		= hl::Buffer::create (32*MB, 0, hl::Buffer::LE32);
 	hikaru->ram_s		= hl::Buffer::create (32*MB, 0, hl::Buffer::LE32);
 	hikaru->cmdram		= hl::Buffer::create (4*MB, 0, hl::Buffer::LE32);
+	hikaru->bridge_zeros	= hl::Buffer::create (4*KB, 0, hl::Buffer::LE32);
 	hikaru->fb		= hl::Buffer::create (8*MB, 0, hl::Buffer::LE32);
 	hikaru->texram[0]	= hl::Buffer::create (4*MB, 0, hl::Buffer::LE32);
 	hikaru->texram[1]	= hl::Buffer::create (4*MB, 0, hl::Buffer::LE32);
@@ -1307,7 +1399,7 @@ hikaru_init (Hikaru *hikaru)
 	hikaru->bram		= hl::Buffer::create (64*KB, 0, hl::Buffer::LE32);
 
 	if (!hikaru->ram_m || !hikaru->ram_s ||
-	    !hikaru->cmdram || !hikaru->fb ||
+	    !hikaru->cmdram || !hikaru->bridge_zeros || !hikaru->fb ||
 	    !hikaru->texram[0] || !hikaru->texram[1] ||
 	    !hikaru->aica_ram_m || !hikaru->aica_ram_s ||
 	    !hikaru->bram || !hikaru->mie_ram)
@@ -1316,6 +1408,8 @@ hikaru_init (Hikaru *hikaru)
 	mach->register_buffer (hikaru->ram_m);
 	mach->register_buffer (hikaru->ram_s);
 	mach->register_buffer (hikaru->cmdram);
+	/* Not in the states: it stays zero */
+	hikaru->bridge_zeros->clear ();
 	mach->register_buffer (hikaru->fb);
 	mach->register_buffer (hikaru->texram[0]);
 	mach->register_buffer (hikaru->texram[1]);
@@ -1417,7 +1511,7 @@ hikaru_init (Hikaru *hikaru)
 		((Mie *) hikaru->mie)->card_reader = hikaru->card_reader;
 	}
 
-	Renderer::set_game (mach->game ? mach->game->name : NULL);
+	Renderer::set_game (mach->game ? mach->game->name : NULL, mach->game ? mach->game->parent : NULL);
 	hikaru->renderer = new Renderer (hikaru->fb, hikaru->texram);
 
 	hikaru->gpu = new Gpu (mach, hikaru->cmdram, hikaru->fb, hikaru->texram, (Renderer *) hikaru->renderer);
@@ -1465,6 +1559,26 @@ hikaru_init (Hikaru *hikaru)
 
 	hikaru->sh_m = new Sh4 (mach, hikaru->mmap_m, true, true);
 	hikaru->sh_s = new Sh4 (mach, hikaru->mmap_s, false, true);
+	((Sh4 *) hikaru->sh_s)->slice_hook = hikaru_slave_wait;
+	/* Their RAMs, written by themselves and through the MEMCTL alone
+	 * (hikaru-memctl.cpp tells), and the BOOTROM: their code compared
+	 * once a code epoch (sh4-blocks.h) */
+	for (hl::Cpu *cpu : { hikaru->sh_m, hikaru->sh_s }) {
+		((Sh4 *) cpu)->blocks.own (0x0C000000, 0x0DFFFFFF);
+		((Sh4 *) cpu)->blocks.own (0x00000000, 0x001FFFFF);
+	}
+	/* The framebuffer's pages the master writes (its 2D layers), told to
+	 * the renderer: its copy for the drawing thread made of those alone
+	 * (hikaru-renderer.cpp, hand_over ()) */
+	{
+		Sh4 *sh = (Sh4 *) hikaru->sh_m;
+		Renderer *r = (Renderer *) hikaru->renderer;
+
+		sh->blocks.watch (0x1B000000, 0x1B7FFFFF, [r] (uint32_t addr) {
+			r->fb_written[(addr >> 12) & 0x7FF] = 1;
+		});
+		r->fb_rearm = [sh] () { sh->blocks.rearm (); };
+	}
 
 	if (!hikaru->sh_m || !hikaru->sh_s)
 		return -1;

@@ -63,6 +63,28 @@ Window::set_overlay (void (* hook) (int width, int height))
 	overlay_hook = hook;
 }
 
+static bool (* overlay_wanted_hook) (void) = NULL;
+/* This frame shown by the drawing thread */
+static bool presented = false;
+
+void
+Window::set_overlay_wanted (bool (* hook) (void))
+{
+	overlay_wanted_hook = hook;
+}
+
+bool
+Window::overlay_wanted ()
+{
+	return overlay_wanted_hook && overlay_wanted_hook ();
+}
+
+void
+Window::set_presented ()
+{
+	presented = true;
+}
+
 float
 Window::fps ()
 {
@@ -408,10 +430,15 @@ Window::frame_done (const char *message)
 {
 	uint32_t now;
 
-	/* Kept for the pause, before the settings are drawn over it */
-	if (overlay_hook)
-		capture_last_frame ();
-	present ();
+	/* Shown by the drawing thread; else kept for the pause, before the
+	 * settings are drawn over it, and shown */
+	if (presented)
+		presented = false;
+	else {
+		if (overlay_hook)
+			capture_last_frame ();
+		present ();
+	}
 
 	now = SDL_GetTicks ();
 	fps_window.frames++;
@@ -501,6 +528,33 @@ Window::create_shared_context ()
 	/* SDL made the new one current: the window's again */
 	SDL_GL_MakeCurrent (shared_window, shared_context);
 	return context;
+}
+
+bool
+Window::make_current_on_window (SDL_GLContext context)
+{
+	if (!context || SDL_GL_MakeCurrent (shared_window, context))
+		return false;
+	if (GLEW_KHR_debug) {
+		glEnable (GL_DEBUG_OUTPUT_SYNCHRONOUS);
+		glDebugMessageCallback (log_gl_message, NULL);
+	}
+	glDisable (GL_MULTISAMPLE);
+	gl::clear_errors ();
+	return true;
+}
+
+void
+Window::swap_from_thread ()
+{
+	static thread_local int interval = -1;
+	int want = Config::get ()->vsync ? 1 : 0;
+
+	if (want != interval) {
+		SDL_GL_SetSwapInterval (want);
+		interval = want;
+	}
+	SDL_GL_SwapWindow (shared_window);
 }
 
 bool

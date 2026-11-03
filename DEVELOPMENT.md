@@ -163,7 +163,35 @@ In the environment:
   way out, in milliseconds a frame. `HR_ARM_PROFILE=1` and
   `HR_Z80_PROFILE=1` add the busiest addresses of the AICAs' ARM7s and of
   the MIE's Z80, for their idle loops (they run them one instruction at a
-  time, slower).
+  time, slower). With `HR_PROFILE`, each SH-4 also logs its cycles, those
+  its idle loops took off ("sh4 M: ... skipped by the idle loops"), its
+  blocks decoded and translated, the time its translations took, the
+  arena's clears (all translated again) and its code epochs, and the share
+  of its translated blocks gone on to the next without the run loop; and
+  the frames' own CPU time on their thread (Windows: without the time other
+  programs took the core, which the other times count, for a comparison on
+  a busy machine);
+  the drawing thread its time a frame ("renderer: the drawing thread: ...
+  ms each": the frame can go no faster).
+- `HR_SH4_CHAIN=0`: the SH-4s' translations go back to the run loop after
+  each block (sh4.cpp, "Chaining"), as before November 2026, for a
+  comparison.
+- `HR_SH4_EPOCH_CHECK=1`: each SH-4 block's code compared with the memory
+  at each entry all the same, and a rewrite the code epochs missed logged
+  ("SH-4 block @... rewritten, the code epoch the same";
+  `src/cpu/sh/sh4-blocks.h`): for a machine or a writer added.
+- `HR_SAMPLE=1` (Windows): a sampling profile of the machine's thread and
+  of the drawing thread, a sample a millisecond (another thread reads where
+  they are), their busiest functions by name written to the log on the way
+  out (the PDB beside the program, through dbghelp); the code of a DLL with
+  its caller in the program (the first return into it found on the stack);
+  the SH-4s' busiest translated blocks, with their instructions' words. Code the PDB
+  does not name shows as the symbol before it, with its distance when far
+  (vcruntime's memcpy as `_NLG_Return2`). `HR_SAMPLE_AT=1` adds each
+  address's offset, `HR_SAMPLE_TOP=n` shows n functions (48), and
+  `HR_SAMPLE_DUMP=<dir>` writes the 40 busiest translated blocks' x86-64
+  code there (`block00.bin`...) with their samples by offset
+  (`block00.txt`, its first line the block's words), for a disassembler.
 - `HR_EXIT_DUMPS=1` dumps all the machine's memories on the way out
   (`<game>-ram-m.bin` and the others, some 150 MB), in the working directory
   or the write directory's `<game>/`.
@@ -172,6 +200,8 @@ In the environment:
   ones; `HR_LOG=1` logs the renderer's states. `HR_GL_DEBUG=1` asks for a
   debug OpenGL context, whose driver then logs its errors as they happen
   ("GL: ..."): without it, Intel's says nothing (about 10% slower).
+  `HR_GL_CHECK=1` (and `HR_GL_DEBUG=1`) looks for GL's errors after each
+  call, to find where one comes from; without it, once a frame.
 - `HR_NO_AUDIO=1` opens no sound output; `HR_WAV=<path>` writes all the
   sound to a WAV file as well.
 - `HR_CLOCK=<count>`: the board's clock starts at that count (seconds since

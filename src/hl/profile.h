@@ -72,15 +72,49 @@ public:
 
 	/* frames: the frames run; to the log */
 	static void	 report (uint64_t frames);
+	/* The frames' own CPU time on their thread (QueryThreadCycleTime:
+	 * without the time other programs took the core, which the counter's
+	 * times count), at a frame's start and end */
+	static void	 frame_cpu (bool start);
+
+	/* HR_SAMPLE: code written at run time, the samples in it told by the
+	 * code it runs (the SH-4s' translations: the CPU, the block's address
+	 * and its instructions) */
+	static bool	 sampling;
+	/* With HR_PROFILE too: the section the machine's thread is in, its
+	 * samples told apart (the SH-4s') */
+	static volatile int current;
+	/* HR_SAMPLE: the calling thread sampled too (the drawing thread's),
+	 * reported apart */
+	static void	 sample_this_thread ();
+	static void	 code_written (const void *start, size_t size, char cpu, uint32_t pc,
+			               const uint16_t *words, unsigned num_words);
 
 	/* Times its block */
 	class Scope {
 	public:
-		explicit Scope (Section s) : section (s), start (enabled ? now () : 0) {}
-		~Scope () { if (enabled) add (section, now () - start); }
+		explicit Scope (Section s) : section (s), start (enabled ? now () : 0)
+		{
+			if (enabled && s == FRAME)
+				frame_cpu (true);
+			if (sampling) {
+				outer = current;
+				current = s;
+			}
+		}
+		~Scope ()
+		{
+			if (enabled && section == FRAME)
+				frame_cpu (false);
+			if (enabled)
+				add (section, now () - start);
+			if (sampling)
+				current = outer;
+		}
 	private:
 		Section section;
 		uint64_t start;
+		int outer = -1;
 	};
 
 private:

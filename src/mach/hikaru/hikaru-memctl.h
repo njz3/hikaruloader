@@ -25,6 +25,8 @@
 #include "hl/buffer.h"
 #include "hl/machine.h"
 
+#include <vector>
+
 namespace hikaru {
 
 /* A memory controller (one per CPU): the apertures to the external bus,
@@ -38,8 +40,15 @@ public:
 	int exec (int cycles) override;
 	void reset (hl::ResetType type) override;
 
+	/* The apertures' pages shown in the master's page table, hidden
+	 * (the registers loaded from a state) */
+	void hide_pages ();
+
 	hl::Buffer *regs;
 	bool master;
+	/* Each aperture's bank, its pages shown (hikaru-memctl.cpp) */
+	uint32_t shown_bank[4] = {};
+	std::vector<uint32_t> shown[4];
 };
 
 } /* namespace hikaru */
