@@ -57,7 +57,6 @@ struct Picker
     int selected = 0;
     bool scrollToSelected = true;
     bool settingsOpen = false;
-    bool pendingScan = false;
     int launch = -1;
 
     void scan()
@@ -311,6 +310,8 @@ bool ui::Interface::pick_game (hl::GameList *list, char *name, size_t size, cons
     Picker picker;
     picker.list = list;
     picker.message = message ? message : "";
+    // A request left from the settings in a game: scanned here anyway
+    ui::takeRescanRequest(false);
     picker.scan();
     for (size_t i = 0; i < picker.entries.size(); i++)
         if (!strcmp(list->entries[picker.entries[i].index].name, cfg->last_game))
@@ -359,13 +360,9 @@ bool ui::Interface::pick_game (hl::GameList *list, char *name, size_t size, cons
             }
         }, &picker);
 
-        // Once the settings are closed: the folder may still be being typed
-        picker.pendingScan |= ui::takeRescanRequest();
-        if (picker.pendingScan && !picker.settingsOpen)
-        {
+        // The folders changed in the settings
+        if (ui::takeRescanRequest(picker.settingsOpen))
             picker.scan();
-            picker.pendingScan = false;
-        }
 
         if (picker.launch >= 0)
         {

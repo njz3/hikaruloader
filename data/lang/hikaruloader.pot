@@ -984,6 +984,10 @@ msgid "Brake (all the way)"
 msgstr ""
 
 #: src/ui/ui_controls.cpp
+msgid "Change view (NASCAR Arcade)"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
 msgid "Shift up"
 msgstr ""
 

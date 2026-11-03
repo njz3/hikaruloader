@@ -64,6 +64,7 @@ float g_uiScale = 0.0f;
 ImGuiStyle g_baseStyle;
 std::string g_status; // the result of the last save, shown beside the buttons
 bool g_rescan = false;
+bool g_rescanTyped = false; // the folder typed in, its field not left yet
 
 // The languages: English, the texts' own, and the gettext catalogs data/lang/<code>.po beside the program,
 // each a translation of the English texts (data/lang/hikaruloader.pot; see README.md). All are loaded once,
@@ -662,6 +663,8 @@ void drawPickerTab()
 {
     hl::Config *cfg = hl::Config::get ();
     if (ImGui::InputText(tr("Games folder"), cfg->games_dir, sizeof(cfg->games_dir)))
+        g_rescanTyped = true;
+    if (ImGui::IsItemDeactivatedAfterEdit())
         g_rescan = true;
     char used[2048];
     hl::Config::get ()->games_dir_in_use (used, sizeof(used));
@@ -793,10 +796,12 @@ void setLanguage(const char *language)
         g_language = findLanguage(language); // "en", or a file missing: English
 }
 
-bool takeRescanRequest()
+bool takeRescanRequest(bool settingsOpen)
 {
-    bool rescan = g_rescan;
+    bool rescan = g_rescan || (g_rescanTyped && !settingsOpen);
     g_rescan = false;
+    if (rescan)
+        g_rescanTyped = false;
     return rescan;
 }
 
@@ -955,6 +960,7 @@ void drawSettings(bool *open, bool inGame)
         char message[1200];
         snprintf(message, sizeof(message), hl::Config::get ()->save () ? tr("Saved to %s") : tr("Cannot write %s"), hl::Config::path ());
         g_status = message;
+        g_rescan = true;
     }
     ImGui::SameLine();
     if (ImGui::Button(tr("Close")))

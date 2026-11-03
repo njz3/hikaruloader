@@ -948,6 +948,8 @@ SegaIoBoard13844::switches (unsigned players, unsigned bytes, std::vector<uint8_
 
 	if (!SegaIoBoard::switches (players, bytes, out))
 		return false;
+	if (players >= 1 && bytes >= 1)
+		out[first + 1] |= (uint8_t) (view_bits () >> 8);
 	if (players >= 2 && bytes >= 1)
 		out[first + 1 + bytes] |= (uint8_t) (shifter_bits () >> 8);
 	if (!drive || bytes < 2)
@@ -978,6 +980,8 @@ SegaIoBoard13844::player_bits (unsigned player)
 	uint16_t bits = SegaIoBoard::player_bits (player);
 	unsigned k;
 
+	if (player == 0)
+		bits |= view_bits ();
 	if (player == 1)
 		bits |= shifter_bits ();
 	if (!drive || player > 1)
@@ -1039,6 +1043,14 @@ SegaIoBoard13844::shifter_bits ()
 	static const uint16_t bits[5] = { 0x0000, 0x2800, 0x1800, 0x2000, 0x1000 };
 
 	return bits[Gearbox::get ().gear (mach->frame) % 5];
+}
+
+/* NASCAR Arcade's view change button: player 1's down, as its INPUT TEST's
+ * VIEW CHANGE reads it */
+uint16_t
+SegaIoBoard13844::view_bits ()
+{
+	return Input::action (ACTION_VIEW_CHANGE) ? 0x1000 : 0x0000;
 }
 
 int

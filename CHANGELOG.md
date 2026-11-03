@@ -5,6 +5,19 @@ What each version brings, for those who play. How the versions are numbered
 and released: [DEVELOPMENT.md](DEVELOPMENT.md), "Versions and releases".
 
 
+In preparation
+--------------
+
+- The games folder changed in the settings of the game list: its games now
+  start, where they were looked for in the folder of the program's start;
+  the list shows them at once when the folder is added, its field left
+  (Enter), Save or Scan again pressed, else when the settings close.
+- NASCAR Arcade's view change button in the Controls tab: *Change view*
+  (`ViewChange` in `controls.ini`, linuxloader's and windowsloader's name),
+  V or a controller's Y by default; before, only Down changed the view, and
+  a `ViewChange` binding was ignored.
+
+
 0.4.1 (2026-11-03)
 ------------------
 

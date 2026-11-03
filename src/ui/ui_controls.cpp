@@ -84,6 +84,7 @@ const char *actionLabel(const std::string &key)
         {"P1_Steer_Right", N_("Steer right (all the way)")},
         {"P1_Gas_Digital", N_("Accelerator (all the way)")},
         {"P1_Brake_Digital", N_("Brake (all the way)")},
+        {"ViewChange", N_("Change view (NASCAR Arcade)")},
         {"GearUp", N_("Shift up")},
         {"GearDown", N_("Shift down")},
         {"Gear1", N_("Gear 1")},
@@ -638,7 +639,7 @@ void drawGameInputs()
     static const hl::Action switches[] = {
         hl::ACTION_TEST,    hl::ACTION_SERVICE, hl::ACTION_COIN1,   hl::ACTION_COIN2,   hl::ACTION_START1,
         hl::ACTION_UP,      hl::ACTION_DOWN,    hl::ACTION_LEFT,    hl::ACTION_RIGHT,   hl::ACTION_BUTTON1,
-        hl::ACTION_BUTTON2, hl::ACTION_BUTTON3, hl::ACTION_BUTTON4, hl::ACTION_CARD,
+        hl::ACTION_BUTTON2, hl::ACTION_BUTTON3, hl::ACTION_BUTTON4, hl::ACTION_CARD,    hl::ACTION_VIEW_CHANGE,
     };
     hl::Controls &controls = hl::Controls::get();
     if (!ImGui::BeginTable("##game", 2, ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_RowBg))

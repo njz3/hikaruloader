@@ -48,8 +48,10 @@ void setLanguage(const char *language);
 
 // The settings window. inGame: the settings that need a restart say so.
 void drawSettings(bool *open, bool inGame);
-// Set when the games folder changed: the picker scans it again.
-bool takeRescanRequest();
+// Set when the games folders changed: the picker scans them again, at once
+// for a folder added, the field left, Save or Scan again; for one typed in
+// with the field still being edited, once the settings are closed.
+bool takeRescanRequest(bool settingsOpen);
 
 // The controls page: the devices' bindings in controls.ini (hl::Controls),
 // captured from the devices.

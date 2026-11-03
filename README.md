@@ -132,6 +132,7 @@ Keys and controllers
 | Left Ctrl, Left Alt, Left Shift, Z; a controller's A, B, X, Y | Buttons 1 to 4 |
 | A controller's left stick and triggers, a wheel's axes | Steering, accelerator, brake (the arrows too, all the way) |
 | Page Up, Page Down; a controller's R1, L1 | NASCAR Arcade's gear up, down |
+| V; a controller's Y | NASCAR Arcade's view change (`ViewChange`, linuxloader's name; Down too, as on the cabinet's I/O board) |
 | Space; Guide + X | Pause |
 | F4, F1; Guide + R1, Guide + L1 | Save, load the game's state |
 | Tab; a controller's Back, Guide + Back | Settings |

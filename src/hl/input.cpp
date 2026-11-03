@@ -59,6 +59,8 @@ static const struct {
 	{ "BUTTON4",	"Digital",	"P1_Button4",	{ SDLK_z,	SDL_CONTROLLER_BUTTON_Y } },
 	/* linuxloader's name and key */
 	{ "CARD",	"Digital",	"P1_Card1Insert", { SDLK_F7,	-1 } },
+	/* linuxloader's and windowsloader's name and key */
+	{ "VIEW_CHANGE", "Driving",	"ViewChange",	{ SDLK_v,	-1 } },
 	/* linuxloader's names for the paddles, sm2-emu's positions */
 	{ "GEAR_UP",	"Driving",	"GearUp",	{ SDLK_UNKNOWN,	-1 } },
 	{ "GEAR_DOWN",	"Driving",	"GearDown",	{ SDLK_UNKNOWN,	-1 } },

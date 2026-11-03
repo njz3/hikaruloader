@@ -987,6 +987,10 @@ msgid "Brake (all the way)"
 msgstr "Frein (à fond)"
 
 #: src/ui/ui_controls.cpp
+msgid "Change view (NASCAR Arcade)"
+msgstr "Changer de vue (NASCAR Arcade)"
+
+#: src/ui/ui_controls.cpp
 msgid "Shift up"
 msgstr "Rapport sup."
 

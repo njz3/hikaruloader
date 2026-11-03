@@ -61,10 +61,11 @@ public:
 	 * program (base) first */
 	bool	 load_game_list (const char *base);
 
-	/* Loads the game named name from rom_path, or the one the picker
+	/* Loads the game named name from the settings' games folders (those
+	 * the picker's settings may have changed), or the one the picker
 	 * returns when name is empty; back to the picker when it cannot be
 	 * loaded. False when the player quits, or the named game fails. */
-	bool	 load_game (const char *rom_path, const char *name, const char *log_path);
+	bool	 load_game (const char *name, const char *log_path);
 	/* Frees the machine and its game, for the picker's next one */
 	void	 unload_game ();
 

@@ -75,6 +75,8 @@ static const struct {
 	{ "Button3",	ACTION_BUTTON3 },
 	{ "Button4",	ACTION_BUTTON4 },
 	{ "Card",	ACTION_CARD },
+	/* linuxloader's name */
+	{ "ViewChange",	ACTION_VIEW_CHANGE },
 };
 
 static int

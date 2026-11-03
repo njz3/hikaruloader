@@ -300,7 +300,7 @@ main (const int argc, char **argv)
 	//signal (SIGINT,  finalize);
 	//signal (SIGKILL, finalize);
 
-	if (!emulator->load_game (rom_path, options.rom_name, path))
+	if (!emulator->load_game (options.rom_name, path))
 		goto fail;
 
 next_game:
@@ -340,7 +340,7 @@ next_game:
 		emulator->unload_game ();
 		options.state_path[0] = '\0';
 		options.start_state = -1;
-		if (emulator->load_game (rom_path, "", path))
+		if (emulator->load_game ("", path))
 			goto next_game;
 	}
 

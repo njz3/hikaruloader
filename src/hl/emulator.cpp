@@ -135,9 +135,9 @@ Emulator::create_machine ()
 }
 
 bool
-Emulator::load_game (const char *rom_path, const char *name, const char *log_path)
+Emulator::load_game (const char *name, const char *log_path)
 {
-	char message[512] = "";
+	char message[512] = "", folders[2048];
 
 	from_picker = !name[0];
 	back_to_picker = false;
@@ -154,7 +154,8 @@ Emulator::load_game (const char *rom_path, const char *name, const char *log_pat
 		entry = game_list->find (rom_name);
 		ui::Interface::show_loading (entry ? entry->description : rom_name);
 
-		game = Game::create (game_list, rom_path, rom_name);
+		Config::get ()->games_dir_in_use (folders, sizeof (folders));
+		game = Game::create (game_list, folders, rom_name);
 		if (!game) {
 			HL_ERROR ("failed to load '%s': can't load game files", rom_name);
 			snprintf (message, sizeof (message), ui::Interface::tr ("%s could not be loaded; see %s."),

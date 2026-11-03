@@ -65,6 +65,7 @@ static const char *default_file =
 	"P1_Steer_Right = KEY_Right\n"
 	"P1_Gas_Digital = KEY_Up\n"
 	"P1_Brake_Digital = KEY_Down\n"
+	"ViewChange = KEY_V, GC0_BUTTON_Y\n"
 	"GearUp = KEY_PageUp, GC0_BUTTON_RIGHTSHOULDER\n"
 	"GearDown = KEY_PageDown, GC0_BUTTON_LEFTSHOULDER\n"
 	"Gear1 =\n"
@@ -152,6 +153,9 @@ static const struct {
 	{ "Driving", "P1_Steer_Right", "The wheel turned all the way to the right" },
 	{ "Driving", "P1_Gas_Digital", "The accelerator pressed all the way" },
 	{ "Driving", "P1_Brake_Digital", "The brake pressed all the way" },
+	{ "Driving", "ViewChange",
+	  "NASCAR Arcade's view change button (player 1's down, as linuxloader has\n"
+	  "it for a racing game); in the other games, nothing" },
 	{ "Driving", "GearUp",
 	  "NASCAR Arcade's gear lever: a gear up (a paddle), from neutral to 4" },
 	{ "Driving", "GearDown", "A gear down (a paddle), to neutral" },

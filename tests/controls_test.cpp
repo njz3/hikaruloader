@@ -21,7 +21,8 @@
  * added to an older controls.ini, and the hotkeys and the wheel read from
  * SDL's virtual joysticks, a game controller with its Guide and a wheel, as
  * a player would press them; NASCAR Arcade's gear lever (hl::Gearbox) and
- * Star Wars: Racer Arcade's levers. Run by ctest, or alone: controlstest. */
+ * view change button, Star Wars: Racer Arcade's levers. Run by ctest, or
+ * alone: controlstest. */
 
 #include <stdio.h>
 #include <string.h>
@@ -422,6 +423,19 @@ test_gearbox (void)
 	check ("reset: neutral", g.gear (frame++) == 0);
 }
 
+/* NASCAR Arcade's view change: linuxloader's ViewChange, in [Driving], V and
+ * a controller's Y by default */
+static void
+test_view_change (void)
+{
+	const char *section, *key;
+
+	check ("view: its row", hl::Input::row_of (hl::ACTION_VIEW_CHANGE, &section, &key) &&
+	       !strcmp (section, "Driving") && !strcmp (key, "ViewChange"));
+	check ("view: V and Y by default",
+	       hl::Controls::get ().value ("Driving", "ViewChange") == "KEY_V, GC0_BUTTON_Y");
+}
+
 int
 main (int argc, char **argv)
 {
@@ -444,6 +458,7 @@ main (int argc, char **argv)
 		test_upgrade (dir.generic_string ());
 		test_devices (dir.generic_string ());
 		test_gearbox ();
+		test_view_change ();
 		SDL_Quit ();
 	}
 

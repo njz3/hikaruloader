@@ -287,8 +287,9 @@ public:
 	/* Outputs 9 to 14, in bits 7 to 2 */
 	uint8_t	 output2;
 
-	/* With the drive board's reply in bits 7-4, as on the cabinet; and
-	 * the gear lever on player 2's (shifter_bits ()) */
+	/* With the drive board's reply in bits 7-4, as on the cabinet; the
+	 * view change button on player 1's (view_bits ()), the gear lever on
+	 * player 2's (shifter_bits ()) */
 	uint16_t player_bits (unsigned player) override;
 
 protected:
@@ -303,6 +304,8 @@ private:
 
 	/* The gear lever's (hl::Gearbox), on player 2's switches */
 	uint16_t shifter_bits ();
+	/* The view change button's, on player 1's */
+	uint16_t view_bits ();
 };
 
 /* Star Wars: Racer Arcade's levers from the controls, 0 (at rest) to 1
