@@ -5,8 +5,8 @@ What each version brings, for those who play. How the versions are numbered
 and released: [DEVELOPMENT.md](DEVELOPMENT.md), "Versions and releases".
 
 
-0.4.1 (not released yet)
-------------------------
+0.4.1 (2026-11-03)
+------------------
 
 - NASCAR Arcade's gears: the cabinet's four-speed lever, for the game's
   MANUAL. Shift up and Shift down a gear at each press (Page Up, Page Down,
