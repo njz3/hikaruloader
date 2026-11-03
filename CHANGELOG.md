@@ -5,8 +5,8 @@ What each version brings, for those who play. How the versions are numbered
 and released: [DEVELOPMENT.md](DEVELOPMENT.md), "Versions and releases".
 
 
-0.3.1 (not released yet)
-------------------------
+0.4.0 (2026-11-03)
+------------------
 
 - Faster: about twice as fast in the six games, the same pictures; as fast
   as Odin or faster here. The SH-4s' recompiler goes from one block to the
