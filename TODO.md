@@ -29,9 +29,11 @@ The outputs (`src/hl/outputs.cpp`):
   TEST here (the VO4 terminal's, likely).
 - Air Trix's LOCK MECHA. reads OFF in the test with output 4 at 1; it stays
   at 0 in the attract and after Start.
-- MAME's Windows messages (MAMEOutput, as sm2-emu and Supermodel have
-  them), and the outputs in the agent protocol (shared with Supermodel and
-  sm2-emu).
+- MAME's other way of sending its outputs, beside the network protocol
+  done here: its window messages on Windows (a hidden "MAMEOutput" window
+  and registered messages), which some tools listen to alone. Supermodel
+  and sm2-emu send both.
+- The outputs in the agent protocol (shared with Supermodel and sm2-emu).
 
 The controls (`src/hl/controls.cpp`):
 
