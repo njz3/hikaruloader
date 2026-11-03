@@ -194,6 +194,10 @@ default) (`[Input]` `TWIN_LEVERS`). Button 1 is the boost, button 2 the
 brake; the game's left and right buttons (◁ ▷, the menus) are Right and
 Left.
 
+<img src="docs/media/swracer-levers.png" width="720" alt="A comic strip: the pedal pushes both levers, the wheel moves them apart; the pod turns away from the engine that pushes harder, and stops when the pedal is released">
+
+<img src="docs/media/swracer-levers-gamepad.png" width="720" alt="The same with a controller: the right trigger pushes both levers, the left stick moves them apart">
+
 
 Settings
 --------
