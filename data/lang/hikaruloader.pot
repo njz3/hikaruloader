@@ -984,6 +984,42 @@ msgid "Brake (all the way)"
 msgstr ""
 
 #: src/ui/ui_controls.cpp
+msgid "Shift up"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Shift down"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Gear 1"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Gear 2"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Gear 3"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Gear 4"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Neutral"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Left lever (its engine's thrust)"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Right lever (its engine's thrust)"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
 msgid "Pause"
 msgstr ""
 
@@ -1100,6 +1136,54 @@ msgid "Your wheel turns %d degrees: the game's wheel takes its whole turn."
 msgstr ""
 
 #: src/ui/ui_controls.cpp
+msgid "Neutral when no gear is engaged"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "With an H shifter bound to Gear 1..4: its lever in none\nof the gears is in neutral, as on the cabinet. Off, the\nlast gear stays engaged until another is selected or\nNeutral is pressed."
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Neutral between gears"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "With Shift up and Shift down: a shift from one\ngear to another passes through neutral this long, as a\nreal lever does."
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "NASCAR Arcade's four gears: Shift up and Shift down a gear at each press, or an H shifter's positions (Gear 1 to 4, Neutral), in the Driving section of a device's bindings. The game asks for AUTOMATIC or MANUAL at the start of a race."
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Combined: the accelerator and the wheel"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Original: an axis per lever"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Star Wars: Racer Arcade's two levers each give a pod engine's thrust: even, the pod goes straight; the side pushing harder turns it the other way. Combined, the accelerator is the thrust of both and the wheel the difference, the pod turning to the side steered. Original, as on the cabinet: Left lever and Right lever, an axis each, in the Driving section."
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Gear (NASCAR Arcade)"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "N"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Left lever (Star Wars: Racer Arcade)"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Right lever (Star Wars: Racer Arcade)"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
 msgid "The agent drives the game: the keyboard and the controllers are not read."
 msgstr ""
 
@@ -1129,6 +1213,14 @@ msgstr ""
 
 #: src/ui/ui_controls.cpp
 msgid "What the game receives"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Gear shifter (NASCAR Arcade)"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Levers (Star Wars: Racer Arcade)"
 msgstr ""
 
 #: src/ui/ui_controls.cpp

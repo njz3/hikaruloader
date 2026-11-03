@@ -16,6 +16,8 @@
  * along with Hikaruloader.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <algorithm>
+
 #include "hl/jvs.h"
 #include "hl/driveboard.h"
 #include "hl/buffer.h"
@@ -23,6 +25,9 @@
 #include "hl/controls.h"
 #include "hl/state.h"
 #include "hl/outputs.h"
+#include "hl/gearbox.h"
+#include "hl/machine.h"
+#include "hl/config.h"
 
 namespace hl {
 
@@ -737,11 +742,48 @@ SegaIoBoard::coin_change (unsigned slot, int count)
 	return true;
 }
 
+/* COMBINED: the accelerator the thrust of both, the wheel the difference
+ * around it, the engine on the side away from the turn pushing harder (the
+ * pod turns right with the left engine's thrust alone, measured); the
+ * accelerator up, no thrust, as with the levers at rest */
+void
+twin_lever_thrusts (double *left, double *right)
+{
+	Controls &c = Controls::get ();
+
+	if (Config::get ()->twin_levers == TWIN_LEVERS_ORIGINAL) {
+		*left = c.pedal ("Driving", "P1_LeftLever");
+		*right = c.pedal ("Driving", "P1_RightLever");
+	} else {
+		double thrust = c.pedal ("Driving", "P1_Gas"), steer = c.axis ("Driving", "P1_Steer");
+
+		*left = std::clamp (thrust * (1.0 + steer), 0.0, 1.0);
+		*right = std::clamp (thrust * (1.0 - steer), 0.0, 1.0);
+	}
+}
+
 void
 SegaIoBoard::read_controls ()
 {
 	Controls &c = Controls::get ();
 
+	/* Star Wars: Racer Arcade's levers: C000 at rest, 4000 pushed all the
+	 * way, as the game's CALIBRATION has them from the factory (MAX C0,
+	 * MIN 40); the thrust grows from C0 to 50 (468 km/h from 50). At rest
+	 * while the agent drives (the controls not read) */
+	if (twin_levers) {
+		double left = 0.0, right = 0.0;
+
+		if (c.is_enabled ())
+			twin_lever_thrusts (&left, &right);
+		if (!analog_set[0])
+			analog[0] = (uint16_t) lround (0xC000 - left * 0x8000);
+		if (!analog_set[1])
+			analog[1] = (uint16_t) lround (0xC000 - right * 0x8000);
+		if (!analog_set[2] && c.is_enabled ())
+			analog[2] = (uint16_t) lround (c.pedal ("Driving", "P1_Brake") * 0xFFFF);
+		return;
+	}
 	if (!c.is_enabled ())
 		return;
 	/* The wheel from 0 (left) to FFFF, its middle 8000; the pedals from 0
@@ -862,6 +904,13 @@ SegaIoBoard13844::SegaIoBoard13844 (Machine *mach, JvsBus *bus, DriveBoard *driv
 	output2 = 0;
 	/* Outputs 15 to 22 are the drive board's */
 	Outputs::get ()->board (14, drive != NULL);
+	Gearbox::get ().attach (true);
+}
+
+SegaIoBoard13844::~SegaIoBoard13844 ()
+{
+	Gearbox::get ().attach (false);
+	Gearbox::get ().hold (-1);
 }
 
 const char *
@@ -899,6 +948,8 @@ SegaIoBoard13844::switches (unsigned players, unsigned bytes, std::vector<uint8_
 
 	if (!SegaIoBoard::switches (players, bytes, out))
 		return false;
+	if (players >= 2 && bytes >= 1)
+		out[first + 1 + bytes] |= (uint8_t) (shifter_bits () >> 8);
 	if (!drive || bytes < 2)
 		return true;
 	drive->set_wheel ((uint8_t) (analog[0] >> 8));
@@ -927,6 +978,8 @@ SegaIoBoard13844::player_bits (unsigned player)
 	uint16_t bits = SegaIoBoard::player_bits (player);
 	unsigned k;
 
+	if (player == 1)
+		bits |= shifter_bits ();
 	if (!drive || player > 1)
 		return bits;
 	if (player == 0) {
@@ -974,6 +1027,18 @@ SegaIoBoard13844::reset (ResetType type)
 	SegaIoBoard::reset (type);
 	output2 = 0;
 	line_reply = 0xFF;
+	Gearbox::get ().reset ();
+}
+
+/* NASCAR Arcade's gear lever on player 2's switches, as its INPUT TEST's
+ * GEAR POSITION reads them: up for gears 1 and 3, down for 2 and 4, left
+ * with them for 1 and 2 (the H's left half); none in neutral */
+uint16_t
+SegaIoBoard13844::shifter_bits ()
+{
+	static const uint16_t bits[5] = { 0x0000, 0x2800, 0x1800, 0x2000, 0x1000 };
+
+	return bits[Gearbox::get ().gear (mach->frame) % 5];
 }
 
 int

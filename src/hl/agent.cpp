@@ -38,6 +38,7 @@
 #include "hl/shell.h"
 #include "hl/cpu.h"
 #include "hl/ffb.h"
+#include "hl/gearbox.h"
 #include "hl/input.h"
 #include "hl/window.h"
 
@@ -351,7 +352,17 @@ Agent::run (const std::string &line)
 
 	if (!strcmp (cmd, "step"))
 		step (args);
-	else if (!strcmp (cmd, "set") || !strcmp (cmd, "setraw")) {
+	else if ((!strcmp (cmd, "set") || !strcmp (cmd, "setraw")) &&
+	         sscanf (args, "%63s %lf", name, &value) == 2 && !strcasecmp (name, "Gear") &&
+	         Gearbox::get ().attached ()) {
+		/* NASCAR Arcade's gear lever, as sm2-emu's: 0 (neutral) to 4 */
+		if (value < 0 || value > 4)
+			reply ("err usage: %s Gear 0..4", cmd);
+		else {
+			Gearbox::get ().hold ((int) value);
+			reply ("ok");
+		}
+	} else if (!strcmp (cmd, "set") || !strcmp (cmd, "setraw")) {
 		/* A switch: pressed from 0.5, or any raw value but 0 */
 		if (sscanf (args, "%63s %lf", name, &value) != 2)
 			reply ("err usage: %s INPUT VALUE", cmd);
@@ -363,7 +374,9 @@ Agent::run (const std::string &line)
 			reply ("ok");
 		}
 	} else if (!strcmp (cmd, "get")) {
-		if ((input = find_input (args)) < 0)
+		if (!strcasecmp (args, "Gear") && Gearbox::get ().attached ())
+			reply ("value %u", Gearbox::get ().gear (emu->mach->frame));
+		else if ((input = find_input (args)) < 0)
 			reply ("err unknown input %s", args);
 		else
 			reply ("value %d", Input::action (inputs[input].action) ? 1 : 0);
@@ -371,6 +384,10 @@ Agent::run (const std::string &line)
 		if (!strcmp (args, "all")) {
 			for (const auto &in : inputs)
 				Input::set_action (in.action, false);
+			Gearbox::get ().hold (-1);
+			reply ("ok");
+		} else if (!strcasecmp (args, "Gear") && Gearbox::get ().attached ()) {
+			Gearbox::get ().hold (-1);
 			reply ("ok");
 		} else if ((input = find_input (args)) < 0)
 			reply ("err unknown input %s", args);
@@ -379,9 +396,11 @@ Agent::run (const std::string &line)
 			reply ("ok");
 		}
 	} else if (!strcmp (cmd, "inputs")) {
-		reply ("inputs %u", (unsigned) NUMELEM (inputs));
+		reply ("inputs %u", (unsigned) NUMELEM (inputs) + (Gearbox::get ().attached () ? 1 : 0));
 		for (const auto &in : inputs)
 			reply ("%s switch", in.name);
+		if (Gearbox::get ().attached ())
+			reply ("Gear other");
 	} else if (!strcmp (cmd, "obs"))
 		obs (args);
 	else if (!strcmp (cmd, "shot")) {

@@ -1493,8 +1493,13 @@ hikaru_init (Hikaru *hikaru)
 		}
 		hikaru->drive_board = new hl::DriveBoard (mach, program);
 		hikaru->io_board = new hl::SegaIoBoard13844 (mach, hikaru->jvs, hikaru->drive_board);
-	} else
+	} else {
 		hikaru->io_board = new hl::SegaIoBoard (mach, hikaru->jvs);
+		/* Its two levers, a pod engine's thrust each, on channels 0
+		 * and 1 */
+		if (!strcmp (game->name, "swracer"))
+			((hl::SegaIoBoard *) hikaru->io_board)->twin_levers = true;
+	}
 	if (hl::Config::get ()->io_board_program)
 		hikaru_attach_io_program (hikaru);
 	hikaru->mie = new hikaru::Mie (mach, hikaru->mie_ram, hikaru->jvs);

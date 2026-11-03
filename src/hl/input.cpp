@@ -59,6 +59,14 @@ static const struct {
 	{ "BUTTON4",	"Digital",	"P1_Button4",	{ SDLK_z,	SDL_CONTROLLER_BUTTON_Y } },
 	/* linuxloader's name and key */
 	{ "CARD",	"Digital",	"P1_Card1Insert", { SDLK_F7,	-1 } },
+	/* linuxloader's names for the paddles, sm2-emu's positions */
+	{ "GEAR_UP",	"Driving",	"GearUp",	{ SDLK_UNKNOWN,	-1 } },
+	{ "GEAR_DOWN",	"Driving",	"GearDown",	{ SDLK_UNKNOWN,	-1 } },
+	{ "GEAR1",	"Driving",	"Gear1",	{ SDLK_UNKNOWN,	-1 } },
+	{ "GEAR2",	"Driving",	"Gear2",	{ SDLK_UNKNOWN,	-1 } },
+	{ "GEAR3",	"Driving",	"Gear3",	{ SDLK_UNKNOWN,	-1 } },
+	{ "GEAR4",	"Driving",	"Gear4",	{ SDLK_UNKNOWN,	-1 } },
+	{ "GEAR_NEUTRAL", "Driving",	"GearNeutral",	{ SDLK_UNKNOWN,	-1 } },
 	{ "PAUSE",	"Emulator",	"Pause",	{ SDLK_SPACE,	-1 } },
 	{ "SAVE_STATE",	"Emulator",	"SaveState",	{ SDLK_F4,	-1 } },
 	{ "LOAD_STATE",	"Emulator",	"LoadState",	{ SDLK_F1,	-1 } },

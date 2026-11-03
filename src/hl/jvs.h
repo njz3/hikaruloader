@@ -221,6 +221,9 @@ public:
 
 	/* 16 bits each, the top ones meaningful: a wheel's middle is 8000 */
 	uint16_t analog[8];
+	/* Channels 0 and 1 Star Wars: Racer Arcade's levers, from the
+	 * controls as TWIN_LEVERS says (twin_lever_thrusts ()) */
+	bool	 twin_levers = false;
 	/* Set by the shell (or the agent): no longer the controllers' */
 	bool	 analog_set[8];
 	/* The coins counted, and the outputs (lamps) the game drives */
@@ -273,6 +276,7 @@ class SegaIoBoard13844 : public SegaIoBoard {
 public:
 	/* drive: none, or the drive board on it (the machine keeps it) */
 	SegaIoBoard13844 (Machine *mach, JvsBus *bus, DriveBoard *drive);
+	~SegaIoBoard13844 ();
 
 	int	 get (unsigned size, uint32_t addr, void *val) override;
 	void	 reset (ResetType type) override;
@@ -283,7 +287,8 @@ public:
 	/* Outputs 9 to 14, in bits 7 to 2 */
 	uint8_t	 output2;
 
-	/* With the drive board's reply in bits 7-4, as on the cabinet */
+	/* With the drive board's reply in bits 7-4, as on the cabinet; and
+	 * the gear lever on player 2's (shifter_bits ()) */
 	uint16_t player_bits (unsigned player) override;
 
 protected:
@@ -295,7 +300,15 @@ protected:
 private:
 	/* The drive board's reply player_bits (0) read, for player 2's */
 	uint8_t	 line_reply;
+
+	/* The gear lever's (hl::Gearbox), on player 2's switches */
+	uint16_t shifter_bits ();
 };
+
+/* Star Wars: Racer Arcade's levers from the controls, 0 (at rest) to 1
+ * (pushed forward, the engine's whole thrust): an axis each, or the
+ * accelerator and the wheel (Config::twin_levers) */
+void	 twin_lever_thrusts (double *left, double *right);
 
 } /* namespace hl */
 

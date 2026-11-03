@@ -20,7 +20,8 @@
  * Controls::steer, the force feedback's spring), the controllers' hotkeys
  * added to an older controls.ini, and the hotkeys and the wheel read from
  * SDL's virtual joysticks, a game controller with its Guide and a wheel, as
- * a player would press them. Run by ctest, or alone: controlstest. */
+ * a player would press them; NASCAR Arcade's gear lever (hl::Gearbox) and
+ * Star Wars: Racer Arcade's levers. Run by ctest, or alone: controlstest. */
 
 #include <stdio.h>
 #include <string.h>
@@ -37,7 +38,9 @@
 #include "hl/config.h"
 #include "hl/controls.h"
 #include "hl/ffb.h"
+#include "hl/gearbox.h"
 #include "hl/input.h"
+#include "hl/jvs.h"
 
 static int failures, checks;
 
@@ -189,8 +192,10 @@ test_devices (const std::string &dir)
 	snprintf (text, sizeof (text),
 		"[Config]\n"
 		"Steer_DeadZone = 0\n"
+		"Gas_DeadZone = 0\n"
 		"[Driving]\n"
 		"P1_Steer = GC0_AXIS_LEFTX, JOY1_AXIS_0\n"
+		"P1_Gas = JOY1_AXIS_1_NEGATIVE_SIDE\n"
 		"[Emulator]\n"
 		"Back = KEY_Escape, GC0_BUTTON_GUIDE + GC0_BUTTON_B\n"
 		"[ControllerGUIDs]\n"
@@ -302,11 +307,119 @@ test_devices (const std::string &dir)
 	pump ();
 	check ("pad's stick: its own way", near (c.axis ("Driving", "P1_Steer"), 6554 / 32767.0));
 	cfg->wheel_rotation = 0;
+	SDL_JoystickSetVirtualAxis (pad, SDL_CONTROLLER_AXIS_LEFTX, 0);
+
+	/* Star Wars: Racer Arcade's levers. Combined: the accelerator both,
+	 * the wheel the difference, the left engine harder to the right */
+	{
+		const double half = 16384 / 32767.0;
+		double left, right;
+
+		cfg->twin_levers = hl::TWIN_LEVERS_COMBINED;
+		SDL_JoystickSetVirtualAxis (wheel, 1, -32767);
+		pump ();
+		hl::twin_lever_thrusts (&left, &right);
+		check ("levers: the accelerator's thrust on both", near (left, 1.0) && near (right, 1.0));
+		SDL_JoystickSetVirtualAxis (wheel, 0, 16384);
+		pump ();
+		hl::twin_lever_thrusts (&left, &right);
+		check ("levers: to the right, the right one eased", near (left, 1.0) && near (right, 1.0 - half));
+		SDL_JoystickSetVirtualAxis (wheel, 1, -16384);
+		pump ();
+		hl::twin_lever_thrusts (&left, &right);
+		check ("levers: half the accelerator, the same mean",
+		       near (left, half * (1.0 + half)) && near (right, half * (1.0 - half)));
+		SDL_JoystickSetVirtualAxis (wheel, 0, -32767);
+		pump ();
+		hl::twin_lever_thrusts (&left, &right);
+		check ("levers: all to the left, the left one at rest", near (left, 0.0) && near (right, 2.0 * half));
+		SDL_JoystickSetVirtualAxis (wheel, 1, 0);
+		pump ();
+		hl::twin_lever_thrusts (&left, &right);
+		check ("levers: no accelerator, no thrust", left == 0.0 && right == 0.0);
+		SDL_JoystickSetVirtualAxis (wheel, 0, 0);
+
+		/* Original: an axis each (the pad's sticks pushed up) */
+		cfg->twin_levers = hl::TWIN_LEVERS_ORIGINAL;
+		SDL_JoystickSetVirtualAxis (pad, SDL_CONTROLLER_AXIS_LEFTY, -32767);
+		SDL_JoystickSetVirtualAxis (pad, SDL_CONTROLLER_AXIS_RIGHTY, -16384);
+		pump ();
+		hl::twin_lever_thrusts (&left, &right);
+		check ("levers: an axis each", near (left, 1.0) && near (right, half));
+		SDL_JoystickSetVirtualAxis (pad, SDL_CONTROLLER_AXIS_LEFTY, 0);
+		SDL_JoystickSetVirtualAxis (pad, SDL_CONTROLLER_AXIS_RIGHTY, 0);
+		pump ();
+		cfg->twin_levers = hl::TWIN_LEVERS_COMBINED;
+	}
 
 	SDL_JoystickClose (pad);
 	SDL_JoystickClose (wheel);
 	SDL_JoystickDetachVirtual (wheel_index);
 	SDL_JoystickDetachVirtual (pad_index);
+}
+
+/* NASCAR Arcade's gear lever, as sm2-emu's: the paddles a gear each press,
+ * through neutral between two gears SHIFT_NEUTRAL_MS; an H shifter's
+ * positions, its lever in none of them in neutral (SHIFTER_NEUTRAL); the
+ * agent's gear over the controls; looked at once a frame */
+static void
+test_gearbox (void)
+{
+	hl::Gearbox &g = hl::Gearbox::get ();
+	hl::Config *cfg = hl::Config::get ();
+	hl::Controls &c = hl::Controls::get ();
+	uint64_t frame = 1;
+	unsigned gear, neutral;
+	int i;
+
+	auto press = [&] (hl::Action a, bool on) {
+		hl::Input::set_action (a, on);
+		return g.gear (frame++);
+	};
+
+	g.reset ();
+	cfg->shift_neutral_ms = 0;
+	cfg->shifter_neutral = true;
+	check ("gears: neutral at first", g.gear (frame++) == 0);
+	check ("gears: a gear up, 1", press (hl::ACTION_GEAR_UP, true) == 1);
+	check ("gears: held, still 1", press (hl::ACTION_GEAR_UP, true) == 1);
+	press (hl::ACTION_GEAR_UP, false);
+	for (i = 0; i < 5; i++) {
+		press (hl::ACTION_GEAR_UP, true);
+		press (hl::ACTION_GEAR_UP, false);
+	}
+	check ("gears: 4 at most", g.gear (frame++) == 4);
+	check ("gears: a gear down, 3", press (hl::ACTION_GEAR_DOWN, true) == 3);
+	hl::Input::set_action (hl::ACTION_GEAR_DOWN, false);
+	check ("gears: a frame looked at once", g.gear (frame - 1) == 3);
+
+	/* 100 ms through neutral: six frames */
+	cfg->shift_neutral_ms = 100;
+	gear = press (hl::ACTION_GEAR_UP, true);
+	hl::Input::set_action (hl::ACTION_GEAR_UP, false);
+	for (neutral = gear ? 0 : 1; neutral < 20 && (gear = g.gear (frame++)) == 0; neutral++)
+		;
+	check ("gears: through neutral six frames", neutral == 6 && gear == 4);
+	cfg->shift_neutral_ms = 0;
+
+	/* An H shifter */
+	c.set_value ("Driving", "Gear1", "KEY_1");
+	check ("H: gear 3 held", press (hl::ACTION_GEAR3, true) == 3);
+	check ("H: let go, neutral", press (hl::ACTION_GEAR3, false) == 0);
+	cfg->shifter_neutral = false;
+	press (hl::ACTION_GEAR2, true);
+	check ("H: let go, the gear kept", press (hl::ACTION_GEAR2, false) == 2);
+	check ("H: neutral pressed", press (hl::ACTION_GEAR_NEUTRAL, true) == 0);
+	press (hl::ACTION_GEAR_NEUTRAL, false);
+	c.set_value ("Driving", "Gear1", "");
+	cfg->shifter_neutral = true;
+
+	/* The agent's */
+	g.hold (4);
+	check ("agent: its gear", g.gear (frame++) == 4);
+	g.hold (-1);
+	g.reset ();
+	check ("reset: neutral", g.gear (frame++) == 0);
 }
 
 int
@@ -330,6 +443,7 @@ main (int argc, char **argv)
 	} else {
 		test_upgrade (dir.generic_string ());
 		test_devices (dir.generic_string ());
+		test_gearbox ();
 		SDL_Quit ();
 	}
 

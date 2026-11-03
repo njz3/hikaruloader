@@ -44,6 +44,15 @@ enum Action {
 	ACTION_BUTTON4,
 	/* The player's card, at a card reader's slot (VON4's) */
 	ACTION_CARD,
+	/* A gear lever (NASCAR Arcade's, hl::Gearbox): a gear up or down
+	 * (paddles), an H shifter's positions */
+	ACTION_GEAR_UP,
+	ACTION_GEAR_DOWN,
+	ACTION_GEAR1,
+	ACTION_GEAR2,
+	ACTION_GEAR3,
+	ACTION_GEAR4,
+	ACTION_GEAR_NEUTRAL,
 	ACTION_PAUSE,
 	ACTION_SAVE_STATE,
 	ACTION_LOAD_STATE,

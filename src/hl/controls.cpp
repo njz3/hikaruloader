@@ -65,6 +65,15 @@ static const char *default_file =
 	"P1_Steer_Right = KEY_Right\n"
 	"P1_Gas_Digital = KEY_Up\n"
 	"P1_Brake_Digital = KEY_Down\n"
+	"GearUp = KEY_PageUp, GC0_BUTTON_RIGHTSHOULDER\n"
+	"GearDown = KEY_PageDown, GC0_BUTTON_LEFTSHOULDER\n"
+	"Gear1 =\n"
+	"Gear2 =\n"
+	"Gear3 =\n"
+	"Gear4 =\n"
+	"GearNeutral =\n"
+	"P1_LeftLever = GC0_AXIS_LEFTY_NEGATIVE_SIDE\n"
+	"P1_RightLever = GC0_AXIS_RIGHTY_NEGATIVE_SIDE\n"
 	"\n"
 	"[Emulator]\n"
 	"Pause = KEY_Space, GC0_BUTTON_GUIDE + GC0_BUTTON_X\n"
@@ -143,6 +152,19 @@ static const struct {
 	{ "Driving", "P1_Steer_Right", "The wheel turned all the way to the right" },
 	{ "Driving", "P1_Gas_Digital", "The accelerator pressed all the way" },
 	{ "Driving", "P1_Brake_Digital", "The brake pressed all the way" },
+	{ "Driving", "GearUp",
+	  "NASCAR Arcade's gear lever: a gear up (a paddle), from neutral to 4" },
+	{ "Driving", "GearDown", "A gear down (a paddle), to neutral" },
+	{ "Driving", "Gear1",
+	  "An H shifter's positions, as sm2-emu has them: a button each, held while\n"
+	  "the lever is in that gear (hikaruloader.ini's [Input] SHIFTER_NEUTRAL: in\n"
+	  "none of them, neutral)" },
+	{ "Driving", "GearNeutral", "Neutral, at once" },
+	{ "Driving", "P1_LeftLever",
+	  "Star Wars: Racer Arcade's levers, a pod engine's thrust each, pushed\n"
+	  "forward: an axis or half of one each, with hikaruloader.ini's [Input]\n"
+	  "TWIN_LEVERS = ORIGINAL (COMBINED: P1_Gas and P1_Steer)" },
+	{ "Driving", "P1_RightLever", "The right lever, the right engine's thrust" },
 	{ "Emulator", NULL,
 	  "The emulator's commands: Hikaruloader's own section, the other loaders\n"
 	  "leave it alone" },

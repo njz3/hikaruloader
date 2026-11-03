@@ -131,6 +131,7 @@ Keys and controllers
 | The arrows, a controller's D-pad or left stick | Up, down, left, right |
 | Left Ctrl, Left Alt, Left Shift, Z; a controller's A, B, X, Y | Buttons 1 to 4 |
 | A controller's left stick and triggers, a wheel's axes | Steering, accelerator, brake (the arrows too, all the way) |
+| Page Up, Page Down; a controller's R1, L1 | NASCAR Arcade's gear up, down |
 | Space; Guide + X | Pause |
 | F4, F1; Guide + R1, Guide + L1 | Save, load the game's state |
 | Tab; a controller's Back, Guide + Back | Settings |
@@ -168,6 +169,30 @@ wheel's driver (Logitech G HUB, Thrustmaster's or Fanatec's control panel),
 900 degrees for most, which SDL cannot read. A wheel's axis only
 (`JOY<n>_AXIS_<a>`), not a game controller's stick. In `hikaruloader.ini`:
 `[Input]` `WHEEL_ROTATION` and `WHEEL_RANGE`.
+
+**NASCAR Arcade's gears.** The cabinet has a four-speed H shifter; the game
+asks for AUTOMATIC or MANUAL at the start of a race. Shift up and Shift
+down (`GearUp`, `GearDown` in `controls.ini`, linuxloader's names) move a
+gear at each press, from neutral to 4; an H shifter binds its positions
+(`Gear1` to `Gear4`, `GearNeutral`), as sm2-emu has them. The Controls
+tab's *Gear shifter*: *Neutral when no gear is engaged*, an H shifter's
+lever in none of its gears in neutral, as on the cabinet (else the last
+gear stays); *Neutral between gears*, Shift up and down going through
+neutral that long, as a real lever (`[Input]` `SHIFTER_NEUTRAL`,
+`SHIFT_NEUTRAL_MS`). The gear the game reads shows in *What the game
+receives*.
+
+**Star Wars: Racer Arcade's levers.** The cabinet has two levers, each the
+thrust of one of the pod's engines, pushed forward: even, the pod goes
+straight; the side pushing harder turns it the other way; both back, it
+stops. The Controls tab's *Levers*: *Combined* (the default), the
+accelerator gives the thrust of both and the wheel the difference, the pod
+turning to the side steered, for a wheel and pedals or a controller's
+stick and trigger; *Original*, an axis each, as on the cabinet
+(`P1_LeftLever`, `P1_RightLever`: a controller's two sticks pushed up by
+default) (`[Input]` `TWIN_LEVERS`). Button 1 is the boost, button 2 the
+brake; the game's left and right buttons (◁ ▷, the menus) are Right and
+Left.
 
 
 Settings

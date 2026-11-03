@@ -987,6 +987,42 @@ msgid "Brake (all the way)"
 msgstr "Frein (à fond)"
 
 #: src/ui/ui_controls.cpp
+msgid "Shift up"
+msgstr "Rapport sup."
+
+#: src/ui/ui_controls.cpp
+msgid "Shift down"
+msgstr "Rapport inf."
+
+#: src/ui/ui_controls.cpp
+msgid "Gear 1"
+msgstr "Vitesse 1"
+
+#: src/ui/ui_controls.cpp
+msgid "Gear 2"
+msgstr "Vitesse 2"
+
+#: src/ui/ui_controls.cpp
+msgid "Gear 3"
+msgstr "Vitesse 3"
+
+#: src/ui/ui_controls.cpp
+msgid "Gear 4"
+msgstr "Vitesse 4"
+
+#: src/ui/ui_controls.cpp
+msgid "Neutral"
+msgstr "Point mort"
+
+#: src/ui/ui_controls.cpp
+msgid "Left lever (its engine's thrust)"
+msgstr "Levier gauche (la poussée de son réacteur)"
+
+#: src/ui/ui_controls.cpp
+msgid "Right lever (its engine's thrust)"
+msgstr "Levier droit (la poussée de son réacteur)"
+
+#: src/ui/ui_controls.cpp
 msgid "Pause"
 msgstr "Pause"
 
@@ -1103,6 +1139,54 @@ msgid "Your wheel turns %d degrees: the game's wheel takes its whole turn."
 msgstr "Votre volant tourne de %d degrés : le volant du jeu prend toute sa rotation."
 
 #: src/ui/ui_controls.cpp
+msgid "Neutral when no gear is engaged"
+msgstr "Point mort quand aucune vitesse n'est engagée"
+
+#: src/ui/ui_controls.cpp
+msgid "With an H shifter bound to Gear 1..4: its lever in none\nof the gears is in neutral, as on the cabinet. Off, the\nlast gear stays engaged until another is selected or\nNeutral is pressed."
+msgstr "Avec un levier en H associé à Vitesse 1..4 : son levier\nhors de toute vitesse est au point mort, comme sur la borne.\nDésactivé : la dernière vitesse reste engagée jusqu'à ce\nqu'une autre soit choisie ou que Point mort soit appuyé."
+
+#: src/ui/ui_controls.cpp
+msgid "Neutral between gears"
+msgstr "Point mort entre deux vitesses"
+
+#: src/ui/ui_controls.cpp
+msgid "With Shift up and Shift down: a shift from one\ngear to another passes through neutral this long, as a\nreal lever does."
+msgstr "Avec Rapport sup. et Rapport inf. : d'une vitesse à\nl'autre, passage par le point mort pendant ce temps,\ncomme avec un vrai levier."
+
+#: src/ui/ui_controls.cpp
+msgid "NASCAR Arcade's four gears: Shift up and Shift down a gear at each press, or an H shifter's positions (Gear 1 to 4, Neutral), in the Driving section of a device's bindings. The game asks for AUTOMATIC or MANUAL at the start of a race."
+msgstr "Les quatre vitesses de NASCAR Arcade : Rapport sup. et Rapport inf. passent une vitesse à chaque appui, ou les positions d'un levier en H (Vitesse 1 à 4, Point mort), dans la section Conduite des associations d'un périphérique. Le jeu demande AUTOMATIC ou MANUAL au départ d'une course."
+
+#: src/ui/ui_controls.cpp
+msgid "Combined: the accelerator and the wheel"
+msgstr "Combiné : l'accélérateur et le volant"
+
+#: src/ui/ui_controls.cpp
+msgid "Original: an axis per lever"
+msgstr "Original : un axe par levier"
+
+#: src/ui/ui_controls.cpp
+msgid "Star Wars: Racer Arcade's two levers each give a pod engine's thrust: even, the pod goes straight; the side pushing harder turns it the other way. Combined, the accelerator is the thrust of both and the wheel the difference, the pod turning to the side steered. Original, as on the cabinet: Left lever and Right lever, an axis each, in the Driving section."
+msgstr "Les deux leviers de Star Wars: Racer Arcade donnent chacun la poussée d'un réacteur du module : égales, il va tout droit ; le côté qui pousse le plus le fait tourner de l'autre côté. En combiné, l'accélérateur donne la poussée des deux et le volant la différence, le module tournant du côté où l'on braque. En original, comme sur la borne : Levier gauche et Levier droit, un axe chacun, dans la section Conduite."
+
+#: src/ui/ui_controls.cpp
+msgid "Gear (NASCAR Arcade)"
+msgstr "Vitesse (NASCAR Arcade)"
+
+#: src/ui/ui_controls.cpp
+msgid "N"
+msgstr "N"
+
+#: src/ui/ui_controls.cpp
+msgid "Left lever (Star Wars: Racer Arcade)"
+msgstr "Levier gauche (Star Wars: Racer Arcade)"
+
+#: src/ui/ui_controls.cpp
+msgid "Right lever (Star Wars: Racer Arcade)"
+msgstr "Levier droit (Star Wars: Racer Arcade)"
+
+#: src/ui/ui_controls.cpp
 msgid "The agent drives the game: the keyboard and the controllers are not read."
 msgstr "L'agent pilote le jeu : le clavier et les manettes ne sont pas lus."
 
@@ -1133,6 +1217,14 @@ msgstr "Les assignations sont dans %s, à part des réglages de l'émulateur."
 #: src/ui/ui_controls.cpp
 msgid "What the game receives"
 msgstr "Ce que le jeu reçoit"
+
+#: src/ui/ui_controls.cpp
+msgid "Gear shifter (NASCAR Arcade)"
+msgstr "Levier de vitesses (NASCAR Arcade)"
+
+#: src/ui/ui_controls.cpp
+msgid "Levers (Star Wars: Racer Arcade)"
+msgstr "Leviers (Star Wars: Racer Arcade)"
 
 #: src/ui/ui_controls.cpp
 msgid "Dead zones and options"

@@ -114,6 +114,16 @@ enum CommBoard {
 	NUM_COMM_BOARDS
 };
 
+/* Star Wars: Racer Arcade's two levers, a pod engine's thrust each: an axis
+ * of the player's each, as on the cabinet, or worked out from the
+ * accelerator (the thrust of both) and the wheel (the difference) */
+enum TwinLevers {
+	TWIN_LEVERS_ORIGINAL,
+	TWIN_LEVERS_COMBINED,
+
+	NUM_TWIN_LEVERS
+};
+
 /* The settings of hikaruloader.ini, edited by the settings window */
 class Config {
 public:
@@ -267,6 +277,12 @@ public:
 	 * wheel_range degrees it turns end to end, as its driver is set */
 	int		wheel_rotation;
 	int		wheel_range;
+	/* NASCAR Arcade's gear lever (hl::Gearbox): an H shifter in none of
+	 * its gears in neutral, else the last gear kept; a shift from a gear
+	 * to another through neutral that long, in ms (as sm2-emu) */
+	bool		shifter_neutral;
+	int		shift_neutral_ms;
+	TwinLevers	twin_levers;
 	/* How many times further than its axis the game's wheel goes: 1 for
 	 * rotation 0, range / rotation else, never below 1 (the game's wheel
 	 * always reaches its ends) */

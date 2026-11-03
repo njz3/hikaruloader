@@ -385,10 +385,10 @@ shared: change it only together with Supermodel and sm2-emu.
 | Command | Answer |
 |---|---|
 | `step [N]` | N frames (1): `ok FRAME`; `err break: ...` or `err abort: ...` when the machine stopped |
-| `set INPUT VALUE`, `setraw INPUT RAW` | Holds an input (a switch: 0 or 1): `ok` |
-| `get INPUT` | `value RAW` |
+| `set INPUT VALUE`, `setraw INPUT RAW` | Holds an input (a switch: 0 or 1; NASCAR Arcade's `Gear`, 0 for neutral to 4, as sm2-emu's): `ok` |
+| `get INPUT` | `value RAW` (`Gear`: the gear the game reads) |
 | `release INPUT\|all` | `ok` |
-| `inputs` | `inputs N`, then N lines `NAME TYPE`: Test, Service |
+| `inputs` | `inputs N`, then N lines `NAME TYPE`: Test, Service...; `Gear other` with NASCAR Arcade's gear lever |
 | `obs [W H]` | The picture box-scaled to W x H (640 x 480): `obs W H`, then W*H*3 bytes, RGB, top row first |
 | `shot PATH` | The picture as a 24-bit BMP: `ok` |
 | `save PATH`, `load PATH` | Save states: `ok` |

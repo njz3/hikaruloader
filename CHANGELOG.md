@@ -5,6 +5,21 @@ What each version brings, for those who play. How the versions are numbered
 and released: [DEVELOPMENT.md](DEVELOPMENT.md), "Versions and releases".
 
 
+0.4.1 (not released yet)
+------------------------
+
+- NASCAR Arcade's gears: the cabinet's four-speed lever, for the game's
+  MANUAL. Shift up and Shift down a gear at each press (Page Up, Page Down,
+  a controller's R1, L1), or an H shifter's positions; neutral between
+  gears and an H shifter's lever in neutral as in sm2-emu, in the Controls
+  tab, which also shows the gear the game reads.
+- Star Wars: Racer Arcade's levers, each the thrust of one of the pod's
+  engines: *Combined* (the default), the accelerator gives the thrust and
+  the wheel the turn, for a wheel and pedals or a controller; *Original*,
+  an axis per lever as on the cabinet. Before, the wheel and the
+  accelerator went to the levers as they were: the pod pulled to one side.
+
+
 0.4.0 (2026-11-03)
 ------------------
 

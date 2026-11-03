@@ -59,6 +59,7 @@ set (HL_SRC
 	src/hl/paths.cpp
 	src/hl/profile.cpp
 	src/hl/ffb.cpp
+	src/hl/gearbox.cpp
 	src/hl/driveboard.cpp
 	src/hl/cardreader.cpp
 	src/hl/outputs.cpp

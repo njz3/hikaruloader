@@ -18,10 +18,12 @@
 
 // The Controls tab, laid out as linuxloader's and windowsloader's: the
 // devices, each binding the actions of controls.ini to its own inputs on a
-// page of its own; what the game receives; the dead zones.
+// page of its own; what the game receives; NASCAR Arcade's gear shifter and
+// Star Wars: Racer Arcade's levers, as sm2-emu's; the dead zones.
 
 #include "ui/ui_common.h"
 
+#include <algorithm>
 #include <cctype>
 #include <cstdio>
 #include <cstdlib>
@@ -33,7 +35,9 @@
 #include "hl/config.h"
 #include "hl/controls.h"
 #include "hl/ffb.h"
+#include "hl/gearbox.h"
 #include "hl/input.h"
+#include "hl/jvs.h"
 
 namespace ui
 {
@@ -80,6 +84,15 @@ const char *actionLabel(const std::string &key)
         {"P1_Steer_Right", N_("Steer right (all the way)")},
         {"P1_Gas_Digital", N_("Accelerator (all the way)")},
         {"P1_Brake_Digital", N_("Brake (all the way)")},
+        {"GearUp", N_("Shift up")},
+        {"GearDown", N_("Shift down")},
+        {"Gear1", N_("Gear 1")},
+        {"Gear2", N_("Gear 2")},
+        {"Gear3", N_("Gear 3")},
+        {"Gear4", N_("Gear 4")},
+        {"GearNeutral", N_("Neutral")},
+        {"P1_LeftLever", N_("Left lever (its engine's thrust)")},
+        {"P1_RightLever", N_("Right lever (its engine's thrust)")},
         {"Pause", N_("Pause")},
         {"SaveState", N_("Save the state")},
         {"LoadState", N_("Load the state")},
@@ -560,6 +573,65 @@ void drawWheel()
     hl::ForceFeedback::wheel_changed();
 }
 
+// [Input] SHIFTER_NEUTRAL and SHIFT_NEUTRAL_MS, as sm2-emu's gear shifter:
+// saved at once to hikaruloader.ini, alone, as the wheel's
+void drawShifter()
+{
+    hl::Config *cfg = hl::Config::get();
+    bool neutral = cfg->shifter_neutral, changed = false;
+    int ms = cfg->shift_neutral_ms;
+    changed |= ImGui::Checkbox(tr("Neutral when no gear is engaged"), &neutral);
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("%s", tr("With an H shifter bound to Gear 1..4: its lever in none\n"
+                                   "of the gears is in neutral, as on the cabinet. Off, the\n"
+                                   "last gear stays engaged until another is selected or\n"
+                                   "Neutral is pressed."));
+    if (ImGui::SliderInt(tr("Neutral between gears"), &ms, 0, 500, "%d ms"))
+    {
+        ms = std::clamp(((ms + 5) / 10) * 10, 0, 500);
+        changed = true;
+    }
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("%s", tr("With Shift up and Shift down: a shift from one\n"
+                                   "gear to another passes through neutral this long, as a\n"
+                                   "real lever does."));
+    ImGui::PushTextWrapPos(0.0f);
+    ImGui::TextDisabled("%s", tr("NASCAR Arcade's four gears: Shift up and Shift down a gear at each press, or an H shifter's "
+                                 "positions (Gear 1 to 4, Neutral), in the Driving section of a device's bindings. The game "
+                                 "asks for AUTOMATIC or MANUAL at the start of a race."));
+    ImGui::PopTextWrapPos();
+    if (!changed)
+        return;
+    hl::Config onDisk;
+    onDisk.set_defaults();
+    onDisk.load();
+    onDisk.shifter_neutral = cfg->shifter_neutral = neutral;
+    onDisk.shift_neutral_ms = cfg->shift_neutral_ms = ms;
+    onDisk.save();
+}
+
+// [Input] TWIN_LEVERS: saved at once to hikaruloader.ini, alone
+void drawLevers()
+{
+    hl::Config *cfg = hl::Config::get();
+    int mode = (int)cfg->twin_levers;
+    bool changed = ImGui::RadioButton(tr("Combined: the accelerator and the wheel"), &mode, hl::TWIN_LEVERS_COMBINED);
+    changed |= ImGui::RadioButton(tr("Original: an axis per lever"), &mode, hl::TWIN_LEVERS_ORIGINAL);
+    ImGui::PushTextWrapPos(0.0f);
+    ImGui::TextDisabled("%s", tr("Star Wars: Racer Arcade's two levers each give a pod engine's thrust: even, the pod goes "
+                                 "straight; the side pushing harder turns it the other way. Combined, the accelerator is the "
+                                 "thrust of both and the wheel the difference, the pod turning to the side steered. Original, "
+                                 "as on the cabinet: Left lever and Right lever, an axis each, in the Driving section."));
+    ImGui::PopTextWrapPos();
+    if (!changed)
+        return;
+    hl::Config onDisk;
+    onDisk.set_defaults();
+    onDisk.load();
+    onDisk.twin_levers = cfg->twin_levers = (hl::TwinLevers)mode;
+    onDisk.save();
+}
+
 // What the game reads now: the switches, the wheel and the pedals
 void drawGameInputs()
 {
@@ -603,6 +675,35 @@ void drawGameInputs()
         char text[16];
         snprintf(text, sizeof text, "%d%%", (int)(v * 100.0f + 0.5f));
         ImGui::ProgressBar(v, ImVec2(-FLT_MIN, 0), text);
+    }
+    // NASCAR Arcade's gear, as the game last read it
+    ImGui::TableNextRow();
+    ImGui::TableSetColumnIndex(0);
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextUnformatted(tr("Gear (NASCAR Arcade)"));
+    ImGui::TableSetColumnIndex(1);
+    {
+        unsigned gear = hl::Gearbox::get().engaged();
+        if (gear)
+            ImGui::Text("%u", gear);
+        else
+            ImGui::TextUnformatted(tr("N"));
+    }
+    // Star Wars: Racer Arcade's levers, as TWIN_LEVERS makes them
+    double levers[2];
+    hl::twin_lever_thrusts(&levers[0], &levers[1]);
+    static const char *leverLabels[2] = {N_("Left lever (Star Wars: Racer Arcade)"),
+                                         N_("Right lever (Star Wars: Racer Arcade)")};
+    for (int i = 0; i < 2; i++)
+    {
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0);
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextUnformatted(tr(leverLabels[i]));
+        ImGui::TableSetColumnIndex(1);
+        char text[16];
+        snprintf(text, sizeof text, "%d%%", (int)(levers[i] * 100.0 + 0.5));
+        ImGui::ProgressBar((float)levers[i], ImVec2(-FLT_MIN, 0), text);
     }
     ImGui::EndTable();
 }
@@ -704,6 +805,12 @@ void drawControlsTab()
 
     header(tr("Steering wheel"));
     drawWheel();
+
+    header(tr("Gear shifter (NASCAR Arcade)"));
+    drawShifter();
+
+    header(tr("Levers (Star Wars: Racer Arcade)"));
+    drawLevers();
 
     header(tr("Dead zones and options"));
     drawOptions();
