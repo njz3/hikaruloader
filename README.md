@@ -71,7 +71,7 @@ The games
 
 The picker also lists Gaelco's ATV Track, Gaelco Football and Smashing Drive
 (six sets), which run on another board: they do not work yet, their screen
-stays black. How far each game goes, and what is still wrong, is in
+stays black. What is still wrong in each game is in
 [TODO.md](https://github.com/njz3/hikaruloader/blob/main/TODO.md), in the sources.
 
 
