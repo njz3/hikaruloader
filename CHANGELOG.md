@@ -18,6 +18,12 @@ In preparation
   a `ViewChange` binding was ignored.
 - The window's close button quits again, in a game and in the game list
   after one: the drawing thread's hidden window kept the program open.
+- NASCAR Arcade: the smoke of a collision is a light haze, no longer a
+  white square; the rear-view mirror shows the track the right way up (it
+  was upside down), and the race's view has the height the game gives it;
+  leaving the SYSTEM MENU with EXIT goes back to the game, where it stayed
+  on a black screen. The cursor of the menus shines again as it moves.
+  Planet Harriers' nebula drifts more slowly, as the game asks.
 
 
 0.4.1 (2026-11-03)

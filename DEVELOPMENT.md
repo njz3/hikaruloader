@@ -197,7 +197,11 @@ In the environment:
   or the write directory's `<game>/`.
 - `HR_NO_DRAW=1` sends no mesh to the GPU; `HR_STATS=1` prints each frame's
   draws and triangles; `HR_SYNC=1` waits for each mesh and prints the slow
-  ones; `HR_LOG=1` logs the renderer's states. `HR_GL_DEBUG=1` asks for a
+  ones; `HR_LOG=1` logs the renderer's states (on stdout: not with
+  `-agent`). `HR_DEBUG_FLAGS=i=v,i=v` sets the renderer's debug switches
+  that keys step through, for an agent's run: 1 and 2 hide the 2D layers,
+  3 the 3D, 7=N draws only polytype N (6 the translucent meshes) (see
+  `debug_controls` in `hikaru-renderer.cpp`). `HR_GL_DEBUG=1` asks for a
   debug OpenGL context, whose driver then logs its errors as they happen
   ("GL: ..."): without it, Intel's says nothing (about 10% slower).
   `HR_GL_CHECK=1` (and `HR_GL_DEBUG=1`) looks for GL's errors after each

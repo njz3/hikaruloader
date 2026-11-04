@@ -93,6 +93,19 @@ init_debug_flags (Renderer *hr)
 
 	hr->debug.flags[HR_DEBUG_LOG] =
 		hl_util_get_bool_option ("HR_LOG", false) ? 1 : 0;
+	/* HR_DEBUG_FLAGS=i=v,i=v: the flags the keys step through, set
+	 * without a keyboard (an agent's run) */
+	if (const char *s = getenv ("HR_DEBUG_FLAGS"))
+		for (const char *p = s; *p; ) {
+			int index, value, used;
+			if (sscanf (p, "%d=%d%n", &index, &value, &used) != 2)
+				break;
+			if (index >= 0 && (unsigned) index < NUMELEM (debug_controls))
+				hr->debug.flags[index] = value;
+			p += used;
+			if (*p == ',')
+				p++;
+		}
 	hr->debug.no_draw = hl_util_get_bool_option ("HR_NO_DRAW", false);
 	hr->debug.stats = hl_util_get_bool_option ("HR_STATS", false);
 	hr->debug.sync = hl_util_get_bool_option ("HR_SYNC", false);
@@ -1612,7 +1625,16 @@ upload_viewport (Renderer *hr, hikaru_mesh_t *mesh)
 	hikaru_viewport_t *vp = &hr->vp_list[mesh->vp_index];
 	const float h = vp->clip.t - vp->clip.b;
 	const float w = vp->clip.r - vp->clip.l;
+	/* f the focal length across, f2 down, in pixels: SGNASCAR's differ
+	 * (343 and 380 in a race), the other games' are the same. Its rear-view
+	 * mirror is a view with f -277 and f2 305, turned over left to right
+	 * only (upside down with f for both), as Odin has it, by Réda
+	 * Chérif-Touil */
 	const float n_over_f = vp->clip.n / vp->clip.f;
+	const float n_over_f2 = vp->clip.n / vp->clip.f2;
+	/* Then its meshes, wound as for a view ahead, show their back faces:
+	 * the front ones clockwise */
+	const bool front_cw = n_over_f * n_over_f2 < 0.0f;
 	const float dcx = (vp->offset.x - (w / 2.0f));
 	const float dcy = (vp->offset.y - (h / 2.0f));
 	/* The projection's centre is the offset, in pixels from the screen's
@@ -1633,8 +1655,8 @@ upload_viewport (Renderer *hr, hikaru_mesh_t *mesh)
 	                    margin : 0.0f;
 	const float left = (vp->clip.l - extra - vp->offset.x) * n_over_f;
 	const float right = (vp->clip.r + extra - vp->offset.x) * n_over_f;
-	const float bottom = (clip_b - centre_y) * n_over_f;
-	const float top = (clip_t - centre_y) * n_over_f;
+	const float bottom = (clip_b - centre_y) * n_over_f2;
+	const float top = (clip_t - centre_y) * n_over_f2;
 	mtx4x4f_t projection;
 
 	HL_ASSERT (mesh->vp_index != ~0);
@@ -1649,6 +1671,11 @@ upload_viewport (Renderer *hr, hikaru_mesh_t *mesh)
 		glViewport (rect[0], rect[1], rect[2], rect[3]);
 		memcpy (hr->meshes.viewport, rect, sizeof (rect));
 		hr->meshes.viewport_known = true;
+		hr->meshes.front_cw = !front_cw;
+	}
+	if (hr->meshes.front_cw != front_cw) {
+		glFrontFace (front_cw ? GL_CW : GL_CCW);
+		hr->meshes.front_cw = front_cw;
 	}
 
 	/* The program's projection and fog as they were: nothing sent */
@@ -1673,7 +1700,7 @@ upload_viewport (Renderer *hr, hikaru_mesh_t *mesh)
 
 	if ((vp->clip.l >= vp->clip.r) ||
 	    (vp->clip.b >= vp->clip.t) ||
-	    (vp->clip.n >= vp->clip.f)) {
+	    (vp->clip.n >= fabsf (vp->clip.f)) || (vp->clip.n >= fabsf (vp->clip.f2))) {
 		HL_ERROR_FEW ("inverted viewport clipping planes: %s",
 		              get_viewport_str (vp));
 		/* continue anyway */
@@ -2090,12 +2117,10 @@ copy_texcoords (Renderer *hr,
 		h *= 2;
 	}
 
-	/* 0D1's panning, for the texheads with 2C1 bit 15 only: PHARRIER's
-	 * (its sky's clouds move); BRAVEFF's texts, without it, stay where
-	 * they are (its panning, set once at the start of the list, sent them
-	 * to the wrong texels) */
-	float pan_x = th->panned ? 0.5f * gpu->texoffset_x : 0.0f;
-	float pan_y = th->panned ? 0.5f * gpu->texoffset_y : 0.0f;
+	/* 0D1's offset slot the vertex picks, in 1/16 texel; none for 0 */
+	unsigned slot = (src->info.full >> 18) & 3;
+	float pan_x = slot ? gpu->texoffset[slot][0] / 16.0f : 0.0f;
+	float pan_y = slot ? gpu->texoffset[slot][1] / 16.0f : 0.0f;
 
 	dst->body.texcoords[0] = (src->body.texcoords[0] * unit + pan_x) / w;
 	dst->body.texcoords[1] = (src->body.texcoords[1] * unit + pan_y) / h;
@@ -3116,6 +3141,9 @@ draw_scene (Renderer *hr)
 		for (i = 0; i < NUMELEM (sorted_polytypes); i++)
 			draw_meshes_for_polytype (hr, vpi, sorted_polytypes[i]);
 	}
+	/* The other drawing's front faces, as GL has them */
+	glFrontFace (GL_CCW);
+	hr->meshes.front_cw = false;
 	glBindVertexArray (0);
 	hr->meshes.verts.clear ();
 

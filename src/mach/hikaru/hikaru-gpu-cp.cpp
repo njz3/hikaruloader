@@ -871,7 +871,7 @@ I (0x055)
 
 	LOD.cond = LOD.value < (thresh * 4.0f);
 	LOD.size = (LOD.distance > 0.0f) ?
-	           LOD_SCALE * 2.0f * thresh * VP.scratch.clip.f / LOD.distance : 0.0f;
+	           LOD_SCALE * 2.0f * thresh * fabsf (VP.scratch.clip.f) / LOD.distance : 0.0f;
 }
 
 D (0x055)
@@ -1908,8 +1908,9 @@ get_texhead_index (uint32_t *inst)
  *     In SGNASCAR it is 1 for hi-res LODs, 0 for lo-res LODs; its driver
  *     numbers (32 for a 32x32 texture) and checkers have it too.
  *
- * b = 0D1's panning moves the texture (all of PHARRIER's texheads; none of
- *     BRAVEFF's, whose texts its panning would scramble).
+ * b = Unknown: all of PHARRIER's texheads, none of BRAVEFF's; SGNASCAR's
+ *     smoke has it. Once taken for what lets 0D1's panning move the
+ *     texture, which the vertices pick instead (see 0D1).
  *
  * F = Format
  *
@@ -2011,39 +2012,31 @@ D (0x0C1)
  *	-------- ------MM -------o oooooooo
  *	YYYYYYYY YYYYYYYY XXXXXXXX XXXXXXXX
  *
- * M = Mode? (0 disabled, 1&2 dunno)
- * X, Y = Amount
+ * M = Offset slot, 0 to 3
+ * X, Y = Signed amounts, in 1/16 texel
  *
- * It moves the texheads with 2C1 bit 15 (b) only: PHARRIER's, all of them
- * (its sky's clouds). BRAVEFF sets it once at the start of a list, with the
- * lights (2 +740 +E8 in its how to play, moving from frame to frame), and
- * none of its texheads has b: added to all of them, it sent its texts to
- * the wrong texels.
+ * A vertex adds the slot its header picks (bits 19:18) to its texcoords;
+ * slot 0 is kept but never added. As Odin has it, by Réda Chérif-Touil,
+ * from a port of the games. The slots stay until set again: SGNASCAR
+ * scrolls a texture of its menus with slot 1 and sets none in a race,
+ * where its smoke's vertices pick no slot (a texture moved by whatever was
+ * left, the smoke was a white square).
  */
 
 I (0x0D1)
 {
-	switch (inst[0] >> 16) {
-	case 1:
-	case 2:
-		gpu->texoffset_x = inst[1] & 0xFFFF;
-		gpu->texoffset_y = inst[1] >> 16;
-		break;
-	default:
-		gpu->texoffset_x = 0;
-		gpu->texoffset_y = 0;
-		break;
-	}
+	unsigned m = (inst[0] >> 16) & 3;
+
+	gpu->texoffset[m][0] = (int16_t) inst[1];
+	gpu->texoffset[m][1] = (int16_t) (inst[1] >> 16);
 }
 
 D (0x0D1)
 {
 	UNHANDLED |= !!(inst[0] & 0xFFFCF000);
-	UNHANDLED |= !!(inst[1] & 0x80008000);
-	UNHANDLED |= ((inst[0] >> 16) == 3);
 
-	DISASM ("tex: set panning [%X +%X +%X]",
-	        inst[0] >> 16, inst[1] & 0xFFFF, inst[1] >> 16);
+	DISASM ("tex: set panning [%u %+d %+d]",
+	        (inst[0] >> 16) & 3, (int16_t) inst[1], (int16_t) (inst[1] >> 16));
 }
 
 /* 0C4	Commit Texhead

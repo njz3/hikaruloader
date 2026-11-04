@@ -1111,7 +1111,14 @@ Gpu::get (unsigned size, uint32_t addr, void *val)
 		}
 		*val32 = REG15 (addr);
 	} else if (addr == 0x15002000) {
-		/* no-op */
+		/* Bit 0, no list running, as the revision of the board that
+		 * sets it (see "Unknown" above). With it, the system library
+		 * takes a list as done when its end interrupt went missing, the
+		 * plot not busy either (SGNASCAR @0C07069C): leaving its SYSTEM
+		 * MENU, SGNASCAR clears its last list's end (15000088 = 72) as
+		 * it sets its interrupts again, then waits for it; with 0, on a
+		 * black screen */
+		*val32 = gpu->cp.is_running ? 0 : 1;
 	} else if (addr == 0x18001000) {
 		/* SEGA PCI ID */
 		*val32 = 0x17C711DB;
@@ -1324,8 +1331,9 @@ Gpu::save_state (hl::State *state)
 	SAVE (gpu->fb_config);
 	SAVE (gpu->depth_bias);
 	SAVE (gpu->pattern);
-	SAVE (gpu->texoffset_x);
-	SAVE (gpu->texoffset_y);
+	/* Slot 1 alone, where the one panning was: the states keep their
+	 * layout; the games set the others again in the frames using them */
+	SAVE (gpu->texoffset[1]);
 	SAVE (gpu->state);
 
 	return ret;
@@ -1343,8 +1351,7 @@ Gpu::load_state (hl::State *state)
 	LOAD (gpu->fb_config);
 	LOAD (gpu->depth_bias);
 	LOAD (gpu->pattern);
-	LOAD (gpu->texoffset_x);
-	LOAD (gpu->texoffset_y);
+	LOAD (gpu->texoffset[1]);
 	LOAD (gpu->state);
 	gpu->skin.sp = 0;
 	gpu->link.valid = gpu->link.has_pushed = false;

@@ -275,6 +275,8 @@ public:
 		 * when other drawing may have changed them: forget_mesh_state) */
 		GLint			viewport[4];
 		bool			viewport_known;
+		/* Its front faces clockwise: a view turned over (upload_viewport) */
+		bool			front_cw;
 		GLuint			texture;
 		bool			texture_known;
 		GLuint			vao;

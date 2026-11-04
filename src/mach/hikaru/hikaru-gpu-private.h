@@ -199,7 +199,7 @@ typedef struct {
 		struct {
 			uint32_t	: 14;
 			uint32_t texel_uv : 1;	/* texcoords in whole texels */
-			uint32_t panned	: 1;	/* 0D1's panning moves it */
+			uint32_t panned	: 1;	/* unknown (b, see 2C1) */
 			uint32_t logw	: 3;
 			uint32_t logh	: 3;
 			uint32_t wrapu	: 1;
@@ -365,7 +365,9 @@ public:
 
 	uint16_t depth_bias;
 	uint16_t pattern;	/* 501, the meshes' dot pattern (formerly _501) */
-	uint16_t texoffset_x, texoffset_y;
+	/* 0D1's offset slots, X and Y in 1/16 texel (formerly texoffset_x and
+	 * _y, slot 1's place in the save states) */
+	int16_t texoffset[4][2];
 
 	struct {
 		uint32_t in_mesh	: 1;
@@ -530,6 +532,8 @@ typedef union {
 		uint32_t link		: 1; /* 0x00001000, S: see 161 */
 		uint32_t unknown2	: 3; /* 0x0000E000 */
 		uint32_t		: 2;
+		/* With twosided, 0D1's offset slot the texcoords take (bits
+		 * 19:18, 0 none): PHARRIER's sky picks slot 2 */
 		uint32_t unknown3	: 1; /* 0x00040000 */
 		uint32_t twosided	: 1; /* 0x00080000 */
 		uint32_t		: 3;

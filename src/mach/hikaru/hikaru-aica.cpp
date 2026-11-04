@@ -1301,15 +1301,7 @@ Aica::reset (hl::ResetType type)
 	(void) type;
 	aica->rtc_we = false;
 	aica->set_clock (aica->rtc_ahead);
-
-	/* The ARM held in reset until the SH-4 lets it go */
-	memset (&st, 0, sizeof (st));
-	regs->clear ();
-	regs->put (4, REG_ARMRST, 1);
-	arm.reset ();
-	out.clear ();
-	slot_dirty = ~0ull;
-	dsp_dirty = true;
+	reset_pin ();
 
 	/* The SDRAM holds anything but zeros at power-on, and the drivers
 	 * count on it: their loop over the channels (ARM 964) starts from
@@ -1325,6 +1317,19 @@ Aica::reset (hl::ResetType type)
 		x ^= x << 5;
 		ram->put (4, a, x);
 	}
+}
+
+void
+Aica::reset_pin ()
+{
+	/* The ARM held in reset until the SH-4 lets it go */
+	memset (&st, 0, sizeof (st));
+	regs->clear ();
+	regs->put (4, REG_ARMRST, 1);
+	arm.reset ();
+	out.clear ();
+	slot_dirty = ~0ull;
+	dsp_dirty = true;
 }
 
 int

@@ -102,6 +102,9 @@ public:
 	/* The SH-4s hold the Z80's bus (BUSRQ, granted at once): the Z80
 	 * stops; see bus_get () */
 	bool busrq;
+	/* GPIO D's reset lines as last driven, active low (not in the save
+	 * states: released after a load) */
+	uint8_t resets;
 	/* The Z80's T-states per 100 SH-4 cycles */
 	int speed;
 	bool log_ports;

@@ -41,6 +41,10 @@ public:
 	int get (unsigned size, uint32_t addr, void *val) override;
 	int put (unsigned size, uint32_t addr, uint64_t val) override;
 	void reset (hl::ResetType type) override;
+	/* The sound boards' reset line pulled (MIE port D bit 5): the
+	 * registers cleared and the ARM held until the SH-4 lets it go, as at
+	 * power-on; the RAM and the clock kept */
+	void	 reset_pin ();
 	/* cycles of the SH-4s, at cpu_hz: the samples they make, the ARM's
 	 * cycles between them */
 	int exec (int cycles) override;

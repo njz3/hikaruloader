@@ -26,6 +26,7 @@
 #include "hl/state.h"
 
 #include "mach/hikaru/hikaru.h"
+#include "mach/hikaru/hikaru-aica.h"
 #include "mach/hikaru/hikaru-mie.h"
 
 namespace hikaru {
@@ -104,7 +105,8 @@ namespace hikaru {
  * A	The DIP switches, not fitted: FF
  * B	The interrupts for the SH-4's IRL2 (active high); C, their mask. None
  *	is routed through them here: B reads 00
- * D	Resets (system, GPU, slave SH-4...), the video clock: kept as written
+ * D	Resets, active low (system, GPU, slave SH-4...), the video clock:
+ *	bit 5 resets the sound boards (see drive ()), the rest kept as written
  * E	LEDs, the GPU's JTAG
  * F	The 93C46 EEPROM: bit 0 SK, 1 DI, 3 CS; bits 4-6, interrupts for B
  * G	Bit 0 the EEPROM's DO, 2 /Service, 3 /Test (MAME swaps them)
@@ -487,6 +489,22 @@ Mie::drive (unsigned port)
 {
 	uint8_t val = io.gpio[port];
 
+	/* D: the resets, active low. Bit 5, the sound boards' (SND_RES in
+	 * MAME's hikaru.cpp): SGNASCAR pulls it as it starts, and again as it
+	 * leaves its SYSTEM MENU, then loads the sound drivers again, which the
+	 * ARMs left running the old ones never answered. The others are kept as
+	 * written */
+	if (port == 3) {
+		uint8_t fell = (uint8_t) (resets & ~val);
+
+		resets = val;
+		if (fell & 0x20) {
+			Hikaru *hikaru = (Hikaru *) mach;
+			((Aica *) hikaru->aica_m)->reset_pin ();
+			((Aica *) hikaru->aica_s)->reset_pin ();
+		}
+		return;
+	}
 	/* F: the EEPROM; its bits 4-6, the interrupts for B, are not routed */
 	if (port != 5)
 		return;
@@ -975,6 +993,7 @@ Mie::reset (hl::ResetType type)
 	io.gpio_dir = 0xFF;
 	owed = 0;
 	busrq = false;
+	resets = 0xFF;
 	idle.valid = idle.confirmed = false;
 	z80->reset ();
 	if (type == hl::RESET_HARD) {
