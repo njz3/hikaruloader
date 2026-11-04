@@ -5,8 +5,8 @@ What each version brings, for those who play. How the versions are numbered
 and released: [DEVELOPMENT.md](DEVELOPMENT.md), "Versions and releases".
 
 
-In preparation
---------------
+0.4.2 (2026-11-04)
+------------------
 
 - The games folder changed in the settings of the game list: its games now
   start, where they were looked for in the folder of the program's start;
