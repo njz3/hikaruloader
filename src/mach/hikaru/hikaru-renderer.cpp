@@ -106,6 +106,7 @@ init_debug_flags (Renderer *hr)
 			if (*p == ',')
 				p++;
 		}
+	hr->debug.keys = hl_util_get_bool_option ("HR_DEBUG_KEYS", false);
 	hr->debug.no_draw = hl_util_get_bool_option ("HR_NO_DRAW", false);
 	hr->debug.stats = hl_util_get_bool_option ("HR_STATS", false);
 	hr->debug.sync = hl_util_get_bool_option ("HR_SYNC", false);
@@ -123,7 +124,9 @@ update_debug_flags (Renderer *hr)
 
 	for (i = 0; i < NUMELEM (debug_controls); i++) {
 		uint32_t key = debug_controls[i].key;
-		if (key != ~0 && hl::Input::key (key)) {
+		/* Not for a player: V, NASCAR Arcade's view change, took its 3D
+		 * away (the viewport selected) until the program restarted */
+		if (key != ~0 && hr->debug.keys && hl::Input::key (key)) {
 			hr->debug.flags[i] += 1;
 			if (i == HR_DEBUG_NO_MIPMAPS)
 			if (hr->debug.flags[i] > debug_controls[i].max)

@@ -415,6 +415,8 @@ public:
 		 * HR_SYNC: each mesh waited for and timed, the slow ones
 		 * printed */
 		bool no_draw, stats, sync;
+		/* HR_DEBUG_KEYS: the flags stepped by the keyboard */
+		bool keys;
 		uint64_t draws, tris;
 		uint32_t max_tris, max_instances, max_tris_mesh, slow_mesh;
 		uint32_t uploads;	/* textures uploaded this frame */

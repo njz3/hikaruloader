@@ -198,14 +198,18 @@ In the environment:
 - `HR_NO_DRAW=1` sends no mesh to the GPU; `HR_STATS=1` prints each frame's
   draws and triangles; `HR_SYNC=1` waits for each mesh and prints the slow
   ones; `HR_LOG=1` logs the renderer's states (on stdout: not with
-  `-agent`). `HR_DEBUG_FLAGS=i=v,i=v` sets the renderer's debug switches
-  that keys step through, for an agent's run: 1 and 2 hide the 2D layers,
-  3 the 3D, 7=N draws only polytype N (6 the translucent meshes) (see
-  `debug_controls` in `hikaru-renderer.cpp`). `HR_GL_DEBUG=1` asks for a
+  `-agent`). `HR_DEBUG_KEYS=1` lets keys step the renderer's debug switches
+  (`debug_controls` in `hikaru-renderer.cpp`: 1, 2, 3, V, T, U, P, I, J, L,
+  A, D, S, G; off by default, a player's keys). `HR_DEBUG_FLAGS=i=v,i=v`
+  sets them without a keyboard, for an agent's run: 1 and 2 hide the 2D
+  layers, 3 the 3D, 7=N draws only polytype N (6 the translucent meshes). `HR_GL_DEBUG=1` asks for a
   debug OpenGL context, whose driver then logs its errors as they happen
   ("GL: ..."): without it, Intel's says nothing (about 10% slower).
   `HR_GL_CHECK=1` (and `HR_GL_DEBUG=1`) looks for GL's errors after each
   call, to find where one comes from; without it, once a frame.
+- `HR_LOG_INPUTS=1` logs the switches the game reads at each change (the
+  simulated I/O board's): start 8000, service 4000, up 2000, down 1000,
+  left 0800, right 0400, buttons 1 to 4 from 0200 down.
 - `HR_NO_AUDIO=1` opens no sound output; `HR_WAV=<path>` writes all the
   sound to a WAV file as well.
 - `HR_CLOCK=<count>`: the board's clock starts at that count (seconds since

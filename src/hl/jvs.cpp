@@ -672,6 +672,16 @@ SegaIoBoard::switches (unsigned players, unsigned bytes, std::vector<uint8_t> &o
 		return false;
 	/* Polled each frame: the coins too */
 	count_coins ();
+	/* HR_LOG_INPUTS=1: what the game reads, at each change */
+	static const bool log_inputs = getenv ("HR_LOG_INPUTS") != NULL;
+	if (log_inputs) {
+		static uint32_t last = ~0u;
+		uint32_t now = ((uint32_t) switch_word (0) << 1) | (Input::action (ACTION_TEST) ? 1 : 0);
+		if (now != last)
+			HL_PRINT ("inputs: frame %llu, test %u, player 1 %04X",
+			          (unsigned long long) mach->frame, now & 1, now >> 1);
+		last = now;
+	}
 	out.push_back (Input::action (ACTION_TEST) ? 0x80 : 0x00);
 	for (p = 0; p < players; p++) {
 		uint16_t bits = switch_word (p);

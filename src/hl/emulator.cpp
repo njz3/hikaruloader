@@ -279,6 +279,12 @@ Emulator::process_events ()
 			quit = true;
 			continue;
 		}
+		/* For a problem report: without the focus the keys do nothing,
+		 * which a still menu shows as a freeze */
+		if (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_FOCUS_LOST)
+			HL_PRINT ("window: the keyboard's focus lost, the keys do nothing until it is back");
+		else if (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_FOCUS_GAINED)
+			HL_PRINT ("window: the keyboard's focus back");
 		/* Tab, and everything while the settings are open */
 		if (ui::Interface::process_event (&event))
 			continue;
@@ -302,6 +308,7 @@ Emulator::process_events ()
 			quit = true;
 			break;
 		case ACTION_PAUSE:
+			HL_PRINT ("%s: the Pause input was pressed", paused ? "resumed" : "paused");
 			if (paused)
 				resume ();
 			else

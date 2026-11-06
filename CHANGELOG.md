@@ -5,6 +5,14 @@ What each version brings, for those who play. How the versions are numbered
 and released: [DEVELOPMENT.md](DEVELOPMENT.md), "Versions and releases".
 
 
+In preparation
+--------------
+
+- NASCAR Arcade: the V key, its view change since 0.4.2, no longer makes the
+  3D vanish until the next start. The renderer's debugging keys (V and other
+  letters, 1, 2, 3) no longer change the picture in normal use.
+
+
 0.4.2 (2026-11-04)
 ------------------
 
