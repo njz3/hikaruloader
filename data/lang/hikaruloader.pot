@@ -1024,6 +1024,30 @@ msgid "Right lever (its engine's thrust)"
 msgstr ""
 
 #: src/ui/ui_controls.cpp
+msgid "Gaelco cabinets"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Volume up (ATV Track, Smashing Drive)"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Volume down (ATV Track, Smashing Drive)"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Left brake lever (ATV Track)"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Right brake lever (ATV Track)"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Horn, also start (Smashing Drive)"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
 msgid "Pause"
 msgstr ""
 

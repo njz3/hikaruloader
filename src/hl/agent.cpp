@@ -77,6 +77,12 @@ static const struct {
 	{ "Card",	ACTION_CARD },
 	/* linuxloader's name */
 	{ "ViewChange",	ACTION_VIEW_CHANGE },
+	/* The Gaelco cabinets' own (controls.ini's [Gaelco]) */
+	{ "VolumeUp",	ACTION_VOLUME_UP },
+	{ "VolumeDown",	ACTION_VOLUME_DOWN },
+	{ "LeftBrake",	ACTION_LEFT_BRAKE },
+	{ "RightBrake",	ACTION_RIGHT_BRAKE },
+	{ "Horn",	ACTION_HORN },
 };
 
 static int

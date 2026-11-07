@@ -879,16 +879,19 @@ port_inputs (Gaelco *gaelco, unsigned select)
 		return in;
 	}
 
+	/* ATV Track's and Smashing Drive's own buttons: controls.ini's [Gaelco]
+	 * rows, never the Hikaru's [Digital] ones (its up, down and buttons are
+	 * NASCAR Arcade's view change, Star Wars: Racer Arcade's boost...) */
 	switch (select) {
 	case 0xF000:
-		/* JP10; ATV Track's up and down are the volume */
+		/* JP10; up and down are the volume buttons */
 		if (!gaelco->adc.out)
 			in &= ~(1 << 9);
 		in &= low_if (Input::action (hl::ACTION_COIN1), 8);
 		in &= low_if (Input::action (hl::ACTION_TEST), 6);
-		in &= low_if (Input::action (hl::ACTION_DOWN), 5);
+		in &= low_if (Input::action (hl::ACTION_VOLUME_DOWN), 5);
 		in &= low_if (Input::action (hl::ACTION_SERVICE), 4);
-		in &= low_if (Input::action (hl::ACTION_UP) || volume_up, 3);
+		in &= low_if (Input::action (hl::ACTION_VOLUME_UP) || volume_up, 3);
 		break;
 	case 0xE800:
 		/* JP8, the game's own */
@@ -896,8 +899,8 @@ port_inputs (Gaelco *gaelco, unsigned select)
 			/* The levers, or the pedal for both */
 			bool brake = hl::Controls::get ().is_enabled () &&
 			             hl::Controls::get ().pedal ("Driving", "P1_Brake") > 0.5;
-			in &= low_if (Input::action (hl::ACTION_BUTTON1) || brake, 7);
-			in &= low_if (Input::action (hl::ACTION_BUTTON2) || brake, 8);
+			in &= low_if (Input::action (hl::ACTION_LEFT_BRAKE) || brake, 7);
+			in &= low_if (Input::action (hl::ACTION_RIGHT_BRAKE) || brake, 8);
 			/* The emergency stop's contact, closed while it is not
 			 * pressed */
 			in &= (uint16_t) ~(1 << 9);
@@ -907,9 +910,9 @@ port_inputs (Gaelco *gaelco, unsigned select)
 			hl::Controls &c = hl::Controls::get ();
 			bool gas = c.is_enabled () && c.pedal ("Driving", "P1_Gas") > 0.5;
 			bool brake = c.is_enabled () && c.pedal ("Driving", "P1_Brake") > 0.5;
-			in &= low_if (Input::action (hl::ACTION_BUTTON1) || gas, 7);
-			in &= low_if (Input::action (hl::ACTION_BUTTON2) || brake, 8);
-			in &= low_if (Input::action (hl::ACTION_START1) || Input::action (hl::ACTION_BUTTON3), 9);
+			in &= low_if (gas, 7);
+			in &= low_if (brake, 8);
+			in &= low_if (Input::action (hl::ACTION_START1) || Input::action (hl::ACTION_HORN), 9);
 		}
 		break;
 	}

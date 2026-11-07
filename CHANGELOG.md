@@ -5,6 +5,17 @@ What each version brings, for those who play. How the versions are numbered
 and released: [DEVELOPMENT.md](DEVELOPMENT.md), "Versions and releases".
 
 
+In preparation
+--------------
+
+- The Gaelco cabinets' own buttons in a section of their own, *Gaelco
+  cabinets* in the Controls tab (`[Gaelco]` in `controls.ini`): Volume up and
+  Volume down (Page Up, Page Down), ATV Track's two brake levers, Smashing
+  Drive's horn. ATV Track and Smashing Drive no longer read the Hikaru
+  games' Up, Down and Buttons, where a cabinet's volume buttons also changed
+  NASCAR Arcade's view; Smashing Drive's gas and brake are the pedals alone.
+
+
 0.5.0 (2026-11-07)
 ------------------
 

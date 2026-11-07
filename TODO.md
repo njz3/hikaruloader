@@ -29,10 +29,6 @@ The outputs (`src/hl/outputs.cpp`):
   TEST here (the VO4 terminal's, likely).
 - Air Trix's LOCK MECHA. reads OFF in the test with output 4 at 1; it stays
   at 0 in the attract and after Start.
-- MAME's other way of sending its outputs, beside the network protocol
-  done here: its window messages on Windows (a hidden "MAMEOutput" window
-  and registered messages), which some tools listen to alone. Supermodel
-  and sm2-emu send both.
 - The outputs in the agent protocol (shared with Supermodel and sm2-emu).
 
 The controls (`src/hl/controls.cpp`):
@@ -240,6 +236,9 @@ Still to do:
   alone; no modifier volumes, the texture formats 3, 4 and 6 and the palettes
   (none of the three games uses them).
 - Interrupt 7 (a frame drawn) is raised at once, not when the frame would be.
+- Speed on older PCs: an Intel Core i5-4590 (4 cores, GTX 1050 Ti) plays the
+  Hikaru games at 60 frames a second but ATV Track and Smashing Drive at 42 to
+  60 (about 50), two SH-4s at 200 MHz.
 - The force feedback's direction and strength on a real wheel; Smashing Drive's
   wheel polarity is taken from what it writes at its ends.
 - ATV Track's and Gaelco Football's link, if any: only Smashing Drive's menu has

@@ -84,6 +84,13 @@ static const char *default_file =
 	"P1_LeftLever = GC0_AXIS_LEFTY_NEGATIVE_SIDE\n"
 	"P1_RightLever = GC0_AXIS_RIGHTY_NEGATIVE_SIDE\n"
 	"\n"
+	"[Gaelco]\n"
+	"VolumeUp = KEY_PageUp, GC0_BUTTON_DPUP\n"
+	"VolumeDown = KEY_PageDown, GC0_BUTTON_DPDOWN\n"
+	"LeftBrake = KEY_LeftCtrl, GC0_BUTTON_LEFTSHOULDER\n"
+	"RightBrake = KEY_LeftAlt, GC0_BUTTON_RIGHTSHOULDER\n"
+	"Horn = KEY_LeftShift, GC0_BUTTON_X\n"
+	"\n"
 	"[Emulator]\n"
 	"Pause = KEY_Space, GC0_BUTTON_GUIDE + GC0_BUTTON_X\n"
 	"SaveState = KEY_F4, GC0_BUTTON_GUIDE + GC0_BUTTON_RIGHTSHOULDER\n"
@@ -185,6 +192,16 @@ static const struct {
 	  "forward: an axis or half of one each, with hikaruloader.ini's [Input]\n"
 	  "TWIN_LEVERS = ORIGINAL (COMBINED: P1_Gas and P1_Steer)" },
 	{ "Driving", "P1_RightLever", "The right lever, the right engine's thrust" },
+	{ "Gaelco", NULL,
+	  "The Gaelco cabinets' own buttons, read by their games alone: ATV Track and\n"
+	  "Smashing Drive read none of the Digital rows (Gaelco Football's sticks and\n"
+	  "buttons are there)" },
+	{ "Gaelco", "VolumeUp", "The volume up button (ATV Track, Smashing Drive)" },
+	{ "Gaelco", "VolumeDown", "The volume down button" },
+	{ "Gaelco", "LeftBrake",
+	  "ATV Track's left brake lever (P1_Brake pulls both)" },
+	{ "Gaelco", "RightBrake", "ATV Track's right brake lever" },
+	{ "Gaelco", "Horn", "Smashing Drive's horn, which also starts (as P1_Start)" },
 	{ "Emulator", NULL,
 	  "The emulator's commands: Hikaruloader's own section, the other loaders\n"
 	  "leave it alone" },

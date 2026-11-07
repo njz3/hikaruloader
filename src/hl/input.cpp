@@ -69,6 +69,12 @@ static const struct {
 	{ "GEAR3",	"Driving",	"Gear3",	{ SDLK_UNKNOWN,	-1 } },
 	{ "GEAR4",	"Driving",	"Gear4",	{ SDLK_UNKNOWN,	-1 } },
 	{ "GEAR_NEUTRAL", "Driving",	"GearNeutral",	{ SDLK_UNKNOWN,	-1 } },
+	/* The Gaelco cabinets', new in controls.ini: no old binding */
+	{ "VOLUME_UP",	"Gaelco",	"VolumeUp",	{ SDLK_UNKNOWN,	-1 } },
+	{ "VOLUME_DOWN", "Gaelco",	"VolumeDown",	{ SDLK_UNKNOWN,	-1 } },
+	{ "LEFT_BRAKE",	"Gaelco",	"LeftBrake",	{ SDLK_UNKNOWN,	-1 } },
+	{ "RIGHT_BRAKE", "Gaelco",	"RightBrake",	{ SDLK_UNKNOWN,	-1 } },
+	{ "HORN",	"Gaelco",	"Horn",		{ SDLK_UNKNOWN,	-1 } },
 	{ "PAUSE",	"Emulator",	"Pause",	{ SDLK_SPACE,	-1 } },
 	{ "SAVE_STATE",	"Emulator",	"SaveState",	{ SDLK_F4,	-1 } },
 	{ "LOAD_STATE",	"Emulator",	"LoadState",	{ SDLK_F1,	-1 } },

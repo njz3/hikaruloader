@@ -53,6 +53,7 @@ const Section kSections[] = {
     {"Common", N_("All games")},
     {"Digital", N_("Stick and buttons")},
     {"Driving", N_("Driving")},
+    {"Gaelco", N_("Gaelco cabinets")},
     {"Emulator", N_("Emulator")},
 };
 
@@ -102,6 +103,11 @@ const char *actionLabel(const std::string &key)
         {"GearNeutral", N_("Neutral")},
         {"P1_LeftLever", N_("Left lever (its engine's thrust)")},
         {"P1_RightLever", N_("Right lever (its engine's thrust)")},
+        {"VolumeUp", N_("Volume up (ATV Track, Smashing Drive)")},
+        {"VolumeDown", N_("Volume down (ATV Track, Smashing Drive)")},
+        {"LeftBrake", N_("Left brake lever (ATV Track)")},
+        {"RightBrake", N_("Right brake lever (ATV Track)")},
+        {"Horn", N_("Horn, also start (Smashing Drive)")},
         {"Pause", N_("Pause")},
         {"SaveState", N_("Save the state")},
         {"LoadState", N_("Load the state")},
@@ -648,6 +654,7 @@ void drawGameInputs()
         hl::ACTION_TEST,    hl::ACTION_SERVICE, hl::ACTION_COIN1,   hl::ACTION_COIN2,   hl::ACTION_START1,
         hl::ACTION_UP,      hl::ACTION_DOWN,    hl::ACTION_LEFT,    hl::ACTION_RIGHT,   hl::ACTION_BUTTON1,
         hl::ACTION_BUTTON2, hl::ACTION_BUTTON3, hl::ACTION_BUTTON4, hl::ACTION_CARD,    hl::ACTION_VIEW_CHANGE,
+        hl::ACTION_VOLUME_UP, hl::ACTION_VOLUME_DOWN, hl::ACTION_LEFT_BRAKE, hl::ACTION_RIGHT_BRAKE, hl::ACTION_HORN,
     };
     hl::Controls &controls = hl::Controls::get();
     if (!ImGui::BeginTable("##game", 2, ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_RowBg))

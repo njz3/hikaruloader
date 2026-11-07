@@ -56,6 +56,15 @@ enum Action {
 	ACTION_GEAR3,
 	ACTION_GEAR4,
 	ACTION_GEAR_NEUTRAL,
+	/* The Gaelco cabinets' own controls, in a section of their own: never
+	 * the Hikaru's rows, whose buttons mean other things there. ATV Track's
+	 * and Smashing Drive's volume buttons, ATV Track's two brake levers,
+	 * Smashing Drive's horn */
+	ACTION_VOLUME_UP,
+	ACTION_VOLUME_DOWN,
+	ACTION_LEFT_BRAKE,
+	ACTION_RIGHT_BRAKE,
+	ACTION_HORN,
 	ACTION_PAUSE,
 	ACTION_SAVE_STATE,
 	ACTION_LOAD_STATE,

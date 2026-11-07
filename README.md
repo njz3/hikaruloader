@@ -73,9 +73,9 @@ Gaelco's games, on another board (two SH-4s and a PowerVR Neon 250), play too:
 
 | Set | Game | Its controls |
 |-----|------|--------------|
-| `atvtrack`, `atvtracka` | ATV Track, 2002 | Handlebar and throttle (the Driving rows), the brake levers on Button 1 and 2 or the brake pedal, Up and Down the volume |
+| `atvtrack`, `atvtracka` | ATV Track, 2002 | Handlebar and throttle (the Driving rows); the brake levers (Left brake, Right brake in the Gaelco section) or the brake pedal for both; Volume up and Volume down (Gaelco section) |
 | `gfootbal` | Gaelco Football, 2002 | Two players: stick, buttons A, B and C on Button 1 to 3; player 2's rows in the Digital section (R, F, D, G and A, S, Q on the keyboard, 2 to start, or the second controller) |
-| `smashdrv`, `smashdrvb`, `smashdrvs` | Smashing Drive, 2000 | Wheel, gas and brake as switches (the pedals, or Button 1 and 2), the horn on Start, which also starts. Linked, two cabinets |
+| `smashdrv`, `smashdrvb`, `smashdrvs` | Smashing Drive, 2000 | Wheel, gas and brake as switches (the pedals); the horn (Gaelco section) or Start, which also starts; Volume up and Volume down (Gaelco section). Linked, two cabinets |
 
 They run at twice `SH4_CLOCK`, so at their board's 200 MHz by default, and draw
 half as many frames at `SH4_CLOCK = 50`. Their settings and scores are kept in
@@ -83,7 +83,14 @@ half as many frames at `SH4_CLOCK = 50`. Their settings and scores are kept in
 drives the wheel's force feedback. Their lamps and coin counters, and Smashing
 Drive's seat motor, go to the network outputs. Smashing Drive starts silent,
 as its board does (its volume is kept nowhere): Volume Up is held for it at
-each start, a second and a half, then Up and Down change it.
+each start, a second and a half, then Volume up and Volume down change it.
+
+The Gaelco cabinets' own buttons are in the *Gaelco cabinets* section of the
+Controls tab (`[Gaelco]` in `controls.ini`): volume, ATV Track's brake levers,
+Smashing Drive's horn. ATV Track and Smashing Drive read none of the *Stick
+and buttons* rows, which are the Hikaru games' (NASCAR Arcade's view change is
+player 1's down there): a binding for one platform changes nothing in the
+other's games. Gaelco Football, a stick and buttons game, reads those rows.
 
 To link two Smashing Drive cabinets, set its *Link* setting in the test menu
 (master on one, slave on the other, then *Exit and save*), and the `[Network]`
