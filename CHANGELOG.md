@@ -5,8 +5,8 @@ What each version brings, for those who play. How the versions are numbered
 and released: [DEVELOPMENT.md](DEVELOPMENT.md), "Versions and releases".
 
 
-In preparation
---------------
+0.5.0 (2026-11-07)
+------------------
 
 - Gaelco's games play: ATV Track, Gaelco Football and Smashing Drive, in all
   their sets, at their 60 frames a second, with their pictures, sound,
