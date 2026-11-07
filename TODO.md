@@ -130,8 +130,6 @@ SH-4
 - The busy waits that are neither idle loops nor timer polls (AIRTRIX's
   loop on the MIE's mailbox, AT:@0C69B358), run forward, to make 200 MHz as
   fast as the default 100.
-- The translations under the MMU (Smashing Drive's CPUs run in the
-  interpreter, its MMU on from the start).
 
 
 GPU / RENDERING
@@ -235,20 +233,23 @@ Board videos:
 GAELCO (src/mach/gaelco)
 ------------------------
 
-ATV Track, Gaelco Football and Smashing Drive (two SH-4s, an NEC PowerVR
-Neon 250 on the slave, an Altera FPGA) boot to their main loops; the window
-stays black. In order:
+ATV Track, Gaelco Football and Smashing Drive play. Still to do:
 
-- check what was guessed: the DAC's IRL pins ("IRL5"), the ADC's protocol
-  and channels, JP8's game inputs, the Neon 250's vblank (its interrupts 7,
-  8 and 15 are unmasked: 7 the frame drawn, the others unknown);
-- the Neon 250: how the slave hands it its lists (registers at 14000000,
-  VRAM at 18000000), then a PowerVR 2 renderer (the tile accelerator's
-  lists, ISP/TSP, twiddled and VQ textures, the translucent polygons sorted,
-  the modifier volumes);
-- Gaelco Football: its slave sets a "PMX" up ("the test CCB failed") and
-  loads its microcode, then black;
-- the NAND kept in the game's nvram (settings, bookkeeping);
-- Smashing Drive: its CPUs in the interpreter (MMU on), the translations
-  under the MMU for speed;
-- the RS-422 link (DB9), the lamps and the motion outputs.
+- The speed: below 60 frames a second on the laptop at 150 MHz (49 to 53);
+  half of the master's time goes to chaining blocks (sh4_chain, peek, the
+  idle look), which a direct link between translations would save.
+- The Neon 250's interrupts: 7 is raised at once, a real delay making the
+  games split their scenes over frames; 8 and 15 are unmasked and not raised
+  (15 at each vblank hangs ATV Track). The frame rate is therefore not locked
+  to 60 and the games can draw more frames than are shown.
+- The renderer: the translucent polygons in the lists' order, not sorted;
+  no modifier volumes; the texture formats 3, 4 and 6, the stride bit, and the
+  palettes unchecked; mipmaps generated, not read; the background plane's
+  colour alone. ATV Track's and Smashing Drive's screen test patterns come out
+  scrambled. Gaelco Football's "out" box looks doubled.
+- Smashing Drive's volume: pressed up at each start, as it starts at 0 and is
+  kept nowhere found in its flash.
+- Gaelco Football's player 2 (port 5800: as player 1's on 6800), the "ball
+  test" in its test menu; the DAC's IRL pins are still a guess, which plays.
+- ATV Track's steering motor (a DAC output of JP3, shown in its input test), the
+  lamps, the coin counter, the motion outputs and the RS-422 link (DB9).

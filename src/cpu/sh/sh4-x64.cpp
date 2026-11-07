@@ -212,7 +212,7 @@ Sh4Offsets::Sh4Offsets (Sh4 *ctx)
 	chain_n = (int32_t) ((const uint8_t *) &ctx->chain.n - base);
 	epoch = (int32_t) ((const uint8_t *) &ctx->blocks.epoch - base);
 	state = (int32_t) ((const uint8_t *) &ctx->state - base);
-	mmu_on = (int32_t) ((const uint8_t *) &ctx->mmu.on - base);
+	mmu_on = (int32_t) ((const uint8_t *) &ctx->mmu_exact - base);
 	noting = (int32_t) ((const uint8_t *) ctx->idle.noting_flag () - base);
 	chain_stores = (int32_t) ((const uint8_t *) &ctx->chain.stores - base);
 	chain_ends = (int32_t) ((const uint8_t *) &ctx->chain.ends - base);

@@ -69,9 +69,20 @@ The games
 | `swracer` | Star Wars: Racer Arcade, 2000 | Linked, four speakers |
 | `von4` | Cyber Troopers Virtual-On 4: Force (Rev E), 2001 | Linked, four speakers, a card reader |
 
-The picker also lists Gaelco's ATV Track, Gaelco Football and Smashing Drive
-(six sets), which run on another board: they do not work yet, their screen
-stays black. What is still wrong in each game is in
+Gaelco's games, on another board (two SH-4s and a PowerVR Neon 250), play too:
+
+| Set | Game | Its controls |
+|-----|------|--------------|
+| `atvtrack`, `atvtracka` | ATV Track, 2002 | Handlebar and throttle (the Driving rows), the brake levers on Button 1 and 2 or the brake pedal, Up and Down the volume |
+| `gfootbal` | Gaelco Football, 2002 | Stick, buttons A, B and C on Button 1 to 3, player 1 only |
+| `smashdrv`, `smashdrvb`, `smashdrvs` | Smashing Drive, 2000 | Wheel, gas and brake as switches (the pedals, or Button 1 and 2), the horn on Start, which also starts |
+
+Their speed follows `SH4_CLOCK`: they run at 1.5 times it, 150 MHz by default,
+of their board's 200 MHz. Under 125 MHz their pictures come out incomplete;
+200 (`SH4_CLOCK = 133`) draws more of the crowds and the details where the PC
+keeps up. Their settings and scores are kept in `nvram/`, as the others'.
+
+What is still wrong in each game is in
 [TODO.md](https://github.com/njz3/hikaruloader/blob/main/TODO.md), in the sources.
 
 

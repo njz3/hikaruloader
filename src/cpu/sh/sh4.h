@@ -245,6 +245,11 @@ public:
 		/* The decoded blocks to drop before running them again */
 		bool	flush_blocks;
 	} mmu;
+	/* The translations in use: MMUCR.AT, unless mmu_trusted lets them be
+	 * left out; see sh4_mmu_update () */
+	bool	mmu_exact = false;
+	/* The machine's word that its program never faults under the MMU */
+	bool	mmu_trusted = false;
 	/* The delay slot run (in_slot): its address, for the exceptions */
 	uint32_t	slot_pc;
 	/* What the SCIF sent since the last line, for the log */
@@ -280,6 +285,8 @@ public:
 	/* The clock its cycles run at, in Hz (the machine's), which the timers
 	 * count against: 200 MHz on the board */
 	uint32_t	cpu_hz = 200000000;
+	/* The peripherals' clock, Pφ: the Hikaru's 200 MHz / 4 by default */
+	uint32_t	pclk_hz = 50000000;
 	/* The last TCNT read: where from (PC, PR, r15), the far stores then */
 	struct {
 		uint32_t pc, pr, sp;

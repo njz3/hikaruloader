@@ -2,9 +2,6 @@
  * Hikaruloader (formerly Valkyrie)
  * Copyright (C) 2026, Benjamin Maurin (njz3)
  *
- * Derived from MAME's src/mame/gaelco/atvtrack.cpp (license BSD-3-Clause,
- * copyright-holders Samuele Zannoli).
- *
  * Hikaruloader is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
@@ -22,16 +19,46 @@
 #ifndef __HL_GAELCO_GPU_H__
 #define __HL_GAELCO_GPU_H__
 
+#include <memory>
+#include <unordered_map>
+#include <vector>
+
 #include "hl/device.h"
+#include "hl/presentation.h"
 #include "hl/renderer.h"
 
 namespace gaelco {
 
-/* The NEC PowerVR Neon 250 (PowerVR series 2) on the slave SH-4: its
+/* A frame's lists, read from the VRAM when the game starts its drawing: the
+ * vertices in the board's screen coordinates, and the runs that share a
+ * polygon header */
+struct Vertex {
+	float x, y, z;		/* z: 1/w */
+	float u, v;
+	uint32_t base;		/* A8R8G8B8 */
+	uint32_t offset;
+};
+
+struct Batch {
+	uint32_t isp, tsp, tcw;
+	uint32_t first, count;
+	bool translucent;
+};
+
+struct Frame {
+	std::vector<Vertex> vertices;
+	std::vector<Batch> batches;
+	float max_z;
+	uint32_t background;
+	/* The chip state's fog: its colour, density, and the table */
+	uint32_t fog_color;
+	uint32_t fog_density;
+	uint16_t fog_table[128];
+};
+
+/* The NEC PowerVR Neon 250 (a PowerVR series 2, PMX1) on the slave SH-4: its
  * registers at 14000000-14003FFF, its PCI configuration at 14004xxx, its
- * 32 MB at 18000000. Only what lets the games go on is known: the
- * interrupts (70 pending, 74 masked), a frame drawn when B0 is written 1
- * (its interrupt 7, at once). Nothing is drawn yet */
+ * 32 MB at 18000000; see gaelco-gpu.cpp */
 class Neon250 : public hl::Device {
 public:
 	Neon250 (hl::Machine *mach, hl::Buffer *vram);
@@ -43,16 +70,29 @@ public:
 	int load_state (hl::State *state) override;
 	const char *debug_string () override;
 
-	/* The frames whose drawing the games started, from the reset */
+	/* The frame to show, once a new one is there (else NULL): the
+	 * renderer's from then on */
+	std::unique_ptr<Frame> take_frame () { return std::move (ready); }
+
+	/* The frames drawn, from the reset */
 	uint32_t frames;
+
+	hl::Buffer *vram;
 
 private:
 	void raise (unsigned bit);
 	void update_irq ();
+	void kick ();
+	void run_ccb (uint32_t ccb);
+	void build_frame (uint32_t region, uint32_t state);
 
-	hl::Buffer *vram;
 	uint16_t pending;
 	uint16_t mask;
+	/* The next commands to read in the two rings (their write pointer, in
+	 * the VRAM, for the first; a slot's word 6 for the second) */
+	uint32_t ring_read;
+	uint32_t list_read;
+	std::unique_ptr<Frame> ready;
 	/* What was written, for the log and the Lua shell */
 	uint32_t regs[0x5000 / 4];
 	/* The registers read and written so far, logged the first time */
@@ -60,13 +100,38 @@ private:
 	uint8_t seen_w[0x5000 / 4 / 8];
 };
 
-/* Gaelco's renderer: the window black until the Neon 250 draws */
+/* Draws the Neon 250's frames, at RENDER_SCALE x 640x480 */
 class Renderer : public hl::Renderer {
 public:
-	Renderer () : hl::Renderer (640, 480) {}
+	explicit Renderer (Neon250 *gpu);
+	~Renderer () override;
 
 protected:
 	void on_end_frame () override;
+
+private:
+	struct Texture {
+		GLuint id;
+		uint64_t hash;
+		uint64_t seen;	/* the last frame that checked its data */
+	};
+
+	void setup ();
+	void draw_scene ();
+	GLuint texture (uint32_t tcw, uint32_t tsp);
+
+	Neon250 *gpu;
+	std::unique_ptr<Frame> frame;
+	std::unique_ptr<hl::Presentation> presentation;
+	std::unordered_map<uint64_t, Texture> textures;
+	uint64_t frame_count;
+
+	GLuint program, blit_program;
+	GLint u_flags, u_tex, u_fog, u_zscale, u_fog_color, u_fog_density;
+	GLint u_blit_tex;
+	GLuint vao, vbo, blit_vao, fog_tex;
+	GLuint fb, fb_color, fb_depth;
+	unsigned fb_w, fb_h;
 };
 
 } /* namespace gaelco */

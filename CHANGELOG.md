@@ -8,6 +8,9 @@ and released: [DEVELOPMENT.md](DEVELOPMENT.md), "Versions and releases".
 In preparation
 --------------
 
+- Gaelco's games play: ATV Track, Gaelco Football and Smashing Drive, in all
+  their sets, with their pictures, sound, controls and test menus. Their
+  settings and scores are kept. No cabinet link, motion or lamps yet.
 - NASCAR Arcade: the V key, its view change since 0.4.2, no longer makes the
   3D vanish until the next start. The renderer's debugging keys (V and other
   letters, 1, 2, 3) no longer change the picture in normal use.

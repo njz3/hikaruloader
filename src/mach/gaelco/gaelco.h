@@ -22,9 +22,12 @@
 #ifndef __HL_GAELCO_H__
 #define __HL_GAELCO_H__
 
+#include <string>
+
 #include "hl/mmap.h"
 #include "hl/cpu.h"
 #include "hl/machine.h"
+#include "hl/nvram.h"
 
 namespace gaelco {
 
@@ -60,6 +63,12 @@ public:
 		BOARD_ATVTRACK,		/* REF. 020419: the NAND chips */
 		BOARD_SMASHDRV		/* REF. 010131: the ROMs mapped */
 	} board;
+	/* What each game has on the FPGA's input ports */
+	enum Inputs {
+		INPUTS_ATV,
+		INPUTS_SMASHDRV,
+		INPUTS_FOOTBALL
+	} inputs;
 
 	/* CPUs */
 	hl::Cpu *sh_m;
@@ -103,6 +112,16 @@ public:
 	hl::Buffer *fpga_conf;	/* the EPC1PC8: the FPGA's configuration */
 	hl::Buffer *rom;	/* Smashing Drive's program, 64 MB */
 	hl::Buffer *data_rom;	/* and its data, 4 MB */
+
+	/* What the games program in the NAND or the flash, in nvram/<game>.nvram */
+	void load_nvram ();
+	void save_nvram ();
+	void keep_nvram ();
+	void nvram_buffers (const char **type, hl::Buffer **now, const uint8_t **rom, uint32_t *block);
+	hl::Nvram nvram;
+	std::string nvram_path;
+	bool nvram_changed;
+	unsigned nvram_due;
 
 	explicit Gaelco (hl::Game *game);
 };

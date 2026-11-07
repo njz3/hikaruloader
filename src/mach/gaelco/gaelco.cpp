@@ -98,6 +98,16 @@
  *  0	Smashing Drive: the FPGA configuration's clock
  *
  * The ADC and the DAC are 4-channel serial chips.
+ *
+ * What each game has there, from their own input tests:
+ *
+ *  ATV Track, JP8: 10 start, 9 the emergency stop (low when not pressed), 8 and
+ *  7 the right and left brake levers; JP10's up and down the volume. ADC: 0
+ *  the handlebar (high to the left), 1 the throttle.
+ *  Smashing Drive, JP8: 9 the horn, which starts, 8 the brake, 7 the gas; JP10
+ *  as ATV Track. ADC: 0 the wheel.
+ *  Gaelco Football, 6800 player 1 and 5800 player 2: 10 start, 9 to 7 buttons
+ *  C, B, A, 6 left, 5 right, 4 down, 3 up; 7000: 8 the coin, 6 test, 4 service.
  */
 
 #include <algorithm>
@@ -109,6 +119,7 @@
 #include "hl/controls.h"
 #include "hl/games.h"
 #include "hl/input.h"
+#include "hl/paths.h"
 #include "hl/profile.h"
 #include "hl/state.h"
 
@@ -368,6 +379,7 @@ Nand::put (unsigned size, uint32_t addr, uint64_t val)
 				if (pos < data->size ())
 					data->put (1, pos, data->get (1, pos) & (val & 0xFF));
 				chip.offset++;
+				((Gaelco *) mach)->nvram_changed = true;
 			}
 		}
 		break;
@@ -400,6 +412,7 @@ Nand::put (unsigned size, uint32_t addr, uint64_t val)
 					if (pos < data->size ())
 						data->put (1, pos, 0xFF);
 				}
+				((Gaelco *) mach)->nvram_changed = true;
 				break;
 			}
 			case 0x10: case 0x70: case 0x80: case 0x90: case 0xFF:
@@ -492,6 +505,7 @@ Flash::put (unsigned size, uint32_t addr, uint64_t val)
 		data->put (1, offs, data->get (1, offs) & byte);
 		mode = 0;
 		cycle = 0;
+		((Gaelco *) mach)->nvram_changed = true;
 		return 0;
 	}
 	if (byte == 0xF0) {
@@ -513,9 +527,10 @@ Flash::put (unsigned size, uint32_t addr, uint64_t val)
 				memset (data->ptr (offs & ~0xFFFFu), 0xFF, 0x10000);
 			else if (byte == 0x10)
 				memset (data->ptr (0), 0xFF, data->size ());
-			HL_PRINT ("flash: frame %llu: erased %s at %06X",
-			          (unsigned long long) mach->frame,
-			          byte == 0x30 ? "a sector" : "all", offs & ~0xFFFFu);
+			HL_LOG ("flash: frame %llu: erased %s at %06X",
+			        (unsigned long long) mach->frame,
+			        byte == 0x30 ? "a sector" : "all", offs & ~0xFFFFu);
+			((Gaelco *) mach)->nvram_changed = true;
 			mode = 0;
 		} else if (byte == 0xA0)
 			mode = 1;
@@ -579,8 +594,8 @@ Gaelco::control_put (uint32_t val)
  * Port A and the ADC
  */
 
-/* The ADC's channels, from 0 (left, up) to FF: the steering, the throttle,
- * the brake (unverified) */
+/* The ADC's channels: the wheel or the handlebar, high to the left; ATV Track's
+ * throttle */
 static uint8_t
 adc_sample (unsigned channel)
 {
@@ -590,11 +605,9 @@ adc_sample (unsigned channel)
 		return (channel == 0) ? 0x80 : 0x00;
 	switch (channel) {
 	case 0:
-		return (uint8_t) lround (0x80 + c.axis ("Driving", "P1_Steer") * 0x7F);
+		return (uint8_t) lround (0x80 - c.axis ("Driving", "P1_Steer") * 0x7F);
 	case 1:
 		return (uint8_t) lround (c.pedal ("Driving", "P1_Gas") * 0xFF);
-	case 2:
-		return (uint8_t) lround (c.pedal ("Driving", "P1_Brake") * 0xFF);
 	default:
 		return 0x80;
 	}
@@ -637,6 +650,83 @@ adc_clock (Gaelco *gaelco, bool cs, bool clk, bool di)
 	}
 }
 
+/* A switch, active low */
+static inline uint16_t
+low_if (bool on, unsigned bit)
+{
+	return on ? (uint16_t) ~(1u << bit) : (uint16_t) 0xFFFF;
+}
+
+/* What each game has on the FPGA's ports, from its own input test */
+static uint16_t
+port_inputs (Gaelco *gaelco, unsigned select)
+{
+	using hl::Input;
+	uint16_t in = 0xFFFF;
+	/* Smashing Drive starts silent, its volume 0 until the cabinet's button
+	 * raises it (kept nowhere its flash shows): pressed for it at the start */
+	bool volume_up = gaelco->inputs == Gaelco::INPUTS_SMASHDRV &&
+	                 gaelco->frame >= 300 && gaelco->frame < 1500 && (gaelco->frame & 0x10);
+
+	if (gaelco->inputs == Gaelco::INPUTS_FOOTBALL) {
+		switch (select) {
+		case 0x7000:
+			in &= low_if (Input::action (hl::ACTION_SERVICE), 4);
+			in &= low_if (Input::action (hl::ACTION_TEST), 6);
+			in &= low_if (Input::action (hl::ACTION_COIN1), 8);
+			break;
+		case 0x6800:
+			/* Player 1; player 2 at 5800, not on the keyboard */
+			in &= low_if (Input::action (hl::ACTION_UP), 3);
+			in &= low_if (Input::action (hl::ACTION_DOWN), 4);
+			in &= low_if (Input::action (hl::ACTION_RIGHT), 5);
+			in &= low_if (Input::action (hl::ACTION_LEFT), 6);
+			in &= low_if (Input::action (hl::ACTION_BUTTON1), 7);
+			in &= low_if (Input::action (hl::ACTION_BUTTON2), 8);
+			in &= low_if (Input::action (hl::ACTION_BUTTON3), 9);
+			in &= low_if (Input::action (hl::ACTION_START1), 10);
+			break;
+		}
+		return in;
+	}
+
+	switch (select) {
+	case 0xF000:
+		/* JP10; ATV Track's up and down are the volume */
+		if (!gaelco->adc.out)
+			in &= ~(1 << 9);
+		in &= low_if (Input::action (hl::ACTION_COIN1), 8);
+		in &= low_if (Input::action (hl::ACTION_TEST), 6);
+		in &= low_if (Input::action (hl::ACTION_DOWN), 5);
+		in &= low_if (Input::action (hl::ACTION_SERVICE), 4);
+		in &= low_if (Input::action (hl::ACTION_UP) || volume_up, 3);
+		break;
+	case 0xE800:
+		/* JP8, the game's own */
+		if (gaelco->inputs == Gaelco::INPUTS_ATV) {
+			/* The levers, or the pedal for both */
+			bool brake = hl::Controls::get ().is_enabled () &&
+			             hl::Controls::get ().pedal ("Driving", "P1_Brake") > 0.5;
+			in &= low_if (Input::action (hl::ACTION_BUTTON1) || brake, 7);
+			in &= low_if (Input::action (hl::ACTION_BUTTON2) || brake, 8);
+			/* The emergency stop's contact, closed while it is not
+			 * pressed */
+			in &= (uint16_t) ~(1 << 9);
+			in &= low_if (Input::action (hl::ACTION_START1), 10);
+		} else {
+			/* Smashing Drive's pedals are switches; its horn starts */
+			hl::Controls &c = hl::Controls::get ();
+			bool gas = c.is_enabled () && c.pedal ("Driving", "P1_Gas") > 0.5;
+			bool brake = c.is_enabled () && c.pedal ("Driving", "P1_Brake") > 0.5;
+			in &= low_if (Input::action (hl::ACTION_BUTTON1) || gas, 7);
+			in &= low_if (Input::action (hl::ACTION_BUTTON2) || brake, 8);
+			in &= low_if (Input::action (hl::ACTION_START1) || Input::action (hl::ACTION_BUTTON3), 9);
+		}
+		break;
+	}
+	return in;
+}
+
 static int
 porta_get_m (Sh4 *ctx, uint16_t *val)
 {
@@ -644,26 +734,7 @@ porta_get_m (Sh4 *ctx, uint16_t *val)
 	Gaelco *gaelco = (Gaelco *) dev->mach;
 	uint16_t in = 0xFFFF;
 
-	switch (gaelco->porta_m & 0xF800) {
-	case 0xF000:
-		/* JP10 */
-		if (!gaelco->adc.out)
-			in &= ~(1 << 9);
-		if (hl::Input::action (hl::ACTION_COIN1))
-			in &= ~(1 << 8);
-		if (hl::Input::action (hl::ACTION_TEST))
-			in &= ~(1 << 6);
-		if (hl::Input::action (hl::ACTION_DOWN))
-			in &= ~(1 << 5);
-		if (hl::Input::action (hl::ACTION_SERVICE))
-			in &= ~(1 << 4);
-		if (hl::Input::action (hl::ACTION_UP))
-			in &= ~(1 << 3);
-		break;
-	case 0xE800:
-		/* JP8, the game's own: TODO */
-		break;
-	}
+	in = port_inputs (gaelco, gaelco->porta_m & 0xF800);
 	*val = in;
 	return 0;
 }
@@ -761,6 +832,119 @@ load_boot_loader (Gaelco *gaelco)
 }
 
 /*
+ * The Game's Memories
+ * ===================
+ *
+ * What the games program in the NAND or the flash (settings, bookkeeping,
+ * scores), kept in nvram/<game>.nvram: of 68 MB and 4 MB, the erase blocks
+ * that differ from the ROM's, each a u32 offset then its bytes, in a block
+ * NAND or FLSH.
+ */
+
+#define NVRAM_NAND	"NAND"
+#define NVRAM_FLASH	"FLSH"
+
+/* The frames after a change, the game's writing done, before saving */
+static const unsigned NVRAM_DELAY = 180;
+
+void
+Gaelco::nvram_buffers (const char **type, hl::Buffer **now, const uint8_t **rom, uint32_t *block)
+{
+	if (board == BOARD_ATVTRACK) {
+		*type = NVRAM_NAND;
+		*now = nand_data;
+		*rom = (const uint8_t *) game->section_data ("nand")->ptr (0);
+		*block = Nand::BLOCK * Nand::PAGE * 4;
+	} else {
+		*type = NVRAM_FLASH;
+		*now = data_rom;
+		*rom = (const uint8_t *) game->section_data ("data")->ptr (0);
+		*block = 0x10000;
+	}
+}
+
+void
+Gaelco::load_nvram ()
+{
+	const std::vector<uint8_t> *saved;
+	const char *type;
+	hl::Buffer *now;
+	const uint8_t *rom;
+	std::string file, read;
+	uint32_t block;
+	size_t pos = 0;
+
+	if (!game || !game->name)
+		return;
+	file = std::string ("nvram/") + game->name + ".nvram";
+	nvram_path = hl::Paths::game_write (game->name, file);
+	if (hl::Paths::has_write_dir ())
+		hl::Paths::seed (file, nvram_path);
+	read = hl::Paths::game_read (game->name, file);
+	switch (nvram.load (read.c_str ())) {
+	case hl::Nvram::LOADED:
+		break;
+	case hl::Nvram::MISSING:
+		return;
+	default:
+		HL_ERROR ("gaelco: '%s' is no nvram file of this version: kept, and nothing saved", read.c_str ());
+		nvram_path.clear ();
+		return;
+	}
+	nvram_buffers (&type, &now, &rom, &block);
+	saved = nvram.get (type);
+	if (!saved)
+		return;
+	while (pos + 4 + block <= saved->size ()) {
+		uint32_t offs;
+		memcpy (&offs, saved->data () + pos, 4);
+		if (offs + block <= now->size ())
+			memcpy (now->ptr (offs), saved->data () + pos + 4, block);
+		pos += 4 + block;
+	}
+	HL_PRINT ("gaelco: the game's settings from '%s'", read.c_str ());
+}
+
+void
+Gaelco::save_nvram ()
+{
+	std::vector<uint8_t> out;
+	const char *type;
+	hl::Buffer *now;
+	const uint8_t *rom;
+	uint32_t block, offs;
+	static bool failing = false;
+
+	if (nvram_path.empty ())
+		return;
+	nvram_buffers (&type, &now, &rom, &block);
+	for (offs = 0; offs + block <= now->size (); offs += block) {
+		const uint8_t *p = (const uint8_t *) now->ptr (offs);
+		if (!memcmp (p, rom + offs, block))
+			continue;
+		out.insert (out.end (), (const uint8_t *) &offs, (const uint8_t *) &offs + 4);
+		out.insert (out.end (), p, p + block);
+	}
+	nvram.set (type, out.data (), out.size ());
+	if (nvram.save (nvram_path.c_str ()))
+		failing = false;
+	else if (!failing) {
+		HL_ERROR ("gaelco: cannot save '%s'", nvram_path.c_str ());
+		failing = true;
+	}
+}
+
+void
+Gaelco::keep_nvram ()
+{
+	if (nvram_changed) {
+		nvram_changed = false;
+		nvram_due = NVRAM_DELAY;
+	} else if (nvram_due && !--nvram_due)
+		save_nvram ();
+}
+
+/*
  * The Machine
  */
 
@@ -802,9 +986,9 @@ Gaelco::run_frame ()
 			sh_s->run (cycles_per_line);
 		}
 		fpga->exec (cycles_per_line);
-		/* TODO the Neon 250's vblank, at 480 */
 	}
 	mix_audio (this);
+	keep_nvram ();
 	return 0;
 }
 
@@ -954,6 +1138,13 @@ gaelco_init (Gaelco *gaelco)
 	gaelco->fpga_conf = game->section_data ("fpga");
 	gaelco->data_rom = game->section_data ("data");
 
+	if (!strncmp (game->name, "gfootbal", 8))
+		gaelco->inputs = Gaelco::INPUTS_FOOTBALL;
+	else if (!strncmp (game->name, "atvtrack", 8))
+		gaelco->inputs = Gaelco::INPUTS_ATV;
+	else
+		gaelco->inputs = Gaelco::INPUTS_SMASHDRV;
+
 	if (nand && gaelco->fpga_conf)
 		gaelco->board = Gaelco::BOARD_ATVTRACK;
 	else if (rom_ab && rom_c && gaelco->data_rom)
@@ -1005,12 +1196,15 @@ gaelco_init (Gaelco *gaelco)
 
 	gaelco->fpga = new Fpga (mach);
 	gaelco->gpu = new Neon250 (mach, gaelco->vram);
-	gaelco->renderer = new Renderer ();
+	gaelco->renderer = new Renderer (gaelco->gpu);
 	if (!gaelco->fpga || !gaelco->gpu || !gaelco->renderer)
 		return -1;
 
-	/* The SH-4s' clock, [Emulation] SH4_CLOCK in MHz, over VGA's lines */
-	gaelco->cycles_per_line = (unsigned) ((uint64_t) hl::Config::sh4_clock_mhz () * MHZ / (60 * LINES));
+	/* The SH-4s' clock over VGA's lines: 3/2 of [Emulation] SH4_CLOCK, whose
+	 * default 100 fits the Hikaru's games. These need it: at 100 MHz they run
+	 * out of time and their frames come out incomplete; 150 of the board's
+	 * 200 MHz draws them whole, within a PC's reach */
+	gaelco->cycles_per_line = (unsigned) ((uint64_t) hl::Config::sh4_clock_mhz () * 3 / 2 * MHZ / (60 * LINES));
 	gaelco->fpga->cpu_hz = (uint64_t) gaelco->cycles_per_line * LINES * 60;
 	mach->audio_channels = 2;
 
@@ -1024,8 +1218,14 @@ gaelco_init (Gaelco *gaelco)
 	gaelco->sh_s = new Sh4 (mach, gaelco->mmap_s, true, true);
 	if (!gaelco->sh_m || !gaelco->sh_s)
 		return -1;
+	/* Smashing Drive's master: its pages, all their own addresses, set once.
+	 * Not its slave, whose TLB misses at the start page its files in */
+	((Sh4 *) gaelco->sh_m)->mmu_trusted = true;
 	((Sh4 *) gaelco->sh_m)->cpu_hz = (uint32_t) gaelco->fpga->cpu_hz;
 	((Sh4 *) gaelco->sh_s)->cpu_hz = (uint32_t) gaelco->fpga->cpu_hz;
+	/* The 33 MHz crystal: the games' timers count it */
+	((Sh4 *) gaelco->sh_m)->pclk_hz = 33000000;
+	((Sh4 *) gaelco->sh_s)->pclk_hz = 33000000;
 	sh4_set_porta_handlers (gaelco->sh_m, porta_get_m, porta_put_m);
 	sh4_set_porta_handlers (gaelco->sh_s, porta_get_s, porta_put_s);
 
@@ -1048,8 +1248,6 @@ gaelco_init (Gaelco *gaelco)
 	mach->add_memory ("iregs_m", ((Sh4 *) gaelco->sh_m)->iregs);
 	mach->add_memory ("iregs_s", ((Sh4 *) gaelco->sh_s)->iregs);
 
-	if (gaelco->board == Gaelco::BOARD_SMASHDRV)
-		HL_PRINT ("gaelco: %s: the MMU on, the SH-4s in the interpreter", game->name);
 	return 0;
 }
 
@@ -1061,6 +1259,8 @@ Gaelco::Gaelco (hl::Game *game) :
 
 Gaelco::~Gaelco ()
 {
+	if (nvram_changed || nvram_due)
+		save_nvram ();
 }
 
 Gaelco *
@@ -1072,6 +1272,7 @@ Gaelco::create (hl::Game *game)
 		delete gaelco;
 		return NULL;
 	}
+	gaelco->load_nvram ();
 	return gaelco;
 }
 

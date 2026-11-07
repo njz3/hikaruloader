@@ -1422,17 +1422,17 @@ I (ftrc)
 	}
 }
 
+/* Defined with PR set: double precision is what they are for (ATV Track's
+ * printf) */
 I (fcnvsd)
 {
 	HL_CPU_ASSERT (ctx, !(_RN & 1));
-	HL_CPU_ASSERT (ctx, !FPSCR.bit.pr);
 	DRN.f = FPUL.f;
 }
 
 I (fcnvds)
 {
 	HL_CPU_ASSERT (ctx, !(_RN & 1));
-	HL_CPU_ASSERT (ctx, !FPSCR.bit.pr);
 	FPUL.f = DRN.f;
 }
 

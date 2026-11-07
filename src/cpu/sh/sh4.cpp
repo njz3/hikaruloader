@@ -492,20 +492,20 @@ sh4_dmac_update_state (Sh4 *ctx, uint32_t request_type)
 #define TMU_TCNT(n_)	(TMU_TCNT0 + (n_) * 12)
 #define TMU_TCR(n_)	(TMU_TCR0 + (n_) * 12)
 
-/* A channel's ticks a second, times 8: it counts Pφ (50 MHz, the board's
- * 200 MHz / 4, FRQCR's default) / 4, 16, 64, 256 or 1024 (TCR's TPSC); the
- * RTC's 16384 Hz with 6; TCLK with 7, taken as Pφ / 4. Against the CPU's
- * own clock (cpu_hz), so that they keep real time whatever it is */
+/* A channel's ticks a second, times 8: it counts Pφ (pclk_hz: the board's own)
+ * / 4, 16, 64, 256 or 1024 (TCR's TPSC); the RTC's 16384 Hz with 6; TCLK with
+ * 7, taken as Pφ / 4. Against the CPU's own clock (cpu_hz), so that they keep
+ * real time whatever it is */
 static uint64_t
 sh4_tmu_rate8 (Sh4 *ctx, unsigned ch)
 {
 	unsigned tpsc = IREG_GET (2, TMU_TCR (ch)) & 7;
 
 	if (tpsc <= 4)
-		return 100000000u >> (2 * tpsc);
+		return (uint64_t) (ctx->pclk_hz * 2) >> (2 * tpsc);
 	if (tpsc == 6)
 		return 8 * 16384;
-	return 100000000u;
+	return (uint64_t) ctx->pclk_hz * 2;
 }
 
 static void
@@ -1199,6 +1199,32 @@ sh4_translate_fetch (Sh4 *ctx, uint32_t vaddr)
 	return (e.ppn & ~e.mask) | (vaddr & e.mask);
 }
 
+/* Whether the CPU can leave the MMU out: told it never faults (mmu_trusted),
+ * and all its pages their own addresses, writable, but the store queues'
+ * (whose addresses are looked up in any case). Smashing Drive's master: 200 MHz
+ * of it in the interpreter is far from a frame's time */
+static void
+sh4_mmu_update (Sh4 *ctx)
+{
+	bool exact = ctx->mmu.on;
+	unsigned i;
+
+	if (exact && ctx->mmu_trusted) {
+		exact = false;
+		for (i = 0; i < 64 && !exact; i++) {
+			const Sh4::Tlb &e = ctx->mmu.utlb[i];
+			if (!e.v || (e.vpn >> 26) == (0xE0000000u >> 26))
+				continue;
+			exact = ((e.vpn ^ e.ppn) & ~e.mask & 0x1FFFFFFF) != 0 || e.pr != 3 || !e.d;
+		}
+	}
+	if (exact != ctx->mmu_exact) {
+		HL_CPU_LOG (ctx, "MMU %s", exact ? "exact" : "left out");
+		ctx->mmu_exact = exact;
+		ctx->mmu.flush_blocks = true;
+	}
+}
+
 /* LDTLB: PTEH, PTEL and PTEA into the UTLB entry URC */
 static void
 sh4_ldtlb (Sh4 *ctx)
@@ -1214,6 +1240,7 @@ sh4_ldtlb (Sh4 *ctx)
 	e.tc = (ptea >> 3) & 1;
 	HL_CPU_LOG (ctx, "LDTLB %u: %08X -> %08X (%08X)", ctx->mmu.urc,
 	            e.vpn, e.ppn, tlb_data (e));
+	sh4_mmu_update (ctx);
 }
 
 static void
@@ -1236,6 +1263,7 @@ sh4_mmucr_put (Sh4 *ctx, uint32_t val)
 		ctx->mmu.on = on;
 		ctx->mmu.flush_blocks = true;
 	}
+	sh4_mmu_update (ctx);
 }
 
 /* The TLBs' arrays (F2000000-F3FFFFFF, F6000000-F7FFFFFF); the caches'
@@ -1320,6 +1348,7 @@ sh4_tlb_array_put (Sh4 *ctx, uint32_t addr, uint32_t val)
 			e.v = (val >> 8) & 1;
 			e.asid = val & 0xFF;
 		}
+		sh4_mmu_update (ctx);
 		break;
 	case 0xF7: {
 		Sh4::Tlb &e = ctx->mmu.utlb[(addr >> 8) & 63];
@@ -1328,6 +1357,7 @@ sh4_tlb_array_put (Sh4 *ctx, uint32_t addr, uint32_t val)
 			e.sa = val & 7;
 		} else
 			tlb_set_data (e, val);
+		sh4_mmu_update (ctx);
 		break;
 	}
 	default:
@@ -1394,7 +1424,7 @@ sh4_fetch (Sh4 *ctx, uint32_t addr, uint16_t *inst)
 	uint32_t a;
 	int ret;
 
-	if (ctx->mmu.on)
+	if (ctx->mmu_exact)
 		addr = sh4_translate_fetch (ctx, addr);
 	a = addr & ADDR_MASK;
 
@@ -1508,7 +1538,7 @@ sh4_oc_ram (Sh4 *ctx, uint32_t addr, unsigned size)
 
 /* The instructions' accesses: through the MMU when it is on */
 #define DATA_ADDR(addr_, write_) \
-	(ctx->mmu.on ? sh4_translate_data (ctx, addr_, write_) : (addr_))
+	(ctx->mmu_exact ? sh4_translate_data (ctx, addr_, write_) : (addr_))
 
 /* An access the memory map would take straight to a RAM or ROM, as the
  * translations' (sh4-x64.cpp): the MMU off, below P3, aligned, not the
@@ -1516,7 +1546,7 @@ sh4_oc_ram (Sh4 *ctx, uint32_t addr, unsigned size)
 static inline uint8_t *
 sh4_direct (Sh4 *ctx, uint32_t addr, unsigned size, bool write)
 {
-	if (ctx->mmu.on || addr >= 0xC0000000 || (addr & (size - 1)) ||
+	if (ctx->mmu_exact || addr >= 0xC0000000 || (addr & (size - 1)) ||
 	    (addr >> 26) == (0x7C000000 >> 26))
 		return NULL;
 	return ((hl::Cpu *) ctx)->mmap->direct (addr & ADDR_MASK, write);
@@ -2389,7 +2419,7 @@ sh4_chain (Sh4 *ctx, uint32_t pc0, int n)
 
 	ctx->chain.pc0 = pc0;
 	ctx->chain.n = n;
-	if (!ctx->chain.enabled || cpu->state != hl::CPU_STATE_RUN || ctx->mmu.on ||
+	if (!ctx->chain.enabled || cpu->state != hl::CPU_STATE_RUN || ctx->mmu_exact ||
 	    ctx->irq_ready)
 		return 0;
 	if (ctx->chain.idle) {
@@ -2432,7 +2462,7 @@ sh4_run_blocks (Sh4 *ctx, bool skip_idle)
 	}
 
 	/* The MMU on: the interpreter alone (see "MMU") */
-	while (cpu->remaining > 0 && cpu->state == hl::CPU_STATE_RUN && !ctx->mmu.on) {
+	while (cpu->remaining > 0 && cpu->state == hl::CPU_STATE_RUN && !ctx->mmu_exact) {
 		Sh4Block *block;
 		size_t i;
 
@@ -2498,7 +2528,7 @@ sh4_run_blocks (Sh4 *ctx, bool skip_idle)
 			 * when the MMU comes on */
 			if (PC != pc + 2 || ++i == block->ops.size () ||
 			    cpu->remaining <= 0 || cpu->state != hl::CPU_STATE_RUN ||
-			    ctx->mmu.on)
+			    ctx->mmu_exact)
 				break;
 			/* An interrupt taken: its handler's first instruction
 			 * next, from its own block */
@@ -2531,10 +2561,10 @@ Sh4::run (int cycles)
 		blocks.clear ();
 		mmu.flush_blocks = false;
 	}
-	if (slice_hook && skip_idle && !mmu.on && !irq_ready && cpu->state == hl::CPU_STATE_RUN)
+	if (slice_hook && skip_idle && !mmu_exact && !irq_ready && cpu->state == hl::CPU_STATE_RUN)
 		slice_hook (ctx);
 	/* The debugger's breakpoints and profile look at each fetch */
-	if (use_blocks && !debugging && !mmu.on)
+	if (use_blocks && !debugging && !mmu_exact)
 		sh4_run_blocks (ctx, skip_idle);
 	while (cpu->remaining > 0 && cpu->state == hl::CPU_STATE_RUN) {
 		uint32_t pc;
@@ -2547,7 +2577,7 @@ Sh4::run (int cycles)
 			(*cpu->profile)[PC & ADDR_MASK]++;
 		pc = PC;
 		before = cpu->remaining;
-		if (mmu.on) {
+		if (mmu_exact) {
 			/* An exception unwinds the instruction: its handler
 			 * next (see "MMU") */
 			try {
@@ -2663,6 +2693,7 @@ Sh4::reset (hl::ResetType type)
 	memset ((void *) &ctx->regs, 0, sizeof (ctx->regs));
 	/* MMUCR clear: the MMU off, the TLBs' entries undefined (invalid) */
 	memset ((void *) &ctx->mmu, 0, sizeof (ctx->mmu));
+	ctx->mmu_exact = false;
 
 	PC = 0xA0000000;
 
@@ -2742,6 +2773,7 @@ Sh4::load_state (hl::State *state)
 	LOAD (ctx->mmu);
 	LOAD (ctx->slot_pc);
 	LOAD (ctx->oc_ram);
+	sh4_mmu_update (ctx);
 	ctx->mmu.flush_blocks = true;
 
 	return ret;
