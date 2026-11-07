@@ -5,8 +5,8 @@ What each version brings, for those who play. How the versions are numbered
 and released: [DEVELOPMENT.md](DEVELOPMENT.md), "Versions and releases".
 
 
-In preparation
---------------
+0.5.1 (2026-11-07)
+------------------
 
 - The Gaelco cabinets' own buttons in a section of their own, *Gaelco
   cabinets* in the Controls tab (`[Gaelco]` in `controls.ini`): Volume up and

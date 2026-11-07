@@ -8,7 +8,7 @@ cmake_minimum_required (VERSION 3.21)
 
 # The version in preparation, until git has a tag vX.Y.Z (cmake/version.cmake;
 # DEVELOPMENT.md, "Versions and releases")
-project (hikaruloader VERSION 0.5.1 LANGUAGES C CXX)
+project (hikaruloader VERSION 0.5.2 LANGUAGES C CXX)
 
 # A release's version given by hand, for a trial release without a commit
 # nor a tag: cmake -DHL_FORCE_VERSION=0.1.0 (empty: git's tags)
