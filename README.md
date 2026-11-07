@@ -81,7 +81,9 @@ They run at twice `SH4_CLOCK`, so at their board's 200 MHz by default, and draw
 half as many frames at `SH4_CLOCK = 50`. Their settings and scores are kept in
 `nvram/`, as the others'. ATV Track's and Smashing Drive's steering motor
 drives the wheel's force feedback. Their lamps and coin counters, and Smashing
-Drive's seat motor, go to the network outputs.
+Drive's seat motor, go to the network outputs. Smashing Drive starts silent,
+as its board does (its volume is kept nowhere): Volume Up is held for it at
+each start, a second and a half, then Up and Down change it.
 
 To link two Smashing Drive cabinets, set its *Link* setting in the test menu
 (master on one, slave on the other, then *Exit and save*), and the `[Network]`
@@ -274,7 +276,8 @@ stretched display mode, `SCALE_FILTER` is read as `SCALING_FILTER`, and
   on by default): smoke, glass, flames and lights blended from the farthest
   at each pixel, as the board does, right where they cross. It needs a card
   with OpenGL 4.3 and no MSAA; off, or without them, each mesh is sorted as
-  a whole, lighter for a weak graphics card.
+  a whole, lighter for a weak graphics card. The Gaelco games' too (their
+  chip sorts them so); off, each of their triangles is sorted whole.
 - *Widescreen 3D (16:9)*: the 3D is drawn at 854x480 and seen wider; its
   middle stays as the game draws it. The 2D (texts, logos) stays 4:3 in the
   middle, or is stretched to 16:9 for a game that needs it. The games were

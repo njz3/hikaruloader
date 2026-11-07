@@ -835,10 +835,12 @@ port_inputs (Gaelco *gaelco, unsigned select)
 {
 	using hl::Input;
 	uint16_t in = 0xFFFF;
-	/* Smashing Drive starts silent, its volume 0 until the cabinet's button
-	 * raises it (kept nowhere its flash shows): pressed for it at the start */
+	/* Smashing Drive starts silent: its volume is a float in its RAM (World
+	 * set: 8C0733FC), cleared with the rest at power on, that the cabinet's
+	 * buttons change; nothing on the board keeps it. Held up for it at the
+	 * start, the button speeds up: 111 frames make 0.38 */
 	bool volume_up = gaelco->inputs == Gaelco::INPUTS_SMASHDRV &&
-	                 gaelco->frame >= 300 && gaelco->frame < 1500 && (gaelco->frame & 0x10);
+	                 gaelco->frame >= 300 && gaelco->frame < 411;
 
 	if (gaelco->inputs == Gaelco::INPUTS_FOOTBALL) {
 		switch (select) {

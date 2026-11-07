@@ -119,22 +119,51 @@ private:
 		uint64_t seen;	/* the last frame that checked its data */
 	};
 
+	/* A polygon program's uniforms */
+	struct Program {
+		GLuint id;
+		GLint u_flags, u_tex, u_fog, u_zscale, u_fog_color, u_fog_density;
+		/* The collecting one's (else -1) */
+		GLint u_tag, u_max_nodes, u_opaque_depth;
+	};
+
 	void setup ();
 	void draw_scene ();
+	void draw_batch (const Program &p, const Batch &b);
+	void set_scene_uniforms (const Program &p);
+	bool oit_buffers (unsigned w, unsigned h);
+	void destroy_oit ();
+	void draw_translucent_per_pixel ();
 	GLuint texture (uint32_t tcw, uint32_t tsp);
 
 	Neon250 *gpu;
 	std::unique_ptr<Frame> frame;
+	/* Its translucent triangles sorted whole (without the lists) */
+	bool frame_sorted = false;
 	std::unique_ptr<hl::Presentation> presentation;
 	std::unordered_map<uint64_t, Texture> textures;
 	uint64_t frame_count;
 
-	GLuint program, blit_program;
-	GLint u_flags, u_tex, u_fog, u_zscale, u_fog_color, u_fog_density;
+	Program program = {}, collect = {};
+	GLuint blit_program;
 	GLint u_blit_tex;
 	GLuint vao, vbo, blit_vao, fog_tex;
 	GLuint fb, fb_color, fb_depth;
 	unsigned fb_w, fb_h;
+
+	/* The translucent polygons sorted at each pixel (see "Translucency"):
+	 * each pixel's last fragment + 1, the fragments (uvec4: colour, depth,
+	 * the next + 1, tag), their count; copies of the opaque depth and of
+	 * the picture before them */
+	struct {
+		GLuint heads = 0, nodes = 0, counter = 0;
+		GLuint depth_tex = 0, depth_fb = 0, color_tex = 0, color_fb = 0;
+		GLuint resolve = 0, vao = 0;
+		unsigned w = 0, h = 0;
+		uint32_t max_nodes = 0;
+		unsigned frames = 0;
+		bool failed = false;
+	} oit;
 };
 
 } /* namespace gaelco */

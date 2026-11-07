@@ -16,9 +16,18 @@ In preparation
 - ATV Track's and Smashing Drive's steering motor drives the force feedback;
   the Gaelco games' lamps, coin counters and Smashing Drive's seat motor go to
   the network outputs.
+- The Gaelco games' translucent polygons blended from the farthest at each
+  pixel, as their chip does (`SORT_TRANSLUCENT_PIXELS`): where smoke, dust
+  or glass cross.
+- Smashing Drive's volume, at 0 at each start as on its board, is raised in
+  a second and a half (Volume Up held), no longer twenty: its "Vol" shows
+  for a shorter while.
 - NASCAR Arcade: the V key, its view change since 0.4.2, no longer makes the
   3D vanish until the next start. The renderer's debugging keys (V and other
   letters, 1, 2, 3) no longer change the picture in normal use.
+- Star Wars Racer Arcade's ROMBD TEST finds all its ICs GOOD, under their
+  own numbers: all but the first pair were BAD, the board's ROMs read in
+  the wrong layout by the test (the game itself read them right).
 
 
 0.4.2 (2026-11-04)

@@ -276,7 +276,7 @@ namespace hikaru {
  *	0005 34bc 677b 5524 349e	65,66	2 x 16MB
  *	ffff 0000 0000 0000 0000	
  *	
- *	PODRACE (Type 2)		ICs	Size
+ *	PODRACE (Type 1)		ICs	Size
  *	================		===	====	
  *	
  *	0003 0000 0000 0000 0000	29,30	2 x 4MB
@@ -807,10 +807,11 @@ memctl_bus_get (Memctl *memctl, unsigned size, uint32_t bus_addr, void *val)
 		 * If the value is 8, then the MASKROM placement in the bus
 		 * address space is non-linear. See @0C004F82 for details.
 		 *
-		 * Judging by the ROM file extensions, we want these bits
-		 * to be 4 for everything except SGNASCAR, and 8 for
-		 * SGNASCAR (?). PHARRIER should be '4' type, but the ROM
-		 * zip contains two IC35's, one EPROM and one MASKROM.
+		 * These bits are 4 for everything except SGNASCAR, whose
+		 * pairs of 16 MB ICs take two banks each, and 8 for it: the
+		 * games' ROMBD TEST reads each pair where they say and finds
+		 * all ICs GOOD then (SWRACER's 8 MB pairs, linear, had all
+		 * but the first BAD when it was 8).
 		 *
 		 * A board with the protection (SGNASCAR's): its device, whose
 		 * 0C keeps what was written (19620217 at first). With a

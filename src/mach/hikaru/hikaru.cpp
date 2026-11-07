@@ -1164,7 +1164,10 @@ hikaru_set_rombd_config (Hikaru *hikaru)
 	} else if (!strcmp (name, "swracer")) {
 		eprom_bank_size = 4;
 		maskrom_bank_size = 8;
-		maskrom_is_stretched = true;
+		/* Its MASKROM pairs (2 x 8 MB) one a bank, linear: its ROMBD
+		 * TEST, which reads them as the board says, had them BAD from
+		 * the second on with the stretched layout */
+		maskrom_is_stretched = false;
 		/* A 315-5881: without it, the game raises its motion blur
 		 * scene after scene (the text crawl smeared) */
 		hikaru->rombd_prot.mode = 2;

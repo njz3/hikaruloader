@@ -22,6 +22,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <string>
 
 #include "hl/config.h"
 #include "hl/core.h"
@@ -52,7 +53,10 @@ namespace gaelco {
  *  0000	Written non-zero to start the chip; the games then wait for 1
  *		at VRAM+1350, which the PMX would answer
  *  0070	Interrupts pending; written, clears those bits: 7 a frame drawn, 8 the
- *		vertical blank (the driver counts them at shared RAM +1DC)
+ *		vertical blank (the driver counts them at shared RAM +1DC). The
+ *		driver leaves 15 unmasked but drops it from what it reads and never
+ *		clears it (ATV Track @8C00B8D4): not raised, as it would hold the
+ *		slave in the interrupt
  *  0074	Interrupts masked (all at reset)
  *  00B0	0001: commands in the ring, read them; interrupt 7 at once
  *		8001: the ring is set up; the games wait for 1 at VRAM+814804
@@ -394,7 +398,6 @@ Neon250::build_frame (uint32_t region, uint32_t state)
 	frame->fog_density = vram_u32 (vram, state + 0xB8) & 0xFFFF;
 	frame->background = vram_u32 (vram, state + 0x418);
 	frame->stride = (vram_u32 (vram, state + 0xE4) & 0x1F) * 32;
-	sort_translucent (frame.get ());
 	for (n = 0; n < 128; n++)
 		frame->fog_table[n] = (uint16_t) vram_u32 (vram, state + 0x200 + n * 4);
 	ready = std::move (frame);
@@ -794,6 +797,14 @@ uniform int u_flags;
 uniform float u_zscale;
 uniform float u_fog_density;
 uniform vec3 u_fog_color;
+#ifdef COLLECT
+layout (binding = 0, offset = 0) uniform atomic_uint u_count;
+layout (binding = 0, r32ui) uniform coherent uimage2D u_heads;
+layout (std430, binding = 0) buffer Nodes { uvec4 nodes[]; };
+uniform uint u_max_nodes;
+uniform uint u_tag;
+uniform sampler2D u_opaque_depth;
+#endif
 float fog_table (float w)
 {
 	float z = clamp (w * u_fog_density, 1.0, 255.9999);
@@ -835,10 +846,145 @@ void main ()
 		color.rgb = mix (color.rgb, u_fog_color, fog_table (1.0 / v_z));
 	else if (fog == 1)
 		color.rgb = mix (color.rgb, u_fog_color, v_offset.a);
+	float depth = v_z * u_zscale;
+#ifdef COLLECT
+	/* Into its pixel's list, unless the opaque polygons hide it: always
+	 * "greater or equal" there, whatever the polygon's own test */
+	ivec2 pixel = ivec2 (gl_FragCoord.xy);
+	if (depth < texelFetch (u_opaque_depth, pixel, 0).r)
+		discard;
+	uint node = atomicCounterIncrement (u_count);
+	if (node < u_max_nodes) {
+		uint next = imageAtomicExchange (u_heads, pixel, node + 1u);
+		nodes[node] = uvec4 (packUnorm4x8 (clamp (color, 0.0, 1.0)), floatBitsToUint (depth),
+		                     next, u_tag + (uint (gl_PrimitiveID) << 6));
+	}
+#else
 	out_color = color;
-	gl_FragDepth = v_z * u_zscale;
+	gl_FragDepth = depth;
+#endif
 }
 )";
+
+/*
+ * Translucency
+ * ============
+ *
+ * The chip sorts the translucent polygons itself, at each pixel ("auto-sort",
+ * as the Dreamcast's): it blends their pixels from the farthest, comparing
+ * them with the opaque ones' always as "greater or equal", whatever their own
+ * depth test; of two at the same depth, the one sent first is the farther.
+ * With SORT_TRANSLUCENT_PIXELS, so here:
+ *
+ *  - collected: each fragment shaded as usual, kept when the opaque depth
+ *    (a copy) does not hide it, in its pixel's list (a storage buffer of
+ *    uvec4: colour, depth, next + 1, the blending's source and destination
+ *    instructions and the triangle's place in the lists << 6; an r32ui image
+ *    holds each pixel's last + 1);
+ *  - resolved: a pass over the picture blends each pixel's list over a copy
+ *    of what is drawn, the farthest first, with the TSP word's two blending
+ *    instructions as the chip has them (the other's colour, the source's or
+ *    the destination's alpha), each result rounded to 8 bits. Eight
+ *    fragments are put in order at a time, again until the list is done.
+ *    The pass empties the heads for the next frame.
+ *
+ * The buffer, 2 fragments a pixel at first, grows when a frame fills it.
+ * Without it, each triangle is sorted whole (sort_translucent ()).
+ */
+
+static const char *resolve_vs_src = R"(#version 430
+void main ()
+{
+	vec2 p = vec2 ((gl_VertexID << 1) & 2, gl_VertexID & 2);
+	gl_Position = vec4 (p * 2.0 - 1.0, 0.0, 1.0);
+}
+)";
+
+static const char *resolve_fs_src = R"(#version 430
+#define KEPT 8
+layout (binding = 0, r32ui) uniform coherent uimage2D u_heads;
+layout (std430, binding = 0) readonly buffer Nodes { uvec4 nodes[]; };
+uniform sampler2D u_below;
+out vec4 out_color;
+/* Whether a fragment (depth, place) is blended before another: the farther,
+ * then the first sent */
+bool before (float d, uint o, float d2, uint o2)
+{
+	return d < d2 || (d == d2 && o < o2);
+}
+vec4 factor (uint instr, vec4 src, vec4 dst, bool is_src)
+{
+	vec4 other = is_src ? dst : src;
+	switch (instr) {
+	case 0u: return vec4 (0.0);
+	case 1u: return vec4 (1.0);
+	case 2u: return other;
+	case 3u: return vec4 (1.0) - other;
+	case 4u: return vec4 (src.a);
+	case 5u: return vec4 (1.0 - src.a);
+	case 6u: return vec4 (dst.a);
+	default: return vec4 (1.0 - dst.a);
+	}
+}
+void main ()
+{
+	ivec2 pixel = ivec2 (gl_FragCoord.xy);
+	uint head = imageAtomicExchange (u_heads, pixel, 0u);
+	float depth[KEPT], last_d = -1.0;
+	uint order[KEPT], index[KEPT], last_o = 0u, i;
+	int num, j;
+	bool more;
+	vec4 color;
+
+	if (head == 0u)
+		discard;
+	color = texelFetch (u_below, pixel, 0);
+	for (;;) {
+		/* The next KEPT in order, after the last blended */
+		num = 0;
+		more = false;
+		for (i = head; i != 0u; i = nodes[i - 1u].z) {
+			float d = uintBitsToFloat (nodes[i - 1u].y);
+			uint o = nodes[i - 1u].w >> 6;
+
+			if (!before (last_d, last_o, d, o))
+				continue;
+			if (num < KEPT) {
+				j = num++;
+			} else {
+				more = true;
+				if (!before (d, o, depth[KEPT - 1], order[KEPT - 1]))
+					continue;
+				j = KEPT - 1;
+			}
+			for (; j > 0 && before (d, o, depth[j - 1], order[j - 1]); j--) {
+				depth[j] = depth[j - 1];
+				order[j] = order[j - 1];
+				index[j] = index[j - 1];
+			}
+			depth[j] = d;
+			order[j] = o;
+			index[j] = i;
+		}
+		for (j = 0; j < num; j++) {
+			uvec4 n = nodes[index[j] - 1u];
+			vec4 src = unpackUnorm4x8 (n.x);
+			vec4 c = src * factor (n.w & 7u, src, color, true) +
+			         color * factor ((n.w >> 3) & 7u, src, color, false);
+			color = floor (clamp (c, 0.0, 1.0) * 255.0 + 0.5) / 255.0;
+		}
+		if (!more)
+			break;
+		last_d = depth[KEPT - 1];
+		last_o = order[KEPT - 1];
+	}
+	out_color = color;
+}
+)";
+
+#define OIT_MAX_NODES	(16u << 20)
+#define OIT_DEPTH_UNIT	2
+#define OIT_BELOW_UNIT	3
 
 static const char *blit_vs_src = R"(#version 430
 out vec2 v_uv;
@@ -871,6 +1017,19 @@ Renderer::~Renderer ()
 {
 	for (auto &it : textures)
 		glDeleteTextures (1, &it.second.id);
+	destroy_oit ();
+}
+
+static void
+locate (GLuint id, GLint *u_flags, GLint *u_tex, GLint *u_fog, GLint *u_zscale,
+        GLint *u_fog_color, GLint *u_fog_density)
+{
+	*u_flags = glGetUniformLocation (id, "u_flags");
+	*u_tex = glGetUniformLocation (id, "u_tex");
+	*u_fog = glGetUniformLocation (id, "u_fog");
+	*u_zscale = glGetUniformLocation (id, "u_zscale");
+	*u_fog_color = glGetUniformLocation (id, "u_fog_color");
+	*u_fog_density = glGetUniformLocation (id, "u_fog_density");
 }
 
 void
@@ -878,13 +1037,28 @@ Renderer::setup ()
 {
 	presentation.reset (new hl::Presentation ());
 
-	program = hl::gl::compile_program (vs_src, fs_src);
-	u_flags = glGetUniformLocation (program, "u_flags");
-	u_tex = glGetUniformLocation (program, "u_tex");
-	u_fog = glGetUniformLocation (program, "u_fog");
-	u_zscale = glGetUniformLocation (program, "u_zscale");
-	u_fog_color = glGetUniformLocation (program, "u_fog_color");
-	u_fog_density = glGetUniformLocation (program, "u_fog_density");
+	program.id = hl::gl::compile_program (vs_src, fs_src);
+	locate (program.id, &program.u_flags, &program.u_tex, &program.u_fog, &program.u_zscale,
+	        &program.u_fog_color, &program.u_fog_density);
+	program.u_tag = program.u_max_nodes = program.u_opaque_depth = -1;
+
+	/* The same, collecting the translucent fragments */
+	{
+		std::string src = fs_src;
+		src.insert (src.find ('\n') + 1, "#define COLLECT 1\n");
+		collect.id = hl::gl::compile_program (vs_src, src.c_str ());
+		locate (collect.id, &collect.u_flags, &collect.u_tex, &collect.u_fog, &collect.u_zscale,
+		        &collect.u_fog_color, &collect.u_fog_density);
+		collect.u_tag = glGetUniformLocation (collect.id, "u_tag");
+		collect.u_max_nodes = glGetUniformLocation (collect.id, "u_max_nodes");
+		collect.u_opaque_depth = glGetUniformLocation (collect.id, "u_opaque_depth");
+		oit.resolve = hl::gl::compile_program (resolve_vs_src, resolve_fs_src);
+		glGenVertexArrays (1, &oit.vao);
+		if (!collect.id || !oit.resolve) {
+			HL_ERROR ("gaelco: no translucency at each pixel; each triangle sorted whole");
+			oit.failed = true;
+		}
+	}
 	blit_program = hl::gl::compile_program (blit_vs_src, blit_fs_src);
 	u_blit_tex = glGetUniformLocation (blit_program, "u_tex");
 
@@ -982,24 +1156,17 @@ Renderer::draw_scene ()
 	if (!frame || frame->vertices.empty ())
 		return;
 
-	glUseProgram (program);
+	bool per_pixel = hl::Config::get ()->sort_translucent_pixels && !oit.failed && oit_buffers (w, h);
+	if (!per_pixel && !frame_sorted)
+		sort_translucent (frame.get ());
+	frame_sorted |= !per_pixel;
+
+	glUseProgram (program.id);
 	glBindVertexArray (vao);
 	glBindBuffer (GL_ARRAY_BUFFER, vbo);
 	glBufferData (GL_ARRAY_BUFFER, frame->vertices.size () * sizeof (Vertex),
 	              frame->vertices.data (), GL_STREAM_DRAW);
-	glUniform1i (u_tex, 0);
-	glUniform1i (u_fog, 1);
-	glUniform1f (u_zscale, 1.0f / frame->max_z);
-	glUniform3f (u_fog_color,
-	             ((frame->fog_color >> 16) & 255) / 255.0f,
-	             ((frame->fog_color >> 8) & 255) / 255.0f,
-	             (frame->fog_color & 255) / 255.0f);
-	{
-		/* A byte of mantissa (1.7), a byte of signed exponent */
-		int e = (int8_t) (frame->fog_density & 255);
-		float m = ((frame->fog_density >> 8) & 255) / 128.0f;
-		glUniform1f (u_fog_density, m * powf (2.0f, (float) e));
-	}
+	set_scene_uniforms (program);
 	glActiveTexture (GL_TEXTURE1);
 	glBindTexture (GL_TEXTURE_1D, fog_tex);
 	glTexSubImage1D (GL_TEXTURE_1D, 0, 0, 128, GL_RED_INTEGER, GL_UNSIGNED_SHORT, frame->fog_table);
@@ -1009,47 +1176,14 @@ Renderer::draw_scene ()
 	glDisable (GL_CULL_FACE);
 	glEnable (GL_BLEND);
 
-	for (const Batch &b : frame->batches) {
-		bool textured = (b.isp >> 25) & 1;
-		int flags = 0;
+	/* The opaque polygons, then the translucent ones (in their lists'
+	 * order, the chip's) */
+	for (const Batch &b : frame->batches)
+		if (!per_pixel || !b.translucent)
+			draw_batch (program, b);
+	if (per_pixel)
+		draw_translucent_per_pixel ();
 
-		if (!b.count)
-			continue;
-		flags |= (b.tsp >> 6) & 3;
-		flags |= textured ? 4 : 0;
-		flags |= ((b.tsp >> 20) & 1) ? 8 : 0;
-		flags |= ((b.tsp >> 19) & 1) ? 16 : 0;
-		flags |= ((b.isp >> 24) & 1) ? 32 : 0;
-		flags |= ((b.tsp >> 22) & 3) << 7;
-		glUniform1i (u_flags, flags);
-
-		if (textured) {
-			unsigned filter = (b.tsp >> 13) & 3;
-			bool mip = b.tcw >> 31;
-			bool clamp_u = (b.tsp >> 16) & 1, clamp_v = (b.tsp >> 15) & 1;
-			bool flip_u = (b.tsp >> 18) & 1, flip_v = (b.tsp >> 17) & 1;
-
-			glBindTexture (GL_TEXTURE_2D, texture (b.tcw, b.tsp));
-			glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filter ? GL_LINEAR : GL_NEAREST);
-			glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,
-			                 mip ? (filter ? GL_LINEAR_MIPMAP_LINEAR : GL_NEAREST_MIPMAP_NEAREST) :
-			                 (filter ? GL_LINEAR : GL_NEAREST));
-			glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_S,
-			                 clamp_u ? GL_CLAMP_TO_EDGE : flip_u ? GL_MIRRORED_REPEAT : GL_REPEAT);
-			glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_T,
-			                 clamp_v ? GL_CLAMP_TO_EDGE : flip_v ? GL_MIRRORED_REPEAT : GL_REPEAT);
-			{
-				/* Mipmap D adjust, in quarters */
-				unsigned d = (b.tsp >> 8) & 15;
-				glTexParameterf (GL_TEXTURE_2D, GL_TEXTURE_LOD_BIAS, d ? log2f (d / 4.0f) : 0.0f);
-			}
-		}
-
-		glBlendFunc (blend_factor (b.tsp >> 29, true), blend_factor (b.tsp >> 26, false));
-		glDepthFunc (depth_func (b.isp >> 29));
-		glDepthMask ((b.translucent || ((b.isp >> 26) & 1)) ? GL_FALSE : GL_TRUE);
-		glDrawArrays (GL_TRIANGLES, b.first, b.count);
-	}
 	glDisable (GL_BLEND);
 	glDisable (GL_DEPTH_TEST);
 	glDepthMask (GL_TRUE);
@@ -1060,6 +1194,231 @@ Renderer::draw_scene ()
 }
 
 void
+Renderer::set_scene_uniforms (const Program &p)
+{
+	glUniform1i (p.u_tex, 0);
+	glUniform1i (p.u_fog, 1);
+	glUniform1f (p.u_zscale, 1.0f / frame->max_z);
+	glUniform3f (p.u_fog_color,
+	             ((frame->fog_color >> 16) & 255) / 255.0f,
+	             ((frame->fog_color >> 8) & 255) / 255.0f,
+	             (frame->fog_color & 255) / 255.0f);
+	{
+		/* A byte of mantissa (1.7), a byte of signed exponent */
+		int e = (int8_t) (frame->fog_density & 255);
+		float m = ((frame->fog_density >> 8) & 255) / 128.0f;
+		glUniform1f (p.u_fog_density, m * powf (2.0f, (float) e));
+	}
+}
+
+/* A batch with p: the polygon program, or the collecting one (no blending, no
+ * depth test there: the shader's) */
+void
+Renderer::draw_batch (const Program &p, const Batch &b)
+{
+	bool textured = (b.isp >> 25) & 1;
+	int flags = 0;
+
+	if (!b.count)
+		return;
+	flags |= (b.tsp >> 6) & 3;
+	flags |= textured ? 4 : 0;
+	flags |= ((b.tsp >> 20) & 1) ? 8 : 0;
+	flags |= ((b.tsp >> 19) & 1) ? 16 : 0;
+	flags |= ((b.isp >> 24) & 1) ? 32 : 0;
+	flags |= ((b.tsp >> 22) & 3) << 7;
+	glUniform1i (p.u_flags, flags);
+
+	if (textured) {
+		unsigned filter = (b.tsp >> 13) & 3;
+		bool mip = b.tcw >> 31;
+		bool clamp_u = (b.tsp >> 16) & 1, clamp_v = (b.tsp >> 15) & 1;
+		bool flip_u = (b.tsp >> 18) & 1, flip_v = (b.tsp >> 17) & 1;
+
+		glBindTexture (GL_TEXTURE_2D, texture (b.tcw, b.tsp));
+		glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filter ? GL_LINEAR : GL_NEAREST);
+		glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,
+		                 mip ? (filter ? GL_LINEAR_MIPMAP_LINEAR : GL_NEAREST_MIPMAP_NEAREST) :
+		                 (filter ? GL_LINEAR : GL_NEAREST));
+		glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_S,
+		                 clamp_u ? GL_CLAMP_TO_EDGE : flip_u ? GL_MIRRORED_REPEAT : GL_REPEAT);
+		glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_T,
+		                 clamp_v ? GL_CLAMP_TO_EDGE : flip_v ? GL_MIRRORED_REPEAT : GL_REPEAT);
+		{
+			/* Mipmap D adjust, in quarters */
+			unsigned d = (b.tsp >> 8) & 15;
+			glTexParameterf (GL_TEXTURE_2D, GL_TEXTURE_LOD_BIAS, d ? log2f (d / 4.0f) : 0.0f);
+		}
+	}
+
+	if (p.u_tag >= 0) {
+		glUniform1ui (p.u_tag, ((b.tsp >> 29) & 7) | (((b.tsp >> 26) & 7) << 3) |
+		                       ((b.first / 3) << 6));
+	} else {
+		glBlendFunc (blend_factor (b.tsp >> 29, true), blend_factor (b.tsp >> 26, false));
+		glDepthFunc (depth_func (b.isp >> 29));
+		glDepthMask ((b.translucent || ((b.isp >> 26) & 1)) ? GL_FALSE : GL_TRUE);
+	}
+	glDrawArrays (GL_TRIANGLES, b.first, b.count);
+}
+
+void
+Renderer::destroy_oit ()
+{
+	GLuint textures_[3] = { oit.heads, oit.depth_tex, oit.color_tex };
+	GLuint fbs[2] = { oit.depth_fb, oit.color_fb };
+	GLuint buffers[2] = { oit.nodes, oit.counter };
+
+	glDeleteTextures (3, textures_);
+	glDeleteFramebuffers (2, fbs);
+	glDeleteBuffers (2, buffers);
+	oit.heads = oit.depth_tex = oit.color_tex = 0;
+	oit.depth_fb = oit.color_fb = oit.nodes = oit.counter = 0;
+	oit.w = oit.h = 0;
+}
+
+/* The lists' buffers at the scene's size: true when ready */
+bool
+Renderer::oit_buffers (unsigned w, unsigned h)
+{
+	uint32_t zero = 0;
+
+	bool same = oit.w == w && oit.h == h;
+
+	if (oit.heads && same)
+		return true;
+	/* A new size: as many fragments as at first; else those it grew to */
+	destroy_oit ();
+	if (!oit.max_nodes || !same)
+		oit.max_nodes = std::min ((uint32_t) (w * h * 2), OIT_MAX_NODES);
+
+	std::vector<uint32_t> zeros ((size_t) w * h, 0);
+	glGenTextures (1, &oit.heads);
+	glBindTexture (GL_TEXTURE_2D, oit.heads);
+	glTexStorage2D (GL_TEXTURE_2D, 1, GL_R32UI, w, h);
+	glTexSubImage2D (GL_TEXTURE_2D, 0, 0, 0, w, h, GL_RED_INTEGER, GL_UNSIGNED_INT, zeros.data ());
+
+	/* As the scene's, for the blits */
+	glGenTextures (1, &oit.depth_tex);
+	glBindTexture (GL_TEXTURE_2D, oit.depth_tex);
+	glTexImage2D (GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT32F, w, h, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
+	glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_NONE);
+	glGenTextures (1, &oit.color_tex);
+	glBindTexture (GL_TEXTURE_2D, oit.color_tex);
+	glTexImage2D (GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+	glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glBindTexture (GL_TEXTURE_2D, 0);
+
+	glGenFramebuffers (1, &oit.depth_fb);
+	glBindFramebuffer (GL_FRAMEBUFFER, oit.depth_fb);
+	glFramebufferTexture2D (GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, oit.depth_tex, 0);
+	glDrawBuffer (GL_NONE);
+	glReadBuffer (GL_NONE);
+	bool ok = glCheckFramebufferStatus (GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE;
+	glGenFramebuffers (1, &oit.color_fb);
+	glBindFramebuffer (GL_FRAMEBUFFER, oit.color_fb);
+	glFramebufferTexture2D (GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, oit.color_tex, 0);
+	ok = ok && glCheckFramebufferStatus (GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE;
+	glBindFramebuffer (GL_FRAMEBUFFER, fb);
+
+	glGenBuffers (1, &oit.nodes);
+	glBindBuffer (GL_SHADER_STORAGE_BUFFER, oit.nodes);
+	glBufferData (GL_SHADER_STORAGE_BUFFER, (GLsizeiptr) oit.max_nodes * 16, NULL, GL_DYNAMIC_DRAW);
+	glBindBuffer (GL_SHADER_STORAGE_BUFFER, 0);
+	glGenBuffers (1, &oit.counter);
+	glBindBuffer (GL_ATOMIC_COUNTER_BUFFER, oit.counter);
+	glBufferData (GL_ATOMIC_COUNTER_BUFFER, sizeof (zero), &zero, GL_DYNAMIC_DRAW);
+	glBindBuffer (GL_ATOMIC_COUNTER_BUFFER, 0);
+	if (!ok || glGetError () != GL_NO_ERROR) {
+		HL_ERROR ("gaelco: no room for the translucency's %u fragments; each triangle sorted whole",
+		          oit.max_nodes);
+		destroy_oit ();
+		oit.failed = true;
+		return false;
+	}
+	oit.w = w;
+	oit.h = h;
+	HL_PRINT ("gaelco: translucency sorted at each pixel: %ux%u, %u fragments (%u MB)",
+	          w, h, oit.max_nodes, (unsigned) ((uint64_t) oit.max_nodes * 16 >> 20));
+	return true;
+}
+
+/* The translucent batches, sorted at each pixel (see "Translucency") */
+void
+Renderer::draw_translucent_per_pixel ()
+{
+	uint32_t zero = 0;
+
+	/* The opaque polygons' depth, for the collecting shader */
+	glBindFramebuffer (GL_READ_FRAMEBUFFER, fb);
+	glBindFramebuffer (GL_DRAW_FRAMEBUFFER, oit.depth_fb);
+	glBlitFramebuffer (0, 0, oit.w, oit.h, 0, 0, oit.w, oit.h, GL_DEPTH_BUFFER_BIT, GL_NEAREST);
+	glBindFramebuffer (GL_FRAMEBUFFER, fb);
+
+	glBindBuffer (GL_ATOMIC_COUNTER_BUFFER, oit.counter);
+	glBufferSubData (GL_ATOMIC_COUNTER_BUFFER, 0, sizeof (zero), &zero);
+	glBindBufferBase (GL_ATOMIC_COUNTER_BUFFER, 0, oit.counter);
+	glBindBufferBase (GL_SHADER_STORAGE_BUFFER, 0, oit.nodes);
+	glBindImageTexture (0, oit.heads, 0, GL_FALSE, 0, GL_READ_WRITE, GL_R32UI);
+	glActiveTexture (GL_TEXTURE0 + OIT_DEPTH_UNIT);
+	glBindTexture (GL_TEXTURE_2D, oit.depth_tex);
+	glActiveTexture (GL_TEXTURE0);
+
+	/* Collected: no colour, no depth */
+	glUseProgram (collect.id);
+	set_scene_uniforms (collect);
+	glUniform1i (collect.u_opaque_depth, OIT_DEPTH_UNIT);
+	glUniform1ui (collect.u_max_nodes, oit.max_nodes);
+	glColorMask (GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
+	glDepthMask (GL_FALSE);
+	glDisable (GL_DEPTH_TEST);
+	glDisable (GL_BLEND);
+	for (const Batch &b : frame->batches)
+		if (b.translucent)
+			draw_batch (collect, b);
+	glColorMask (GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+	glMemoryBarrier (GL_SHADER_STORAGE_BARRIER_BIT | GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+
+	/* The picture drawn so far, which the lists are blended over */
+	glBindFramebuffer (GL_READ_FRAMEBUFFER, fb);
+	glBindFramebuffer (GL_DRAW_FRAMEBUFFER, oit.color_fb);
+	glBlitFramebuffer (0, 0, oit.w, oit.h, 0, 0, oit.w, oit.h, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+	glBindFramebuffer (GL_FRAMEBUFFER, fb);
+	glActiveTexture (GL_TEXTURE0 + OIT_BELOW_UNIT);
+	glBindTexture (GL_TEXTURE_2D, oit.color_tex);
+	glActiveTexture (GL_TEXTURE0);
+
+	/* Resolved over the whole picture */
+	glUseProgram (oit.resolve);
+	glUniform1i (glGetUniformLocation (oit.resolve, "u_below"), OIT_BELOW_UNIT);
+	glBindVertexArray (oit.vao);
+	glDrawArrays (GL_TRIANGLES, 0, 3);
+	glMemoryBarrier (GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+	glBindVertexArray (vao);
+
+	/* Now and then, whether a frame filled the buffer: then more, from
+	 * the next frame (it stalls, so not every frame) */
+	if (++oit.frames % 120 == 0 && oit.max_nodes < OIT_MAX_NODES) {
+		uint32_t used = 0;
+
+		glBindBuffer (GL_ATOMIC_COUNTER_BUFFER, oit.counter);
+		glGetBufferSubData (GL_ATOMIC_COUNTER_BUFFER, 0, sizeof (used), &used);
+		if (used > oit.max_nodes) {
+			HL_PRINT ("gaelco: translucency: %u fragments for %u places, more made", used, oit.max_nodes);
+			unsigned w = oit.w, h = oit.h;
+			destroy_oit ();
+			oit.max_nodes = std::min (std::max (oit.max_nodes * 2, used + used / 4), OIT_MAX_NODES);
+			oit.w = w;
+			oit.h = h;
+		}
+	}
+	glBindBuffer (GL_ATOMIC_COUNTER_BUFFER, 0);
+}
+
+void
 Renderer::on_end_frame ()
 {
 	std::unique_ptr<Frame> next = gpu->take_frame ();
@@ -1067,8 +1426,10 @@ Renderer::on_end_frame ()
 	int dw, dh;
 	GLuint crt_fb;
 
-	if (next)
+	if (next) {
 		frame = std::move (next);
+		frame_sorted = false;
+	}
 	frame_count++;
 	draw_scene ();
 
