@@ -1197,6 +1197,14 @@ msgid "Your wheel turns %d degrees: the game's wheel takes its whole turn."
 msgstr "Votre volant tourne de %d degrés : le volant du jeu prend toute sa rotation."
 
 #: src/ui/ui_controls.cpp
+msgid "Emulated force feedback (wheel and controller)"
+msgstr "Retour de force émulé (volant et manette)"
+
+#: src/ui/ui_controls.cpp
+msgid "The cabinet has no motor: the forces and the rumble are made from what\nthe game does (the engines, the hits, the turns, the ground). Their\nstrengths: [ForceFeedback] in hikaruloader.ini."
+msgstr "La borne n'a pas de moteur : les forces et les vibrations sont tirées\nde ce que fait le jeu (les réacteurs, les chocs, les virages, le sol).\nLeurs forces : [ForceFeedback] dans hikaruloader.ini."
+
+#: src/ui/ui_controls.cpp
 msgid "Neutral when no gear is engaged"
 msgstr "Point mort quand aucune vitesse n'est engagée"
 

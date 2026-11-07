@@ -268,6 +268,19 @@ public:
 	unsigned	outputs_announce_port;	/* the UDP announcement's, 0
 						 * none */
 
+	/* [Telemetry]: the racing games' telemetry (hl::telemetry), for
+	 * motion simulators and dashboards; at a game's start */
+	unsigned	telemetry_port;		/* its JSON TCP server's, 0 off */
+	char		telemetry_forza[128];	/* Forza Data Out's HOST:PORT, ""
+						 * off */
+
+	/* [ForceFeedback]: the effects worked out from the telemetry of a
+	 * game whose cabinet has no motor (Star Wars: Racer Arcade:
+	 * hl::FfbEffects), on a wheel (DirectInput) and a controller's
+	 * motors; each family's strength, a percentage */
+	bool		ffb_effects;
+	unsigned	ffb_steering, ffb_engines, ffb_hits, ffb_terrain, ffb_rumble;
+
 	/* [Input] */
 	bool		buttons_from_one; /* a joystick's buttons shown from 1,
 					   * as Windows and vJoy number them;

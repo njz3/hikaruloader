@@ -178,6 +178,11 @@ Config::set_defaults ()
 	cfg->outputs_network = false;
 	cfg->outputs_port = 8000;
 	cfg->outputs_announce_port = 8001;
+	/* Off, as in Supermodel and sm2-emu */
+	cfg->telemetry_port = 0;
+	cfg->telemetry_forza[0] = 0;
+	cfg->ffb_effects = true;
+	cfg->ffb_steering = cfg->ffb_engines = cfg->ffb_hits = cfg->ffb_terrain = cfg->ffb_rumble = 100;
 	/* As windowsloader and linuxloader */
 	cfg->buttons_from_one = true;
 	/* The wheel's whole turn for the game's, as before November 2026; the
@@ -441,6 +446,25 @@ Config::set_value (const char *section, const char *key, const char *value)
 			cfg->outputs_port = (unsigned) MAX2 (1, MIN2 (65535, atoi (value)));
 		else if (!strcasecmp (key, "ANNOUNCE_PORT"))
 			cfg->outputs_announce_port = (unsigned) MAX2 (0, MIN2 (65535, atoi (value)));
+	} else if (!strcasecmp (section, "Telemetry")) {
+		if (!strcasecmp (key, "PORT"))
+			cfg->telemetry_port = (unsigned) MAX2 (0, MIN2 (65535, atoi (value)));
+		else if (!strcasecmp (key, "FORZA"))
+			snprintf (cfg->telemetry_forza, sizeof (cfg->telemetry_forza), "%s", value);
+	} else if (!strcasecmp (section, "ForceFeedback")) {
+		unsigned pct = (unsigned) MAX2 (0, MIN2 (200, atoi (value)));
+		if (!strcasecmp (key, "EFFECTS"))
+			cfg->ffb_effects = parse_bool (value);
+		else if (!strcasecmp (key, "STEERING"))
+			cfg->ffb_steering = pct;
+		else if (!strcasecmp (key, "ENGINES"))
+			cfg->ffb_engines = pct;
+		else if (!strcasecmp (key, "HITS"))
+			cfg->ffb_hits = pct;
+		else if (!strcasecmp (key, "TERRAIN"))
+			cfg->ffb_terrain = pct;
+		else if (!strcasecmp (key, "RUMBLE"))
+			cfg->ffb_rumble = pct;
 	} else if (!strcasecmp (section, "Input")) {
 		if (!strcasecmp (key, "BUTTONS_FROM_ONE"))
 			cfg->buttons_from_one = parse_bool (value);
@@ -844,6 +868,36 @@ Config::save () const
 	         "# UDP datagram to this port on 127.0.0.1, as Supermodel sends them\n"
 	         "# (BackForceFeeder waits for it); 0 sends none. Default: %u\n", def.outputs_announce_port);
 	fprintf (fp, "ANNOUNCE_PORT = %u\n", cfg->outputs_announce_port);
+
+	fprintf (fp, "\n[Telemetry]\n");
+	fprintf (fp,
+	         "\n# The racing games' telemetry, for motion simulators, dashboards and your\n"
+	         "# own tools, as Supermodel and sm2-emu send it: one JSON line a frame to\n"
+	         "# each client of a TCP server on this port; 0, none. Default: %u\n", def.telemetry_port);
+	fprintf (fp, "PORT = %u\n", cfg->telemetry_port);
+	fprintf (fp,
+	         "\n# Forza Motorsport 7's \"Data Out\" datagrams (the Dash format) to HOST:PORT,\n"
+	         "# which SimHub, FlyPT Mover, SimTools, Sim Racing Studio read (choose Forza\n"
+	         "# Motorsport 7 there); empty, none. Default: (empty)\n");
+	fprintf (fp, "FORZA = %s\n", cfg->telemetry_forza);
+
+	fprintf (fp, "\n[ForceFeedback]\n");
+	fprintf (fp,
+	         "\n# Star Wars: Racer Arcade's cabinet has no motor: force feedback is made from\n"
+	         "# what the game does (its engines, its hits, its turns, the ground), on a\n"
+	         "# wheel (DirectInput) and on player 1's controller's motors. Default: %s\n",
+	         bool_name (def.ffb_effects));
+	fprintf (fp, "EFFECTS = %s\n", bool_name (cfg->ffb_effects));
+	fprintf (fp,
+	         "\n# Each family's strength, in percent (0 to 200): STEERING the centring, the\n"
+	         "# weight of the turns and the damping; ENGINES the engines' rumble and the\n"
+	         "# boost; HITS the walls and the pods hit; TERRAIN the bumps and the landings;\n"
+	         "# RUMBLE a controller's motors as a whole. Default: %u\n", def.ffb_steering);
+	fprintf (fp, "STEERING = %u\n", cfg->ffb_steering);
+	fprintf (fp, "ENGINES = %u\n", cfg->ffb_engines);
+	fprintf (fp, "HITS = %u\n", cfg->ffb_hits);
+	fprintf (fp, "TERRAIN = %u\n", cfg->ffb_terrain);
+	fprintf (fp, "RUMBLE = %u\n", cfg->ffb_rumble);
 
 	fprintf (fp, "\n[Input]\n");
 	fprintf (fp,

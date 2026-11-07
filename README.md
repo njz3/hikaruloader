@@ -555,6 +555,22 @@ position, is made as much stiffer and its dead band as much narrower, as far
 as the wheel's strongest spring goes. The friction, which follows the
 wheel's speed, stays as it was.
 
+Star Wars: Racer Arcade's cabinet has no motor (the deluxe one a bass shaker
+under its control panel, fed with the option sound board's speakers): its
+force feedback is made from what the game does, read from its memory as the
+telemetry is. On a wheel (DirectInput): a centring and a damping that grow
+stiffer with the speed, the weight of the turns, a kick away from a wall or
+a pod hit, as strong as the speed lost, a rough shake along a wall, the
+engines' rumble with their thrust and the shaker's sound over it, stronger
+while boosting, the bumps and the landings. On player 1's game controller,
+the same as its two motors' rumble (the low one the engines, the shaker, the
+bumps and the hits; the high one the boost, the scraping, the hits).
+The Controls tab's *Emulated force feedback* box turns them on and off
+(`[ForceFeedback]` `EFFECTS` in `hikaruloader.ini`), at once;
+`STEERING`, `ENGINES`, `HITS`, `TERRAIN` and `RUMBLE`, each family's
+strength in percent (100 by default, 0 to 200). They stop outside a race and
+in a pause. `FFB_GAIN` and `FFB_INVERT` apply to them too.
+
 
 Cabinet outputs
 ---------------
@@ -605,6 +621,45 @@ Brave Firefighters' menu has no OUTPUT TEST: its outputs 3, 5 and 6 are
 likely player 2's nozzle and the two revolving lights, sent as `lamp5`,
 `lamp3` and `lamp2`. NASCAR Arcade's test lights its two lamps in turn: the
 start lamp is taken on output 1, as in the other games.
+
+
+Telemetry
+---------
+
+The racing games' state, read from their memory at each frame, for motion
+simulators, dashboards on the wheel, force feedback tools and your own
+programs, in the same form as Supermodel and sm2-emu send it (one client
+reads the three). Off by default: `[Telemetry]` in `hikaruloader.ini`, at a
+game's start.
+
+- `PORT = 8010` (0 for none): a TCP server; each client gets one JSON line a
+  frame. It may send lines back: `fields player.speed,player.rpm,state` (the
+  keys it wants, `all` by default), `others N` (the N nearest opponents,
+  `all` by default, 0 none), `every N` (one frame in N), `list` (the keys
+  the game fills), `udp forza HOST:PORT` or `udp off`.
+- `FORZA = 127.0.0.1:5300`: Forza Motorsport 7's "Data Out" datagrams (the
+  Dash format) to that address, which SimHub, FlyPT Mover, SimTools and Sim
+  Racing Studio read: choose Forza Motorsport 7 there, with that port.
+
+The values are in metres, seconds, radians, m/s and m/s², y up; unknown ones
+are `null`. `state` is `attract`, `select`, `race`, `pause`, `over` or
+`unknown`: a motion platform is to park whenever it is not `race`, and when no
+line comes for a while. `player` and each of `others` hold the vehicle's
+position (`x`, `y`, `z`), orientation (`heading`, `pitch`, `roll`,
+`rotation`), `speed` and velocity, its accelerations (`along`, `alat`,
+`avert`, in the vehicle's frame), turning rates, `impact` (a collision's
+change of speed), `lap`, `progress`, `position` (its place); and the race
+`time_left`, `lap_time`, `last_lap`, `best_lap`, `race_time`.
+
+| Game | Also |
+|---|---|
+| NASCAR Arcade | The 29 other cars. Gear, rpm, throttle, brake and steering as the game reads them, `draft` (0 to 1, the HUD's DRAFT) |
+| Star Wars: Racer Arcade | The 11 other pods. Each engine's thrust as the game uses it (`thrust_left`, `thrust_right`, 0 to 1), `boost`, `boosts_left`, `hit` (the frame of a hit against a wall or a pod), `colliding` (while its jolt lasts), `wall` (a wall touched), `hover` (the height over the ground, m), `shaker` (0 to 1: the deluxe cabinet's bass shaker, fed by the option sound board, its low frequencies), the course |
+| ATV Track | Gear, the engine (`engine`, 0 to 1), throttle, each brake lever, steering; each wheel on the ground, `airborne`; the checkpoints passed, the stage and its distance |
+| Smashing Drive | Throttle, brake, steering, `horn`; each wheel on the ground, `airborne`; the time left of the ride |
+
+The places of Star Wars: Racer Arcade's opponents come from their progress
+along the track (the game keeps the player's alone).
 
 
 When something goes wrong

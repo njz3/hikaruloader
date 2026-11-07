@@ -1164,6 +1164,14 @@ msgid "Your wheel turns %d degrees: the game's wheel takes its whole turn."
 msgstr ""
 
 #: src/ui/ui_controls.cpp
+msgid "Emulated force feedback (wheel and controller)"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "The cabinet has no motor: the forces and the rumble are made from what\nthe game does (the engines, the hits, the turns, the ground). Their\nstrengths: [ForceFeedback] in hikaruloader.ini."
+msgstr ""
+
+#: src/ui/ui_controls.cpp
 msgid "Neutral when no gear is engaged"
 msgstr ""
 

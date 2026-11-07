@@ -67,7 +67,13 @@ public:
 
 	/* Not in agent mode: the agent alone drives the game */
 	void		 set_enabled (bool on) { enabled = on; }
-	bool		 is_enabled () const { return enabled; }
+	bool		 is_enabled () const { return enabled || !held.empty (); }
+
+	/* An axis's or a pedal's row held at a value by the agent (its
+	 * Steering, Accelerator, Brake), over the bindings; release_held
+	 * gives them back to the bindings (key NULL: all) */
+	void		 hold (const char *section, const char *key, double value);
+	void		 release_held (const char *section, const char *key);
 
 	/* The rows of a section, in the file's order */
 	struct Row {
@@ -88,6 +94,11 @@ public:
 		std::string	 name;
 	};
 	std::vector<Device> devices () const;
+	/* Player n's SDL_Joystick (from 0), NULL when none is connected */
+	void		*player_joystick (int player) const
+	{
+		return (player >= 0 && player < (int) players.size ()) ? players[player].joystick : NULL;
+	}
 	/* SDL saw a controller come or go: the players again */
 	void		 devices_changed ();
 
@@ -171,6 +182,9 @@ private:
 	std::vector<std::pair<std::string, std::vector<Row>>> sections;
 	std::map<std::string, Binding *> parsed;
 	bool		 enabled;
+	/* The agent's held values, by "SECTION/KEY" normalized */
+	std::map<std::string, double> held;
+	const double	*held_value (const char *section, const char *key) const;
 
 	struct Player {
 		int		 instance;	/* SDL's joystick instance id, -1 none */

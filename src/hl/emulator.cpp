@@ -31,6 +31,7 @@
 #include "hl/cpu.h"
 #include "hl/input.h"
 #include "hl/outputs.h"
+#include "hl/telemetry.h"
 #include "hl/renderer.h"
 #include "hl/window.h"
 #include "hl/config.h"
@@ -72,6 +73,7 @@ Emulator::~Emulator ()
 {
 	/* mame_stop, the game's last line */
 	Outputs::get ()->stop ();
+	telemetry::Service::get ().stop ();
 	destroy (audio);
 	destroy (agent);
 	destroy (shell);
@@ -174,6 +176,7 @@ Emulator::load_game (const char *name, const char *log_path)
 				          entry ? entry->description : game->name, game->name);
 				Window::set_title (title);
 				Outputs::get ()->start (game->name, game->parent);
+				telemetry::Service::get ().start (mach);
 				return true;
 			}
 			HL_ERROR ("failed to load '%s': game name not in game list", rom_name);
@@ -190,6 +193,7 @@ void
 Emulator::unload_game ()
 {
 	Outputs::get ()->stop ();
+	telemetry::Service::get ().stop ();
 	destroy (mach);
 	destroy (game);
 	Bezel::set_game (NULL, NULL);
@@ -421,6 +425,9 @@ Emulator::run_frame ()
 		HL_PROFILE (AUDIO);
 		audio->play (mach->audio, mach->audio_channels);
 	}
+	/* The racing game's telemetry of this frame, its sound still there
+	 * for a decoder that reads it */
+	telemetry::Service::get ().on_frame (mach->frame + 1);
 	mach->audio.clear ();
 	mach->frame++;
 	Window::set_frame (mach->frame);
@@ -588,8 +595,11 @@ Emulator::run (int num_frames)
 				break;
 			if (run_frame () != STOP_NONE && shell)
 				shell->notify (stop_message);
-		} else
+		} else {
+			/* The telemetry's last frame again, as a pause */
+			telemetry::Service::get ().on_pause ();
 			Window::present_paused ();
+		}
 		limit_frame_rate ();
 	}
 	if (shell)

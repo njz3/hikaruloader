@@ -14,6 +14,23 @@ In preparation
   Drive's horn. ATV Track and Smashing Drive no longer read the Hikaru
   games' Up, Down and Buttons, where a cabinet's volume buttons also changed
   NASCAR Arcade's view; Smashing Drive's gas and brake are the pedals alone.
+- Telemetry for motion simulators, dashboards and force feedback tools, as
+  Supermodel and sm2-emu send it (`[Telemetry]`, off by default): a JSON
+  line a frame on a TCP port, Forza Motorsport 7's "Data Out" datagrams for
+  SimHub, FlyPT Mover, SimTools. NASCAR Arcade: the player's car and the 29
+  others, gear, rpm, draft. Star Wars: Racer Arcade: the player's pod and
+  the 11 others, each engine's thrust, the boost, the hits, the hover
+  height, and the deluxe cabinet's bass shaker level. ATV Track and Smashing
+  Drive: the vehicle, its jumps, the time left.
+- Star Wars: Racer Arcade's force feedback, made from what the game does: on
+  a wheel, the centring and the damping with the speed, the turns' weight,
+  the kicks of the walls and pods hit, the scraping, the engines' rumble and
+  the deluxe cabinet's bass shaker, the boost, the bumps; on a game
+  controller, its two motors' rumble. `[ForceFeedback]` sets each family's
+  strength.
+- The agent mode drives the wheel, the pedals and Star Wars: Racer Arcade's
+  levers (`set Steering`, `Accelerator`, `Brake`, `LeftLever`, `RightLever`),
+  as sm2-emu's and Supermodel's.
 
 
 0.5.0 (2026-11-07)

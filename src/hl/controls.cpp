@@ -1168,6 +1168,10 @@ Controls::pressed_by (const char *section, const char *key, const SDL_Event *eve
 double
 Controls::axis (const char *section, const char *key)
 {
+	const double *h = held_value (section, key);
+	if (h)
+		return std::clamp (*h, -1.0, 1.0);
+
 	const Binding *b = enabled ? binding (section, key) : NULL;
 	double v = 0.0, dz = deadzone (key);
 	/* The steering wheel: a wheel's axis goes that much further ([Input]
@@ -1196,9 +1200,37 @@ Controls::axis (const char *section, const char *key)
 	return v;
 }
 
+void
+Controls::hold (const char *section, const char *key, double value)
+{
+	held[normalize (section) + "/" + normalize (key)] = value;
+}
+
+void
+Controls::release_held (const char *section, const char *key)
+{
+	if (!key)
+		held.clear ();
+	else
+		held.erase (normalize (section) + "/" + normalize (key));
+}
+
+const double *
+Controls::held_value (const char *section, const char *key) const
+{
+	if (held.empty ())
+		return NULL;
+	auto it = held.find (normalize (section) + "/" + normalize (key));
+	return (it == held.end ()) ? NULL : &it->second;
+}
+
 double
 Controls::pedal (const char *section, const char *key)
 {
+	const double *h = held_value (section, key);
+	if (h)
+		return std::clamp (*h, 0.0, 1.0);
+
 	const Binding *b = enabled ? binding (section, key) : NULL;
 	double v = pressed (section, (std::string (key) + "_Digital").c_str ()) ? 1.0 : 0.0;
 	double dz = deadzone (key);

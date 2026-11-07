@@ -42,6 +42,11 @@ public:
 		SPRING,
 		FRICTION,
 		VIBRATE,
+		/* A game controller's motors, the low (big) one and the high
+		 * (small) one, 0 to 1: player 1's controller, rumbled through
+		 * SDL (XInput), whether or not it has DirectInput's effects */
+		RUMBLE_LOW,
+		RUMBLE_HIGH,
 
 		NUM_EFFECTS
 	};
@@ -55,6 +60,9 @@ public:
 	/* frame: the machine's, for the records */
 	static void	 set (Effect effect, float force, uint64_t frame);
 	static float	 get (Effect effect);
+	/* Player 1's controller's motors, each frame while they turn: sent
+	 * again every half second, as SDL stops them after a while */
+	static void	 rumble (float low, float high, uint64_t frame);
 	/* The records since the last call */
 	static std::vector<Record> take_records ();
 	static const char *effect_name (Effect effect);

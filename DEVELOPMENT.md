@@ -393,7 +393,7 @@ shared: change it only together with Supermodel and sm2-emu.
 | Command | Answer |
 |---|---|
 | `step [N]` | N frames (1): `ok FRAME`; `err break: ...` or `err abort: ...` when the machine stopped |
-| `set INPUT VALUE`, `setraw INPUT RAW` | Holds an input (a switch: 0 or 1; NASCAR Arcade's `Gear`, 0 for neutral to 4, as sm2-emu's): `ok` |
+| `set INPUT VALUE`, `setraw INPUT RAW` | Holds an input (a switch: 0 or 1; the analog controls, as sm2-emu's and Supermodel's: `Steering` -1 left to 1, `Accelerator`, `Brake`, `LeftLever`, `RightLever` 0 to 1, over controls.ini's rows; NASCAR Arcade's `Gear`, 0 for neutral to 4, as sm2-emu's): `ok` |
 | `get INPUT` | `value RAW` (`Gear`: the gear the game reads) |
 | `release INPUT\|all` | `ok` |
 | `inputs` | `inputs N`, then N lines `NAME TYPE`: Test, Service..., ViewChange (NASCAR Arcade's view change, linuxloader's name), VolumeUp, VolumeDown, LeftBrake, RightBrake, Horn (the Gaelco cabinets' `[Gaelco]` rows); `Gear other` with NASCAR Arcade's gear lever |
@@ -405,7 +405,8 @@ shared: change it only together with Supermodel and sm2-emu.
 | `frame` | `frame N` |
 | `settle [MS]` | A wait before each frame: `settle MS` |
 | `ffb` | The force feedback since the last call: `ffb N`, then N lines `FRAME Steering EFFECT FORCE`, EFFECT `stop`, `constant` (FORCE -1..1, > 0 pushes left), `selfcenter`, `friction` or `vibrate` (0..1) |
-| `servo`, `tel` | `servo 0`, `tel none`: no drive board journal or telemetry yet |
+| `servo` | `servo 0`: no drive board journal |
+| `tel`, `tel fields LIST\|all`, `tel others N\|all` | The racing game's telemetry of the last frame, one JSON line (README, "Telemetry"; src/hl/telemetry.h), `tel none` for a game without a decoder; the selections answer `ok` |
 | `lua CHUNK` | A command of the Lua shell: `lua N`, then its N lines |
 | `quit` | `bye`; the end of stdin quits too |
 

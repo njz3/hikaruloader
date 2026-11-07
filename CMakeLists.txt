@@ -187,6 +187,7 @@ endif ()
 
 add_executable (hikaruloader ${HIKARU_SRC} ${UI_SRC}
 	src/hl/emulator.cpp src/hl/server.cpp src/hl/ringlink.cpp src/hl/shell.cpp src/hl/agent.cpp
+	src/hl/telemetry.cpp src/hl/telemetry-games.cpp src/hl/ffb-effects.cpp
 	src/hl/main.cpp)
 target_include_directories (hikaruloader PRIVATE 3rdparty/imgui_backends ${STB_INCLUDE_DIRS})
 target_link_libraries (hikaruloader PRIVATE hl imgui::imgui lua)

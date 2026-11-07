@@ -647,6 +647,27 @@ void drawLevers()
     onDisk.save();
 }
 
+// [ForceFeedback] EFFECTS: the force feedback made from the telemetry, for a
+// cabinet without a motor (hl::FfbEffects); saved at once to
+// hikaruloader.ini, alone, and taken at the next frame
+void drawFfbEffects()
+{
+    hl::Config *cfg = hl::Config::get();
+    bool on = cfg->ffb_effects;
+    if (ImGui::Checkbox(tr("Emulated force feedback (wheel and controller)"), &on))
+    {
+        hl::Config onDisk;
+        onDisk.set_defaults();
+        onDisk.load();
+        onDisk.ffb_effects = cfg->ffb_effects = on;
+        onDisk.save();
+    }
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("%s", tr("The cabinet has no motor: the forces and the rumble are made from what\n"
+                                   "the game does (the engines, the hits, the turns, the ground). Their\n"
+                                   "strengths: [ForceFeedback] in hikaruloader.ini."));
+}
+
 // What the game reads now: the switches, the wheel and the pedals
 void drawGameInputs()
 {
@@ -827,6 +848,7 @@ void drawControlsTab()
 
     header(tr("Levers (Star Wars: Racer Arcade)"));
     drawLevers();
+    drawFfbEffects();
 
     header(tr("Dead zones and options"));
     drawOptions();

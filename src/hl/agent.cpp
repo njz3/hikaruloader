@@ -36,10 +36,12 @@
 #include "hl/agent.h"
 #include "hl/emulator.h"
 #include "hl/shell.h"
+#include "hl/controls.h"
 #include "hl/cpu.h"
 #include "hl/ffb.h"
 #include "hl/gearbox.h"
 #include "hl/input.h"
+#include "hl/telemetry.h"
 #include "hl/window.h"
 
 namespace hl {
@@ -84,6 +86,32 @@ static const struct {
 	{ "RightBrake",	ACTION_RIGHT_BRAKE },
 	{ "Horn",	ACTION_HORN },
 };
+
+/* The analog controls, as sm2-emu and Supermodel name them: the wheel from
+ * -1 (left) to 1, the pedals and Star Wars: Racer Arcade's levers from 0 to
+ * 1; held over controls.ini's rows (hl::Controls::hold) */
+static const struct {
+	const char *name;
+	const char *section, *key;
+	bool axis;
+} analogs[] = {
+	{ "Steering",	"Driving",	"P1_Steer",	 true },
+	{ "Accelerator", "Driving",	"P1_Gas",	 false },
+	{ "Brake",	"Driving",	"P1_Brake",	 false },
+	{ "LeftLever",	"Driving",	"P1_LeftLever",	 false },
+	{ "RightLever",	"Driving",	"P1_RightLever", false },
+};
+
+static int
+find_analog (const char *name)
+{
+	unsigned i;
+
+	for (i = 0; i < NUMELEM (analogs); i++)
+		if (!strcasecmp (analogs[i].name, name))
+			return (int) i;
+	return -1;
+}
 
 static int
 find_input (const char *name)
@@ -374,7 +402,10 @@ Agent::run (const std::string &line)
 		/* A switch: pressed from 0.5, or any raw value but 0 */
 		if (sscanf (args, "%63s %lf", name, &value) != 2)
 			reply ("err usage: %s INPUT VALUE", cmd);
-		else if ((input = find_input (name)) < 0)
+		else if ((input = find_analog (name)) >= 0) {
+			Controls::get ().hold (analogs[input].section, analogs[input].key, value);
+			reply ("ok");
+		} else if ((input = find_input (name)) < 0)
 			reply ("err unknown input %s", name);
 		else {
 			Input::set_action (inputs[input].action,
@@ -384,6 +415,10 @@ Agent::run (const std::string &line)
 	} else if (!strcmp (cmd, "get")) {
 		if (!strcasecmp (args, "Gear") && Gearbox::get ().attached ())
 			reply ("value %u", Gearbox::get ().gear (emu->mach->frame));
+		else if ((input = find_analog (args)) >= 0)
+			reply ("value %.4f", analogs[input].axis ?
+			       Controls::get ().axis (analogs[input].section, analogs[input].key) :
+			       Controls::get ().pedal (analogs[input].section, analogs[input].key));
 		else if ((input = find_input (args)) < 0)
 			reply ("err unknown input %s", args);
 		else
@@ -393,9 +428,13 @@ Agent::run (const std::string &line)
 			for (const auto &in : inputs)
 				Input::set_action (in.action, false);
 			Gearbox::get ().hold (-1);
+			Controls::get ().release_held (NULL, NULL);
 			reply ("ok");
 		} else if (!strcasecmp (args, "Gear") && Gearbox::get ().attached ()) {
 			Gearbox::get ().hold (-1);
+			reply ("ok");
+		} else if ((input = find_analog (args)) >= 0) {
+			Controls::get ().release_held (analogs[input].section, analogs[input].key);
 			reply ("ok");
 		} else if ((input = find_input (args)) < 0)
 			reply ("err unknown input %s", args);
@@ -404,7 +443,10 @@ Agent::run (const std::string &line)
 			reply ("ok");
 		}
 	} else if (!strcmp (cmd, "inputs")) {
-		reply ("inputs %u", (unsigned) NUMELEM (inputs) + (Gearbox::get ().attached () ? 1 : 0));
+		reply ("inputs %u", (unsigned) (NUMELEM (analogs) + NUMELEM (inputs)) +
+		                    (Gearbox::get ().attached () ? 1 : 0));
+		for (const auto &a : analogs)
+			reply ("%s %s", a.name, a.axis ? "axis" : "analog");
 		for (const auto &in : inputs)
 			reply ("%s switch", in.name);
 		if (Gearbox::get ().attached ())
@@ -448,11 +490,40 @@ Agent::run (const std::string &line)
 			settle_ms = (unsigned) std::clamp (atoi (args), 0, 1000);
 		reply ("settle %u", settle_ms);
 	} else if (!strcmp (cmd, "tel")) {
-		/* No telemetry decoder; Supermodel's key selections pass */
-		if (!strncmp (args, "fields", 6) || !strncmp (args, "others", 6))
+		/* The racing game's telemetry of the last frame, one JSON line
+		 * (hl/telemetry.h), as sm2-emu's and Supermodel's tel; "tel none"
+		 * for a game without a decoder */
+		static telemetry::Selection selection;
+		std::string what (args), arg;
+		size_t space = what.find (' ');
+
+		if (space != std::string::npos) {
+			arg = what.substr (space + 1);
+			what.resize (space);
+		}
+		if (what.empty ())
+			reply ("%s", telemetry::Service::get ().json (selection).c_str ());
+		else if (what == "fields") {
+			selection.fields.clear ();
+			if (arg != "all") {
+				size_t start = 0;
+				while (start <= arg.size ()) {
+					size_t comma = arg.find (',', start);
+					std::string f = arg.substr (start, comma == std::string::npos ? std::string::npos : comma - start);
+					f.erase (std::remove_if (f.begin (), f.end (), [] (char c) { return c == ' ' || c == '\t'; }), f.end ());
+					if (!f.empty ())
+						selection.fields.push_back (f);
+					if (comma == std::string::npos)
+						break;
+					start = comma + 1;
+				}
+			}
 			reply ("ok");
-		else
-			reply ("tel none");
+		} else if (what == "others") {
+			selection.others = arg == "all" ? -1 : atoi (arg.c_str ());
+			reply ("ok");
+		} else
+			reply ("err usage: tel | tel fields LIST|all | tel others N|all");
 	} else if (!strcmp (cmd, "ram") || !strcmp (cmd, "mem"))
 		read_memory (cmd, args);
 	else if (!strcmp (cmd, "poke")) {

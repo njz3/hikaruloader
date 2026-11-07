@@ -20,6 +20,7 @@
 
 #include "hl/ffb.h"
 #include "hl/config.h"
+#include "hl/controls.h"
 
 namespace hl {
 
@@ -105,7 +106,7 @@ static void
 play (ForceFeedback::Effect effect, float force)
 {
 	static const unsigned types[ForceFeedback::NUM_EFFECTS] = {
-		0, SDL_HAPTIC_CONSTANT, SDL_HAPTIC_SPRING, SDL_HAPTIC_FRICTION, SDL_HAPTIC_SINE
+		0, SDL_HAPTIC_CONSTANT, SDL_HAPTIC_SPRING, SDL_HAPTIC_FRICTION, SDL_HAPTIC_SINE, 0, 0
 	};
 	SDL_HapticEffect e;
 
@@ -185,8 +186,14 @@ ForceFeedback::set (Effect effect, float force, uint64_t frame)
 	unsigned i;
 
 	if (effect == STOP) {
-		for (i = CONSTANT; i < NUM_EFFECTS; i++)
+		for (i = CONSTANT; i < RUMBLE_LOW; i++)
 			set ((Effect) i, 0.0f, frame);
+		rumble (0.0f, 0.0f, frame);
+		return;
+	}
+	if (effect == RUMBLE_LOW || effect == RUMBLE_HIGH) {
+		rumble (effect == RUMBLE_LOW ? force : current[RUMBLE_LOW],
+		        effect == RUMBLE_HIGH ? force : current[RUMBLE_HIGH], frame);
 		return;
 	}
 	force = clamp1 (force, (effect == CONSTANT) ? -1.0f : 0.0f);
@@ -201,6 +208,46 @@ ForceFeedback::set (Effect effect, float force, uint64_t frame)
 	if (!looked)
 		open_device ();
 	play (effect, device_force (effect, force));
+}
+
+/* The controller's motors: what was last sent, and when */
+static uint64_t rumble_sent = ~0ull;
+
+static void
+send_rumble (uint64_t frame)
+{
+	SDL_Joystick *joy = (SDL_Joystick *) Controls::get ().player_joystick (0);
+	float gain = hl_util_get_int_option ("FFB_GAIN", 100) / 100.0f;
+	auto level = [&] (float x) { return (Uint16) lrintf (clamp1 (x * gain, 0.0f) * 65535.0f); };
+
+	rumble_sent = frame;
+	if (joy)
+		SDL_JoystickRumble (joy, level (current[ForceFeedback::RUMBLE_LOW]),
+		                    level (current[ForceFeedback::RUMBLE_HIGH]), 1000);
+}
+
+void
+ForceFeedback::rumble (float low, float high, uint64_t frame)
+{
+	bool changed = false;
+	const Effect effects[2] = { RUMBLE_LOW, RUMBLE_HIGH };
+	float force[2] = { clamp1 (low, 0.0f), clamp1 (high, 0.0f) };
+
+	for (int i = 0; i < 2; i++) {
+		/* Steps of 1/64: a record, and a message to the controller, at
+		 * each change that can be felt */
+		float f = roundf (force[i] * 64.0f) / 64.0f;
+		if (f == current[effects[i]])
+			continue;
+		current[effects[i]] = f;
+		changed = true;
+		if (records.size () >= MAX_RECORDS)
+			records.erase (records.begin ());
+		records.push_back ({ frame, effects[i], f });
+	}
+	if (changed || (current[RUMBLE_LOW] + current[RUMBLE_HIGH] > 0 &&
+	                (rumble_sent == ~0ull || frame - rumble_sent >= 30 || frame < rumble_sent)))
+		send_rumble (frame);
 }
 
 float
@@ -223,7 +270,7 @@ ForceFeedback::effect_name (Effect effect)
 {
 	/* The agent protocol's names */
 	static const char *const names[NUM_EFFECTS] = {
-		"stop", "constant", "selfcenter", "friction", "vibrate"
+		"stop", "constant", "selfcenter", "friction", "vibrate", "rumble_low", "rumble_high"
 	};
 	return names[effect];
 }
@@ -241,7 +288,7 @@ ForceFeedback::devices_changed ()
 		return;
 	open_device ();
 	/* The effects going on, on the new device */
-	for (i = CONSTANT; i < NUM_EFFECTS; i++)
+	for (i = CONSTANT; i < RUMBLE_LOW; i++)
 		if (current[i] != 0.0f)
 			play ((Effect) i, device_force ((Effect) i, current[i]));
 }

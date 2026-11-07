@@ -31,6 +31,31 @@ The outputs (`src/hl/outputs.cpp`):
   at 0 in the attract and after Start.
 - The outputs in the agent protocol (shared with Supermodel and sm2-emu).
 
+The telemetry (`src/hl/telemetry-games.cpp`), what its decoders lack:
+
+- NASCAR Arcade: checked on Talladega alone (152 segments a lap; the other
+  tracks' and the track's number not found, nor the lap's length, hence no
+  gaps); the end of a race won (only time up seen); the contacts between
+  cars; AUTOMATIC or MANUAL.
+- Star Wars: Racer Arcade: Tatooine alone (400 segments a lap); the boost's
+  bit not seen set in the checks; no jump driven (airborne, landings); the
+  hover height's rest; the shaker's level against a deluxe cabinet's; the
+  laps (4 taken, never driven to the end); the opponents' places are
+  worked out from their progress.
+- ATV Track: the other quad (8C1A8908, same layout, not checked); no place
+  in the game.
+- Smashing Drive: the damage (8C20144C, probable), the fares; its wheel's
+  way: the agent's Steering 1 (the ADC's 01, as ATV Track's handlebar to
+  the right) turned the taxi left, and the game recalibrates its centre and
+  range as it is played (8C0765EC, 8C0765E4): to check in its INPUT TEST
+  before turning it round (and the motor's side with it).
+- Gaelco Football and the other games: no decoder (not racing games).
+
+Star Wars: Racer Arcade's force feedback made from the telemetry
+(`src/hl/ffb-effects.cpp`): tuned on recordings in agent mode only, not yet
+felt on a wheel nor on a game controller; the landings not tried (no jump
+driven); the bass shaker's level against a deluxe cabinet's.
+
 The controls (`src/hl/controls.cpp`):
 
 - The controllers' hotkeys (Guide + a button) are checked on SDL's virtual
