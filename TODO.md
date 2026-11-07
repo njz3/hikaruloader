@@ -236,14 +236,14 @@ GAELCO (src/mach/gaelco)
 ATV Track, Gaelco Football and Smashing Drive play, two Smashing Drive linked.
 Still to do:
 
-- The renderer: the texture formats 3, 4 and 6 and the palettes unchecked;
-  mipmaps generated, not read; the background plane's colour alone; no
-  modifier volumes (none of the three games fills such a list). Gaelco
-  Football's "out" box looks doubled.
+- The renderer: mipmaps generated, not read; the background plane's colour
+  alone; no modifier volumes, the texture formats 3, 4 and 6 and the palettes
+  (none of the three games uses them).
 - Interrupt 7 (a frame drawn) is raised at once, not when the frame would be.
 - The force feedback's direction and strength on a real wheel; Smashing Drive's
   wheel polarity is taken from what it writes at its ends.
 - ATV Track's and Gaelco Football's link, if any: only Smashing Drive's menu has
   one; ATV Track's motion outputs.
 - Gaelco Football's ball sensors: its ball test (sensors, power, height,
-  direction) shows them at 0; where the game reads them is not known.
+  direction) shows them at 0. The game reads port A's 3800 once a frame,
+  which nothing answers; no bit of it held changes the test.
