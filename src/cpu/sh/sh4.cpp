@@ -483,6 +483,73 @@ sh4_dmac_update_state (Sh4 *ctx, uint32_t request_type)
 	sh4_dmac_update_channel_state (ctx, 3, request_type);
 }
 
+/* An external device's request, one 32-bit word (the Gaelco boards' link): the
+ * channel set up for it, with its count left */
+bool
+Sh4::dma_ready (unsigned ch)
+{
+	Sh4 *ctx = this;
+	uint32_t offs = ch * 0x10;
+	uint32_t chcr = IREG_GET (4, DMAC_CHCR0 + offs);
+	uint32_t rs = (chcr >> 8) & 15;
+
+	return (IREG_GET (4, DMAC_DMAOR) & chcr & 1) && !(IREG_GET (4, DMAC_DMAOR) & 6) && !(chcr & 2) &&
+	       (rs == 2 || rs == 3) && ((chcr >> 4) & 7) == 3 && IREG_GET (4, DMAC_TCR0 + offs) != 0;
+}
+
+static void
+sh4_dma_word_done (Sh4 *ctx, unsigned ch)
+{
+	uint32_t offs = ch * 0x10;
+	uint32_t tcr = IREG_GET (4, DMAC_TCR0 + offs) - 1;
+
+	IREG_PUT (4, DMAC_TCR0 + offs, tcr);
+	if (!tcr) {
+		uint32_t chcr = IREG_GET (4, DMAC_CHCR0 + offs);
+		IREG_PUT (4, DMAC_CHCR0 + offs, chcr | 2);
+		if (chcr & 4)
+			ctx->set_irq_state (ch == 0 ? SH4_IESOURCE_DMTE0 : ch == 1 ? SH4_IESOURCE_DMTE1 :
+			                    ch == 2 ? SH4_IESOURCE_DMTE2 : SH4_IESOURCE_DMTE3,
+			                    hl::IRQ_STATE_RAISED);
+	}
+}
+
+void
+Sh4::dma_to_memory (unsigned ch, uint32_t word)
+{
+	Sh4 *ctx = this;
+	uint32_t offs = ch * 0x10;
+	uint32_t dar = IREG_GET (4, DMAC_DAR0 + offs);
+	unsigned dm = (IREG_GET (4, DMAC_CHCR0 + offs) >> 14) & 3;
+
+	if (dm == 2)
+		dar -= 4;
+	sh4_put (this, 4, dar, word);
+	if (dm == 1)
+		dar += 4;
+	IREG_PUT (4, DMAC_DAR0 + offs, dar);
+	sh4_dma_word_done (this, ch);
+}
+
+uint32_t
+Sh4::dma_from_memory (unsigned ch)
+{
+	Sh4 *ctx = this;
+	uint32_t offs = ch * 0x10;
+	uint32_t sar = IREG_GET (4, DMAC_SAR0 + offs);
+	unsigned sm = (IREG_GET (4, DMAC_CHCR0 + offs) >> 12) & 3;
+	uint64_t word = 0;
+
+	if (sm == 2)
+		sar -= 4;
+	sh4_get (this, 4, sar, &word);
+	if (sm == 1)
+		sar += 4;
+	IREG_PUT (4, DMAC_SAR0 + offs, sar);
+	sh4_dma_word_done (this, ch);
+	return (uint32_t) word;
+}
+
 /* Timer Unit */
 
 /* Note: for performance reasons, TCNT{0,1,2} are handled differently than

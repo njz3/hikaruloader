@@ -911,8 +911,38 @@ msgid "Coin 1"
 msgstr "Pièce 1"
 
 #: src/ui/ui_controls.cpp
+msgid "Seat motor"
+msgstr "Moteur du siège"
+
+msgid "Coin counter"
+msgstr "Compteur de pièces"
+
 msgid "Coin 2"
 msgstr "Pièce 2"
+
+msgid "Player 2: start"
+msgstr "Joueur 2 : start"
+
+msgid "Player 2: up"
+msgstr "Joueur 2 : haut"
+
+msgid "Player 2: down"
+msgstr "Joueur 2 : bas"
+
+msgid "Player 2: left"
+msgstr "Joueur 2 : gauche"
+
+msgid "Player 2: right"
+msgstr "Joueur 2 : droite"
+
+msgid "Player 2: button 1"
+msgstr "Joueur 2 : bouton 1"
+
+msgid "Player 2: button 2"
+msgstr "Joueur 2 : bouton 2"
+
+msgid "Player 2: button 3"
+msgstr "Joueur 2 : bouton 3"
 
 #: src/ui/ui_controls.cpp
 msgid "Start"

@@ -51,12 +51,10 @@ namespace gaelco {
  *
  *  0000	Written non-zero to start the chip; the games then wait for 1
  *		at VRAM+1350, which the PMX would answer
- *  0070	Interrupts pending; written, clears those bits
+ *  0070	Interrupts pending; written, clears those bits: 7 a frame drawn, 8 the
+ *		vertical blank (the driver counts them at shared RAM +1DC)
  *  0074	Interrupts masked (all at reset)
- *  00B0	0001: commands in the ring, read them; interrupt 7 at once. Later,
- *		as the chip takes its time, the driver's frames come out incomplete
- *		(it goes on to the next scene in the same lists). 8 and 15 are
- *		unmasked too, their use unknown
+ *  00B0	0001: commands in the ring, read them; interrupt 7 at once
  *		8001: the ring is set up; the games wait for 1 at VRAM+814804
  *  00C0	The ring's write pointer again (44100000 | pointer)
  *  4xxx	The PCI configuration
@@ -84,14 +82,14 @@ namespace gaelco {
  *  0	800000xx | tiles across - 1 << 24 | tiles down - 1 << 16 | 20
  *  1-5	Its sizes
  *  6-	The lists, four words each: flags (bit 31 the last; bit 9 translucent),
- *	0, a page's size (0: the list is not used), the VRAM's address of its
- *	table of pages (their addresses >> 12)
+ *	0, its table's size in 1 KB a page (0: the list is not used), the VRAM's
+ *	address of its table of pages (their addresses >> 12)
  *
  * A list is a stream of 32-bit words, in pages, each ended by a zero or its end:
  *
  *  31	A polygon header follows this word, and applies from this strip on:
- *	vertices' page, the next page, the ISP/TSP word, the TSP word, the
- *	texture word (as the Dreamcast's)
+ *	vertices' page, the page they go on in, the ISP/TSP word, the TSP word,
+ *	the texture word (as the Dreamcast's)
  *  30-24 The strip's triangles, one bit each, from bit 30
  *  19-0 The first vertex: its offset, in words, from the vertices' page
  *
@@ -163,22 +161,21 @@ vram_u32 (hl::Buffer *vram, uint32_t addr)
 	return val;
 }
 
-/* The words of a list. Its pages, by their addresses, the order the driver took
- * them in (the table's new ones can come first); a zero ends a page, not the
- * list, which goes on in the next one with the same header. A page's unused
- * ones are all zeros */
+/* The words of a list. Its table holds count pages, the first ones: those after
+ * them, of a frame with more, are there still, their lists out of date. A zero
+ * ends a page, not the list, which goes on in the next one with the same header;
+ * a page's unused ones are all zeros */
 class ListReader {
 public:
-	ListReader (hl::Buffer *vram, uint32_t table) : vram (vram)
+	ListReader (hl::Buffer *vram, uint32_t table, unsigned count) : vram (vram)
 	{
 		unsigned i;
-		for (i = 0; i < 1024; i++) {
+		for (i = 0; i < count; i++) {
 			uint32_t entry = vram_u32 (vram, table + i * 4);
 			if (entry < 0x18000 || entry >= 0x1A000)
 				break;
 			pages.push_back ((entry << 12) & VRAM_MASK);
 		}
-		std::sort (pages.begin (), pages.end ());
 	}
 
 	/* 0 at the list's end */
@@ -217,39 +214,51 @@ u32_to_f (uint32_t val)
 	return f;
 }
 
+/* A strip's vertices can go on past their 4 KB page, in the next one the header
+ * gives, which need not follow it */
+struct VertexPages {
+	uint32_t page[2];
+
+	uint32_t word (hl::Buffer *vram, uint32_t index) const
+	{
+		return vram_u32 (vram, page[index >= 1024 ? 1 : 0] + (index & 1023) * 4);
+	}
+};
+
 static Vertex
-read_vertex (hl::Buffer *vram, uint32_t addr, uint32_t isp)
+read_vertex (hl::Buffer *vram, const VertexPages &pages, uint32_t index, uint32_t isp)
 {
 	bool textured = (isp >> 25) & 1, offset = (isp >> 24) & 1, uv16 = (isp >> 22) & 1;
 	Vertex v = {};
 
-	v.x = u32_to_f (vram_u32 (vram, addr));
-	v.y = u32_to_f (vram_u32 (vram, addr + 4));
-	v.z = u32_to_f (vram_u32 (vram, addr + 8));
-	addr += 12;
+	v.x = u32_to_f (pages.word (vram, index));
+	v.y = u32_to_f (pages.word (vram, index + 1));
+	v.z = u32_to_f (pages.word (vram, index + 2));
+	index += 3;
 	if (textured) {
 		if (uv16) {
-			uint32_t uv = vram_u32 (vram, addr);
+			uint32_t uv = pages.word (vram, index);
 			v.u = u32_to_f (uv & 0xFFFF0000);
 			v.v = u32_to_f (uv << 16);
-			addr += 4;
+			index += 1;
 		} else {
-			v.u = u32_to_f (vram_u32 (vram, addr));
-			v.v = u32_to_f (vram_u32 (vram, addr + 4));
-			addr += 8;
+			v.u = u32_to_f (pages.word (vram, index));
+			v.v = u32_to_f (pages.word (vram, index + 1));
+			index += 2;
 		}
 	}
-	v.base = vram_u32 (vram, addr);
+	v.base = pages.word (vram, index);
 	if (textured && offset)
-		v.offset = vram_u32 (vram, addr + 4);
+		v.offset = pages.word (vram, index + 1);
 	return v;
 }
 
 static void
-add_list (Frame *frame, hl::Buffer *vram, uint32_t table, bool translucent)
+add_list (Frame *frame, hl::Buffer *vram, uint32_t table, unsigned pages_used, bool translucent)
 {
-	ListReader list (vram, table);
-	uint32_t base = 0, isp = 0, tsp = 0, tcw = 0;
+	ListReader list (vram, table, pages_used);
+	VertexPages pages = {};
+	uint32_t isp = 0, tsp = 0, tcw = 0;
 	bool have_header = false;
 	/* A list that long is a bad one */
 	unsigned left = 1024 * 1024;
@@ -262,7 +271,8 @@ add_list (Frame *frame, hl::Buffer *vram, uint32_t table, bool translucent)
 			uint32_t header[5], i;
 			for (i = 0; i < 5; i++)
 				header[i] = list.next ();
-			base = header[0];
+			pages.page[0] = header[0];
+			pages.page[1] = header[1];
 			isp = header[2];
 			tsp = header[3];
 			tcw = header[4];
@@ -280,14 +290,14 @@ add_list (Frame *frame, hl::Buffer *vram, uint32_t table, bool translucent)
 
 		unsigned triangles = (word >> 24) & 0x7F, words = vertex_words (isp), t;
 		unsigned cull = (isp >> 27) & 3;
-		uint32_t first = base + (word & 0xFFFFF) * 4;
+		uint32_t first = word & 0xFFFFF;
 
 		for (t = 0; t < 7; t++) {
 			if (!(triangles & (0x40 >> t)))
 				continue;
-			Vertex v0 = read_vertex (vram, first + t * words * 4, isp);
-			Vertex v1 = read_vertex (vram, first + (t + 1) * words * 4, isp);
-			Vertex v2 = read_vertex (vram, first + (t + 2) * words * 4, isp);
+			Vertex v0 = read_vertex (vram, pages, first + t * words, isp);
+			Vertex v1 = read_vertex (vram, pages, first + (t + 1) * words, isp);
+			Vertex v2 = read_vertex (vram, pages, first + (t + 2) * words, isp);
 			/* Flat: the colours of the triangle's last vertex */
 			if (!((isp >> 23) & 1)) {
 				v0.base = v1.base = v2.base;
@@ -311,6 +321,56 @@ add_list (Frame *frame, hl::Buffer *vram, uint32_t table, bool translucent)
 	}
 }
 
+/* The translucent polygons, which the chip sorts itself: from the farthest on,
+ * each triangle's middle standing for it; the list's order where it ties (a
+ * text over its box) */
+static void
+sort_translucent (Frame *frame)
+{
+	struct Triangle {
+		float z;
+		uint32_t first;
+		uint32_t batch;
+	};
+	std::vector<Triangle> triangles;
+	std::vector<Vertex> vertices;
+	std::vector<Batch> batches;
+	size_t first = 0, b;
+	uint32_t base;
+
+	while (first < frame->batches.size () && !frame->batches[first].translucent)
+		first++;
+	if (first == frame->batches.size ())
+		return;
+	base = frame->batches[first].first;
+	for (b = first; b < frame->batches.size (); b++) {
+		const Batch &batch = frame->batches[b];
+		uint32_t i;
+		for (i = 0; i + 3 <= batch.count; i += 3) {
+			const Vertex *v = &frame->vertices[batch.first + i];
+			triangles.push_back ({ v[0].z + v[1].z + v[2].z, batch.first + i, (uint32_t) b });
+		}
+	}
+	std::stable_sort (triangles.begin (), triangles.end (),
+	                  [] (const Triangle &x, const Triangle &y) { return x.z < y.z; });
+	vertices.reserve (triangles.size () * 3);
+	for (const Triangle &tri : triangles) {
+		const Batch &from = frame->batches[tri.batch];
+		if (batches.empty () || batches.back ().isp != from.isp ||
+		    batches.back ().tsp != from.tsp || batches.back ().tcw != from.tcw) {
+			Batch batch = from;
+			batch.first = base + (uint32_t) vertices.size ();
+			batch.count = 0;
+			batches.push_back (batch);
+		}
+		vertices.insert (vertices.end (), &frame->vertices[tri.first], &frame->vertices[tri.first] + 3);
+		batches.back ().count += 3;
+	}
+	std::copy (vertices.begin (), vertices.end (), frame->vertices.begin () + base);
+	frame->batches.resize (first);
+	frame->batches.insert (frame->batches.end (), batches.begin (), batches.end ());
+}
+
 void
 Neon250::build_frame (uint32_t region, uint32_t state)
 {
@@ -326,13 +386,15 @@ Neon250::build_frame (uint32_t region, uint32_t state)
 
 		/* No pages: a list not used, its table not set */
 		if (stride)
-			add_list (frame.get (), vram, table, (flags >> 9) & 1);
+			add_list (frame.get (), vram, table, stride / 0x400, (flags >> 9) & 1);
 		if (flags >> 31)
 			break;
 	}
 	frame->fog_color = vram_u32 (vram, state + 0xB0);
 	frame->fog_density = vram_u32 (vram, state + 0xB8) & 0xFFFF;
 	frame->background = vram_u32 (vram, state + 0x418);
+	frame->stride = (vram_u32 (vram, state + 0xE4) & 0x1F) * 32;
+	sort_translucent (frame.get ());
 	for (n = 0; n < 128; n++)
 		frame->fog_table[n] = (uint16_t) vram_u32 (vram, state + 0x200 + n * 4);
 	ready = std::move (frame);
@@ -369,6 +431,12 @@ Neon250::kick ()
 		run_ccb (RING + ring_read);
 		ring_read = (ring_read + 64) & RING_MASK;
 	}
+}
+
+void
+Neon250::vblank ()
+{
+	raise (8);
 }
 
 int
@@ -491,10 +559,12 @@ Neon250::load_state (hl::State *state)
  * The texture word:
  *
  *  31	 Mipmapped: the smaller levels first, the largest last
- *  30	 VQ: a 2048-byte code book of four texels each, then a byte per 2x2
+ *  30	 VQ: a 2048-byte code book of four texels each, then a byte per 2x2;
+ *	 with bit 26, a byte per texel, the entry's first texel (Smashing Drive)
  *  29-27 0 ARGB1555, 1 RGB565, 2 ARGB4444, 3 YUV422, 4 bump, 5 ARGB8888 (the
  *	 Dreamcast's: paletted)
  *  26	 The lines in order (else twiddled: x and y's bits interleaved)
+ *  25	 Those lines as long as the chip state's stride (+E4, in 32 texels)
  *  20-0 Its address in the VRAM, in 32 bytes (the Dreamcast's: in 8)
  *
  * The TSP word's bits 5-3 and 2-0: 8 << the width, and the height.
@@ -576,29 +646,50 @@ mip_bytes (uint32_t tcw, unsigned w)
 	return ((tcw >> 30) & 1) ? mip_texels (w / 2) + 1 : mip_texels (w) * 2 + 6;
 }
 
-static uint32_t
-texture_bytes (uint32_t tcw, unsigned w, unsigned h)
+/* A line's texels, the lines being in order */
+static inline unsigned
+scan_width (uint32_t tcw, unsigned w, unsigned stride)
 {
+	return (((tcw >> 25) & 1) && stride) ? stride : w;
+}
+
+static uint32_t
+texture_bytes (uint32_t tcw, unsigned w, unsigned h, unsigned stride)
+{
+	if (((tcw >> 26) & 1) && !(tcw >> 31)) {
+		unsigned line = scan_width (tcw, w, stride);
+		if ((tcw >> 30) & 1)
+			return 2048 + line * h;
+		return line * h * (((tcw >> 27) & 7) == 5 ? 4 : 2);
+	}
 	if ((tcw >> 30) & 1)
 		return 2048 + mip_bytes (tcw, w) + (w / 2) * (h / 2);
 	return mip_bytes (tcw, w) + w * h * (((tcw >> 27) & 7) == 5 ? 4 : 2);
 }
 
 static void
-decode_texture (std::vector<uint32_t> &out, hl::Buffer *vram, uint32_t tcw, unsigned w, unsigned h)
+decode_texture (std::vector<uint32_t> &out, hl::Buffer *vram, uint32_t tcw, unsigned w, unsigned h,
+                unsigned stride)
 {
 	uint32_t addr = (tcw & 0x1FFFFF) << 5;
 	bool vq = (tcw >> 30) & 1, scan = (tcw >> 26) & 1;
 	unsigned format = (tcw >> 27) & 7, x, y;
 
 	out.resize (w * h);
-	if (addr + texture_bytes (tcw, w, h) > vram->size ()) {
+	if (addr + texture_bytes (tcw, w, h, stride) > vram->size ()) {
 		std::fill (out.begin (), out.end (), 0xFFFF00FFu);
 		return;
 	}
 	const uint8_t *data = (const uint8_t *) vram->ptr (addr);
+	unsigned line = scan_width (tcw, w, stride);
 
-	if (vq) {
+	if (vq && scan) {
+		const uint16_t *book = (const uint16_t *) data;
+		const uint8_t *index = data + 2048;
+		for (y = 0; y < h; y++)
+			for (x = 0; x < w && x < line; x++)
+				out[y * w + x] = texel_rgba (format, book[index[y * line + x] * 4]);
+	} else if (vq) {
 		const uint16_t *book = (const uint16_t *) data;
 		const uint8_t *index = data + 2048 + mip_bytes (tcw, w);
 		for (y = 0; y < h; y += 2) {
@@ -614,7 +705,7 @@ decode_texture (std::vector<uint32_t> &out, hl::Buffer *vram, uint32_t tcw, unsi
 		const uint32_t *t = (const uint32_t *) (data + mip_bytes (tcw, w) * 2);
 		for (y = 0; y < h; y++) {
 			for (x = 0; x < w; x++) {
-				uint32_t c = t[scan ? y * w + x : twiddle (x, y, w, h)];
+				uint32_t c = t[scan ? y * line + x % line : twiddle (x, y, w, h)];
 				out[y * w + x] = (c & 0xFF00FF00) | ((c >> 16) & 255) | ((c & 255) << 16);
 			}
 		}
@@ -626,8 +717,8 @@ decode_texture (std::vector<uint32_t> &out, hl::Buffer *vram, uint32_t tcw, unsi
 	} else {
 		const uint16_t *t = (const uint16_t *) data;
 		for (y = 0; y < h; y++)
-			for (x = 0; x < w; x++)
-				out[y * w + x] = texel_rgba (format, t[y * w + x]);
+			for (x = 0; x < w && x < line; x++)
+				out[y * w + x] = texel_rgba (format, t[y * line + x]);
 	}
 }
 
@@ -644,8 +735,8 @@ Renderer::texture (uint32_t tcw, uint32_t tsp)
 
 	/* Its data can change at any time: a hash of it */
 	uint32_t addr = (tcw & 0x1FFFFF) << 5;
-	uint32_t bytes = texture_bytes (tcw, w, h), i;
-	uint64_t hash = 0xCBF29CE484222325ull;
+	uint32_t bytes = texture_bytes (tcw, w, h, frame->stride), i;
+	uint64_t hash = (0xCBF29CE484222325ull ^ frame->stride) * 0x100000001B3ull;
 	if (addr + bytes <= gpu->vram->size ()) {
 		const uint32_t *p = (const uint32_t *) gpu->vram->ptr (addr);
 		for (i = 0; i < bytes / 4; i++)
@@ -656,7 +747,7 @@ Renderer::texture (uint32_t tcw, uint32_t tsp)
 	t.hash = hash;
 
 	std::vector<uint32_t> rgba;
-	decode_texture (rgba, gpu->vram, tcw, w, h);
+	decode_texture (rgba, gpu->vram, tcw, w, h, frame->stride);
 	if (!t.id)
 		glGenTextures (1, &t.id);
 	glBindTexture (GL_TEXTURE_2D, t.id);

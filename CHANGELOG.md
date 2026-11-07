@@ -9,8 +9,13 @@ In preparation
 --------------
 
 - Gaelco's games play: ATV Track, Gaelco Football and Smashing Drive, in all
-  their sets, with their pictures, sound, controls and test menus. Their
-  settings and scores are kept. No cabinet link, motion or lamps yet.
+  their sets, at their 60 frames a second, with their pictures, sound,
+  controls and test menus. Their settings and scores are kept.
+- Gaelco Football's player 2 has their rows in the Controls tab.
+- Smashing Drive's two cabinets link, over `[Network]`.
+- ATV Track's and Smashing Drive's steering motor drives the force feedback;
+  the Gaelco games' lamps, coin counters and Smashing Drive's seat motor go to
+  the network outputs.
 - NASCAR Arcade: the V key, its view change since 0.4.2, no longer makes the
   3D vanish until the next start. The renderer's debugging keys (V and other
   letters, 1, 2, 3) no longer change the picture in normal use.

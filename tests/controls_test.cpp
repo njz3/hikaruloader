@@ -436,6 +436,15 @@ test_view_change (void)
 	       hl::Controls::get ().value ("Driving", "ViewChange") == "KEY_V, GC0_BUTTON_Y");
 }
 
+/* Gaelco Football's player 2: MAME's keys, the second controller */
+static void
+test_player2 (void)
+{
+	check ("player 2: start", hl::Controls::get ().value ("Common", "P2_Start") == "KEY_2, GC1_BUTTON_START");
+	check ("player 2: up", hl::Controls::get ().value ("Digital", "P2_Up").rfind ("KEY_R, GC1_BUTTON_DPUP", 0) == 0);
+	check ("player 2: button 3", hl::Controls::get ().value ("Digital", "P2_Button3") == "KEY_Q, GC1_BUTTON_X");
+}
+
 int
 main (int argc, char **argv)
 {
@@ -459,6 +468,7 @@ main (int argc, char **argv)
 		test_devices (dir.generic_string ());
 		test_gearbox ();
 		test_view_change ();
+		test_player2 ();
 		SDL_Quit ();
 	}
 

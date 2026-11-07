@@ -62,6 +62,14 @@ static const struct {
 	const char	*meaning;
 } game_outputs[] = {
 	{ "airtrix",	1, "LampStart",		N_("Start button lamp") },
+	{ "atvtrack",	1, "LampStart",		N_("Start button lamp") },
+	{ "atvtrack",	2, "CoinCounter",	N_("Coin counter") },
+	{ "gfootbal",	1, "LampStart1",	N_("Player 1's start button lamp") },
+	{ "gfootbal",	2, "LampStart2",	N_("Player 2's start button lamp") },
+	{ "gfootbal",	3, "CoinCounter",	N_("Coin counter") },
+	{ "smashdrv",	1, "LampStart",		N_("Start button lamp") },
+	{ "smashdrv",	2, "CoinCounter",	N_("Coin counter") },
+	{ "smashdrv",	3, "SeatMotor",		N_("Seat motor") },
 	{ "airtrix",	2, "LampLeftUpper",	N_("Left upper lamp") },
 	{ "airtrix",	3, "LampRightLower",	N_("Right lower lamp") },
 	{ "airtrix",	4, "LockMecha",		N_("The board's lock (LOCK MECHA.), released at 1") },

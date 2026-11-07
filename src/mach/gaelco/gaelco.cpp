@@ -97,7 +97,8 @@
  *  1	the data bits' direction (Smashing Drive: the FPGA's configuration)
  *  0	Smashing Drive: the FPGA configuration's clock
  *
- * The ADC and the DAC are 4-channel serial chips.
+ * The ADC and the DAC are 4-channel serial chips. System's bit 1 set: no outputs
+ * meant, the data bits being inputs.
  *
  * What each game has there, from their own input tests:
  *
@@ -112,15 +113,19 @@
 
 #include <algorithm>
 #include <cmath>
+#include <deque>
 #include <vector>
 
 #include "hl/core.h"
 #include "hl/config.h"
 #include "hl/controls.h"
 #include "hl/games.h"
+#include "hl/ffb.h"
 #include "hl/input.h"
+#include "hl/outputs.h"
 #include "hl/paths.h"
 #include "hl/profile.h"
+#include "hl/ringlink.h"
 #include "hl/state.h"
 
 #include "cpu/sh/sh4.h"
@@ -157,6 +162,16 @@ public:
 	int save_state (hl::State *state) override;
 	int load_state (hl::State *state) override;
 
+	/* The link: its words sent and received, the master's DMA channels 1 and
+	 * 0 taking them */
+	void link_start ();
+	void link_send (uint32_t word);
+	void link_run ();
+	hl::RingLink ring;
+	std::vector<uint32_t> link_out;
+	std::deque<uint32_t> link_in;
+	bool link_open;
+
 	/* The SH-4 cycles a second */
 	uint64_t cpu_hz;
 	/* The frame's samples at 32 kHz, four a sample (as the DAC's) */
@@ -181,6 +196,8 @@ Fpga::reset (hl::ResetType type)
 	acc = 0;
 	started = false;
 	out.clear ();
+	link_out.clear ();
+	link_in.clear ();
 }
 
 int
@@ -219,6 +236,7 @@ Fpga::put (unsigned size, uint32_t addr, uint64_t val)
 	case 0x04:
 		link = (uint32_t) val;
 		HL_LOG ("fpga: link port = %08X", link);
+		link_send ((uint32_t) val);
 		break;
 	default:
 		HL_LOG ("fpga: unhandled write %08X = %08X", addr, (uint32_t) val);
@@ -281,6 +299,78 @@ Fpga::load_state (hl::State *state)
 	LOAD (started);
 	out.clear ();
 	return ret;
+}
+
+/*
+ * The Link
+ * ========
+ *
+ * The DB9's RS-422, Smashing Drive's Link setting (master, slave): each word
+ * written at the control register 04 goes out, bit 31 of 00 telling it can; the
+ * DMA channel 1 can send them, and the channel 0 takes those that come into the
+ * RAM. Over [Network]'s ring (hl::RingLink), a word's 32 bits at a time, opened
+ * when the game waits for its first word or sends one.
+ */
+
+enum { LINK_WORDS = 1 };
+
+void
+Fpga::link_start ()
+{
+	const hl::Config *cfg = hl::Config::get ();
+
+	link_open = true;
+	if (!cfg->link)
+		return;
+	ring.set_queued (true);
+	if (!ring.open (cfg->port_in, cfg->address_out, cfg->port_out))
+		HL_ERROR ("gaelco: the link cannot open port %u", cfg->port_in);
+	else
+		HL_PRINT ("gaelco: the link: in on port %u, out to %s:%u", cfg->port_in,
+		          cfg->address_out, cfg->port_out);
+}
+
+void
+Fpga::link_send (uint32_t word)
+{
+	if (!link_open)
+		link_start ();
+	link_out.push_back (word);
+}
+
+void
+Fpga::link_run ()
+{
+	Sh4 *sh = (Sh4 *) ((Gaelco *) mach)->sh_m;
+
+	while (sh->dma_ready (1))
+		link_send (sh->dma_from_memory (1));
+	if (!ring.is_open ()) {
+		link_out.clear ();
+		return;
+	}
+	ring.poll ();
+	if (!link_out.empty ()) {
+		ring.send (LINK_WORDS, link_out.data (), (uint32_t) (link_out.size () * 4));
+		link_out.clear ();
+	}
+	{
+		std::vector<uint8_t> data;
+		uint32_t type;
+		size_t i;
+
+		while (ring.receive (&type, data, 0)) {
+			for (i = 0; type == LINK_WORDS && i + 4 <= data.size (); i += 4) {
+				uint32_t word;
+				memcpy (&word, &data[i], 4);
+				link_in.push_back (word);
+			}
+		}
+	}
+	while (!link_in.empty () && sh->dma_ready (0)) {
+		sh->dma_to_memory (0, link_in.front ());
+		link_in.pop_front ();
+	}
 }
 
 /*
@@ -650,6 +740,88 @@ adc_clock (Gaelco *gaelco, bool cs, bool clk, bool di)
 	}
 }
 
+static void lamps_tell (Gaelco *gaelco);
+
+/* The DAC, seen selected on the port's bit 6: 11-bit words, MSB first, two or
+ * three at each selection. A word with its bits 10 and 9 clear is the steering
+ * motor's, one side a word (bit 8) and its strength (bits 7-0): ATV Track's
+ * test writes 7F on side 1 with the handlebar held right, whose spring pushes
+ * left; on Smashing Drive, the same on side 0. Bit 9 alone is Smashing Drive's
+ * seat motor (its OUTPUT TEST), told on the outputs */
+static void
+dac_clock (Gaelco *gaelco, bool cs, bool clk, bool di)
+{
+	auto &dac = gaelco->dac;
+
+	if (cs && clk && !dac.clk) {
+		dac.word = (dac.word << 1) | (di ? 1 : 0);
+		dac.bits++;
+	}
+	if (!cs && dac.cs) {
+		unsigned bits;
+
+		for (bits = dac.bits; bits >= 11; bits -= 11) {
+			unsigned word = (unsigned) (dac.word >> (bits - 11)) & 0x7FF;
+			if (!(word >> 9))
+				dac.side[word >> 8] = word & 0xFF;
+			else if ((word >> 9) == 1)
+				dac.seat = word & 0xFF;
+		}
+		dac.bits = 0;
+		dac.word = 0;
+		lamps_tell (gaelco);
+		if (gaelco->inputs != Gaelco::INPUTS_FOOTBALL) {
+			unsigned left = gaelco->inputs == Gaelco::INPUTS_ATV ? 1 : 0;
+			dac.force = (int) dac.side[left] - (int) dac.side[left ^ 1];
+		}
+	}
+	dac.cs = cs;
+	dac.clk = clk;
+}
+
+/* A frame's force: over two, as the games pulse the motor a frame in two, on
+ * and off, which its inertia smooths */
+static void
+motor_frame (Gaelco *gaelco)
+{
+	auto &dac = gaelco->dac;
+	int force = dac.force + dac.last;
+
+	dac.last = dac.force;
+	if (gaelco->inputs != Gaelco::INPUTS_FOOTBALL && force != dac.told) {
+		dac.told = force;
+		hl::ForceFeedback::set (hl::ForceFeedback::CONSTANT,
+		                        std::clamp (force / 254.0f, -1.0f, 1.0f), gaelco->frame);
+	}
+}
+
+/* The lamps and the coin counter, on the outputs; Gaelco Football's two start
+ * lamps at bits 4 and 5, one for the others at bit 4 */
+static void
+lamps_tell (Gaelco *gaelco)
+{
+	uint16_t val = gaelco->system_port;
+	uint8_t out = 0;
+
+	if (val & 0x10)
+		out |= 0x80;
+	if (gaelco->inputs == Gaelco::INPUTS_FOOTBALL) {
+		if (val & 0x20)
+			out |= 0x40;
+		if (val & 0x08)
+			out |= 0x20;
+	} else {
+		if (val & 0x08)
+			out |= 0x40;
+		if (gaelco->dac.seat)
+			out |= 0x20;
+	}
+	if (out != gaelco->lamps) {
+		gaelco->lamps = out;
+		hl::Outputs::get ()->jvs (&out, 1);
+	}
+}
+
 /* A switch, active low */
 static inline uint16_t
 low_if (bool on, unsigned bit)
@@ -676,7 +848,7 @@ port_inputs (Gaelco *gaelco, unsigned select)
 			in &= low_if (Input::action (hl::ACTION_COIN1), 8);
 			break;
 		case 0x6800:
-			/* Player 1; player 2 at 5800, not on the keyboard */
+			/* Player 1 */
 			in &= low_if (Input::action (hl::ACTION_UP), 3);
 			in &= low_if (Input::action (hl::ACTION_DOWN), 4);
 			in &= low_if (Input::action (hl::ACTION_RIGHT), 5);
@@ -686,6 +858,21 @@ port_inputs (Gaelco *gaelco, unsigned select)
 			in &= low_if (Input::action (hl::ACTION_BUTTON3), 9);
 			in &= low_if (Input::action (hl::ACTION_START1), 10);
 			break;
+		case 0x5800: {
+			/* Player 2 */
+			hl::Controls &c = hl::Controls::get ();
+			if (!c.is_enabled ())
+				break;
+			in &= low_if (c.pressed ("Digital", "P2_Up"), 3);
+			in &= low_if (c.pressed ("Digital", "P2_Down"), 4);
+			in &= low_if (c.pressed ("Digital", "P2_Right"), 5);
+			in &= low_if (c.pressed ("Digital", "P2_Left"), 6);
+			in &= low_if (c.pressed ("Digital", "P2_Button1"), 7);
+			in &= low_if (c.pressed ("Digital", "P2_Button2"), 8);
+			in &= low_if (c.pressed ("Digital", "P2_Button3"), 9);
+			in &= low_if (c.pressed ("Common", "P2_Start"), 10);
+			break;
+		}
 		}
 		return in;
 	}
@@ -754,6 +941,13 @@ porta_put_m (Sh4 *ctx, uint16_t val)
 	}
 	if ((val & 0xF800) == 0xF800)
 		adc_clock (gaelco, (val >> 6) & 1, (val >> 5) & 1, (val >> 3) & 1);
+	if ((val & 0xF800) == 0xF800)
+		dac_clock (gaelco, (val >> 6) & 1, (val >> 5) & 1, (val >> 4) & 1);
+	/* Bit 1 set: the data bits are inputs */
+	if ((val & 0xF800) == 0x7800 && !(val & 2)) {
+		gaelco->system_port = val;
+		lamps_tell (gaelco);
+	}
 	return 0;
 }
 
@@ -986,8 +1180,15 @@ Gaelco::run_frame ()
 			sh_s->run (cycles_per_line);
 		}
 		fpga->exec (cycles_per_line);
+		if (line == 480)
+			gpu->vblank ();
+		if (fpga->link_open)
+			fpga->link_run ();
+		else if (((Sh4 *) sh_m)->dma_ready (0))
+			fpga->link_start ();
 	}
 	mix_audio (this);
+	motor_frame (this);
 	keep_nvram ();
 	return 0;
 }
@@ -1002,6 +1203,9 @@ Gaelco::on_reset (hl::ResetType type)
 	memset (&adc, 0, sizeof (adc));
 	adc.cs = true;
 	adc.out = true;
+	memset (&dac, 0, sizeof (dac));
+	lamps = 0;
+	system_port = 0;
 
 	/* The slave held until the master lets it go */
 	slave_enabled = false;
@@ -1039,6 +1243,9 @@ Gaelco::on_load_state (hl::State *state)
 	LOAD (slave_enabled);
 	LOAD (slave_held);
 	LOAD (adc);
+	LOAD (dac);
+	LOAD (lamps);
+	LOAD (system_port);
 	return ret;
 }
 
@@ -1051,6 +1258,9 @@ Gaelco::on_save_state (hl::State *state)
 	SAVE (slave_enabled);
 	SAVE (slave_held);
 	SAVE (adc);
+	SAVE (dac);
+	SAVE (lamps);
+	SAVE (system_port);
 	return ret;
 }
 
@@ -1194,17 +1404,17 @@ gaelco_init (Gaelco *gaelco)
 		gaelco->flash->name = "flash";
 	}
 
+	hl::Outputs::get ()->board (8, false);
 	gaelco->fpga = new Fpga (mach);
 	gaelco->gpu = new Neon250 (mach, gaelco->vram);
 	gaelco->renderer = new Renderer (gaelco->gpu);
 	if (!gaelco->fpga || !gaelco->gpu || !gaelco->renderer)
 		return -1;
 
-	/* The SH-4s' clock over VGA's lines: 3/2 of [Emulation] SH4_CLOCK, whose
-	 * default 100 fits the Hikaru's games. These need it: at 100 MHz they run
-	 * out of time and their frames come out incomplete; 150 of the board's
-	 * 200 MHz draws them whole, within a PC's reach */
-	gaelco->cycles_per_line = (unsigned) ((uint64_t) hl::Config::sh4_clock_mhz () * 3 / 2 * MHZ / (60 * LINES));
+	/* The SH-4s' clock over VGA's lines: twice [Emulation] SH4_CLOCK, whose
+	 * default 100 fits the Hikaru's games: the board's 200 MHz, which these need
+	 * for their 60 frames a second (half of them at 100 MHz) */
+	gaelco->cycles_per_line = (unsigned) ((uint64_t) hl::Config::sh4_clock_mhz () * 2 * MHZ / (60 * LINES));
 	gaelco->fpga->cpu_hz = (uint64_t) gaelco->cycles_per_line * LINES * 60;
 	mach->audio_channels = 2;
 
@@ -1221,6 +1431,12 @@ gaelco_init (Gaelco *gaelco)
 	/* Smashing Drive's master: its pages, all their own addresses, set once.
 	 * Not its slave, whose TLB misses at the start page its files in */
 	((Sh4 *) gaelco->sh_m)->mmu_trusted = true;
+	/* Their RAMs, which they alone write, and Smashing Drive's ROM: their code
+	 * compared once a code epoch (sh4-blocks.h), the translations linked */
+	for (hl::Cpu *cpu : { gaelco->sh_m, gaelco->sh_s }) {
+		((Sh4 *) cpu)->blocks.own (0x0C000000, 0x0CFFFFFF);
+		((Sh4 *) cpu)->blocks.own (0x00000000, 0x03FFFFFF);
+	}
 	((Sh4 *) gaelco->sh_m)->cpu_hz = (uint32_t) gaelco->fpga->cpu_hz;
 	((Sh4 *) gaelco->sh_s)->cpu_hz = (uint32_t) gaelco->fpga->cpu_hz;
 	/* The 33 MHz crystal: the games' timers count it */

@@ -44,6 +44,7 @@ static const char *default_file =
 	"P1_Coin = KEY_5\n"
 	"P2_Coin = KEY_6\n"
 	"P1_Start = KEY_Return, GC0_BUTTON_START\n"
+	"P2_Start = KEY_2, GC1_BUTTON_START\n"
 	"ExitGame = KEY_F9, GC0_BUTTON_GUIDE + GC0_BUTTON_START\n"
 	"\n"
 	"[Digital]\n"
@@ -56,6 +57,13 @@ static const char *default_file =
 	"P1_Button3 = KEY_LeftShift, GC0_BUTTON_X\n"
 	"P1_Button4 = KEY_Z, GC0_BUTTON_Y\n"
 	"P1_Card1Insert = KEY_F7, GC0_BUTTON_GUIDE + GC0_BUTTON_Y\n"
+	"P2_Up = KEY_R, GC1_BUTTON_DPUP, GC1_AXIS_LEFTY_NEGATIVE\n"
+	"P2_Down = KEY_F, GC1_BUTTON_DPDOWN, GC1_AXIS_LEFTY_POSITIVE\n"
+	"P2_Left = KEY_D, GC1_BUTTON_DPLEFT, GC1_AXIS_LEFTX_NEGATIVE\n"
+	"P2_Right = KEY_G, GC1_BUTTON_DPRIGHT, GC1_AXIS_LEFTX_POSITIVE\n"
+	"P2_Button1 = KEY_A, GC1_BUTTON_A\n"
+	"P2_Button2 = KEY_S, GC1_BUTTON_B\n"
+	"P2_Button3 = KEY_Q, GC1_BUTTON_X\n"
 	"\n"
 	"[Driving]\n"
 	"P1_Steer = GC0_AXIS_LEFTX, JOY0_AXIS_0\n"
@@ -130,6 +138,7 @@ static const struct {
 	{ "Common", "P1_Coin", "Coin 1" },
 	{ "Common", "P2_Coin", "Coin 2" },
 	{ "Common", "P1_Start", "Start" },
+	{ "Common", "P2_Start", "Player 2's start (Gaelco Football)" },
 	{ "Common", "ExitGame", "Quits the emulator (Guide + Start on a controller)" },
 	{ "Digital", NULL, "Player 1's stick and buttons" },
 	{ "Digital", "P1_Up", "Up" },
@@ -142,6 +151,13 @@ static const struct {
 	{ "Digital", "P1_Button4", "Button 4" },
 	{ "Digital", "P1_Card1Insert",
 	  "The card, at the card reader's slot (Virtual-On 4), or taken back" },
+	{ "Digital", "P2_Up", "Player 2's stick and buttons (Gaelco Football): up" },
+	{ "Digital", "P2_Down", "Down" },
+	{ "Digital", "P2_Left", "Left" },
+	{ "Digital", "P2_Right", "Right" },
+	{ "Digital", "P2_Button1", "Button 1" },
+	{ "Digital", "P2_Button2", "Button 2" },
+	{ "Digital", "P2_Button3", "Button 3" },
 	{ "Driving", NULL,
 	  "The wheel and the pedals: the I/O board's analog channels 0, 1 and 2" },
 	{ "Driving", "P1_Steer",

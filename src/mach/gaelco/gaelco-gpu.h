@@ -50,6 +50,7 @@ struct Frame {
 	std::vector<Batch> batches;
 	float max_z;
 	uint32_t background;
+	unsigned stride;	/* in order textures' lines, in texels */
 	/* The chip state's fog: its colour, density, and the table */
 	uint32_t fog_color;
 	uint32_t fog_density;
@@ -73,6 +74,8 @@ public:
 	/* The frame to show, once a new one is there (else NULL): the
 	 * renderer's from then on */
 	std::unique_ptr<Frame> take_frame () { return std::move (ready); }
+	/* The screen's vertical blank */
+	void vblank ();
 
 	/* The frames drawn, from the reset */
 	uint32_t frames;

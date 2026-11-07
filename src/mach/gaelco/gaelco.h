@@ -103,6 +103,21 @@ public:
 		bool out;		/* DO */
 	} adc;
 
+	/* The DAC: the serial word being shifted in, the steering motor's two
+	 * sides, its force last told */
+	struct {
+		bool cs, clk;
+		unsigned bits;
+		uint64_t word;
+		unsigned side[2];
+		int force, last, told;
+		unsigned seat;
+	} dac;
+	/* The lamps' and the coin counter's outputs last told, from the system
+	 * port's last value */
+	uint8_t lamps;
+	uint16_t system_port;
+
 	/* Memories */
 	hl::Buffer *shared;	/* 1 KB in the FPGA, both CPUs' */
 	hl::Buffer *ram_m;

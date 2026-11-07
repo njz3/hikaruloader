@@ -233,23 +233,19 @@ Board videos:
 GAELCO (src/mach/gaelco)
 ------------------------
 
-ATV Track, Gaelco Football and Smashing Drive play. Still to do:
+ATV Track, Gaelco Football and Smashing Drive play, two Smashing Drive linked.
+Still to do:
 
-- The speed: below 60 frames a second on the laptop at 150 MHz (49 to 53);
-  half of the master's time goes to chaining blocks (sh4_chain, peek, the
-  idle look), which a direct link between translations would save.
-- The Neon 250's interrupts: 7 is raised at once, a real delay making the
-  games split their scenes over frames; 8 and 15 are unmasked and not raised
-  (15 at each vblank hangs ATV Track). The frame rate is therefore not locked
-  to 60 and the games can draw more frames than are shown.
-- The renderer: the translucent polygons in the lists' order, not sorted;
-  no modifier volumes; the texture formats 3, 4 and 6, the stride bit, and the
-  palettes unchecked; mipmaps generated, not read; the background plane's
-  colour alone. ATV Track's and Smashing Drive's screen test patterns come out
-  scrambled. Gaelco Football's "out" box looks doubled.
+- The renderer: the translucent polygons sorted by triangle, not by pixel; no
+  modifier volumes; the texture formats 3, 4 and 6 and the palettes unchecked;
+  mipmaps generated, not read; the background plane's colour alone. Gaelco
+  Football's "out" box looks doubled.
+- Interrupt 7 (a frame drawn) is raised at once; 15 is unmasked and not raised
+  (at each vertical blank it hangs ATV Track).
 - Smashing Drive's volume: pressed up at each start, as it starts at 0 and is
-  kept nowhere found in its flash.
-- Gaelco Football's player 2 (port 5800: as player 1's on 6800), the "ball
-  test" in its test menu; the DAC's IRL pins are still a guess, which plays.
-- ATV Track's steering motor (a DAC output of JP3, shown in its input test), the
-  lamps, the coin counter, the motion outputs and the RS-422 link (DB9).
+  kept nowhere found in its flash; the overlay shows meanwhile.
+- The force feedback's direction and strength on a real wheel; Smashing Drive's
+  wheel polarity is taken from what it writes at its ends.
+- ATV Track's and Gaelco Football's link, if any: only Smashing Drive's menu has
+  one; ATV Track's motion outputs.
+- Gaelco Football's "ball test" in its test menu.

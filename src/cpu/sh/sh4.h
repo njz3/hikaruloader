@@ -285,6 +285,11 @@ public:
 	/* The clock its cycles run at, in Hz (the machine's), which the timers
 	 * count against: 200 MHz on the board */
 	uint32_t	cpu_hz = 200000000;
+	/* An external device's DMA requests, a 32-bit word each: the channel
+	 * ready for one, from it to the memory, from the memory to it */
+	bool		dma_ready (unsigned ch);
+	void		dma_to_memory (unsigned ch, uint32_t word);
+	uint32_t	dma_from_memory (unsigned ch);
 	/* The peripherals' clock, Pφ: the Hikaru's 200 MHz / 4 by default */
 	uint32_t	pclk_hz = 50000000;
 	/* The last TCNT read: where from (PC, PR, r15), the far stores then */
