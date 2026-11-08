@@ -5,8 +5,8 @@ What each version brings, for those who play. How the versions are numbered
 and released: [DEVELOPMENT.md](DEVELOPMENT.md), "Versions and releases".
 
 
-In preparation
---------------
+0.5.4 (2026-11-08)
+------------------
 
 - Star Wars: Racer Arcade's left and right buttons where the Controls tab
   says: the two were swapped, as the game's input test showed.
