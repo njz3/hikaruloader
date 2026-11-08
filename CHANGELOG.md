@@ -5,8 +5,8 @@ What each version brings, for those who play. How the versions are numbered
 and released: [DEVELOPMENT.md](DEVELOPMENT.md), "Versions and releases".
 
 
-In preparation
---------------
+0.5.2 (2026-11-08)
+------------------
 
 - ATV Track and Smashing Drive a third faster to emulate, for older PCs:
   their main CPU's wait for each frame, which polls the board, is no longer
