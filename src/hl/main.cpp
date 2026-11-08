@@ -17,6 +17,7 @@
  * along with Hikaruloader.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "hl/pointers.h"
 #include "hl/emulator.h"
 #include "hl/shell.h"
 #include "hl/window.h"
@@ -285,6 +286,7 @@ main (const int argc, char **argv)
 
 	if (hl::Window::open (640 * cfg->window_scale, 480 * cfg->window_scale))
 		goto fail;
+	hl::Pointers::init (hl::Window::sdl_window ());
 	if (!ui::Interface::init (hl::Window::sdl_window ()))
 		HL_ERROR ("could not start the interface");
 	hl::Window::set_overlay (ui::Interface::draw_overlay);

@@ -312,8 +312,22 @@ public:
 			GLuint		u_max_nodes;
 			GLuint		u_tag;
 			GLuint		u_opaque_depth;
+			GLuint		u_family;
+			GLuint		u_eye;
+			GLuint		u_flagged_eye;
 		} locs;
 	} meshes;
+
+	/* A view with both families of the depth bias (see "The depth bias"
+	 * in the .cpp): each one's eye depths and scale, the flagged one's
+	 * depth, where each is drawn; the family drawn into now, -1 the scene */
+	struct {
+		bool on;
+		int current;
+		unsigned w, h;
+		GLuint eye[2], flag_depth, fb[2];
+		GLuint scene, color, depth;
+	} families = {};
 
 	/* Translucency: the translucent meshes' fragments kept in a list a
 	 * pixel, then blended from the farthest (OpenGL 4.3, without MSAA;

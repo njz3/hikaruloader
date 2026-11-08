@@ -41,6 +41,7 @@
 #include "hl/ffb.h"
 #include "hl/gearbox.h"
 #include "hl/input.h"
+#include "hl/pointers.h"
 #include "hl/telemetry.h"
 #include "hl/window.h"
 
@@ -468,6 +469,18 @@ Agent::run (const std::string &line)
 			reply ("ok");
 		else
 			reply ("err cannot load %s", args);
+	} else if (!strcmp (cmd, "pointer")) {
+		/* A mouse or a light gun: N X Y BUTTONS [OFFSCREEN] */
+		unsigned n = 0, buttons = 0, off = 0;
+		double x = 0.0, y = 0.0;
+
+		if (sscanf (args, "%u %lf %lf %u %u", &n, &x, &y, &buttons, &off) >= 4) {
+			Pointers::inject (n, { x, y, off != 0, buttons });
+			/* The bindings read, for the pointers to count */
+			Controls::get ().set_enabled (true);
+			reply ("ok");
+		} else
+			reply ("err usage: pointer N X Y BUTTONS [OFFSCREEN]");
 	} else if (!strcmp (cmd, "state")) {
 		/* F4, F1, F2 and F3 */
 		int ret = 0;

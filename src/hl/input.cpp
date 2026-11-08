@@ -75,7 +75,7 @@ static const struct {
 	{ "LEFT_BRAKE",	"Gaelco",	"LeftBrake",	{ SDLK_UNKNOWN,	-1 } },
 	{ "RIGHT_BRAKE", "Gaelco",	"RightBrake",	{ SDLK_UNKNOWN,	-1 } },
 	{ "HORN",	"Gaelco",	"Horn",		{ SDLK_UNKNOWN,	-1 } },
-	{ "PAUSE",	"Emulator",	"Pause",	{ SDLK_SPACE,	-1 } },
+	{ "PAUSE",	"Emulator",	"Pause",	{ SDLK_p,	-1 } },
 	{ "SAVE_STATE",	"Emulator",	"SaveState",	{ SDLK_F4,	-1 } },
 	{ "LOAD_STATE",	"Emulator",	"LoadState",	{ SDLK_F1,	-1 } },
 	{ "STATE_NEWER", "Emulator",	"StateNewer",	{ SDLK_F2,	-1 } },

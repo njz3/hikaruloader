@@ -24,6 +24,7 @@
 #include <SDL.h>
 
 #include "hl/controls.h"
+#include "hl/pointers.h"
 #include "hl/config.h"
 #include "hl/input.h"
 
@@ -37,6 +38,8 @@ static const char *default_file =
 	"Steer_DeadZone = 500\n"
 	"Gas_DeadZone = 500\n"
 	"Brake_DeadZone = 500\n"
+	"Aim_DeadZone = 4000\n"
+	"Aim_Speed = 100\n"
 	"\n"
 	"[Common]\n"
 	"Test = KEY_F5\n"
@@ -84,6 +87,31 @@ static const char *default_file =
 	"P1_LeftLever = GC0_AXIS_LEFTY_NEGATIVE_SIDE\n"
 	"P1_RightLever = GC0_AXIS_RIGHTY_NEGATIVE_SIDE\n"
 	"\n"
+	"[Pointer]\n"
+	"P1_AimX = MOUSE0_X, GC0_AXIS_LEFTX\n"
+	"P1_AimY = MOUSE0_Y, GC0_AXIS_LEFTY\n"
+	"P1_AimX_Left = KEY_Left\n"
+	"P1_AimX_Right = KEY_Right\n"
+	"P1_AimY_Left = KEY_Up\n"
+	"P1_AimY_Right = KEY_Down\n"
+	"P1_Water = MOUSE0_BUTTON_LEFT\n"
+	"P1_Fog = MOUSE0_BUTTON_RIGHT\n"
+	"P1_OffScreen = MOUSE0_OFFSCREEN\n"
+	"P2_AimX = MOUSE1_X, GC1_AXIS_LEFTX\n"
+	"P2_AimY = MOUSE1_Y, GC1_AXIS_LEFTY\n"
+	"P2_Water = MOUSE1_BUTTON_LEFT, GC1_BUTTON_A\n"
+	"P2_Fog = MOUSE1_BUTTON_RIGHT, GC1_BUTTON_B\n"
+	"P2_OffScreen = MOUSE1_OFFSCREEN\n"
+	"P1_StickX = MOUSE0_X, GC0_AXIS_LEFTX\n"
+	"P1_StickY = MOUSE0_Y, GC0_AXIS_LEFTY\n"
+	"P1_StickX_Left = KEY_Left\n"
+	"P1_StickX_Right = KEY_Right\n"
+	"P1_StickY_Left = KEY_Up\n"
+	"P1_StickY_Right = KEY_Down\n"
+	"P1_Bullet = MOUSE0_BUTTON_LEFT\n"
+	"P1_Missile = MOUSE0_BUTTON_RIGHT\n"
+	"P1_Bomb = MOUSE0_BUTTON_MIDDLE\n"
+	"\n"
 	"[Gaelco]\n"
 	"VolumeUp = KEY_PageUp, GC0_BUTTON_DPUP\n"
 	"VolumeDown = KEY_PageDown, GC0_BUTTON_DPDOWN\n"
@@ -92,7 +120,7 @@ static const char *default_file =
 	"Horn = KEY_LeftShift, GC0_BUTTON_X\n"
 	"\n"
 	"[Emulator]\n"
-	"Pause = KEY_Space, GC0_BUTTON_GUIDE + GC0_BUTTON_X\n"
+	"Pause = KEY_P, GC0_BUTTON_GUIDE + GC0_BUTTON_X\n"
 	"SaveState = KEY_F4, GC0_BUTTON_GUIDE + GC0_BUTTON_RIGHTSHOULDER\n"
 	"LoadState = KEY_F1, GC0_BUTTON_GUIDE + GC0_BUTTON_LEFTSHOULDER\n"
 	"StateNewer = KEY_F2\n"
@@ -141,6 +169,8 @@ static const struct {
 	{ "Config", "Steer_DeadZone", "The steering wheel's dead zone" },
 	{ "Config", "Gas_DeadZone", "The accelerator's dead zone" },
 	{ "Config", "Brake_DeadZone", "The brake's dead zone" },
+	{ "Config", "Aim_DeadZone", "The dead zone of a stick moving a sight" },
+	{ "Config", "Aim_Speed", "How fast a stick moves a sight, in percent" },
 	{ "Common", NULL, "The cabinet's switches, in every game" },
 	{ "Common", "Test", "The Test button" },
 	{ "Common", "P1_Service", "The Service button" },
@@ -194,6 +224,26 @@ static const struct {
 	  "forward: an axis or half of one each, with hikaruloader.ini's [Input]\n"
 	  "TWIN_LEVERS = ORIGINAL (COMBINED: P1_Gas and P1_Steer)" },
 	{ "Driving", "P1_RightLever", "The right lever, the right engine's thrust" },
+	{ "Pointer", NULL,
+	  "The games aimed at the screen or flown with a stick, which a mouse or a\n"
+	  "light gun can play: Brave Firefighters' nozzles (Aim, Water, Fog) and\n"
+	  "Planet Harriers' stick (Stick, Bullet, Missile, Bomb). MOUSE0 is the first\n"
+	  "mouse or gun, MOUSE1 the second (hikaruloader.log lists them)" },
+	{ "Pointer", "P1_AimX", "Brave Firefighters: player 1's sight, left to right" },
+	{ "Pointer", "P1_AimY", "Brave Firefighters: player 1's sight, top to bottom" },
+	{ "Pointer", "P1_Water", "Brave Firefighters: player 1's water" },
+	{ "Pointer", "P1_Fog", "Brave Firefighters: player 1's fog" },
+	{ "Pointer", "P1_OffScreen", "Brave Firefighters: player 1's nozzle aimed off the screen" },
+	{ "Pointer", "P2_AimX", "Brave Firefighters: player 2's sight, left to right" },
+	{ "Pointer", "P2_AimY", "Brave Firefighters: player 2's sight, top to bottom" },
+	{ "Pointer", "P2_Water", "Brave Firefighters: player 2's water" },
+	{ "Pointer", "P2_Fog", "Brave Firefighters: player 2's fog" },
+	{ "Pointer", "P2_OffScreen", "Brave Firefighters: player 2's nozzle aimed off the screen" },
+	{ "Pointer", "P1_StickX", "Planet Harriers: the stick, left to right" },
+	{ "Pointer", "P1_StickY", "Planet Harriers: the stick, up to down" },
+	{ "Pointer", "P1_Bullet", "Planet Harriers: bullets, as P1_Button1" },
+	{ "Pointer", "P1_Missile", "Planet Harriers: missiles, as P1_Button2" },
+	{ "Pointer", "P1_Bomb", "Planet Harriers: bombs, as P1_Button3" },
 	{ "Gaelco", NULL,
 	  "The Gaelco cabinets' own buttons, read by their games alone: ATV Track and\n"
 	  "Smashing Drive read none of the Digital rows (Gaelco Football's sticks and\n"
@@ -255,7 +305,10 @@ enum SourceKind {
 	SRC_JOY_HAT,
 	SRC_JOY_AXIS,
 	SRC_GC_BUTTON,
-	SRC_GC_AXIS
+	SRC_GC_AXIS,
+	SRC_MOUSE_AXIS,		/* index 0 X, 1 Y */
+	SRC_MOUSE_BUTTON,
+	SRC_MOUSE_OFFSCREEN
 };
 
 enum AxisPart {
@@ -361,6 +414,43 @@ parse_source (const std::string &text, Controls::Source *s)
 		return s->index != 0;
 	}
 
+	if (!strncasecmp (t.c_str (), "MOUSE", 5)) {
+		static const char *const buttons[Pointers::BUTTONS] = { "LEFT", "RIGHT", "MIDDLE", "X1", "X2" };
+		unsigned b;
+
+		p = t.substr (5);
+		s->player = atoi (p.c_str ());
+		while (!p.empty () && isdigit ((unsigned char) p[0]))
+			p.erase (0, 1);
+		if (p.empty () || p[0] != '_')
+			return false;
+		p.erase (0, 1);
+		s->inverted = ends_with (p, "_INVERTED");
+		if (!strncasecmp (p.c_str (), "X", 1) && (p.size () == 1 || p[1] == '_')) {
+			s->kind = SRC_MOUSE_AXIS;
+			s->index = 0;
+			return true;
+		}
+		if (!strncasecmp (p.c_str (), "Y", 1) && (p.size () == 1 || p[1] == '_')) {
+			s->kind = SRC_MOUSE_AXIS;
+			s->index = 1;
+			return true;
+		}
+		if (!strcasecmp (p.c_str (), "OFFSCREEN")) {
+			s->kind = SRC_MOUSE_OFFSCREEN;
+			return true;
+		}
+		if (strncasecmp (p.c_str (), "BUTTON_", 7))
+			return false;
+		for (b = 0; b < Pointers::BUTTONS; b++)
+			if (!strcasecmp (p.c_str () + 7, buttons[b])) {
+				s->kind = SRC_MOUSE_BUTTON;
+				s->index = (int) b;
+				return true;
+			}
+		return false;
+	}
+
 	gc = !strncasecmp (t.c_str (), "GC", 2);
 	if (!gc && strncasecmp (t.c_str (), "JOY", 3))
 		return false;
@@ -460,6 +550,12 @@ Controls::owns (int player, const std::string &token)
 
 	if (player < 0)
 		return !strncasecmp (token.c_str (), "KEY_", 4);
+	if (player >= MOUSE_PLAYER) {
+		char mouse[16];
+
+		snprintf (mouse, sizeof (mouse), "MOUSE%d_", player - MOUSE_PLAYER);
+		return !strncasecmp (token.c_str (), mouse, strlen (mouse));
+	}
 	snprintf (joy, sizeof (joy), "JOY%d_", player);
 	snprintf (gc, sizeof (gc), "GC%d_", player);
 	return !strncasecmp (token.c_str (), joy, strlen (joy)) ||
@@ -852,6 +948,9 @@ Controls::devices () const
 	for (size_t p = 0; p < players.size (); p++)
 		if (players[p].joystick)
 			out.push_back ({ (int) p, players[p].controller != NULL, players[p].name });
+	const std::vector<std::string> mice = Pointers::names ();
+	for (size_t m = 0; m < mice.size (); m++)
+		out.push_back ({ MOUSE_PLAYER + (int) m, false, mice[m] });
 	return out;
 }
 
@@ -967,7 +1066,10 @@ Controls::source_axis (const Source &s)
 	const Player *p = (s.player >= 0 && s.player < (int) players.size ()) ? &players[s.player] : NULL;
 	double a = 0.0;
 
-	if (s.kind == SRC_JOY_AXIS && p && p->joystick)
+	if (s.kind == SRC_MOUSE_AXIS) {
+		Pointers::State m = Pointers::get ((unsigned) s.player);
+		a = s.index ? m.y : m.x;
+	} else if (s.kind == SRC_JOY_AXIS && p && p->joystick)
 		a = SDL_JoystickGetAxis ((SDL_Joystick *) p->joystick, s.index) / 32767.0;
 	else if (s.kind == SRC_GC_AXIS && p && p->controller)
 		a = SDL_GameControllerGetAxis ((SDL_GameController *) p->controller,
@@ -990,6 +1092,10 @@ Controls::source_pressed (const Source &s, bool hotkey)
 		const Uint8 *keys = SDL_GetKeyboardState (&n);
 		return keyboard_focus () && s.index < n && keys[s.index];
 	}
+	case SRC_MOUSE_BUTTON:
+		return (Pointers::get ((unsigned) s.player).buttons >> s.index) & 1;
+	case SRC_MOUSE_OFFSCREEN:
+		return Pointers::get ((unsigned) s.player).off_screen;
 	case SRC_JOY_BUTTON:
 		return p && p->joystick && SDL_JoystickGetButton ((SDL_Joystick *) p->joystick, s.index);
 	case SRC_JOY_HAT:
@@ -1169,6 +1275,84 @@ Controls::pressed_by (const char *section, const char *key, const SDL_Event *eve
 	return false;
 }
 
+int
+Controls::holder (const char *section, const char *key)
+{
+	const Binding *b = enabled ? binding (section, key) : NULL;
+
+	if (!b)
+		return NOBODY;
+	for (const auto &alt : b->alternatives) {
+		bool held = !alt.empty ();
+
+		for (const Source &s : alt)
+			held = held && source_pressed (s, is_hotkey (alt));
+		if (!held)
+			continue;
+		switch (alt[0].kind) {
+		case SRC_KEY:
+			return -1;
+		case SRC_MOUSE_AXIS:
+		case SRC_MOUSE_BUTTON:
+		case SRC_MOUSE_OFFSCREEN:
+			return MOUSE_PLAYER + alt[0].player;
+		default:
+			return alt[0].player;
+		}
+	}
+	return NOBODY;
+}
+
+/* From one side of the picture to its middle in some 0.7 s, the stick pushed
+ * all the way */
+#define AIM_RATE	1.4
+
+double
+Controls::aim (const char *section, const char *key)
+{
+	const double *h = held_value (section, key);
+	if (h)
+		return std::clamp (*h, -1.0, 1.0);
+
+	const Binding *b = enabled ? binding (section, key) : NULL;
+	Aim &a = aims[key];
+	Uint64 now = SDL_GetPerformanceCounter ();
+	double dt = a.last ? std::min ((double) (now - a.last) / (double) SDL_GetPerformanceFrequency (), 0.05) : 0.0;
+	std::string zone_text = value ("Config", "Aim_DeadZone"), speed_text = value ("Config", "Aim_Speed");
+	double zone = (zone_text.empty () ? 4000 : atoi (zone_text.c_str ())) / 32767.0;
+	double speed = (speed_text.empty () ? 100 : atoi (speed_text.c_str ())) / 100.0;
+	double rate = 0.0;
+
+	a.last = now;
+	if (b)
+		for (const auto &alt : b->alternatives) {
+			const Source &s = alt[0];
+
+			if (s.kind == SRC_MOUSE_AXIS) {
+				double m = source_axis (s);
+
+				if (a.mouse_seen && fabs (m - a.mouse) > 1e-6)
+					a.position = m;
+				a.mouse = m;
+				a.mouse_seen = true;
+			} else if ((s.kind == SRC_JOY_AXIS || s.kind == SRC_GC_AXIS) && s.part == PART_FULL) {
+				/* Squared: slowly near the centre, to aim */
+				double v = apply_deadzone (source_axis (s), zone);
+
+				v *= fabs (v);
+				if (fabs (v) > fabs (rate))
+					rate = v;
+			} else if (source_pressed (s, is_hotkey (alt)))
+				rate = (s.part == PART_NEGATIVE) ? -1.0 : 1.0;
+		}
+	if (pressed (section, (std::string (key) + "_Left").c_str ()))
+		rate = -1.0;
+	if (pressed (section, (std::string (key) + "_Right").c_str ()))
+		rate = 1.0;
+	a.position = std::clamp (a.position + rate * AIM_RATE * speed * dt, -1.0, 1.0);
+	return a.position;
+}
+
 double
 Controls::axis (const char *section, const char *key)
 {
@@ -1188,7 +1372,9 @@ Controls::axis (const char *section, const char *key)
 		for (const auto &alt : b->alternatives) {
 			const Source &s = alt[0];
 			double a;
-			if ((s.kind == SRC_JOY_AXIS || s.kind == SRC_GC_AXIS) && s.part == PART_FULL) {
+			if (s.kind == SRC_MOUSE_AXIS)
+				a = source_axis (s);
+			else if ((s.kind == SRC_JOY_AXIS || s.kind == SRC_GC_AXIS) && s.part == PART_FULL) {
 				a = apply_deadzone (source_axis (s), dz);
 				if (s.kind == SRC_JOY_AXIS)
 					a = steer (a, scale);
@@ -1270,7 +1456,11 @@ Controls::input_state (const std::string &token, bool *on, int *raw)
 		return 0;
 
 	const Source &s = parts[0];
-	if (s.kind != SRC_KEY) {
+	if (s.kind == SRC_MOUSE_AXIS) {
+		*raw = (int) lround (source_axis (s) * 32767.0);
+		return 2;
+	}
+	if (s.kind != SRC_KEY && s.kind != SRC_MOUSE_BUTTON && s.kind != SRC_MOUSE_OFFSCREEN) {
 		const Player *p = (s.player < (int) players.size ()) ? &players[s.player] : NULL;
 		bool gc = s.kind == SRC_GC_AXIS || s.kind == SRC_GC_BUTTON;
 		if (!p || !(gc ? p->controller : p->joystick))
@@ -1353,6 +1543,42 @@ Controls::capture_event (const SDL_Event *event)
 	}
 }
 
+/* A mouse's or a light gun's: a button pressed, for a switch; for an axis,
+ * the way it moved the most */
+bool
+Controls::capture_mouse (std::string &token)
+{
+	static const char *const buttons[Pointers::BUTTONS] = { "LEFT", "RIGHT", "MIDDLE", "X1", "X2" };
+	unsigned n = (unsigned) (capture_player - MOUSE_PLAYER), b;
+	Pointers::State now = Pointers::get (n);
+	char found[64] = "";
+
+	if (!capture_started) {
+		capture_started = true;
+		mouse_buttons = now.buttons;
+		mouse_x = now.x;
+		mouse_y = now.y;
+		return false;
+	}
+	if (capture_kind == CAPTURE_BUTTON) {
+		for (b = 0; b < Pointers::BUTTONS && !found[0]; b++)
+			if ((now.buttons & ~mouse_buttons) >> b & 1)
+				snprintf (found, sizeof (found), "MOUSE%u_BUTTON_%s", n, buttons[b]);
+		mouse_buttons = now.buttons;
+	} else {
+		double dx = fabs (now.x - mouse_x), dy = fabs (now.y - mouse_y);
+
+		if (std::max (dx, dy) > 0.15)
+			snprintf (found, sizeof (found), "MOUSE%u_%c", n, dx > dy ? 'X' : 'Y');
+	}
+	if (!found[0])
+		return false;
+	token = found;
+	capturing = false;
+	HL_PRINT ("controls: captured %s", found);
+	return true;
+}
+
 bool
 Controls::capture_step (std::string &token)
 {
@@ -1363,6 +1589,8 @@ Controls::capture_step (std::string &token)
 
 	if (!capturing)
 		return false;
+	if (capture_player >= MOUSE_PLAYER)
+		return capture_mouse (token);
 
 	/* The state at the start: only a change counts (a pedal held, an
 	 * axis off centre are no input) */
@@ -1486,6 +1714,18 @@ Controls::describe (const std::string &token, const char *(*tr) (const char *), 
 	const char *t = token.c_str ();
 	if (!strncasecmp (t, "KEY_", 4))
 		return token.substr (4);
+	if (sscanf (t, "MOUSE%d_BUTTON_%31s", &device, name) == 2)
+		return !strcasecmp (name, "LEFT") ? tr ("Left button") : !strcasecmp (name, "RIGHT") ? tr ("Right button") :
+		       !strcasecmp (name, "MIDDLE") ? tr ("Middle button") : !strcasecmp (name, "X1") ? tr ("Side button 1") :
+		       tr ("Side button 2");
+	if (sscanf (t, "MOUSE%d_%31s", &device, name) == 2) {
+		std::string rest (name);
+		std::string inverted = ends_with (rest, "_INVERTED") ? std::string (" ") + tr ("inverted") : "";
+
+		if (!strncasecmp (name, "OFFSCREEN", 9))
+			return tr ("Off the screen");
+		return std::string (toupper ((unsigned char) name[0]) == 'X' ? tr ("Left and right") : tr ("Up and down")) + inverted;
+	}
 	if (sscanf (t, "JOY%d_BUTTON_%d%n", &device, &number, &length) == 2 && !t[length]) {
 		/* Only the name: the file keeps SDL's number */
 		snprintf (out, sizeof (out), tr ("Button %d"), number + (buttons_from_one ? 1 : 0));

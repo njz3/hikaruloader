@@ -20,6 +20,42 @@ msgid " (inverted)"
 msgstr ""
 
 #: src/hl/controls.cpp
+msgid "Left button"
+msgstr ""
+
+#: src/hl/controls.cpp
+msgid "Right button"
+msgstr ""
+
+#: src/hl/controls.cpp
+msgid "Middle button"
+msgstr ""
+
+#: src/hl/controls.cpp
+msgid "Side button 1"
+msgstr ""
+
+#: src/hl/controls.cpp
+msgid "Side button 2"
+msgstr ""
+
+#: src/hl/controls.cpp
+msgid "inverted"
+msgstr ""
+
+#: src/hl/controls.cpp
+msgid "Off the screen"
+msgstr ""
+
+#: src/hl/controls.cpp
+msgid "Left and right"
+msgstr ""
+
+#: src/hl/controls.cpp
+msgid "Up and down"
+msgstr ""
+
+#: src/hl/controls.cpp
 msgid "Button %d"
 msgstr ""
 
@@ -53,6 +89,30 @@ msgstr ""
 
 #: src/hl/emulator.cpp
 msgid "%s needs a machine Hikaruloader does not emulate."
+msgstr ""
+
+#: src/hl/outputs.cpp
+msgid "1 while water comes out of player 1's nozzle"
+msgstr ""
+
+#: src/hl/outputs.cpp
+msgid "1 while water comes out of player 2's nozzle"
+msgstr ""
+
+#: src/hl/outputs.cpp
+msgid "1 while player 1 fires"
+msgstr ""
+
+#: src/hl/outputs.cpp
+msgid "1 while player 1's bullet button is held"
+msgstr ""
+
+#: src/hl/outputs.cpp
+msgid "1 while player 1's missile button is held"
+msgstr ""
+
+#: src/hl/outputs.cpp
+msgid "1 while player 1's bomb button is held"
 msgstr ""
 
 #: src/hl/outputs.cpp
@@ -97,6 +157,18 @@ msgstr ""
 
 #: src/hl/outputs.cpp
 msgid "Player 1's nozzle vibration"
+msgstr ""
+
+#: src/hl/outputs.cpp
+msgid "Left revolving light"
+msgstr ""
+
+#: src/hl/outputs.cpp
+msgid "Player 2's nozzle vibration"
+msgstr ""
+
+#: src/hl/outputs.cpp
+msgid "Right revolving light"
 msgstr ""
 
 #: src/hl/outputs.cpp
@@ -775,7 +847,7 @@ msgstr ""
 msgid "MAME romsets (merged, split or non-merged), zips or 7z: <game>.zip or <game>.7z, its parent's and hikaru's for the BIOS. Folders <game>/ with the files unpacked still work."
 msgstr ""
 
-#: src/ui/ui_common.cpp
+#: src/ui/ui_common.cpp src/ui/ui_controls.cpp
 msgid "Automatic"
 msgstr ""
 
@@ -897,6 +969,10 @@ msgstr ""
 
 #: src/ui/ui_controls.cpp
 msgid "Driving"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Mouse and light gun games"
 msgstr ""
 
 #: src/ui/ui_controls.cpp
@@ -1088,6 +1164,66 @@ msgid "Horn, also start (Smashing Drive)"
 msgstr ""
 
 #: src/ui/ui_controls.cpp
+msgid "Sight left and right (Brave Firefighters)"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Sight up and down (Brave Firefighters)"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Water (Brave Firefighters)"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Fog (Brave Firefighters)"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Aimed off the screen (Brave Firefighters)"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Player 2's sight left and right"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Player 2's sight up and down"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Player 2's water"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Player 2's fog"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Player 2 aimed off the screen"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Stick left and right (Planet Harriers)"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Stick up and down (Planet Harriers)"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Bullets (Planet Harriers)"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Missiles (Planet Harriers)"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Bombs (Planet Harriers)"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
 msgid "Pause"
 msgstr ""
 
@@ -1120,6 +1256,10 @@ msgid "Show the frame rate"
 msgstr ""
 
 #: src/ui/ui_controls.cpp
+msgid "Stick moving a sight"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
 msgid "Keyboard"
 msgstr ""
 
@@ -1145,6 +1285,10 @@ msgstr ""
 
 #: src/ui/ui_controls.cpp
 msgid "Press an input of %s for: %s"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Move it along that axis."
 msgstr ""
 
 #: src/ui/ui_controls.cpp
@@ -1249,6 +1393,14 @@ msgstr ""
 
 #: src/ui/ui_controls.cpp
 msgid "The cabinet has no motor: the forces and the rumble are made from what\nthe game does (the engines, the hits, the turns, the ground). Their\nstrengths: [ForceFeedback] in hikaruloader.ini."
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Force feedback device"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "A wheel takes the forces, a controller its motors. Automatic: the first\ndevice with force feedback, and player 1's controller's motors."
 msgstr ""
 
 #: src/ui/ui_controls.cpp

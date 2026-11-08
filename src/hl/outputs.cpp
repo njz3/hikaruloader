@@ -49,12 +49,29 @@ static const uintptr_t NO_SOCKET = (uintptr_t) -1;
 /* A client this far behind reads nothing: dropped */
 static const size_t MAX_PENDING = 64 * 1024;
 
+/* What the player does, sent as outputs: no bit of the board's */
+#define SIGNAL_BIT	(-2)
+
+static const struct {
+	const char	*family;
+	const char	*name;
+	const char	*meaning;
+} game_signals[] = {
+	{ "braveff",	"nozzle1",	N_("1 while water comes out of player 1's nozzle") },
+	{ "braveff",	"nozzle2",	N_("1 while water comes out of player 2's nozzle") },
+	{ "pharrier",	"shot1",	N_("1 while player 1 fires") },
+	{ "pharrier",	"bullet1",	N_("1 while player 1's bullet button is held") },
+	{ "pharrier",	"missile1",	N_("1 while player 1's missile button is held") },
+	{ "pharrier",	"bomb1",	N_("1 while player 1's bomb button is held") },
+};
+
 /* The outputs of each game's OUTPUT TEST, by JVS output (from 1), under
  * Supermodel's kind of names: each item turned on in the test, the output
  * that changed. NASCAR Arcade's test lights its two in turn: its start lamp
  * taken on output 1, as in the other games. Brave Firefighters' menu has no
  * OUTPUT TEST: its start lamps blink with credits, its nozzle shakes as it
- * sprays (player 1's; player 2's nozzle and the revolving lights unseen) */
+ * sprays, player 1's on output 2 and player 2's on output 5 (seen in play);
+ * the revolving lights' outputs from Odin's game list, unseen */
 static const struct {
 	const char	*family;
 	unsigned	 output;
@@ -78,6 +95,9 @@ static const struct {
 	{ "braveff",	1, "LampStart1",	N_("Player 1's start button lamp") },
 	{ "braveff",	2, "NozzleVibration1",	N_("Player 1's nozzle vibration") },
 	{ "braveff",	4, "LampStart2",	N_("Player 2's start button lamp") },
+	{ "braveff",	3, "LampRevolvingLeft",	N_("Left revolving light") },
+	{ "braveff",	5, "NozzleVibration2",	N_("Player 2's nozzle vibration") },
+	{ "braveff",	6, "LampRevolvingRight",	N_("Right revolving light") },
 	{ "pharrier",	1, "LampStart",		N_("Start button lamp") },
 	{ "pharrier",	2, "LampVrR",		N_("VR R button lamp") },
 	{ "pharrier",	3, "LampVrL",		N_("VR L button lamp") },
@@ -202,6 +222,9 @@ Outputs::start (const char *name, const char *parent)
 				item.meaning = g.meaning;
 		items.push_back ({ g.name, lamp_bit (g.output), g.meaning, true, 0, true });
 	}
+	for (const auto &g : game_signals)
+		if (!strcmp (g.family, family))
+			items.push_back ({ g.name, SIGNAL_BIT, g.meaning, false, 0, true });
 	started = true;
 	paused = false;
 	for (Client &client : clients)
@@ -244,7 +267,7 @@ Outputs::line (const Item &item) const
 {
 	char text[96];
 
-	if (item.bit < 0)
+	if (item.bit == -1)
 		snprintf (text, sizeof (text), "%s = %02X\r", item.name.c_str (), item.value & 0xFF);
 	else
 		snprintf (text, sizeof (text), "%s = %d\r", item.name.c_str (), item.value);
@@ -263,6 +286,26 @@ Outputs::set (Item &item, int value)
 }
 
 void
+Outputs::signal (const char *name, int value)
+{
+	std::lock_guard<std::mutex> hold (lock);
+
+	for (Item &item : items)
+		if (item.bit == SIGNAL_BIT && item.name == name) {
+			set (item, value);
+			return;
+		}
+}
+
+bool
+Outputs::jvs_output (unsigned n)
+{
+	std::lock_guard<std::mutex> hold (lock);
+
+	return n >= 1 && n <= 8 && ((jvs_first >> (8 - n)) & 1);
+}
+
+void
 Outputs::jvs (const uint8_t *data, unsigned bytes)
 {
 	std::lock_guard<std::mutex> hold (lock);
@@ -271,6 +314,8 @@ Outputs::jvs (const uint8_t *data, unsigned bytes)
 
 	for (i = 0; i < bytes && i < 4; i++)
 		bits |= (uint32_t) data[i] << (8 * i);
+	if (bytes)
+		jvs_first = data[0];
 	for (Item &item : items)
 		if (item.bit >= 0)
 			set (item, (bits >> item.bit) & 1);
@@ -584,7 +629,7 @@ Outputs::rows (const char *(*tr) (const char *))
 		char hex[8];
 		if (!item.known)
 			return "-";
-		if (item.bit >= 0)
+		if (item.bit != -1)
 			return std::to_string (item.value);
 		snprintf (hex, sizeof (hex), "%02X", item.value & 0xFF);
 		return hex;
@@ -608,9 +653,12 @@ Outputs::rows (const char *(*tr) (const char *))
 		snprintf (text, sizeof (text), tr ("%s: lamp%d under the game's name"), tr (item.meaning), item.bit);
 		rows.push_back ({ item.name, tr ("0 or 1"), text, value (item) });
 	}
+	for (const Item &item : items)
+		if (item.bit == SIGNAL_BIT)
+			rows.push_back ({ item.name, tr ("0 or 1"), tr (item.meaning), value (item) });
 	/* The drive board's commands, and its replies sent back */
 	for (const Item &item : items) {
-		if (item.bit >= 0)
+		if (item.bit != -1)
 			continue;
 		rows.push_back ({ item.name, tr ("byte in hex, 00 to FF"),
 		                  tr ("Each command the game writes to its drive board, as the board reads it"),

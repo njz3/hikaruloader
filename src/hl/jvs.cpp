@@ -648,7 +648,7 @@ SegaIoBoard::count_coins ()
  * down, left, right, push 1 to 7; the controls are player 1's;
  * swap_left_right: see SegaIoBoard */
 static uint16_t
-switch_word (unsigned player, bool swap_left_right)
+switch_word (unsigned player, bool swap_left_right, SegaIoBoard::PointerGame game)
 {
 	static const Action player1[] = {
 		ACTION_START1, ACTION_SERVICE, ACTION_UP, ACTION_DOWN, ACTION_LEFT,
@@ -661,6 +661,27 @@ switch_word (unsigned player, bool swap_left_right)
 		for (i = 0; i < NUMELEM (player1); i++)
 			if (Input::action (player1[i]))
 				bits |= 0x8000 >> i;
+	/* A nozzle's or a stick's own buttons: push 1, 2 and 3. Brave
+	 * Firefighters: water, off the screen, fog; Planet Harriers: bullets,
+	 * missiles, bombs */
+	Controls &c = Controls::get ();
+	if (game == SegaIoBoard::POINTER_BRAVEFF && player < 2) {
+		if (c.pressed ("Pointer", player ? "P2_Water" : "P1_Water"))
+			bits |= 0x0200;
+		if (c.pressed ("Pointer", player ? "P2_OffScreen" : "P1_OffScreen"))
+			bits |= 0x0100;
+		if (c.pressed ("Pointer", player ? "P2_Fog" : "P1_Fog"))
+			bits |= 0x0080;
+		if (player == 1 && c.pressed ("Common", "P2_Start"))
+			bits |= 0x8000;
+	} else if (game == SegaIoBoard::POINTER_PHARRIER && player == 0) {
+		if (c.pressed ("Pointer", "P1_Bullet"))
+			bits |= 0x0200;
+		if (c.pressed ("Pointer", "P1_Missile"))
+			bits |= 0x0100;
+		if (c.pressed ("Pointer", "P1_Bomb"))
+			bits |= 0x0080;
+	}
 	if (swap_left_right)
 		bits = (bits & ~0x0C00) | ((bits & 0x0800) >> 1) | ((bits & 0x0400) << 1);
 	return bits;
@@ -679,7 +700,7 @@ SegaIoBoard::switches (unsigned players, unsigned bytes, std::vector<uint8_t> &o
 	static const bool log_inputs = getenv ("HR_LOG_INPUTS") != NULL;
 	if (log_inputs) {
 		static uint32_t last = ~0u;
-		uint32_t now = ((uint32_t) switch_word (0, swap_left_right) << 1) | (Input::action (ACTION_TEST) ? 1 : 0);
+		uint32_t now = ((uint32_t) switch_word (0, swap_left_right, pointer_game) << 1) | (Input::action (ACTION_TEST) ? 1 : 0);
 		if (now != last)
 			HL_PRINT ("inputs: frame %llu, test %u, player 1 %04X",
 			          (unsigned long long) mach->frame, now & 1, now >> 1);
@@ -687,7 +708,7 @@ SegaIoBoard::switches (unsigned players, unsigned bytes, std::vector<uint8_t> &o
 	}
 	out.push_back (Input::action (ACTION_TEST) ? 0x80 : 0x00);
 	for (p = 0; p < players; p++) {
-		uint16_t bits = switch_word (p, swap_left_right);
+		uint16_t bits = switch_word (p, swap_left_right, pointer_game);
 		for (i = 0; i < bytes; i++)
 			out.push_back ((uint8_t) (bits >> (8 - 8 * i)));
 	}
@@ -703,7 +724,7 @@ SegaIoBoard::system_bits ()
 uint16_t
 SegaIoBoard::player_bits (unsigned player)
 {
-	return switch_word (player, swap_left_right);
+	return switch_word (player, swap_left_right, pointer_game);
 }
 
 /* The wheel and the pedals read from the controllers once a call for
@@ -799,6 +820,26 @@ SegaIoBoard::read_controls ()
 	}
 	if (!c.is_enabled ())
 		return;
+	if (pointer_game != POINTER_NONE) {
+		/* From the cabinets, as Odin's game list has them. Brave
+		 * Firefighters: each player's sight on 2 channels, low to the
+		 * left and the top; Planet Harriers: its stick, channel 0 low
+		 * towards the player, 1 low to the left */
+		static const struct { const char *key; int sign; } braveff[4] = {
+			{ "P1_AimX", 1 }, { "P1_AimY", 1 }, { "P2_AimX", 1 }, { "P2_AimY", 1 },
+		}, pharrier[2] = {
+			{ "P1_StickY", -1 }, { "P1_StickX", 1 },
+		};
+		const auto *map = pointer_game == POINTER_BRAVEFF ? braveff : pharrier;
+		unsigned n = pointer_game == POINTER_BRAVEFF ? 4 : 2;
+
+		for (unsigned i = 0; i < n; i++)
+			if (!analog_set[i])
+				analog[i] = (uint16_t) lround (0x8000 + (pointer_game == POINTER_BRAVEFF ?
+				                                         c.aim ("Pointer", map[i].key) :
+				                                         c.axis ("Pointer", map[i].key)) * map[i].sign * 0x7FFF);
+		return;
+	}
 	/* The wheel from 0 (left) to FFFF, its middle 8000; the pedals from 0
 	 * (up) */
 	if (!analog_set[0])

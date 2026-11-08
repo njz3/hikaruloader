@@ -26,6 +26,7 @@
 #include <filesystem>
 
 #include "hl/emulator.h"
+#include "hl/ffb-effects.h"
 #include "hl/shell.h"
 #include "hl/agent.h"
 #include "hl/audio.h"
@@ -559,6 +560,7 @@ Emulator::run_frame ()
 	/* The racing game's telemetry of this frame, its sound still there
 	 * for a decoder that reads it */
 	telemetry::Service::get ().on_frame (mach->frame + 1);
+	GameRumble::frame (mach, mach->frame + 1);
 	mach->audio.clear ();
 	mach->frame++;
 	Window::set_frame (mach->frame);
@@ -729,6 +731,7 @@ Emulator::run (int num_frames)
 		} else {
 			/* The telemetry's last frame again, as a pause */
 			telemetry::Service::get ().on_pause ();
+			GameRumble::stop (mach->frame);
 			Window::present_paused ();
 		}
 		limit_frame_rate ();

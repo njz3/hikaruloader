@@ -42,6 +42,7 @@
 #include "hl/gearbox.h"
 #include "hl/input.h"
 #include "hl/jvs.h"
+#include "hl/pointers.h"
 
 static int failures, checks;
 
@@ -445,6 +446,50 @@ test_player2 (void)
 	check ("player 2: button 3", hl::Controls::get ().value ("Digital", "P2_Button3") == "KEY_Q, GC1_BUTTON_X");
 }
 
+/* A mouse or a light gun, each its own */
+static void
+test_pointers (void)
+{
+	hl::Controls &c = hl::Controls::get ();
+
+	hl::Pointers::inject (0, { 0.5, -0.25, false, 1u << hl::Pointers::LEFT });
+	hl::Pointers::inject (1, { -0.75, 0.125, true, 1u << hl::Pointers::RIGHT });
+	check ("mouse 0: its X", fabs (c.axis ("Pointer", "P1_AimX") - 0.5) < 1e-6);
+	check ("mouse 0: its Y", fabs (c.axis ("Pointer", "P1_AimY") + 0.25) < 1e-6);
+	check ("mouse 0: left, water", c.pressed ("Pointer", "P1_Water"));
+	check ("mouse 0: not right", !c.pressed ("Pointer", "P1_Fog"));
+	check ("mouse 0: on the picture", !c.pressed ("Pointer", "P1_OffScreen"));
+	check ("mouse 1: its X", fabs (c.axis ("Pointer", "P2_AimX") + 0.75) < 1e-6);
+	check ("mouse 1: right, fog", c.pressed ("Pointer", "P2_Fog"));
+	check ("mouse 1: not left", !c.pressed ("Pointer", "P2_Water"));
+	check ("mouse 1: off the picture", c.pressed ("Pointer", "P2_OffScreen"));
+	check ("mouse 0: the stick too", fabs (c.axis ("Pointer", "P1_StickX") - 0.5) < 1e-6);
+	check ("mouse 0: bullets", c.pressed ("Pointer", "P1_Bullet"));
+	c.aim ("Pointer", "P2_AimY");
+	hl::Pointers::inject (1, { -0.75, 0.25, true, 1u << hl::Pointers::RIGHT });
+	check ("a sight: where the mouse moved it", fabs (c.aim ("Pointer", "P2_AimY") - 0.25) < 1e-6);
+	check ("a sight: it stays", fabs (c.aim ("Pointer", "P2_AimY") - 0.25) < 1e-3);
+	check ("mouse 0: its inputs", hl::Controls::owns (hl::Controls::MOUSE_PLAYER, "MOUSE0_X"));
+	check ("mouse 0: not mouse 1's", !hl::Controls::owns (hl::Controls::MOUSE_PLAYER, "MOUSE1_X"));
+	check ("a controller: not a mouse's", !hl::Controls::owns (0, "MOUSE0_X"));
+
+	std::string token;
+
+	hl::Pointers::inject (0, { 0.0, 0.0, false, 1u << hl::Pointers::LEFT });
+	c.capture (hl::Controls::MOUSE_PLAYER, hl::Controls::CAPTURE_BUTTON);
+	check ("mouse capture: held at the start, nothing", !c.capture_step (token));
+	check ("mouse capture: nothing new", !c.capture_step (token));
+	hl::Pointers::inject (0, { 0.0, 0.0, false, (1u << hl::Pointers::LEFT) | (1u << hl::Pointers::RIGHT) });
+	check ("mouse capture: right pressed", c.capture_step (token) && token == "MOUSE0_BUTTON_RIGHT");
+	hl::Pointers::inject (1, { 0.0, 0.0, false, 0 });
+	c.capture (hl::Controls::MOUSE_PLAYER + 1, hl::Controls::CAPTURE_STEERING);
+	c.capture_step (token);
+	hl::Pointers::inject (1, { 0.05, 0.5, false, 0 });
+	check ("mouse capture: the axis it moved along", c.capture_step (token) && token == "MOUSE1_Y");
+	hl::Pointers::inject (0, { 0.0, 0.0, false, 0 });
+	hl::Pointers::inject (1, { 0.0, 0.0, false, 0 });
+}
+
 int
 main (int argc, char **argv)
 {
@@ -469,6 +514,11 @@ main (int argc, char **argv)
 		test_gearbox ();
 		test_view_change ();
 		test_player2 ();
+		test_pointers ();
+		/* Before any effect, as the Controls tab asks; what is plugged
+		 * in here, for whoever reads the output */
+		for (const std::string &name : hl::ForceFeedback::device_names ())
+			printf ("controlstest: force feedback device: %s\n", name.c_str ());
 		SDL_Quit ();
 	}
 

@@ -283,6 +283,11 @@ public:
 	/* Each effect's strength on a wheel alone, over its family's */
 	unsigned	ffb_wheel_spring, ffb_wheel_friction, ffb_wheel_turn, ffb_wheel_kick;
 	unsigned	ffb_wheel_engines, ffb_wheel_boost, ffb_wheel_scrape, ffb_wheel_impact, ffb_wheel_bumps;
+	/* hl::GameRumble: Planet Harriers' shots, Brave Firefighters' nozzle */
+	unsigned	ffb_shots, ffb_missiles, ffb_bombs, ffb_nozzle;
+	/* The device to use, by its name; "" the first with force feedback,
+	 * and the motors of player 1's controller */
+	char		ffb_device[128];
 	/* All the forces, every game's, to a wheel and a controller's motors:
 	 * a percentage, 0 to 300 (hl::ForceFeedback) */
 	unsigned	ffb_gain;

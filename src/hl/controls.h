@@ -38,6 +38,9 @@ namespace hl {
  *	KEY_<name>		a key, read while the window has the focus
  *	JOY<n>_BUTTON_<b>, JOY<n>_HAT<h>_<UP|DOWN|LEFT|RIGHT>, JOY<n>_AXIS_<a>[suffix]
  *	GC<n>_BUTTON_<name>, GC<n>_AXIS_<name>[suffix]
+ *	MOUSE<n>_X, MOUSE<n>_Y[_INVERTED], MOUSE<n>_BUTTON_<LEFT|RIGHT|MIDDLE|X1|X2>,
+ *	MOUSE<n>_OFFSCREEN	a mouse's or a light gun's (hl::Pointers); <n> its
+ *				own number, not a player's
  *		SDL game controllers' names: A, B, START, DPUP, LEFTX, RIGHTTRIGGER...
  *	suffixes: _POSITIVE, _NEGATIVE (half an axis as a button),
  *		_POSITIVE_SIDE, _NEGATIVE_SIDE (half an axis as a pedal; _HALF too),
@@ -87,7 +90,9 @@ public:
 	/* The row a new file has, "" for none */
 	std::string	 default_value (const char *section, const char *key) const;
 
-	/* The keyboard (player -1), then the controllers connected */
+	/* The keyboard (player -1), the controllers connected, then the mice
+	 * and light guns (player MOUSE_PLAYER + their number) */
+	enum { MOUSE_PLAYER = 1000 };
 	struct Device {
 		int		 player;
 		bool		 game_controller;
@@ -104,6 +109,10 @@ public:
 
 	/* A switch's row: one of its bindings held */
 	bool		 pressed (const char *section, const char *key);
+	/* Who holds a switch's row: NOBODY, -1 the keyboard, a controller's
+	 * player, MOUSE_PLAYER + a mouse's number */
+	enum { NOBODY = -2 };
+	int		 holder (const char *section, const char *key);
 	/* The SDL event presses the row: a key, a button, a hat, half an axis
 	 * of one of its bindings, the binding's other inputs held */
 	bool		 pressed_by (const char *section, const char *key, const SDL_Event *event);
@@ -111,6 +120,11 @@ public:
 	 * _Left and _Right rows add the keys' full turns. [Driving] P1_Steer's
 	 * joystick axes (a wheel's) go Config::wheel_scale () times further */
 	double		 axis (const char *section, const char *key);
+	/* A sight's row, -1 ... +1: a mouse or a light gun puts it where it
+	 * points, a stick and the row's _Left and _Right keys move it, faster
+	 * the further the stick goes, and it stays where it is left
+	 * ([Config] Aim_DeadZone, Aim_Speed) */
+	double		 aim (const char *section, const char *key);
 	/* A wheel's axis, -1 ... +1, as the game's wheel: scale times further,
 	 * held at its ends */
 	static double	 steer (double axis, double scale);
@@ -209,6 +223,16 @@ private:
 	bool		 capture_started;
 	int		 capture_player;
 	CaptureKind	 capture_kind;
+	bool		 capture_mouse (std::string &token);
+	/* Each sight's row: where it is, the mouse's last place, the last time */
+	struct Aim {
+		double		 position = 0.0, mouse = 0.0;
+		bool		 mouse_seen = false;
+		uint64_t	 last = 0;
+	};
+	std::map<std::string, Aim> aims;
+	unsigned	 mouse_buttons;
+	double		 mouse_x, mouse_y;
 	std::string	 capture_found;
 	std::vector<uint8_t> base_keys;
 	std::vector<std::vector<double>> base_axes;

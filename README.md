@@ -128,7 +128,7 @@ hikaruloader.exe [options]
 |---|---|
 | `-R <folder>` | The games folder for this start: the MAME zips or 7z, or a folder per game; several separated by `;` (`-R "D:\roms;E:\mame\roms"`) |
 | `-r <set>` | Starts that game at once, by its MAME set name (`-r sgnascar`), without the picker |
-| `-l <file>` | Loads that save state at the start: the game goes on from its frame. `-l 0` (any number) loads the game's own state, the one F4 saves |
+| `-l <file>` | Loads that save state at the start: the game goes on from its frame. `-l 0` to `-l 4` load one of the game's own states, those F4 saves, 0 the latest |
 | `-n <frames>` | Quits after that many frames |
 | `-L`, `--list` | Lists the games and quits: title, set, version, year and maker, the MAME sets each one needs, each ROM file with its CRC32, and how many of them the games folder holds |
 | `--write-dir=<folder>`, `--write-dir <folder>` | Writes everything in that folder: settings, log, saves (see "Write directory") |
@@ -140,6 +140,7 @@ For example:
 ```
 hikaruloader.exe -R D:\roms -r airtrix
 hikaruloader.exe -r sgnascar -l D:\states\race.hlstate
+hikaruloader.exe -r swracer -l 2
 hikaruloader.exe -L -R D:\roms
 hikaruloader.exe --write-dir=C:\Racecab\Saves\hikaruloader -r swracer
 ```
@@ -158,8 +159,10 @@ Keys and controllers
 | A controller's left stick and triggers, a wheel's axes | Steering, accelerator, brake (the arrows too, all the way) |
 | Page Up, Page Down; a controller's R1, L1 | NASCAR Arcade's gear up, down |
 | V; a controller's Y | NASCAR Arcade's view change (`ViewChange`, linuxloader's name; Down too, as on the cabinet's I/O board) |
-| Space; Guide + X | Pause |
-| F4, F1; Guide + R1, Guide + L1 | Save, load the game's state |
+| P; Guide + X | Pause |
+| F4, F1; Guide + R1, Guide + L1 | Save a new state, load the latest or the one chosen |
+| F2, F3 | Choose the state F1 loads, newer or older, among the last five (shown at the top of the picture) |
+| A mouse or a light gun | Brave Firefighters' sights, Planet Harriers' stick (see "Mice and light guns") |
 | Tab; a controller's Back, Guide + Back | Settings |
 | F7; Guide + Y | Virtual-On 4's card: in the reader's slot, or taken back (see below) |
 | F12 | The frame rate over the picture |
@@ -168,7 +171,7 @@ Keys and controllers
 
 The Controls tab of the settings binds each action to keys, to the
 controllers' buttons and axes (a wheel and its pedals included, with their
-dead zones), several to each. The bindings go to `controls.ini`, written at
+dead zones), to a mouse's or a light gun's, several to each. The bindings go to `controls.ini`, written at
 the first start with a comment on each line, in the syntax of linuxloader and
 windowsloader. Its buttons can be numbered from 1, as Windows and vJoy do.
 
@@ -267,7 +270,7 @@ effect at once.
   size, for even pixels, with larger black bars.
 - Also v-sync, the frame limiter and its rate, the frame rate shown (F12),
   the frame number in the title (to report a glitch), the mouse pointer
-  hidden.
+  hidden (the default; it comes back in the picker and the settings).
 
 An `hikaruloader.ini` from before keeps its choices: `ASPECT_RATIO = INTEGER`
 becomes *Original* with whole multiples, `STRETCH` *Original* in a
@@ -315,7 +318,8 @@ stretched display mode, `SCALE_FILTER` is read as `SCALING_FILTER`, and
 **Enhancements.** Beyond the board's own picture, all off by default; each
 takes effect at once (`[Enhancements]` in `hikaruloader.ini`).
 
-- *Antialiasing (MSAA)* (x2, x4, x8): the 3D's edges smoothed by several
+- *Antialiasing (MSAA)* (x2, x4, x8; not all the meshes' depth bias, see
+  "When something goes wrong"): the 3D's edges smoothed by several
   samples a pixel; the edges inside the textures (fences, leaves) stay.
 - *Edge smoothing (FXAA)*: the 3D's edges smoothed once drawn, cheaper than
   MSAA, a little blurrier. The 2D is left alone.
@@ -348,9 +352,9 @@ takes effect at once (`[Enhancements]` in `hikaruloader.ini`).
 and their rear on the second one; on two speakers the rear comes at the
 front, 3 dB lower. Also the front/rear balance and the volume.
 
-- *Attract sound*: the BIOS's ADVERTISE SOUND. A new board has it off, so
-  the attract is silent; ON or OFF are written to the game's EEPROM at its
-  start, AUTO keeps the EEPROM's.
+- *Attract sound*: the BIOS's ADVERTISE SOUND. ON by default; ON or OFF are
+  written to the game's EEPROM at its start, AUTO keeps the EEPROM's (a new
+  board has it off, the attract silent).
 - *Latency* (20 to 200 ms, 50 by default): the sound kept ahead. Less brings
   the sound closer to the picture; more avoids gaps on a slow PC.
 - *Sound emulation*: Optimized (the default) or Interpreted, slower. Both
@@ -359,7 +363,8 @@ front, 3 dB lower. Also the front/rear balance and the volume.
 **Emulation.**
 
 - *Region*: the board's country (Japan, USA, Export, Australia, Korea),
-  written to the game's EEPROM at its start; AUTO keeps the EEPROM's. The
+  Export by default, written to the game's EEPROM at its start; AUTO keeps
+  the EEPROM's. The
   games take their language from it: Brave Firefighters speaks English
   outside Japan.
 - *SH-4 clock* (20 to 200 MHz, 100 by default, at the game's start): the
@@ -580,8 +585,8 @@ a pod hit, as strong as the speed lost, a rough shake along a wall, the
 centring's middle moved to the side the engines bank from the cockpit, the
 engines' rumble with their thrust and the shaker's sound over it, stronger
 while boosting, the bumps and the landings. On player 1's game controller,
-the same as its two motors' rumble (the low one the engines, the shaker, the
-bumps and the hits; the high one the boost, the scraping, the hits).
+a rumble of its two motors only for a boost at high speed, the hits, the
+scraping and the bumps, not while cruising.
 The Controls tab's *Emulated force feedback* box turns them on and off
 (`[ForceFeedback]` `EFFECTS` in `hikaruloader.ini`), at once;
 `STEERING`, `ENGINES`, `HITS`, `TERRAIN` and `RUMBLE`, each family's
@@ -592,10 +597,55 @@ vibrations `WHEEL_ENGINES` (70 by default), `WHEEL_BOOST`, `WHEEL_SCRAPE`,
 `WHEEL_IMPACT` and `WHEEL_BUMPS`. They stop outside a race and in a pause.
 `GAIN`, `FFB_GAIN` and `FFB_INVERT` apply to them too.
 
+The Controls tab's *Force feedback device* (`[ForceFeedback]` `DEVICE`) chooses
+which device gets the effects, a wheel or a controller's motors; Automatic
+takes the first device with force feedback and player 1's controller's motors.
+
+On a controller or a wheel, Planet Harriers jolts with each weapon's button,
+short and repeated for the bullets, heavy for a missile, and as hard as the
+device goes while a bomb explodes (read from the game's memory, in its Rev A),
+and Brave Firefighters vibrates gently while a nozzle sprays, on the controller
+or wheel holding that player's water button, not with a mouse or a key
+(`[ForceFeedback]` `SHOTS`, `MISSILES`, `BOMBS` and `NOZZLE`, in percent, 100
+by default, 0 to 200).
+
 To see what the wheel is told, in every game: the Controls tab's *Show the
 effects over the game* (`[ForceFeedback]` `HUD`, off by default) writes the
 spring, the friction, the force, the sine and the rumble at the top left,
 over the game, with the options applied.
+
+
+Mice and light guns
+-------------------
+
+Brave Firefighters' two nozzles and Planet Harriers' stick can be played with
+a mouse or a light gun, each read on its own (on Windows; elsewhere the
+system's one pointer). The Controls tab lists them, with their names, to bind
+their buttons and axes as a controller's, in the "Mouse and light gun games"
+section (`[Pointer]` in `controls.ini`, `hikaruloader.log` lists them too).
+`MOUSE0` is the first device and `MOUSE1` the second, numbered by their names
+in the system; their inputs are `MOUSE0_X` and `MOUSE0_Y`, `MOUSE0_BUTTON_LEFT`,
+`_RIGHT`, `_MIDDLE`, `_X1` and `_X2`, and `MOUSE0_OFFSCREEN`, a gun aimed off
+the picture. While capturing a mouse's input, Escape cancels.
+
+| Game | By default |
+|---|---|
+| Brave Firefighters | `MOUSE0` for player 1, `MOUSE1` for player 2: left button water, right button fog |
+| Planet Harriers | `MOUSE0`: left button bullets, right missiles, middle bombs |
+
+A mouse moves its sight from where it was. A gun that sends absolute positions
+aims at the game's 4:3 picture in the middle of the window. A controller's
+stick moves the sight instead of placing it, faster the further it goes, and
+the sight stays where it is left (`Aim_DeadZone`, and `Aim_Speed` in percent,
+in the `[Config]` section of `controls.ini`). If the sight is off, use the
+game's own calibration in its test menu.
+
+Each player can have a device of their own, whatever the kinds: a mouse for
+player 1 and a controller for player 2, for example. The first controller is
+`GC0`, the second `GC1`; give the controller's inputs to the `P2_` rows and
+take them from the `P1_` rows. Its A and B also press player 1's buttons, through
+the Digital rows: use its triggers (`GC0_AXIS_RIGHTTRIGGER_POSITIVE`) for
+water and fog. `P2_Start` starts player 2.
 
 
 Cabinet outputs
@@ -633,7 +683,8 @@ its last value. The games' names, from their test menus' OUTPUT TEST:
 | | `LockMecha` | 4 | The board's lock (LOCK MECHA.), released at 1 |
 | | `LampLeftLower`, `LampRightUpper` | 5, 6 | The board's lamps |
 | Brave Firefighters | `LampStart1`, `LampStart2` | 1, 4 | The players' start lamps |
-| | `NozzleVibration1` | 2 | Player 1's nozzle shaking as it sprays |
+| | `NozzleVibration1`, `NozzleVibration2` | 2, 5 | Each player's nozzle shaking as it sprays |
+| | `LampRevolvingLeft`, `LampRevolvingRight` | 3, 6 | The left and right revolving lights |
 | Planet Harriers | `LampStart` | 1 | Start button lamp |
 | | `LampVrR`, `LampVrL`, `LampBomb` | 2, 3, 5 | The stick's buttons' lamps |
 | | `LampBillboard` | 6 | The billboard's light |
@@ -643,9 +694,14 @@ its last value. The games' names, from their test menus' OUTPUT TEST:
 | | `BoostLock` | 5 | The boost lever's lock |
 | Virtual-On 4 | `LampStart`, `LampWinner` | 1, 6 | Start and winner lamps |
 
-Brave Firefighters' menu has no OUTPUT TEST: its outputs 3, 5 and 6 are
-likely player 2's nozzle and the two revolving lights, sent as `lamp5`,
-`lamp3` and `lamp2`. NASCAR Arcade's test lights its two lamps in turn: the
+Two games also send what the player does, 1 while it lasts and 0 after:
+`nozzle1` and `nozzle2` in Brave Firefighters, while water comes out of a
+player's nozzle; `shot1` in Planet Harriers, while the player fires, and
+`bullet1`, `missile1` and `bomb1`, each weapon's button held, whether or not
+the game fires.
+
+Brave Firefighters' menu has no OUTPUT TEST: its revolving lights' outputs
+come from Odin's list of the game, not seen in play. NASCAR Arcade's test lights its two lamps in turn: the
 start lamp is taken on output 1, as in the other games.
 
 
@@ -698,7 +754,11 @@ When something goes wrong
   Air Trix) and the drawing on its own thread; the frame rate (F12) shows
   the gain.
 - The picture is a frame late: turn off the drawing on its own thread.
-- The attract is silent: set the Attract sound to ON.
+- The attract is silent: check that the Attract sound is ON.
+- A mouse does nothing in Brave Firefighters or Planet Harriers: another
+  device may be `MOUSE0`; `hikaruloader.log` lists them, the Controls tab too.
+- Shadows or decals are wrong with Antialiasing (MSAA) on: turn it off, the
+  depth bias of the meshes' two families is not done with it.
 - The sound crackles: raise the latency.
 - The game asks for its settings at each start, or shows an error about its
   EEPROM: check that the program can write its `nvram` folder (or the write
@@ -760,7 +820,9 @@ Thanks to the MAME developers for the hardware description and the initial
 memory map annotated in their skeleton Hikaru driver (as of 2011.) Also
 thanks to the MAME, nullDC, and lxdream developers for keeping/making their
 software open source; part of valkyrie is based on their efforts. And thanks
-to the Demul developers for the information they contributed.
+to the Demul developers for the information they contributed. Thanks to
+Réda Chérif-Touil for Odin (GPL v3+), whose reading of the Hikaru hardware
+Hikaruloader follows in several places, the meshes' depth bias among them.
 
 
 Valkyrie's original instructions (Linux)

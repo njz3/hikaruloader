@@ -21,6 +21,7 @@
 
 #include <cstdint>
 
+#include "hl/machine.h"
 #include "hl/telemetry.h"
 
 namespace hl {
@@ -49,6 +50,19 @@ private:
 	float	 alat_slow = 0;		/* the lateral one, smoothed */
 	bool	 was_wall = false;
 	uint64_t last_frame = 0;
+};
+
+/* What other games' cabinets did not have, made from what the player does and
+ * the game's outputs, on a controller's motors and a wheel's vibration:
+ * Planet Harriers' shots, a jolt for each; Brave Firefighters' nozzle, a
+ * gentle vibration while the game makes it shake ([ForceFeedback] SHOTS and
+ * NOZZLE) */
+class GameRumble {
+public:
+	/* Each frame of the game */
+	static void	 frame (Machine *mach, uint64_t frame);
+	/* The game paused, or gone */
+	static void	 stop (uint64_t frame);
 };
 
 } /* namespace hl */

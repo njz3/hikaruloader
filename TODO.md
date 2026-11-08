@@ -171,8 +171,8 @@ GPU / RENDERING
 - The depth queue (621 D): its types 2, 4 and 6 (a density) not done.
 - Spotlights: whether the rise from the cone's edge is linear; its width
   (451's eeeemmmm) differs from Odin's by 13% at most.
-- The translucent meshes sorted at each pixel: not with MSAA (the lists are
-  a pixel's).
+- The translucent meshes sorted at each pixel, and the depth bias's two
+  families: not with MSAA (the lists and the eye depths are a pixel's).
 - The dot patterns (501): not compared with a board video; in widescreen the
   4x4 squares start at the 3D's left edge, not the 4:3 picture's.
 - Blending: AIRTRIX's OHOSOHO magenta (A81 mode 2) looks too bright, no

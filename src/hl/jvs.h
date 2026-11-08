@@ -228,6 +228,10 @@ public:
 	 * and the right one as its left (its input test): swapped, for the
 	 * controls' names to be the game's */
 	bool	 swap_left_right = false;
+	/* The games aimed with a mouse or a light gun, or flown with a stick:
+	 * the channels and switches of [Pointer] in controls.ini */
+	enum PointerGame { POINTER_NONE, POINTER_BRAVEFF, POINTER_PHARRIER };
+	PointerGame pointer_game = POINTER_NONE;
 	/* Set by the shell (or the agent): no longer the controllers' */
 	bool	 analog_set[8];
 	/* The coins counted, and the outputs (lamps) the game drives */

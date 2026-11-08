@@ -36,8 +36,8 @@
  * - The ground: a bump or a landing, the vertical acceleration leaving its
  *   own average, shakes.
  *
- * On a controller: its low motor the engines, the shaker, the bumps and the
- * hits; its high one the boost, the scraping, the hits.
+ * On a controller, nothing at rest nor cruising: both motors for a boost at
+ * high speed, the hits, the scraping and the bumps.
  */
 
 #include <algorithm>
@@ -45,7 +45,10 @@
 
 #include "hl/ffb-effects.h"
 #include "hl/config.h"
+#include "hl/controls.h"
 #include "hl/ffb.h"
+#include "hl/input.h"
+#include "hl/outputs.h"
 
 namespace hl {
 
@@ -161,8 +164,9 @@ FfbEffects::frame (const telemetry::Frame &f)
 	ForceFeedback::set (ForceFeedback::VIBRATE, step (std::clamp (vibrate, 0.0f, 1.0f)), f.frame);
 
 	/* A controller's motors */
-	float low = engines * (0.10f * throttle * fast + 0.5f * shaker) + hits * 0.9f * jolt;
-	float high = engines * ((boost ? 0.35f : 0.0f) + 0.04f * throttle) + hits * (0.5f * scrape + 0.6f * jolt);
+	float boosting = boost ? std::clamp ((fast - 0.5f) / 0.5f, 0.0f, 1.0f) : 0.0f;
+	float low = engines * boosting * (0.20f + 0.5f * shaker) + hits * 0.9f * jolt;
+	float high = engines * boosting * 0.35f + hits * (0.5f * scrape + 0.6f * jolt);
 	ForceFeedback::rumble (std::clamp (low * rumble, 0.0f, 1.0f), std::clamp (high * rumble, 0.0f, 1.0f), f.frame);
 
 	/* The kick fades in some 90 ms, the shake in 200 */
@@ -179,6 +183,206 @@ FfbEffects::stop (uint64_t frame)
 		return;
 	playing = false;
 	corner = kick = jolt = wheel_jolt = 0;
+	ForceFeedback::set (ForceFeedback::STOP, 0.0f, frame);
+}
+
+/* Planet Harriers (its Rev A, the set "pharrier"), found by comparing the same
+ * frames with and without a bomb. A byte blinks while the bomb charges, 13 to
+ * 50 frames after the button. Another strobes with the screen's flashes: one
+ * frame at 11 and at 35, then from 51 on, some 35 frames, the beams of the
+ * explosion. So the explosion is that strobe once the charge has lasted a
+ * while. Both stay at 0 otherwise (1800 frames of shooting) */
+#define HARRIERS_BOMB_CHARGE	0x0C216679
+#define HARRIERS_BOMB_STROBE	0x0C19C39D
+#define HARRIERS_CHARGE_FRAMES	30
+#define HARRIERS_CHARGE_GAP	20
+#define HARRIERS_BLAST_HOLD	12
+
+static uint8_t
+master_u8 (Machine *mach, uint32_t addr)
+{
+	for (const auto &m : mach->memories)
+		if (!strcmp (m.first, "ram_m"))
+			return addr - 0x0C000000 < m.second->size () ?
+			       (uint8_t) m.second->get (1, addr - 0x0C000000) : 0;
+	return 0;
+}
+
+/* A shot while the button is held: Planet Harriers' guns repeat */
+#define SHOT_EVERY_FRAMES	10
+/* The nozzle's vibration held over the gaps of the game's output */
+#define NOZZLE_HOLD_FRAMES	12
+
+static bool game_rumble_on;
+/* A jolt of each weapon, fading: bullets, missiles, bombs */
+static float shot, missile_jolt, bomb_jolt;
+static bool was_bullet, was_missile, was_bomb;
+static unsigned blast_hold, charge_age, charge_gap;
+static uint64_t last_shot;
+static unsigned nozzle_held[2];
+/* Who last held each player's water button */
+static int water_holder[2] = { Controls::NOBODY, Controls::NOBODY };
+
+/* A button of Planet Harriers' stick: the keyboard's or a controller's, or a
+ * mouse's */
+static bool
+harriers_button (Action action, const char *pointer_row)
+{
+	return Input::action (action) || Controls::get ().pressed ("Pointer", pointer_row);
+}
+
+/* shot1, shot2, nozzle1, nozzle2 for the outputs' clients: whatever the
+ * force feedback's settings, and on a device or not */
+static void
+send_signals (bool harriers, bool firefighters)
+{
+	Outputs *out = Outputs::get ();
+
+	if (harriers) {
+		bool bullet = harriers_button (ACTION_BUTTON1, "P1_Bullet");
+		bool missile = harriers_button (ACTION_BUTTON2, "P1_Missile");
+
+		out->signal ("shot1", bullet || missile);
+		out->signal ("bullet1", bullet);
+		out->signal ("missile1", missile);
+		out->signal ("bomb1", harriers_button (ACTION_BUTTON3, "P1_Bomb"));
+	}
+	if (firefighters) {
+		/* NOZZLE VIBRATION: outputs 2 and 5, held over their gaps */
+		static const unsigned outputs[2] = { 2, 5 };
+		static const char *const names[2] = { "nozzle1", "nozzle2" };
+
+		for (unsigned i = 0; i < 2; i++) {
+			if (out->jvs_output (outputs[i]))
+				nozzle_held[i] = NOZZLE_HOLD_FRAMES;
+			else if (nozzle_held[i])
+				nozzle_held[i]--;
+			out->signal (names[i], nozzle_held[i] != 0);
+		}
+	}
+}
+
+void
+GameRumble::frame (Machine *mach, uint64_t frame)
+{
+	const Config *cfg = Config::get ();
+	const char *game = mach->game->name, *parent = mach->game->parent;
+	bool harriers = !strcmp (game, "pharrier") || !strcmp (parent, "pharrier");
+	bool firefighters = !strcmp (game, "braveff") || !strcmp (parent, "braveff");
+	float low = 0.0f, high = 0.0f, wheel = 0.0f;
+
+	if (!harriers && !firefighters)
+		return;
+	send_signals (harriers, firefighters);
+	if (!cfg->ffb_effects) {
+		stop (frame);
+		return;
+	}
+	if (harriers) {
+		bool bullet = harriers_button (ACTION_BUTTON1, "P1_Bullet");
+		bool missile = harriers_button (ACTION_BUTTON2, "P1_Missile");
+		bool bomb = harriers_button (ACTION_BUTTON3, "P1_Bomb");
+		float shots = cfg->ffb_shots / 100.0f * shot;
+		float missiles, bombs;
+
+		if (bullet && (!was_bullet || frame - last_shot >= SHOT_EVERY_FRAMES)) {
+			shot = 1.0f;
+			shots = cfg->ffb_shots / 100.0f;
+			last_shot = frame;
+		}
+		if (missile && !was_missile)
+			missile_jolt = 1.0f;
+		if (bomb && !was_bomb)
+			bomb_jolt = 1.0f;
+		was_bullet = bullet;
+		was_missile = missile;
+		was_bomb = bomb;
+		missiles = cfg->ffb_missiles / 100.0f * missile_jolt;
+		bombs = cfg->ffb_bombs / 100.0f * bomb_jolt;
+		/* Bullets short and sharp, on the high motor; a missile heavier
+		 * and longer; a bomb the heaviest and the longest */
+		low = std::max ({ 0.20f * shots, 0.85f * missiles, 0.45f * bombs });
+		high = std::max ({ 0.55f * shots, 0.70f * missiles, 0.35f * bombs });
+		wheel = std::max ({ 0.25f * shots, 0.70f * missiles, 0.40f * bombs });
+		/* The bomb's explosion, as hard as the device goes */
+		if (!strcmp (game, "pharrier")) {
+			bool strobe = master_u8 (mach, HARRIERS_BOMB_STROBE) != 0;
+
+			if (master_u8 (mach, HARRIERS_BOMB_CHARGE)) {
+				charge_gap = 0;
+				if (!charge_age)
+					charge_age = 1;
+			} else if (charge_age && ++charge_gap > HARRIERS_CHARGE_GAP)
+				charge_age = 0;
+			if (charge_age)
+				charge_age++;
+			if (strobe && (blast_hold || charge_age >= HARRIERS_CHARGE_FRAMES))
+				blast_hold = HARRIERS_BLAST_HOLD;
+			else if (blast_hold)
+				blast_hold--;
+			if (blast_hold) {
+				float blast = cfg->ffb_bombs / 100.0f;
+
+				low = std::max (low, blast);
+				high = std::max (high, blast);
+				wheel = std::max (wheel, blast);
+			}
+		}
+		shot = shot * 0.72f < 0.02f ? 0.0f : shot * 0.72f;
+		missile_jolt = missile_jolt * 0.88f < 0.02f ? 0.0f : missile_jolt * 0.88f;
+		bomb_jolt = bomb_jolt * 0.92f < 0.02f ? 0.0f : bomb_jolt * 0.92f;
+	} else {
+		float strength = cfg->ffb_nozzle / 100.0f;
+		Controls &c = Controls::get ();
+		int pads[2] = { -1, -1 };
+
+		/* For each player, the device holding the button of the nozzle
+		 * that sprays (send_signals) takes it: a controller's motors, a
+		 * wheel's vibration; a mouse or a key, nothing */
+		for (unsigned i = 0; i < 2; i++) {
+			int who = c.holder ("Pointer", i ? "P2_Water" : "P1_Water");
+
+			if (who == Controls::NOBODY && i == 0)
+				who = c.holder ("Digital", "P1_Button1");
+			if (who != Controls::NOBODY)
+				water_holder[i] = who;
+			if (!nozzle_held[i] || water_holder[i] < 0 || water_holder[i] >= Controls::MOUSE_PLAYER)
+				continue;
+			if (ForceFeedback::is_force_device (water_holder[i]))
+				wheel = strength * 0.15f;
+			else if (pads[0] < 0)
+				pads[0] = water_holder[i];
+			else if (pads[0] != water_holder[i])
+				pads[1] = water_holder[i];
+		}
+		/* None any more: the last ones kept, for the motors' stop below */
+		if (pads[0] >= 0) {
+			ForceFeedback::rumble_for (pads[0], pads[1]);
+			low = strength * 0.25f;
+			high = strength * 0.08f;
+		}
+	}
+	game_rumble_on = true;
+	float rumble = cfg->ffb_rumble / 100.0f;
+	ForceFeedback::rumble (std::clamp (low * rumble, 0.0f, 1.0f), std::clamp (high * rumble, 0.0f, 1.0f), frame);
+	ForceFeedback::set (ForceFeedback::VIBRATE, step (std::clamp (wheel, 0.0f, 1.0f)), frame);
+}
+
+void
+GameRumble::stop (uint64_t frame)
+{
+	/* Paused or gone: nobody fires */
+	for (const char *name : { "shot1", "bullet1", "missile1", "bomb1", "nozzle1", "nozzle2" })
+		Outputs::get ()->signal (name, 0);
+	nozzle_held[0] = nozzle_held[1] = 0;
+	if (!game_rumble_on)
+		return;
+	game_rumble_on = false;
+	shot = missile_jolt = bomb_jolt = 0.0f;
+	was_bullet = was_missile = was_bomb = false;
+	blast_hold = charge_age = charge_gap = 0;
+	water_holder[0] = water_holder[1] = Controls::NOBODY;
+	ForceFeedback::rumble_for (-1);
 	ForceFeedback::set (ForceFeedback::STOP, 0.0f, frame);
 }
 

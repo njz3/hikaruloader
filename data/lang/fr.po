@@ -23,6 +23,42 @@ msgid " (inverted)"
 msgstr " (inversé)"
 
 #: src/hl/controls.cpp
+msgid "Left button"
+msgstr "Bouton gauche"
+
+#: src/hl/controls.cpp
+msgid "Right button"
+msgstr "Bouton droit"
+
+#: src/hl/controls.cpp
+msgid "Middle button"
+msgstr "Bouton du milieu"
+
+#: src/hl/controls.cpp
+msgid "Side button 1"
+msgstr "Bouton latéral 1"
+
+#: src/hl/controls.cpp
+msgid "Side button 2"
+msgstr "Bouton latéral 2"
+
+#: src/hl/controls.cpp
+msgid "inverted"
+msgstr "inversé"
+
+#: src/hl/controls.cpp
+msgid "Off the screen"
+msgstr "Hors de l'écran"
+
+#: src/hl/controls.cpp
+msgid "Left and right"
+msgstr "Gauche et droite"
+
+#: src/hl/controls.cpp
+msgid "Up and down"
+msgstr "Haut et bas"
+
+#: src/hl/controls.cpp
 msgid "Button %d"
 msgstr "Bouton %d"
 
@@ -57,6 +93,30 @@ msgstr "%s n'a pas pu être chargé ; voir %s."
 #: src/hl/emulator.cpp
 msgid "%s needs a machine Hikaruloader does not emulate."
 msgstr "%s demande une machine que Hikaruloader n'émule pas."
+
+#: src/hl/outputs.cpp
+msgid "1 while water comes out of player 1's nozzle"
+msgstr "1 tant que l'eau sort de la lance du joueur 1"
+
+#: src/hl/outputs.cpp
+msgid "1 while water comes out of player 2's nozzle"
+msgstr "1 tant que l'eau sort de la lance du joueur 2"
+
+#: src/hl/outputs.cpp
+msgid "1 while player 1 fires"
+msgstr "1 tant que le joueur 1 tire"
+
+#: src/hl/outputs.cpp
+msgid "1 while player 1's bullet button is held"
+msgstr "1 tant que le bouton balles du joueur 1 est appuyé"
+
+#: src/hl/outputs.cpp
+msgid "1 while player 1's missile button is held"
+msgstr "1 tant que le bouton missiles du joueur 1 est appuyé"
+
+#: src/hl/outputs.cpp
+msgid "1 while player 1's bomb button is held"
+msgstr "1 tant que le bouton bombes du joueur 1 est appuyé"
 
 #: src/hl/outputs.cpp
 msgid "Start button lamp"
@@ -101,6 +161,18 @@ msgstr "Lampe en haut à droite"
 #: src/hl/outputs.cpp
 msgid "Player 1's nozzle vibration"
 msgstr "Vibration de la lance du joueur 1"
+
+#: src/hl/outputs.cpp
+msgid "Left revolving light"
+msgstr "Gyrophare gauche"
+
+#: src/hl/outputs.cpp
+msgid "Player 2's nozzle vibration"
+msgstr "Vibration de la lance du joueur 2"
+
+#: src/hl/outputs.cpp
+msgid "Right revolving light"
+msgstr "Gyrophare droit"
 
 #: src/hl/outputs.cpp
 msgid "VR R button lamp"
@@ -778,7 +850,7 @@ msgstr "%s (introuvable)"
 msgid "MAME romsets (merged, split or non-merged), zips or 7z: <game>.zip or <game>.7z, its parent's and hikaru's for the BIOS. Folders <game>/ with the files unpacked still work."
 msgstr "Romsets MAME (merged, split ou non-merged), en zip ou en 7z : <jeu>.zip ou <jeu>.7z, ceux de son parent et de hikaru pour le BIOS. Les dossiers <jeu>/ avec les fichiers décompressés marchent toujours."
 
-#: src/ui/ui_common.cpp
+#: src/ui/ui_common.cpp src/ui/ui_controls.cpp
 msgid "Automatic"
 msgstr "Automatique"
 
@@ -901,6 +973,10 @@ msgstr "Manette et boutons"
 #: src/ui/ui_controls.cpp
 msgid "Driving"
 msgstr "Conduite"
+
+#: src/ui/ui_controls.cpp
+msgid "Mouse and light gun games"
+msgstr "Jeux à la souris ou au light gun"
 
 #: src/ui/ui_controls.cpp
 msgid "Gaelco cabinets"
@@ -1091,6 +1167,66 @@ msgid "Horn, also start (Smashing Drive)"
 msgstr "Klaxon, démarre aussi (Smashing Drive)"
 
 #: src/ui/ui_controls.cpp
+msgid "Sight left and right (Brave Firefighters)"
+msgstr "Viseur gauche et droite (Brave Firefighters)"
+
+#: src/ui/ui_controls.cpp
+msgid "Sight up and down (Brave Firefighters)"
+msgstr "Viseur haut et bas (Brave Firefighters)"
+
+#: src/ui/ui_controls.cpp
+msgid "Water (Brave Firefighters)"
+msgstr "Eau (Brave Firefighters)"
+
+#: src/ui/ui_controls.cpp
+msgid "Fog (Brave Firefighters)"
+msgstr "Brouillard (Brave Firefighters)"
+
+#: src/ui/ui_controls.cpp
+msgid "Aimed off the screen (Brave Firefighters)"
+msgstr "Visée hors de l'écran (Brave Firefighters)"
+
+#: src/ui/ui_controls.cpp
+msgid "Player 2's sight left and right"
+msgstr "Viseur du joueur 2, gauche et droite"
+
+#: src/ui/ui_controls.cpp
+msgid "Player 2's sight up and down"
+msgstr "Viseur du joueur 2, haut et bas"
+
+#: src/ui/ui_controls.cpp
+msgid "Player 2's water"
+msgstr "Eau du joueur 2"
+
+#: src/ui/ui_controls.cpp
+msgid "Player 2's fog"
+msgstr "Brouillard du joueur 2"
+
+#: src/ui/ui_controls.cpp
+msgid "Player 2 aimed off the screen"
+msgstr "Joueur 2 visant hors de l'écran"
+
+#: src/ui/ui_controls.cpp
+msgid "Stick left and right (Planet Harriers)"
+msgstr "Manche gauche et droite (Planet Harriers)"
+
+#: src/ui/ui_controls.cpp
+msgid "Stick up and down (Planet Harriers)"
+msgstr "Manche haut et bas (Planet Harriers)"
+
+#: src/ui/ui_controls.cpp
+msgid "Bullets (Planet Harriers)"
+msgstr "Balles (Planet Harriers)"
+
+#: src/ui/ui_controls.cpp
+msgid "Missiles (Planet Harriers)"
+msgstr "Missiles (Planet Harriers)"
+
+#: src/ui/ui_controls.cpp
+msgid "Bombs (Planet Harriers)"
+msgstr "Bombes (Planet Harriers)"
+
+#: src/ui/ui_controls.cpp
 msgid "Pause"
 msgstr "Pause"
 
@@ -1123,6 +1259,10 @@ msgid "Show the frame rate"
 msgstr "Afficher la fréquence d'images"
 
 #: src/ui/ui_controls.cpp
+msgid "Stick moving a sight"
+msgstr "Stick déplaçant un viseur"
+
+#: src/ui/ui_controls.cpp
 msgid "Keyboard"
 msgstr "Clavier"
 
@@ -1149,6 +1289,10 @@ msgstr "Par défaut : %s"
 #: src/ui/ui_controls.cpp
 msgid "Press an input of %s for: %s"
 msgstr "Appuyez sur une entrée de %s pour : %s"
+
+#: src/ui/ui_controls.cpp
+msgid "Move it along that axis."
+msgstr "Déplacez-le le long de cet axe."
 
 #: src/ui/ui_controls.cpp
 msgid "Turn to the left."
@@ -1253,6 +1397,14 @@ msgstr "Retour de force émulé (volant et manette)"
 #: src/ui/ui_controls.cpp
 msgid "The cabinet has no motor: the forces and the rumble are made from what\nthe game does (the engines, the hits, the turns, the ground). Their\nstrengths: [ForceFeedback] in hikaruloader.ini."
 msgstr "La borne n'a pas de moteur : les forces et les vibrations sont tirées\nde ce que fait le jeu (les réacteurs, les chocs, les virages, le sol).\nLeurs forces : [ForceFeedback] dans hikaruloader.ini."
+
+#: src/ui/ui_controls.cpp
+msgid "Force feedback device"
+msgstr "Périphérique de retour de force"
+
+#: src/ui/ui_controls.cpp
+msgid "A wheel takes the forces, a controller its motors. Automatic: the first\ndevice with force feedback, and player 1's controller's motors."
+msgstr "Un volant reçoit les forces, une manette ses moteurs. Automatique : le premier\npériphérique à retour de force, et les moteurs de la manette du joueur 1."
 
 #: src/ui/ui_controls.cpp
 msgid "Force feedback gain"
@@ -1556,3 +1708,6 @@ msgstr "Chargement de %s..."
 
 #~ msgid "Romsets read as sm2-emu does: by CRC32, with miniz."
 #~ msgstr "Romsets lus comme le fait sm2-emu : par CRC32, avec miniz."
+
+#~ msgid "1 while player 2 fires"
+#~ msgstr "1 tant que le joueur 2 tire"

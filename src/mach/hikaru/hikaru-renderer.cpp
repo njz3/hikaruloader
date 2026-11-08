@@ -725,6 +725,7 @@ static const char *mesh_fs_source =
 "#version 140									\n \
 										\n \
 out vec4 frag_color;								\n \
+out vec4 frag_eye;	/* a family's (see The depth bias) */			\n \
 										\n \
 %s										\n \
 										\n \
@@ -745,6 +746,8 @@ uniform vec2		u_fog;							\n \
 uniform vec3		u_fog_color;						\n \
 uniform vec2		u_alpha_range;						\n \
 uniform vec3		u_depth;						\n \
+uniform float		u_family;						\n \
+uniform sampler2D	u_eye;							\n \
 uniform ivec2		u_pattern;						\n \
 									\n \
 #if COLLECT									\n \
@@ -753,6 +756,7 @@ layout (binding = 0, offset = 0) uniform atomic_uint u_count;			\n \
 layout (binding = 0, r32ui) uniform coherent uimage2D u_heads;		\n \
 layout (std430, binding = 0) buffer Nodes { uvec4 nodes[]; };		\n \
 uniform sampler2D	u_opaque_depth;						\n \
+uniform sampler2D	u_flagged_eye;						\n \
 uniform uint		u_max_nodes;						\n \
 uniform uint		u_tag;							\n \
 #endif										\n \
@@ -840,11 +844,6 @@ main (void)									\n \
 	vec4 color;								\n \
 	vec3 base;								\n \
 	float alpha = p_alpha;							\n \
-										\n \
-	/* The slope of 1/z across a pixel, for the depth bias's slope	\n \
-	 * mode: taken here, before any discard */				\n \
-	float inv_z = 1.0 / max (abs (p_position.z), 1e-6);			\n \
-	float slope = max (abs (dFdx (inv_z)), abs (dFdy (inv_z)));		\n \
 										\n \
 	/* The normal lit. Two-sided lighting lights a face seen from behind	\n \
 	 * on its back: its normal turned to the eye when the triangle's own	\n \
@@ -956,14 +955,21 @@ main (void)									\n \
 	 * the viewports' near plane at 0.01, stepped by z^2 / near / 2^24 in	\n \
 	 * a 24-bit buffer, 0.015 at 50 units: SWRACER's pod engines		\n \
 	 * z-fought. This one steps by about z / 2^20. The mesh's depth bias	\n \
-	 * moves it nearer: 1/z up by a part of itself (u_depth.y), or by	\n \
-	 * its slope across a pixel times u_depth.z */				\n \
+	 * moves it nearer by a part of itself, u_depth.y the scale (see The	\n \
+	 * depth bias). In a view with both families, a mesh is drawn into	\n \
+	 * the depth of its own and meets the other at the eye depth it left,	\n \
+	 * its own unmoved */							\n \
 	float z = abs (p_position.z);						\n \
-	float depth_bias = u_depth.z > 0.0 ?					\n \
-		min (u_depth.z * slope * z, u_depth.y) : u_depth.y;		\n \
-	z = z / (1.0 + depth_bias);						\n \
-	float frag_depth = log2 (1.0 + z) * u_depth.x;				\n \
+	float frag_depth = log2 (1.0 + z * u_depth.y) * u_depth.x;		\n \
 	gl_FragDepth = frag_depth;						\n \
+#if !COLLECT									\n \
+	if (u_family != 0.0) {							\n \
+		float other = texelFetch (u_eye, ivec2 (gl_FragCoord.xy), 0).r;	\n \
+		if (other != 0.0 && z > other * 1.000001)			\n \
+			discard;						\n \
+		frag_eye = vec4 (z, u_depth.y, 0.0, 1.0);			\n \
+	}									\n \
+#endif										\n \
 										\n \
 #if HAS_FOG									\n \
 	/* The viewport's fog (621): linear in the eye's depth, clear up to	\n \
@@ -992,13 +998,24 @@ main (void)									\n \
 	 * opaque meshes hide it (the depth test is the shader's own here:	\n \
 	 * the buffer's runs after it, which would keep what is hidden) */	\n \
 	ivec2 pixel = ivec2 (gl_FragCoord.xy);					\n \
-	if (frag_depth > texelFetch (u_opaque_depth, pixel, 0).r + 1e-7)	\n \
+	bool behind = frag_depth > texelFetch (u_opaque_depth, pixel, 0).r + 1e-7;	\n \
+	if (u_family != 0.0) {							\n \
+		vec2 unflagged = texelFetch (u_eye, pixel, 0).xy;		\n \
+		vec2 flagged = texelFetch (u_flagged_eye, pixel, 0).xy;		\n \
+		bool by_flagged = flagged.x != 0.0 &&				\n \
+		                  (unflagged.x == 0.0 || flagged.x <= unflagged.x);	\n \
+		if (by_flagged && u_family < 0.0)				\n \
+			behind = z * u_depth.y > flagged.x * flagged.y * 1.000001;	\n \
+		else if (by_flagged || (unflagged.x != 0.0 && u_family < 0.0))	\n \
+			behind = z > (by_flagged ? flagged.x : unflagged.x) * 1.000001;	\n \
+	}									\n \
+	if (behind)								\n \
 		discard;							\n \
 	uint node = atomicCounterIncrement (u_count);				\n \
 	if (node < u_max_nodes) {						\n \
 		uint next = imageAtomicExchange (u_heads, pixel, node + 1u);	\n \
 		nodes[node] = uvec4 (packUnorm4x8 (clamp (frag_color, 0.0, 1.0)),	\n \
-		                     floatBitsToUint (frag_depth), next,		\n \
+		                     floatBitsToUint (log2 (1.0 + z * u_depth.z) * u_depth.x), next,	\n \
 		                     u_tag + (uint (gl_PrimitiveID) << 2));		\n \
 	}									\n \
 #endif										\n \
@@ -1152,6 +1169,9 @@ get_glsl_variant (Renderer *hr, hikaru_mesh_t *mesh)
 #define MAX_PROGRAMS	512
 /* Translucency's copy of the opaque depth, for the collecting shaders */
 #define OIT_DEPTH_UNIT	7
+/* What each family left (see The depth bias) */
+#define EYE_UNIT		5
+#define FLAGGED_EYE_UNIT	4
 
 /* What a program's uniforms hold, as the upload_* functions below sent
  * them (their inputs): the same not sent again. BRAVEFF draws up to 1900
@@ -1286,6 +1306,12 @@ compile_mesh_program (hikaru_glsl_variant_t variant)
 		program = hl::gl::compile_program (vs.c_str (), fs.c_str ());
 	} else
 		program = hl::gl::compile_program (vs_source, fs_source);
+	/* The outputs' places, for the families' buffers */
+	if (program) {
+		glBindFragDataLocation (program, 0, "frag_color");
+		glBindFragDataLocation (program, 1, "frag_eye");
+		glLinkProgram (program);
+	}
 
 	free (definitions);
 	free (vs_source);
@@ -1554,8 +1580,11 @@ update_locations:
 
 	if (program_cache[slot].has_locs) {
 		hr->meshes.locs = program_cache[slot].locs;
-		if (hr->meshes.variant.collect)
+		if (hr->meshes.variant.collect) {
 			glUniform1i (hr->meshes.locs.u_opaque_depth, OIT_DEPTH_UNIT);
+			glUniform1i (hr->meshes.locs.u_flagged_eye, FLAGGED_EYE_UNIT);
+		}
+		glUniform1i (hr->meshes.locs.u_eye, EYE_UNIT);
 		return;
 	}
 
@@ -1614,10 +1643,19 @@ update_locations:
 		glGetUniformLocation (hr->meshes.program, "u_tag");
 	hr->meshes.locs.u_opaque_depth =
 		glGetUniformLocation (hr->meshes.program, "u_opaque_depth");
+	hr->meshes.locs.u_family =
+		glGetUniformLocation (hr->meshes.program, "u_family");
+	hr->meshes.locs.u_eye =
+		glGetUniformLocation (hr->meshes.program, "u_eye");
+	hr->meshes.locs.u_flagged_eye =
+		glGetUniformLocation (hr->meshes.program, "u_flagged_eye");
 	program_cache[slot].locs = hr->meshes.locs;
 	program_cache[slot].has_locs = true;
-	if (hr->meshes.variant.collect)
+	if (hr->meshes.variant.collect) {
 		glUniform1i (hr->meshes.locs.u_opaque_depth, OIT_DEPTH_UNIT);
+		glUniform1i (hr->meshes.locs.u_flagged_eye, FLAGGED_EYE_UNIT);
+	}
+	glUniform1i (hr->meshes.locs.u_eye, EYE_UNIT);
 	HL_ASSERT_NO_GL_ERROR ();
 }
 
@@ -1883,36 +1921,38 @@ upload_alpha_range (Renderer *hr, hikaru_mesh_t *mesh)
 	HL_ASSERT_NO_GL_ERROR ();
 }
 
-#define SLOPE_BIAS_LIMIT	4e-6f
+/*
+ * The depth bias
+ * ==============
+ *
+ * 101's bits, as Odin (Réda Chérif-Touil, GPL v3+) read them from the
+ * cabinets (its depth_bias.hpp): the eye depth multiplied by a scale, the
+ * pixel staying where it is, no slope. Against the other types, a unit of the
+ * low 10 bits brings the mesh nearer by 5.6 / 65536 of its depth, the
+ * background not at all (u_depth.y). Bit 10 puts the meshes in two families,
+ * and the bias moves a mesh against those of its own family only; against
+ * the other one the eye depths meet as they are: SGNASCAR's painted lines and
+ * car shadows (0x500) over the track (0x400) they lie behind, SWRACER's
+ * columns (0) through the tops of its walls (0x501, 0x601). So a view with
+ * flagged meshes draws each family into a depth of its own, its unflagged one
+ * the scene's, and keeps each pixel's eye depth and scale in a texture of the
+ * family's, which the other family's meshes read. Among the translucent
+ * fragments, the 11 bits signed, 1 / 65536 a unit (u_depth.z). Not with MSAA
+ * (the textures are a pixel's): the meshes meet at their moved depths.
+ */
+#define DEPTH_BIAS_UNIT		(5.6f / 65536.0f)
 
-/* The fragments' depth (the shader's u_depth): its scale, and the mesh's
- * depth bias (101), which moves it nearer. Its low 10 bits are the amount;
- * bit 10 picks the mode, as a 32-bit float depth buffer's bias:
- *  - clear, a constant: amount * 2000 units of the depth's last bit, 2^-23
- *    of its power of 2. 1/z goes up by that part of itself, between
- *    amount * 2000 / 2^24 and twice that: here the middle, / ln 2;
- *  - set, a slope: 1/z up by its slope across a pixel times amount * 6 /
- *    256, at the native resolution. An almost edge-on surface has a huge
- *    slope: 1/z goes up by at most SLOPE_BIAS_LIMIT * amount of itself
- *    (u_depth.y in this mode), or SWRACER's wall tops cover the columns
- *    standing on them. In proportion to the amount, for the layers
- *    SWRACER piles on its track to keep their order.
- * PHARRIER's translucent meshes take 0x400, nothing, and 0x500; AIRTRIX's,
- * constants up to 982. All the polytypes take it */
 static void
 upload_depth (Renderer *hr, hikaru_mesh_t *mesh)
 {
-	unsigned amount = mesh->depth_bias & 0x3FF;
+	bool moved = mesh->polytype != HIKARU_POLYTYPE_BACKGROUND;
+	unsigned bias = moved ? mesh->depth_bias & 0x7FF : 0;
+	int sort = (bias & 0x400) ? (int) bias - 0x800 : (int) bias;
 	float depth[3];
 
 	depth[0] = 1.0f / log2f (1.0f + SCENE_FAR);
-	depth[1] = 0.0f;
-	depth[2] = 0.0f;
-	if (mesh->depth_bias & 0x400) {
-		depth[2] = amount * 6.0f / 256.0f * hr->framebuffer.scale;
-		depth[1] = amount * SLOPE_BIAS_LIMIT;
-	} else
-		depth[1] = amount * 2000.0f / 16777216.0f / logf (2.0f);
+	depth[1] = 1.0f - (float) (bias & 0x3FF) * DEPTH_BIAS_UNIT;
+	depth[2] = 1.0f - (float) sort / 65536.0f;
 	if (differs (program_cache[hr->meshes.slot].sent.depth, program_cache[hr->meshes.slot].sent.depth_was, depth))
 		glUniform3fv (hr->meshes.locs.u_depth, 1, depth);
 }
@@ -2346,8 +2386,10 @@ update_and_set_rendstate (Renderer *hr, hikaru_mesh_t *mesh)
 			hr->mv_list[hr->num_mvs] = MV.table[i];
 		}
 
-		/* The matrix pushed before, which the vertices with S take */
-		mesh->has_link = gpu->link.valid;
+		/* The matrix pushed, which the vertices with S take: before the
+		 * current one or, SWRACER's pilots' elbows, after it; then it
+		 * stays for the next matrix too (set_link), the shadows' */
+		mesh->has_link = gpu->link.valid || gpu->link.has_pushed;
 		if (mesh->has_link) {
 			HL_ASSERT (hr->num_mvs < MAX_MODELVIEWS);
 			hr->mv_list[hr->num_mvs++] = gpu->link.pushed;
@@ -2393,6 +2435,35 @@ update_and_set_rendstate (Renderer *hr, hikaru_mesh_t *mesh)
 		HL_ASSERT_NO_GL_ERROR (); \
 	}
 
+static bool
+writes_depth (const hikaru_mesh_t *mesh)
+{
+	return mesh->polytype != HIKARU_POLYTYPE_BACKGROUND &&
+	       mesh->polytype != HIKARU_POLYTYPE_TRANSLUCENT;
+}
+
+/* The mesh's family, in a view with both (see The depth bias): a mesh writing
+ * the depth goes to its family's buffers and reads the other's */
+static void
+upload_family (Renderer *hr, hikaru_mesh_t *mesh)
+{
+	auto &f = hr->families;
+	bool flagged = (mesh->depth_bias & 0x400) != 0;
+
+	if (!f.on || mesh->polytype == HIKARU_POLYTYPE_BACKGROUND) {
+		glUniform1f (hr->meshes.locs.u_family, 0.0f);
+		return;
+	}
+	if (writes_depth (mesh) && f.current != (int) flagged) {
+		f.current = (int) flagged;
+		glBindFramebuffer (GL_FRAMEBUFFER, f.fb[f.current]);
+		glActiveTexture (GL_TEXTURE0 + EYE_UNIT);
+		glBindTexture (GL_TEXTURE_2D, f.eye[!f.current]);
+		glActiveTexture (GL_TEXTURE0);
+	}
+	glUniform1f (hr->meshes.locs.u_family, flagged ? -1.0f : 1.0f);
+}
+
 static void
 draw_mesh (Renderer *hr, hikaru_mesh_t *mesh)
 {
@@ -2415,6 +2486,7 @@ draw_mesh (Renderer *hr, hikaru_mesh_t *mesh)
 	HL_ASSERT_NO_GL_ERROR ();
 
 	upload_depth (hr, mesh);
+	upload_family (hr, mesh);
 	upload_pattern (hr, mesh);
 	if (hr->meshes.variant.collect) {
 		glUniform1ui (hr->meshes.locs.u_tag, hr->oit.tag);
@@ -3000,6 +3072,140 @@ draw_translucent_per_pixel (Renderer *hr, hikaru_mesh_t *meshes, unsigned num)
 }
 
 static void
+destroy_families (Renderer *hr)
+{
+	auto &f = hr->families;
+
+	if (f.w) {
+		glDeleteTextures (2, f.eye);
+		glDeleteRenderbuffers (1, &f.flag_depth);
+		glDeleteFramebuffers (2, f.fb);
+	}
+	f.w = f.h = 0;
+	f.color = f.depth = 0;
+}
+
+/* The families' buffers, with the scene's colour and depth: false when they
+ * cannot be (a window's framebuffer, MSAA) */
+static bool
+build_families (Renderer *hr)
+{
+	static const GLenum targets[2] = { GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1 };
+	auto &f = hr->families;
+	GLint scene = 0, type = 0, color = 0, depth = 0;
+	unsigned i;
+
+	glGetIntegerv (GL_DRAW_FRAMEBUFFER_BINDING, &scene);
+	if (!scene || hr->framebuffer.ms_fb)
+		return false;
+	glGetFramebufferAttachmentParameteriv (GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+	                                       GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE, &type);
+	if (type != GL_TEXTURE)
+		return false;
+	glGetFramebufferAttachmentParameteriv (GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+	                                       GL_FRAMEBUFFER_ATTACHMENT_OBJECT_NAME, &color);
+	glGetFramebufferAttachmentParameteriv (GL_DRAW_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
+	                                       GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE, &type);
+	if (type != GL_RENDERBUFFER)
+		return false;
+	glGetFramebufferAttachmentParameteriv (GL_DRAW_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
+	                                       GL_FRAMEBUFFER_ATTACHMENT_OBJECT_NAME, &depth);
+	f.scene = (GLuint) scene;
+
+	if (f.w != hr->framebuffer.w || f.h != hr->framebuffer.h) {
+		destroy_families (hr);
+		f.w = hr->framebuffer.w;
+		f.h = hr->framebuffer.h;
+		glGenTextures (2, f.eye);
+		glGenFramebuffers (2, f.fb);
+		glGenRenderbuffers (1, &f.flag_depth);
+		glBindRenderbuffer (GL_RENDERBUFFER, f.flag_depth);
+		glRenderbufferStorage (GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, f.w, f.h);
+		for (i = 0; i < 2; i++) {
+			glBindTexture (GL_TEXTURE_2D, f.eye[i]);
+			glTexImage2D (GL_TEXTURE_2D, 0, GL_RG32F, f.w, f.h, 0, GL_RG, GL_FLOAT, NULL);
+			glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+			glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+			glBindFramebuffer (GL_FRAMEBUFFER, f.fb[i]);
+			glFramebufferTexture2D (GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, f.eye[i], 0);
+			glDrawBuffers (2, targets);
+		}
+		glBindTexture (GL_TEXTURE_2D, 0);
+	}
+	if (f.color != (GLuint) color || f.depth != (GLuint) depth) {
+		f.color = (GLuint) color;
+		f.depth = (GLuint) depth;
+		for (i = 0; i < 2; i++) {
+			glBindFramebuffer (GL_FRAMEBUFFER, f.fb[i]);
+			glFramebufferTexture2D (GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, f.color, 0);
+			glFramebufferRenderbuffer (GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER,
+			                           i ? f.flag_depth : f.depth);
+		}
+	}
+	glBindFramebuffer (GL_FRAMEBUFFER, f.fb[1]);
+	if (glCheckFramebufferStatus (GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+		glBindFramebuffer (GL_FRAMEBUFFER, f.scene);
+		return false;
+	}
+	glBindFramebuffer (GL_FRAMEBUFFER, f.scene);
+	return true;
+}
+
+/* Whether the view has a mesh of the flagged family */
+static bool
+has_flagged (Renderer *hr, unsigned vpi)
+{
+	static const int types[] = {
+		HIKARU_POLYTYPE_SHADOW_A, HIKARU_POLYTYPE_SHADOW_B, HIKARU_POLYTYPE_OPAQUE,
+		HIKARU_POLYTYPE_TRANSPARENT, HIKARU_POLYTYPE_TRANSLUCENT,
+	};
+	unsigned i, j;
+
+	for (i = 0; i < NUMELEM (types); i++)
+		for (j = 0; j < hr->num_meshes[vpi][types[i]]; j++)
+			if (hr->mesh_list[vpi][types[i]][j].depth_bias & 0x400)
+				return true;
+	return false;
+}
+
+/* A view's buffers emptied, for its families */
+static void
+begin_families (Renderer *hr)
+{
+	static const GLfloat none[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+	static const GLfloat farthest = 1.0f;
+	auto &f = hr->families;
+
+	glDisable (GL_SCISSOR_TEST);
+	glBindFramebuffer (GL_FRAMEBUFFER, f.fb[1]);
+	glClearBufferfv (GL_COLOR, 1, none);
+	glClearBufferfv (GL_DEPTH, 0, &farthest);
+	glBindFramebuffer (GL_FRAMEBUFFER, f.fb[0]);
+	glClearBufferfv (GL_COLOR, 1, none);
+	glBindFramebuffer (GL_FRAMEBUFFER, f.scene);
+	glEnable (GL_SCISSOR_TEST);
+	f.current = -1;
+}
+
+/* Back to the scene's buffers, for the meshes that write no depth */
+static void
+end_families_pass (Renderer *hr)
+{
+	auto &f = hr->families;
+
+	if (!f.on)
+		return;
+	if (f.current != -1)
+		glBindFramebuffer (GL_FRAMEBUFFER, f.scene);
+	f.current = -1;
+	glActiveTexture (GL_TEXTURE0 + EYE_UNIT);
+	glBindTexture (GL_TEXTURE_2D, f.eye[0]);
+	glActiveTexture (GL_TEXTURE0 + FLAGGED_EYE_UNIT);
+	glBindTexture (GL_TEXTURE_2D, f.eye[1]);
+	glActiveTexture (GL_TEXTURE0);
+}
+
+static void
 draw_meshes_for_polytype (Renderer *hr, unsigned vpi, int polytype)
 {
 	hikaru_mesh_t *meshes = hr->mesh_list[vpi][polytype];
@@ -3041,6 +3247,9 @@ draw_meshes_for_polytype (Renderer *hr, unsigned vpi, int polytype)
 		break;
 	}
 	
+	if (polytype == HIKARU_POLYTYPE_TRANSLUCENT)
+		end_families_pass (hr);
+
 	/* Sorted at each pixel when the card can (see "Translucency") */
 	if (polytype == HIKARU_POLYTYPE_TRANSLUCENT && hr->oit.on) {
 		draw_translucent_per_pixel (hr, meshes, num);
@@ -3157,8 +3366,13 @@ draw_scene (Renderer *hr)
 	for (vpi = 0; vpi < 8; vpi++) {
 		glDepthMask (GL_TRUE);
 		glClear (GL_DEPTH_BUFFER_BIT);
+		hr->families.on = has_flagged (hr, vpi) && build_families (hr);
+		if (hr->families.on)
+			begin_families (hr);
 		for (i = 0; i < NUMELEM (sorted_polytypes); i++)
 			draw_meshes_for_polytype (hr, vpi, sorted_polytypes[i]);
+		end_families_pass (hr);
+		hr->families.on = false;
 	}
 	/* The other drawing's front faces, as GL has them */
 	glFrontFace (GL_CCW);

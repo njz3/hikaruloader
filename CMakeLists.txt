@@ -43,6 +43,7 @@ set (HL_SRC
 	src/hl/romset.cpp
 	src/hl/config.cpp
 	src/hl/input.cpp
+	src/hl/pointers.cpp
 	src/hl/controls.cpp
 	src/hl/renderer.cpp
 	src/hl/window.cpp

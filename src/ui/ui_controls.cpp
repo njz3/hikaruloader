@@ -53,6 +53,7 @@ const Section kSections[] = {
     {"Common", N_("All games")},
     {"Digital", N_("Stick and buttons")},
     {"Driving", N_("Driving")},
+    {"Pointer", N_("Mouse and light gun games")},
     {"Gaelco", N_("Gaelco cabinets")},
     {"Emulator", N_("Emulator")},
 };
@@ -108,6 +109,21 @@ const char *actionLabel(const std::string &key)
         {"LeftBrake", N_("Left brake lever (ATV Track)")},
         {"RightBrake", N_("Right brake lever (ATV Track)")},
         {"Horn", N_("Horn, also start (Smashing Drive)")},
+        {"P1_AimX", N_("Sight left and right (Brave Firefighters)")},
+        {"P1_AimY", N_("Sight up and down (Brave Firefighters)")},
+        {"P1_Water", N_("Water (Brave Firefighters)")},
+        {"P1_Fog", N_("Fog (Brave Firefighters)")},
+        {"P1_OffScreen", N_("Aimed off the screen (Brave Firefighters)")},
+        {"P2_AimX", N_("Player 2's sight left and right")},
+        {"P2_AimY", N_("Player 2's sight up and down")},
+        {"P2_Water", N_("Player 2's water")},
+        {"P2_Fog", N_("Player 2's fog")},
+        {"P2_OffScreen", N_("Player 2 aimed off the screen")},
+        {"P1_StickX", N_("Stick left and right (Planet Harriers)")},
+        {"P1_StickY", N_("Stick up and down (Planet Harriers)")},
+        {"P1_Bullet", N_("Bullets (Planet Harriers)")},
+        {"P1_Missile", N_("Missiles (Planet Harriers)")},
+        {"P1_Bomb", N_("Bombs (Planet Harriers)")},
         {"Pause", N_("Pause")},
         {"SaveState", N_("Save the state")},
         {"LoadState", N_("Load the state")},
@@ -117,6 +133,7 @@ const char *actionLabel(const std::string &key)
         {"Back", N_("Back to the picker, or quit")},
         {"ShowFps", N_("Show the frame rate")},
         {"Steer", N_("Steering wheel")},
+        {"Aim", N_("Stick moving a sight")},
         {"Gas", N_("Accelerator")},
         {"Brake", N_("Brake")},
     };
@@ -131,6 +148,14 @@ bool isSteering(const std::string &key)
     return !strcasecmp(key.c_str(), "P1_Steer");
 }
 
+// The sights and the stick: an axis each, without a dead zone
+bool isPointerAxis(const std::string &key)
+{
+    for (const char *name : {"P1_AimX", "P1_AimY", "P2_AimX", "P2_AimY", "P1_StickX", "P1_StickY"})
+        if (!strcasecmp(key.c_str(), name))
+            return true;
+    return false;
+}
 bool isPedal(const std::string &key)
 {
     return !strcasecmp(key.c_str(), "P1_Gas") || !strcasecmp(key.c_str(), "P1_Brake");
@@ -340,7 +365,7 @@ void bindingRow(const char *section, const hl::Controls::Row &row)
         g_capture.section = section;
         g_capture.key = row.key;
         controls.capture(player, isPedal(row.key) ? hl::Controls::CAPTURE_PEDAL
-                                 : isSteering(row.key) ? hl::Controls::CAPTURE_STEERING
+                                 : (isSteering(row.key) || isPointerAxis(row.key)) ? hl::Controls::CAPTURE_STEERING
                                                        : hl::Controls::CAPTURE_BUTTON);
     }
     ImGui::SameLine();
@@ -405,7 +430,10 @@ void captureWindow()
     else
     {
         ImGui::Text(tr("Press an input of %s for: %s"), deviceName(g_mapping.device), actionLabel(g_capture.key));
-        if (isSteering(g_capture.key))
+        const bool mouse = g_mapping.device.player >= hl::Controls::MOUSE_PLAYER;
+        if (mouse && isPointerAxis(g_capture.key))
+            ImGui::TextUnformatted(tr("Move it along that axis."));
+        else if (isSteering(g_capture.key) || isPointerAxis(g_capture.key))
             ImGui::TextUnformatted(tr("Turn to the left."));
         else if (isPedal(g_capture.key))
             ImGui::TextUnformatted(tr("Press the pedal."));
@@ -413,7 +441,8 @@ void captureWindow()
             ImGui::TextUnformatted(tr("Hold Guide and press a button for a hotkey: the game does not see it."));
         ImGui::Spacing();
         ImGui::TextDisabled("%s", tr("Escape: cancel"));
-        if (ImGui::Button(tr("Cancel")))
+        // With a mouse, a click on Cancel would be the input captured
+        if (!mouse && ImGui::Button(tr("Cancel")))
         {
             controls.capture_cancel();
             ImGui::CloseCurrentPopup();
@@ -670,6 +699,40 @@ void drawFfbEffects()
                                    "strengths: [ForceFeedback] in hikaruloader.ini."));
 }
 
+// [ForceFeedback] DEVICE: saved at once to hikaruloader.ini, alone, and taken
+// at once
+void drawFfbDevice()
+{
+    hl::Config *cfg = hl::Config::get();
+    static std::vector<std::string> names;
+    const char *shown = cfg->ffb_device[0] ? cfg->ffb_device : tr("Automatic");
+    if (ImGui::BeginCombo(tr("Force feedback device"), shown))
+    {
+        // Each time it opens: a device plugged in since, and no asking the
+        // drivers at each frame
+        if (ImGui::IsWindowAppearing())
+            names = hl::ForceFeedback::device_names();
+        const auto choose = [cfg](const char *name) {
+            hl::Config onDisk;
+            onDisk.set_defaults();
+            onDisk.load();
+            snprintf(onDisk.ffb_device, sizeof(onDisk.ffb_device), "%s", name);
+            snprintf(cfg->ffb_device, sizeof(cfg->ffb_device), "%s", name);
+            onDisk.save();
+            hl::ForceFeedback::device_changed();
+        };
+        if (ImGui::Selectable(tr("Automatic"), !cfg->ffb_device[0]))
+            choose("");
+        for (const std::string &name : names)
+            if (ImGui::Selectable(name.c_str(), name == cfg->ffb_device))
+                choose(name.c_str());
+        ImGui::EndCombo();
+    }
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("%s", tr("A wheel takes the forces, a controller its motors. Automatic: the first\n"
+                                   "device with force feedback, and player 1's controller's motors."));
+}
+
 // [ForceFeedback] GAIN: every force, every game's; saved at once to
 // hikaruloader.ini, alone, and felt at once
 void drawFfbGain()
@@ -868,7 +931,8 @@ void drawControlsTab()
             else if (d.game_controller)
                 ImGui::TextDisabled("GC%d_, JOY%d_", d.player, d.player);
             else
-                ImGui::TextDisabled("JOY%d_", d.player);
+                ImGui::TextDisabled(d.player >= hl::Controls::MOUSE_PLAYER ? "MOUSE%d_" : "JOY%d_",
+                                    d.player >= hl::Controls::MOUSE_PLAYER ? d.player - hl::Controls::MOUSE_PLAYER : d.player);
             ImGui::TableSetColumnIndex(2);
             if (ImGui::Button(tr("Bind")))
             {
@@ -911,6 +975,7 @@ void drawControlsTab()
     drawLevers();
 
     header(tr("Force feedback"));
+    drawFfbDevice();
     drawFfbGain();
     drawFfbEffects();
     drawFfbHudOption();

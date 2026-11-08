@@ -1504,6 +1504,10 @@ hikaru_init (Hikaru *hikaru)
 			((hl::SegaIoBoard *) hikaru->io_board)->twin_levers = true;
 			((hl::SegaIoBoard *) hikaru->io_board)->swap_left_right = true;
 		}
+		if (!strcmp (game->name, "braveff") || !strcmp (game->parent, "braveff"))
+			((hl::SegaIoBoard *) hikaru->io_board)->pointer_game = hl::SegaIoBoard::POINTER_BRAVEFF;
+		if (!strcmp (game->name, "pharrier") || !strcmp (game->parent, "pharrier"))
+			((hl::SegaIoBoard *) hikaru->io_board)->pointer_game = hl::SegaIoBoard::POINTER_PHARRIER;
 	}
 	if (hl::Config::get ()->io_board_program)
 		hikaru_attach_io_program (hikaru);

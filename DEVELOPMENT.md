@@ -405,6 +405,7 @@ shared: change it only together with Supermodel and sm2-emu.
 | `obs [W H]` | The picture box-scaled to W x H (640 x 480): `obs W H`, then W*H*3 bytes, RGB, top row first |
 | `shot PATH` | The picture as a 24-bit BMP: `ok` |
 | `save PATH`, `load PATH` | Save states: `ok` |
+| `pointer N X Y BUTTONS [OFFSCREEN]` | Sets mouse or light gun N: X, Y from -1 to 1, buttons bits 0 left, 1 right, 2 middle |
 | `state [save\|load\|newer\|older]` | F4, F1, F2 and F3: `state N`, N the one chosen |
 | `ram ADDR LEN`, `mem ADDR LEN` | LEN bytes (hex arguments, at most 100000) through the master SH-4's bus: `ram LEN` (decimal), then the bytes |
 | `poke ADDR VALUE [SIZE]` | A write through the same bus (hex; size 1, 2, 4): `ok` |

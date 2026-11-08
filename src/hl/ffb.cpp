@@ -45,6 +45,10 @@ static std::vector<ForceFeedback::Record> records;
 /* The SDL device, and its effects (-1: not made yet, or not supported) */
 static bool sdl_ready, looked;
 static std::atomic<SDL_Joystick *> joystick;
+/* The player whose controller rumbles, -1 the usual one */
+static std::atomic<int> rumble_player (-1), rumble_second_player (-1);
+/* [ForceFeedback] DEVICE, a controller: its motors take the rumble */
+static std::atomic<SDL_Joystick *> chosen_motors;
 static std::atomic<SDL_Haptic *> haptic;
 static std::mutex &device_lock = *new std::mutex;
 static unsigned supported;
@@ -68,13 +72,31 @@ close_device (void)
 		SDL_HapticClose (haptic);
 	if (joystick)
 		SDL_JoystickClose (joystick);
+	if (chosen_motors)
+		SDL_JoystickClose (chosen_motors);
 	haptic = NULL;
 	joystick = NULL;
+	chosen_motors = NULL;
 	device_name[0] = '\0';
 	for (i = 0; i < ForceFeedback::NUM_EFFECTS; i++) {
 		effect_id[i] = -1;
 		running[i] = false;
 	}
+}
+
+/* SDL's joysticks and haptics, once: at the first effect, or for the list of
+ * the devices, in the menus before any */
+static bool
+init_sdl (void)
+{
+	if (sdl_ready)
+		return true;
+	if (SDL_InitSubSystem (SDL_INIT_JOYSTICK | SDL_INIT_HAPTIC)) {
+		HL_PRINT ("ffb: no force feedback: %s", SDL_GetError ());
+		return false;
+	}
+	sdl_ready = true;
+	return true;
 }
 
 /* The first joystick with force feedback */
@@ -86,17 +108,28 @@ open_device (void)
 	std::lock_guard<std::mutex> device (device_lock);
 
 	looked = true;
-	if (!sdl_ready) {
-		if (SDL_InitSubSystem (SDL_INIT_JOYSTICK | SDL_INIT_HAPTIC)) {
-			HL_PRINT ("ffb: no force feedback: %s", SDL_GetError ());
-			return;
-		}
-		sdl_ready = true;
-	}
-	for (i = 0; i < SDL_NumJoysticks () && !haptic; i++) {
+	if (!init_sdl ())
+		return;
+	const char *chosen = Config::get ()->ffb_device;
+
+	for (i = 0; i < SDL_NumJoysticks () && !haptic && !chosen_motors; i++) {
 		SDL_Joystick *joy = SDL_JoystickOpen (i);
 		if (!joy)
 			continue;
+		if (chosen[0]) {
+			const char *name = SDL_JoystickName (joy);
+
+			if (!name || strcmp (name, chosen)) {
+				SDL_JoystickClose (joy);
+				continue;
+			}
+			if (SDL_JoystickHasRumble (joy)) {
+				chosen_motors = joy;
+				HL_PRINT ("ffb: rumble on '%s'", name);
+				snprintf (device_name, sizeof (device_name), "%s", name);
+				continue;
+			}
+		}
 		if (SDL_JoystickIsHaptic (joy) == 1)
 			haptic = SDL_HapticOpenFromJoystick (joy);
 		if (haptic)
@@ -216,6 +249,8 @@ struct Sender {
 	float			 force[ForceFeedback::NUM_EFFECTS];
 	bool			 rumble;
 	SDL_JoystickID		 rumble_joystick;
+	SDL_JoystickID		 rumble_second;	/* -1 none */
+	std::vector<SDL_JoystickID> rumble_stops;
 	Uint16			 rumble_low, rumble_high;
 };
 
@@ -238,7 +273,9 @@ send_loop (void)
 		memcpy (force, sender.force, sizeof (force));
 		memset (sender.queued, 0, sizeof (sender.queued));
 		bool rumble = sender.rumble;
-		SDL_JoystickID id = sender.rumble_joystick;
+		SDL_JoystickID id = sender.rumble_joystick, second = sender.rumble_second;
+		std::vector<SDL_JoystickID> stops;
+		stops.swap (sender.rumble_stops);
 		Uint16 low = sender.rumble_low, high = sender.rumble_high;
 		sender.pending = sender.rumble = false;
 		lock.unlock ();
@@ -256,6 +293,14 @@ send_loop (void)
 			SDL_Joystick *joy = SDL_JoystickFromInstanceID (id);
 			if (joy)
 				SDL_JoystickRumble (joy, low, high, 1000);
+			joy = second >= 0 ? SDL_JoystickFromInstanceID (second) : NULL;
+			if (joy)
+				SDL_JoystickRumble (joy, low, high, 1000);
+		}
+		for (SDL_JoystickID stop : stops) {
+			SDL_Joystick *joy = SDL_JoystickFromInstanceID (stop);
+			if (joy)
+				SDL_JoystickRumble (joy, 0, 0, 0);
 		}
 		lock.lock ();
 	}
@@ -340,7 +385,11 @@ rumble_force (float force)
 static void
 send_rumble (uint64_t frame)
 {
-	SDL_Joystick *joy = (SDL_Joystick *) Controls::get ().player_joystick (0);
+	/* The device chosen, or player 1's controller; a wheel chosen: none */
+	SDL_Joystick *joy = rumble_player >= 0 ? (SDL_Joystick *) Controls::get ().player_joystick (rumble_player) :
+	                    chosen_motors ? (SDL_Joystick *) chosen_motors :
+	                    Config::get ()->ffb_device[0] ? NULL :
+	                    (SDL_Joystick *) Controls::get ().player_joystick (0);
 	auto level = [] (float x) { return (Uint16) lrintf (rumble_force (x) * 65535.0f); };
 
 	rumble_sent = frame;
@@ -351,6 +400,11 @@ send_rumble (uint64_t frame)
 	std::lock_guard<std::mutex> lock (sender.lock);
 	sender.rumble = true;
 	sender.rumble_joystick = SDL_JoystickInstanceID (joy);
+	{
+		SDL_Joystick *other = rumble_second_player >= 0 ?
+		                      (SDL_Joystick *) Controls::get ().player_joystick (rumble_second_player) : NULL;
+		sender.rumble_second = (other && other != joystick) ? SDL_JoystickInstanceID (other) : -1;
+	}
 	sender.rumble_low = level (current[ForceFeedback::RUMBLE_LOW]);
 	sender.rumble_high = level (current[ForceFeedback::RUMBLE_HIGH]);
 	wake_sender ();
@@ -431,15 +485,81 @@ ForceFeedback::devices_changed ()
 
 	if (!looked)
 		return;
-	if (haptic && !SDL_JoystickGetAttached (joystick))
+	if ((haptic && !SDL_JoystickGetAttached (joystick)) ||
+	    (chosen_motors && !SDL_JoystickGetAttached (chosen_motors)))
 		close_device ();
-	if (haptic)
+	if (haptic || chosen_motors)
 		return;
 	open_device ();
 	/* The effects going on, on the new device */
 	for (i = CONSTANT; i < RUMBLE_LOW; i++)
 		if (current[i] != 0.0f)
 			send_force ((Effect) i, device_force ((Effect) i, current[i]));
+}
+
+void
+ForceFeedback::rumble_for (int player, int second)
+{
+	const int before[2] = { rumble_player, rumble_second_player };
+
+	rumble_player = player;
+	rumble_second_player = second;
+	for (int b : before) {
+		if (b < 0 || b == player || b == second)
+			continue;
+		SDL_Joystick *joy = (SDL_Joystick *) Controls::get ().player_joystick (b);
+		if (joy) {
+			std::lock_guard<std::mutex> lock (sender.lock);
+			sender.rumble_stops.push_back (SDL_JoystickInstanceID (joy));
+			wake_sender ();
+		}
+	}
+}
+
+bool
+ForceFeedback::is_force_device (int player)
+{
+	return joystick && Controls::get ().player_joystick (player) == joystick;
+}
+
+std::vector<std::string>
+ForceFeedback::device_names ()
+{
+	std::vector<std::string> names;
+	int i;
+
+	std::lock_guard<std::mutex> device (device_lock);
+	if (!init_sdl ())
+		return names;
+	for (i = 0; i < SDL_NumJoysticks (); i++) {
+		SDL_Joystick *joy = SDL_JoystickOpen (i);
+		const char *name;
+
+		if (!joy)
+			continue;
+		name = SDL_JoystickName (joy);
+		if (name && (SDL_JoystickIsHaptic (joy) == 1 || SDL_JoystickHasRumble (joy)) &&
+		    std::find (names.begin (), names.end (), name) == names.end ())
+			names.push_back (name);
+		SDL_JoystickClose (joy);
+	}
+	return names;
+}
+
+void
+ForceFeedback::device_changed ()
+{
+	unsigned i;
+
+	if (!looked)
+		return;
+	close_device ();
+	open_device ();
+	for (i = CONSTANT; i < RUMBLE_LOW; i++)
+		if (current[i] != 0.0f)
+			send_force ((Effect) i, device_force ((Effect) i, current[i]));
+	if (current[RUMBLE_LOW] + current[RUMBLE_HIGH] > 0)
+		send_rumble (rumble_sent);
 }
 
 void

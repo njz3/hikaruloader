@@ -126,7 +126,7 @@ Config::set_defaults ()
 	cfg->fps_target = 60.0f;
 	cfg->fps_overlay = false;
 	cfg->title_frame = false;
-	cfg->hide_cursor = false;
+	cfg->hide_cursor = true;
 	cfg->threaded_rendering = true;
 	cfg->sort_translucent_pixels = true;
 	cfg->widescreen = false;
@@ -154,7 +154,7 @@ Config::set_defaults ()
 	 * poses the skater before the GPU draws him (57 before November 2026) */
 	cfg->sh4_clock = 100;
 	/* The country the board's EEPROM holds */
-	cfg->region = -1;
+	cfg->region = 2;	/* Export */
 	/* The simulations, which every game plays with */
 	cfg->io_board_program = false;
 	cfg->security_chips = false;
@@ -162,8 +162,8 @@ Config::set_defaults ()
 	cfg->sound_output = Audio::OUTPUT_AUTO;
 	cfg->sound_balance = 50;
 	cfg->sound_volume = 100;
-	/* The attract's sound the board's EEPROM holds */
-	cfg->attract_sound = -1;
+	/* The attract's sound on: a new board's EEPROM has it off */
+	cfg->attract_sound = 1;
 	cfg->sound_latency = 50;
 	cfg->sound_optimized = true;
 	/* The link the board's EEPROM holds; a cabinet alone, its own next */
@@ -186,6 +186,8 @@ Config::set_defaults ()
 	cfg->ffb_wheel_spring = cfg->ffb_wheel_friction = cfg->ffb_wheel_turn = cfg->ffb_wheel_kick = 100;
 	cfg->ffb_wheel_boost = cfg->ffb_wheel_scrape = cfg->ffb_wheel_impact = cfg->ffb_wheel_bumps = 100;
 	cfg->ffb_wheel_engines = 70;
+	cfg->ffb_shots = cfg->ffb_missiles = cfg->ffb_bombs = cfg->ffb_nozzle = 100;
+	cfg->ffb_device[0] = '\0';
 	cfg->ffb_gain = 100;
 	cfg->ffb_hud = false;
 	/* As windowsloader and linuxloader */
@@ -475,6 +477,17 @@ Config::set_value (const char *section, const char *key, const char *value)
 			cfg->ffb_terrain = pct;
 		else if (!strcasecmp (key, "RUMBLE"))
 			cfg->ffb_rumble = pct;
+		else if (!strcasecmp (key, "DEVICE"))
+			snprintf (cfg->ffb_device, sizeof (cfg->ffb_device), "%s",
+			          strcasecmp (value, "AUTO") ? value : "");
+		else if (!strcasecmp (key, "SHOTS"))
+			cfg->ffb_shots = pct;
+		else if (!strcasecmp (key, "MISSILES"))
+			cfg->ffb_missiles = pct;
+		else if (!strcasecmp (key, "BOMBS"))
+			cfg->ffb_bombs = pct;
+		else if (!strcasecmp (key, "NOZZLE"))
+			cfg->ffb_nozzle = pct;
 		else if (!strcasecmp (key, "WHEEL_SPRING"))
 			cfg->ffb_wheel_spring = pct;
 		else if (!strcasecmp (key, "WHEEL_FRICTION"))
@@ -937,6 +950,21 @@ Config::save () const
 	fprintf (fp, "HITS = %u\n", cfg->ffb_hits);
 	fprintf (fp, "TERRAIN = %u\n", cfg->ffb_terrain);
 	fprintf (fp, "RUMBLE = %u\n", cfg->ffb_rumble);
+	fprintf (fp,
+	         "\n# Vibrations the other cabinets did not make, in percent (0 to 200), on a\n"
+	         "# controller and a wheel: in Planet Harriers, SHOTS a short jolt at each\n"
+	         "# bullet, MISSILES a heavy one, BOMBS at a bomb and its explosion; NOZZLE, a gentle one\n"
+	         "# while Brave Firefighters' nozzle sprays. RUMBLE and EFFECTS apply to them\n"
+	         "# too. Default: %u\n", def.ffb_shots);
+	fprintf (fp, "SHOTS = %u\n", cfg->ffb_shots);
+	fprintf (fp, "MISSILES = %u\n", cfg->ffb_missiles);
+	fprintf (fp, "BOMBS = %u\n", cfg->ffb_bombs);
+	fprintf (fp, "NOZZLE = %u\n", cfg->ffb_nozzle);
+	fprintf (fp,
+	         "\n# The device that gets the effects, by its name as the Controls tab lists it:\n"
+	         "# a wheel takes the forces, a controller its motors. AUTO: the first device\n"
+	         "# with force feedback, and the motors of player 1's controller.\n");
+	fprintf (fp, "DEVICE = %s\n", cfg->ffb_device[0] ? cfg->ffb_device : "AUTO");
 	fprintf (fp,
 	         "\n# Each effect's strength on a wheel alone, in percent (0 to 200), on top of\n"
 	         "# its family's: WHEEL_SPRING the centring, WHEEL_FRICTION the damping,\n"

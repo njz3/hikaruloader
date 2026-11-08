@@ -8,13 +8,27 @@ and released: [DEVELOPMENT.md](DEVELOPMENT.md), "Versions and releases".
 In preparation
 --------------
 
+- New outputs for the tools that read them: `nozzle1` and `nozzle2` in Brave
+  Firefighters; `shot1`, `bullet1`, `missile1` and `bomb1` in Planet Harriers.
+- Star Wars: Racer Arcade: a controller's motors only for a boost at high
+  speed and the hits, no longer all the time.
+- *Force feedback device* in the Controls tab: a wheel or a controller's motors.
+- Vibrations in two more games: a jolt of its own for each of Planet Harriers'
+  weapons, and a gentle one while Brave Firefighters' nozzle sprays
+  (`[ForceFeedback]` `SHOTS`, `MISSILES`, `BOMBS`, `NOZZLE`).
+- Brave Firefighters and Planet Harriers play with one or two mice or light
+  guns, each read on its own (`[Pointer]` in `controls.ini`). In Brave
+  Firefighters, a controller's stick moves the sight, at a speed to set.
+- A new configuration has the attract's sound on, the Export region, the mouse
+  pointer hidden over the game and P for the pause.
+- The meshes' depth bias as Odin reads it, two families that move only against
+  themselves: SEGA NASCAR's shadows and track lines are whole, Star Wars: Racer
+  Arcade's columns stand in front of its walls (not with MSAA).
+- Star Wars: Racer Arcade: the pilots' arms joined at the elbow.
 - Five save states in rotation: F4 always makes a new number 0
   (`<game>-0.hlstate`), the older ones move up to number 4 (`-4`). F1 loads the
   latest, or the one chosen with F2 (newer) and F3 (older), shown at the top of
   the picture. An older version's `<game>.hlstate` counts as number 0.
-- Star Wars: Racer Arcade: the track's edges no longer pass in front of the
-  columns, and the shadows on the far track stay. The surfaces seen almost
-  edge-on came much too near with the depth bias.
 - The compiled shaders kept on disk are made again when their sources change.
 - Star Wars: Racer Arcade's force feedback: each effect on the wheel has its
   own strength in `hikaruloader.ini` (`[ForceFeedback]`, `WHEEL_SPRING`,

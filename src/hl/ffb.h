@@ -79,12 +79,22 @@ public:
 	/* Player 1's controller's motors, each frame while they turn: sent
 	 * again every half second, as SDL stops them after a while */
 	static void	 rumble (float low, float high, uint64_t frame);
+	/* The rumble goes to these players' controllers, whatever the device
+	 * chosen; -1: back to the usual one. A controller left out stops */
+	static void	 rumble_for (int player, int second = -1);
+	/* That player's device is the one taking the forces */
+	static bool	 is_force_device (int player);
 	/* The records since the last call */
 	static std::vector<Record> take_records ();
 	static const char *effect_name (Effect effect);
 
 	/* A joystick plugged in or out: looks for a device again */
 	static void	 devices_changed ();
+	/* The names of the devices that can take effects, for [ForceFeedback]
+	 * DEVICE */
+	static std::vector<std::string> device_names ();
+	/* [ForceFeedback] DEVICE changed */
+	static void	 device_changed ();
 	/* [Input] WHEEL_ROTATION or WHEEL_RANGE changed: the spring again */
 	static void	 wheel_changed ();
 	/* [ForceFeedback] GAIN changed: the forces going on again */

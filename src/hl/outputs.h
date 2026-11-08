@@ -66,6 +66,12 @@ public:
 	/* What the I/O board's outputs command wrote, its general outputs'
 	 * bytes (outputs 1 to 8 in the first, from bit 7) */
 	void	 jvs (const uint8_t *data, unsigned bytes);
+	/* JVS output n (1 to 8), as the game last wrote it, sent to the
+	 * clients or not */
+	bool	 jvs_output (unsigned n);
+	/* What the player does, which no output of the cabinet tells
+	 * (hl::GameRumble): a name the game declares (shot1, nozzle1...) */
+	void	 signal (const char *name, int value);
 	/* A command written to the drive board, as the board reads it */
 	void	 drive_command (uint8_t command);
 	/* The reply of a client's real drive board (m3ffb_rx): false when no
@@ -109,6 +115,9 @@ private:
 		std::string	 input;		/* a line begun */
 		std::string	 pending;	/* what the socket did not take yet */
 	};
+
+	/* The first byte of the outputs command */
+	uint8_t	 jvs_first = 0;
 
 	void	 open_server ();
 	void	 close_server ();
