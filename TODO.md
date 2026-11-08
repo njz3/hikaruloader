@@ -273,14 +273,6 @@ Still to do:
   colour clamp: the vertices' fog, the table's "mode 2" and the clamp are
   drawn as the PowerVR 2 manual says, checked by forcing them on the games'
   polygons only.
-- Speed on older PCs: an Intel Core i5-4590 (4 cores, GTX 1050 Ti) played
-  the Hikaru games at 60 frames a second but ATV Track and Smashing Drive at
-  42 to 60 (about 55), two SH-4s at 200 MHz. Their master's wait for each
-  frame is now waited at once (a third of the time a frame); to measure on
-  that PC again. The slave's stores through the store queues
-  (`sh4_sq_put ()`), a tenth of its time, one at a time: writing them in
-  place gained nothing (the lookup's time instead); a whole queue at its
-  `pref` would.
 - The force feedback's direction and strength on a real wheel; Smashing Drive's
   wheel polarity is taken from what it writes at its ends.
 - ATV Track's and Gaelco Football's link, if any: only Smashing Drive's menu has
