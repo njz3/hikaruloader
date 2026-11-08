@@ -1499,9 +1499,11 @@ hikaru_init (Hikaru *hikaru)
 	} else {
 		hikaru->io_board = new hl::SegaIoBoard (mach, hikaru->jvs);
 		/* Its two levers, a pod engine's thrust each, on channels 0
-		 * and 1 */
-		if (!strcmp (game->name, "swracer"))
+		 * and 1; its left and right buttons */
+		if (!strcmp (game->name, "swracer")) {
 			((hl::SegaIoBoard *) hikaru->io_board)->twin_levers = true;
+			((hl::SegaIoBoard *) hikaru->io_board)->swap_left_right = true;
+		}
 	}
 	if (hl::Config::get ()->io_board_program)
 		hikaru_attach_io_program (hikaru);

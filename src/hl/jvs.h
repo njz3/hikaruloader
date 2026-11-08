@@ -224,6 +224,10 @@ public:
 	/* Channels 0 and 1 Star Wars: Racer Arcade's levers, from the
 	 * controls as TWIN_LEVERS says (twin_lever_thrusts ()) */
 	bool	 twin_levers = false;
+	/* Star Wars: Racer Arcade reads the left switch as its right button
+	 * and the right one as its left (its input test): swapped, for the
+	 * controls' names to be the game's */
+	bool	 swap_left_right = false;
 	/* Set by the shell (or the agent): no longer the controllers' */
 	bool	 analog_set[8];
 	/* The coins counted, and the outputs (lamps) the game drives */

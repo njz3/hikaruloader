@@ -223,8 +223,8 @@ turning to the side steered, for a wheel and pedals or a controller's
 stick and trigger; *Original*, an axis each, as on the cabinet
 (`P1_LeftLever`, `P1_RightLever`: a controller's two sticks pushed up by
 default) (`[Input]` `TWIN_LEVERS`). Button 1 is the boost, button 2 the
-brake; the game's left and right buttons (◁ ▷, the menus) are Right and
-Left.
+brake; Left and Right are the game's left and right buttons (◁ ▷, the
+menus).
 
 <img src="docs/media/swracer-levers.png" width="720" alt="A comic strip: the pedal pushes both levers, the wheel moves them apart; the pod turns away from the engine that pushes harder, and stops when the pedal is released">
 

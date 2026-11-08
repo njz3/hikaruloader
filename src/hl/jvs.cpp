@@ -645,9 +645,10 @@ SegaIoBoard::count_coins ()
 }
 
 /* A player's switches, closed at 1. Bits from the top: start, service, up,
- * down, left, right, push 1 to 7; the controls are player 1's */
+ * down, left, right, push 1 to 7; the controls are player 1's;
+ * swap_left_right: see SegaIoBoard */
 static uint16_t
-switch_word (unsigned player)
+switch_word (unsigned player, bool swap_left_right)
 {
 	static const Action player1[] = {
 		ACTION_START1, ACTION_SERVICE, ACTION_UP, ACTION_DOWN, ACTION_LEFT,
@@ -660,6 +661,8 @@ switch_word (unsigned player)
 		for (i = 0; i < NUMELEM (player1); i++)
 			if (Input::action (player1[i]))
 				bits |= 0x8000 >> i;
+	if (swap_left_right)
+		bits = (bits & ~0x0C00) | ((bits & 0x0800) >> 1) | ((bits & 0x0400) << 1);
 	return bits;
 }
 
@@ -676,7 +679,7 @@ SegaIoBoard::switches (unsigned players, unsigned bytes, std::vector<uint8_t> &o
 	static const bool log_inputs = getenv ("HR_LOG_INPUTS") != NULL;
 	if (log_inputs) {
 		static uint32_t last = ~0u;
-		uint32_t now = ((uint32_t) switch_word (0) << 1) | (Input::action (ACTION_TEST) ? 1 : 0);
+		uint32_t now = ((uint32_t) switch_word (0, swap_left_right) << 1) | (Input::action (ACTION_TEST) ? 1 : 0);
 		if (now != last)
 			HL_PRINT ("inputs: frame %llu, test %u, player 1 %04X",
 			          (unsigned long long) mach->frame, now & 1, now >> 1);
@@ -684,7 +687,7 @@ SegaIoBoard::switches (unsigned players, unsigned bytes, std::vector<uint8_t> &o
 	}
 	out.push_back (Input::action (ACTION_TEST) ? 0x80 : 0x00);
 	for (p = 0; p < players; p++) {
-		uint16_t bits = switch_word (p);
+		uint16_t bits = switch_word (p, swap_left_right);
 		for (i = 0; i < bytes; i++)
 			out.push_back ((uint8_t) (bits >> (8 - 8 * i)));
 	}
@@ -700,7 +703,7 @@ SegaIoBoard::system_bits ()
 uint16_t
 SegaIoBoard::player_bits (unsigned player)
 {
-	return switch_word (player);
+	return switch_word (player, swap_left_right);
 }
 
 /* The wheel and the pedals read from the controllers once a call for
