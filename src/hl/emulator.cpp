@@ -215,6 +215,7 @@ Emulator::unload_game ()
 	state_slot = 0;
 	notice_until = 0;
 	Pointers::enable (false);
+	Window::set_paused (false);
 }
 
 /* The save states' message over the game: 3 seconds, or until the next one */
@@ -719,6 +720,7 @@ Emulator::run (int num_frames)
 		 * the agent, whose frames run on its steps) */
 		Outputs::get ()->set_paused (!agent && (paused || ui::Interface::settings_open ()));
 		Outputs::get ()->poll ();
+		Window::set_paused (!agent && (paused || ui::Interface::settings_open ()));
 		/* The agent's: frames run on its steps only, as fast as they can;
 		 * the window is redrawn while it waits */
 		if (agent) {

@@ -77,8 +77,8 @@ Gaelco's games, on another board (two SH-4s and a PowerVR Neon 250), play too:
 | `gfootbal` | Gaelco Football, 2002 | Two players: stick, buttons A, B and C on Button 1 to 3; player 2's rows in the Digital section (R, F, D, G and A, S, Q on the keyboard, 2 to start, or the second controller) |
 | `smashdrv`, `smashdrvb`, `smashdrvs` | Smashing Drive, 2000 | Wheel, gas and brake as switches (the pedals); the horn (Gaelco section) or Start, which also starts; Volume up and Volume down (Gaelco section). Linked, two cabinets |
 
-They run at twice `SH4_CLOCK`, so at their board's 200 MHz by default, and draw
-half as many frames at `SH4_CLOCK = 50`. Their settings and scores are kept in
+They run at `SH4_CLOCK`, as the Hikaru's games (their board's own clock is
+200 MHz). Their settings and scores are kept in
 `nvram/`, as the others'. ATV Track's and Smashing Drive's steering motor
 drives the wheel's force feedback. Their lamps and coin counters, and Smashing
 Drive's seat motor, go to the network outputs. Smashing Drive starts silent,
@@ -367,10 +367,11 @@ front, 3 dB lower. Also the front/rear balance and the volume.
   the EEPROM's. The
   games take their language from it: Brave Firefighters speaks English
   outside Japan.
-- *SH-4 clock* (20 to 200 MHz, 100 by default, at the game's start): the
-  board's 200 MHz is spent mostly waiting, which costs real time on the PC;
-  100 MHz keeps every game above 60 frames a second. Air Trix needs 100 at
-  least: below, its skater's body is missing. The games' timers count in
+- *SH-4 clock* (100 to 200 MHz, 150 by default, at the game's start; down to
+  20 in `SH4_CLOCK` of `hikaruloader.ini`): the board's 200 MHz is spent mostly
+  waiting, which costs real time on the PC. At 100 MHz some games show
+  graphical glitches. Air Trix needs 100 at least: below, its skater's body is
+  missing. The games' timers count in
   real time whatever the clock.
 - *SH-4 processors*: the recompiler (the default) or the interpreter, the
   same machine either way. *Memory access*: the same, three ways.
@@ -750,8 +751,8 @@ When something goes wrong
 
 - A game is missing or Incomplete in the picker: `hikaruloader.exe -L`
   lists the files each game needs, and which ones the games folder lacks.
-- The game is slow: keep the SH-4 clock at 100 MHz (57 for the games but
-  Air Trix) and the drawing on its own thread; the frame rate (F12) shows
+- The game is slow: lower the SH-4 clock, 100 MHz at the least (57 for the
+  games but Air Trix, in `SH4_CLOCK`) and the drawing on its own thread; the frame rate (F12) shows
   the gain.
 - The picture is a frame late: turn off the drawing on its own thread.
 - The attract is silent: check that the Attract sound is ON.

@@ -1416,10 +1416,9 @@ gaelco_init (Gaelco *gaelco)
 	if (!gaelco->fpga || !gaelco->gpu || !gaelco->renderer)
 		return -1;
 
-	/* The SH-4s' clock over VGA's lines: twice [Emulation] SH4_CLOCK, whose
-	 * default 100 fits the Hikaru's games: the board's 200 MHz, which these need
-	 * for their 60 frames a second (half of them at 100 MHz) */
-	gaelco->cycles_per_line = (unsigned) ((uint64_t) hl::Config::sh4_clock_mhz () * 2 * MHZ / (60 * LINES));
+	/* The SH-4s' clock over VGA's lines: [Emulation] SH4_CLOCK, as for the
+	 * Hikaru's games (the board's own is 200 MHz) */
+	gaelco->cycles_per_line = (unsigned) ((uint64_t) hl::Config::sh4_clock_mhz () * MHZ / (60 * LINES));
 	gaelco->fpga->cpu_hz = (uint64_t) gaelco->cycles_per_line * LINES * 60;
 	mach->audio_channels = 2;
 

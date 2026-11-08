@@ -515,6 +515,21 @@ parse_source (const std::string &text, Controls::Source *s)
 	return false;
 }
 
+std::string
+Controls::default_for (const std::string &value, int player, bool game_controller)
+{
+	std::string out = value, own = "JOY" + std::to_string (player) + "_";
+	size_t at = 0;
+
+	if (player <= 0 || player >= MOUSE_PLAYER || game_controller)
+		return out;
+	while ((at = out.find ("JOY0_", at)) != std::string::npos) {
+		out.replace (at, 5, own);
+		at += own.size ();
+	}
+	return out;
+}
+
 std::vector<std::string>
 Controls::alternatives (const std::string &value)
 {

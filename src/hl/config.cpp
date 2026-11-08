@@ -152,7 +152,7 @@ Config::set_defaults ()
 	/* Below the board's 200 MHz: the waits the games poll cost the host
 	 * its time (see hikaru.cpp). 100 at least for AIRTRIX, whose slave
 	 * poses the skater before the GPU draws him (57 before November 2026) */
-	cfg->sh4_clock = 100;
+	cfg->sh4_clock = 150;
 	/* The country the board's EEPROM holds */
 	cfg->region = 2;	/* Export */
 	/* The simulations, which every game plays with */

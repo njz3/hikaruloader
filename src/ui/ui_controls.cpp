@@ -376,7 +376,7 @@ void bindingRow(const char *section, const hl::Controls::Row &row)
     ImGui::EndDisabled();
     ImGui::SameLine();
     // The device's inputs back to the default ones, the others' kept
-    std::vector<std::string> def = deviceTokens(g_mapping.device, controls.default_value(section, row.key.c_str()), true);
+    std::vector<std::string> def = deviceTokens(g_mapping.device, hl::Controls::default_for(controls.default_value(section, row.key.c_str()), g_mapping.device.player, g_mapping.device.game_controller), true);
     ImGui::BeginDisabled(def == mine);
     if (ImGui::Button(tr("Default")))
         controls.set_value(section, row.key.c_str(), replaceDeviceTokens(g_mapping.device, row.value, def));
@@ -393,7 +393,7 @@ void resetDevice()
     for (const Section &s : kSections)
         for (const auto &row : controls.rows(s.name))
         {
-            std::vector<std::string> def = deviceTokens(g_mapping.device, controls.default_value(s.name, row.key.c_str()), true);
+            std::vector<std::string> def = deviceTokens(g_mapping.device, hl::Controls::default_for(controls.default_value(s.name, row.key.c_str()), g_mapping.device.player, g_mapping.device.game_controller), true);
             if (def != deviceTokens(g_mapping.device, row.value, true))
                 controls.set_value(s.name, row.key.c_str(), replaceDeviceTokens(g_mapping.device, row.value, def));
         }

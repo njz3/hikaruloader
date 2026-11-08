@@ -8,6 +8,13 @@ and released: [DEVELOPMENT.md](DEVELOPMENT.md), "Versions and releases".
 In preparation
 --------------
 
+- The Gaelco games run at the SH-4 clock of the settings, no longer at twice it.
+- The SH-4 clock is 150 MHz by default, 100 to 200 on its slider: some games
+  show graphical glitches at 100.
+- "(Paused)" in the window's title while the game is paused or the settings
+  are open.
+- The Controls tab's Default and Reset for a wheel that is not the first
+  joystick: the defaults at its own number.
 - New outputs for the tools that read them: `nozzle1` and `nozzle2` in Brave
   Firefighters; `shot1`, `bullet1`, `missile1` and `bomb1` in Planet Harriers.
 - Star Wars: Racer Arcade: a controller's motors only for a boost at high

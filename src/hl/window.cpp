@@ -411,22 +411,24 @@ static char title_name[256];
 /* The machine's frame, the one the title shows, and when it changed */
 static uint64_t title_frame, title_frame_shown;
 static uint32_t title_frame_ticks;
+static bool title_paused;
 
 static void
 update_title (void)
 {
 	char title[512];
+	const char *paused = title_paused ? " (Paused)" : "";
 
 	if (!shared_window)
 		return;
 	title_frame_shown = title_frame;
 	if (title_name[0] && Config::get ()->title_frame)
-		snprintf (title, sizeof (title), "%s - frame %llu - %.1f fps - Hikaruloader %s",
-		          title_name, (unsigned long long) title_frame, last_fps,
+		snprintf (title, sizeof (title), "%s%s - frame %llu - %.1f fps - Hikaruloader %s",
+		          title_name, paused, (unsigned long long) title_frame, last_fps,
 		          HL_VERSION_FULL);
 	else if (title_name[0])
-		snprintf (title, sizeof (title), "%s - %.1f fps - Hikaruloader %s",
-		          title_name, last_fps, HL_VERSION_FULL);
+		snprintf (title, sizeof (title), "%s%s - %.1f fps - Hikaruloader %s",
+		          title_name, paused, last_fps, HL_VERSION_FULL);
 	else
 		snprintf (title, sizeof (title), "Hikaruloader %s", HL_VERSION_FULL);
 	SDL_SetWindowTitle (shared_window, title);
@@ -462,6 +464,15 @@ Window::frame_done (const char *message)
 
 	/* The renderer's debug flags, shown with the frame rate (F12) */
 	snprintf (last_message, sizeof (last_message), "%s", message);
+}
+
+void
+Window::set_paused (bool paused)
+{
+	if (paused == title_paused)
+		return;
+	title_paused = paused;
+	update_title ();
 }
 
 void

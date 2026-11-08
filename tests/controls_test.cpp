@@ -469,6 +469,10 @@ test_pointers (void)
 	hl::Pointers::inject (1, { -0.75, 0.25, true, 1u << hl::Pointers::RIGHT });
 	check ("a sight: where the mouse moved it", fabs (c.aim ("Pointer", "P2_AimY") - 0.25) < 1e-6);
 	check ("a sight: it stays", fabs (c.aim ("Pointer", "P2_AimY") - 0.25) < 1e-3);
+	check ("a wheel's default at its number", hl::Controls::default_for ("GC0_AXIS_LEFTX, JOY0_AXIS_0", 1, false) ==
+	                                          "GC0_AXIS_LEFTX, JOY1_AXIS_0");
+	check ("the first joystick's default as it is", hl::Controls::default_for ("JOY0_AXIS_0", 0, false) == "JOY0_AXIS_0");
+	check ("a game controller's default as it is", hl::Controls::default_for ("JOY0_AXIS_0", 1, true) == "JOY0_AXIS_0");
 	check ("mouse 0: its inputs", hl::Controls::owns (hl::Controls::MOUSE_PLAYER, "MOUSE0_X"));
 	check ("mouse 0: not mouse 1's", !hl::Controls::owns (hl::Controls::MOUSE_PLAYER, "MOUSE1_X"));
 	check ("a controller: not a mouse's", !hl::Controls::owns (0, "MOUSE0_X"));

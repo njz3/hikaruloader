@@ -81,6 +81,8 @@ public:
 	/* "<name> - <fps> fps - Hikaruloader <version>", or the program and its
 	 * version alone when name is NULL */
 	static void		 set_title (const char *name);
+	/* "(Paused)" in the title, after the game's name */
+	static void		 set_paused (bool paused);
 	/* The machine's frame number, in the title when the settings ask for
 	 * it (to tell which frames look wrong) */
 	static void		 set_frame (uint64_t frame);

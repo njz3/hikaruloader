@@ -160,6 +160,10 @@ public:
 	static std::string describe (const std::string &token,
 	                             const char *(*tr) (const char *),
 	                             bool buttons_from_one);
+	/* A row's default for a device: the defaults name the first joystick,
+	 * JOY0; a joystick further in the list, a wheel after a controller,
+	 * takes them at its own number */
+	static std::string default_for (const std::string &value, int player, bool game_controller);
 	/* A binding's alternatives ("A, B + C" gives "A" and "B + C") */
 	static std::vector<std::string> alternatives (const std::string &value);
 	static std::string join (const std::vector<std::string> &tokens);

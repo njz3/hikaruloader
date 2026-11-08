@@ -546,12 +546,12 @@ void drawEmulationTab(bool inGame)
 
     // The SH-4s' clock (Config::sh4_clock_mhz)
     ImGui::Separator();
-    ImGui::SliderInt(tr("SH-4 clock"), (int *) &cfg->sh4_clock, 20, 200, "%d MHz");
+    ImGui::SliderInt(tr("SH-4 clock"), (int *) &cfg->sh4_clock, 100, 200, "%d MHz");
     restartNote(inGame);
     ImGui::PushTextWrapPos(0.0f);
     ImGui::TextDisabled("%s", tr("The SH-4s' clock: 200 MHz is the board's. Their timers, the MIE and the sound keep real time at any "
                                  "clock; the faster, the more of the PC the waits the games poll take (at 200 MHz, the games' boots "
-                                 "run below 60 frames a second on this PC). 100 MHz by default; below, Air Trix's "
+                                 "run below 60 frames a second on this PC). 150 MHz by default: at 100 MHz some games show graphical glitches; below, Air Trix's "
                                  "skater loses his body."));
     ImGui::PopTextWrapPos();
 
