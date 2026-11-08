@@ -5,8 +5,8 @@ What each version brings, for those who play. How the versions are numbered
 and released: [DEVELOPMENT.md](DEVELOPMENT.md), "Versions and releases".
 
 
-In preparation
---------------
+0.5.3 (2026-11-08)
+------------------
 
 - Star Wars: Racer Arcade at full speed with a force feedback wheel: its
   forces go to the wheel on a thread of their own, the game no longer
