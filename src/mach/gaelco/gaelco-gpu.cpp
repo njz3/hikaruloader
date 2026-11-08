@@ -395,7 +395,10 @@ Neon250::build_frame (uint32_t region, uint32_t state)
 			break;
 	}
 	frame->fog_color = vram_u32 (vram, state + 0xB0);
+	frame->fog_color_vertex = vram_u32 (vram, state + 0xB4);
 	frame->fog_density = vram_u32 (vram, state + 0xB8) & 0xFFFF;
+	frame->clamp_max = vram_u32 (vram, state + 0xBC);
+	frame->clamp_min = vram_u32 (vram, state + 0xC0);
 	frame->background = vram_u32 (vram, state + 0x418);
 	frame->stride = (vram_u32 (vram, state + 0xE4) & 0x1F) * 32;
 	for (n = 0; n < 128; n++)
@@ -763,6 +766,13 @@ Renderer::texture (uint32_t tcw, uint32_t tsp)
  * The Renderer
  */
 
+/* The vertices come in the screen's 640x480 already. WIDESCREEN: the scene
+ * u_width (854) wide, the 640 in its middle, what the games send beyond
+ * their sides seen there (the objects they leave out as out of sight
+ * missing); the 2D stretched to the whole width (u_stretch_2d, the
+ * WIDESCREEN_2D setting): the HUD's polygons, each at a 1/W of 1 or more
+ * (1, 2, 3... one a sprite; the 3D's is 0.2 at most), and the backgrounds at
+ * the far plane's 1e-6 (Smashing Drive's sky, the pictures) */
 static const char *vs_src = R"(#version 430
 layout (location = 0) in vec3 in_pos;
 layout (location = 1) in vec2 in_uv;
@@ -772,10 +782,18 @@ out vec2 v_uv;
 out vec4 v_base;
 out vec4 v_offset;
 noperspective out float v_z;
+uniform float u_width;
+uniform int u_stretch_2d;
 void main ()
 {
 	float w = 1.0 / in_pos.z;
-	gl_Position = vec4 (in_pos.x / 320.0 - 1.0, 1.0 - in_pos.y / 240.0, 0.0, 1.0) * w;
+	bool flat_2d = in_pos.z >= 1.0 || in_pos.z <= 1.0001e-6;
+	/* At 640, and the 2D stretched: as before (the uniform's division
+	 * rounds otherwise, a few pixels a frame) */
+	float x = in_pos.x / 320.0 - 1.0;
+	if (u_width > 640.0 && !(u_stretch_2d != 0 && flat_2d))
+		x = (in_pos.x + (u_width - 640.0) * 0.5) / (u_width * 0.5) - 1.0;
+	gl_Position = vec4 (x, 1.0 - in_pos.y / 240.0, 0.0, 1.0) * w;
 	v_uv = in_uv;
 	v_base = in_base;
 	v_offset = in_offset;
@@ -784,7 +802,8 @@ void main ()
 )";
 
 /* u_flags: bits 0-1 the shading, 2 textured, 3 the base's alpha used, 4 the
- * texture's alpha ignored, 5 the offset added, 7-8 the fog */
+ * texture's alpha ignored, 5 the offset added, 7-8 the fog, 9 the colour
+ * clamped */
 static const char *fs_src = R"(#version 430
 in vec2 v_uv;
 in vec4 v_base;
@@ -797,6 +816,9 @@ uniform int u_flags;
 uniform float u_zscale;
 uniform float u_fog_density;
 uniform vec3 u_fog_color;
+uniform vec3 u_fog_color_vertex;
+uniform vec4 u_clamp_max;
+uniform vec4 u_clamp_min;
 #ifdef COLLECT
 layout (binding = 0, offset = 0) uniform atomic_uint u_count;
 layout (binding = 0, r32ui) uniform coherent uimage2D u_heads;
@@ -805,9 +827,16 @@ uniform uint u_max_nodes;
 uniform uint u_tag;
 uniform sampler2D u_opaque_depth;
 #endif
-float fog_table (float w)
+/* The table's coefficient at a pixel of depth z (the vertices' 1/W): z by
+ * FOG_DENSITY, clamped to 1.0-255.9999, is the address (bits 6-4 its
+ * exponent, 3-0 the top of its mantissa), the far pixels at the table's
+ * start; each entry's high byte its own coefficient, the low one the next
+ * address's, between which the rest of the mantissa interpolates (PowerVR
+ * 2, "Fog Processing"; ATV Track's and Smashing Drive's tables go from
+ * 0x3F-0xD9 at the start to 0 at the end) */
+float fog_table (float z_)
 {
-	float z = clamp (w * u_fog_density, 1.0, 255.9999);
+	float z = clamp (z_ * u_fog_density, 1.0, 255.9999);
 	float e = floor (log2 (z));
 	float m = z * 16.0 / pow (2.0, e) - 16.0;
 	int i = int (floor (m) + e * 16.0);
@@ -841,11 +870,22 @@ void main ()
 		if ((u_flags & 32) != 0)
 			color.rgb += v_offset.rgb;
 	}
+	/* The colour clamp, before the fog: each of ARGB between FOG_CLAMP_MIN
+	 * and FOG_CLAMP_MAX */
+	if ((u_flags & 512) != 0)
+		color = min (max (color, u_clamp_min), u_clamp_max);
 	int fog = (u_flags >> 7) & 3;
+	/* 0 the table; 1 per vertex, the offset colour's alpha toward
+	 * FOG_COL_VERT ("no fog" without the offset); 2 none; 3 the table's
+	 * "mode 2", the polygon's colour replaced by the table's colour and
+	 * its alpha by the coefficient, to fog what is under it once blended
+	 * (PowerVR 2, "Fog Control"; the three games use 0 and 2 only) */
 	if (fog == 0)
-		color.rgb = mix (color.rgb, u_fog_color, fog_table (1.0 / v_z));
-	else if (fog == 1)
-		color.rgb = mix (color.rgb, u_fog_color, v_offset.a);
+		color.rgb = mix (color.rgb, u_fog_color, fog_table (v_z));
+	else if (fog == 1 && (u_flags & 32) != 0)
+		color.rgb = mix (color.rgb, u_fog_color_vertex, v_offset.a);
+	else if (fog == 3)
+		color = vec4 (u_fog_color, fog_table (v_z));
 	float depth = v_z * u_zscale;
 #ifdef COLLECT
 	/* Into its pixel's list, unless the opaque polygons hide it: always
@@ -1007,29 +1047,38 @@ void main ()
 )";
 
 Renderer::Renderer (Neon250 *gpu) :
-	hl::Renderer (640, 480),
+	hl::Renderer (hl::Config::get ()->widescreen ? 854 : 640, 480),
 	gpu (gpu)
 {
+	/* WIDESCREEN: the scene at 854x480, the window's picture too */
+	hl::Window::set_native_size (width, height);
 	setup ();
 }
 
 Renderer::~Renderer ()
 {
+	/* The picker's, after a game in widescreen */
+	hl::Window::set_native_size (640, 480);
 	for (auto &it : textures)
 		glDeleteTextures (1, &it.second.id);
 	destroy_oit ();
 }
 
-static void
-locate (GLuint id, GLint *u_flags, GLint *u_tex, GLint *u_fog, GLint *u_zscale,
-        GLint *u_fog_color, GLint *u_fog_density)
+/* A polygon program's uniforms (Renderer::Program) */
+template <typename Program> static void
+locate (Program &p)
 {
-	*u_flags = glGetUniformLocation (id, "u_flags");
-	*u_tex = glGetUniformLocation (id, "u_tex");
-	*u_fog = glGetUniformLocation (id, "u_fog");
-	*u_zscale = glGetUniformLocation (id, "u_zscale");
-	*u_fog_color = glGetUniformLocation (id, "u_fog_color");
-	*u_fog_density = glGetUniformLocation (id, "u_fog_density");
+	p.u_flags = glGetUniformLocation (p.id, "u_flags");
+	p.u_tex = glGetUniformLocation (p.id, "u_tex");
+	p.u_fog = glGetUniformLocation (p.id, "u_fog");
+	p.u_zscale = glGetUniformLocation (p.id, "u_zscale");
+	p.u_fog_color = glGetUniformLocation (p.id, "u_fog_color");
+	p.u_fog_color_vertex = glGetUniformLocation (p.id, "u_fog_color_vertex");
+	p.u_fog_density = glGetUniformLocation (p.id, "u_fog_density");
+	p.u_width = glGetUniformLocation (p.id, "u_width");
+	p.u_stretch_2d = glGetUniformLocation (p.id, "u_stretch_2d");
+	p.u_clamp_max = glGetUniformLocation (p.id, "u_clamp_max");
+	p.u_clamp_min = glGetUniformLocation (p.id, "u_clamp_min");
 }
 
 void
@@ -1038,8 +1087,7 @@ Renderer::setup ()
 	presentation.reset (new hl::Presentation ());
 
 	program.id = hl::gl::compile_program (vs_src, fs_src);
-	locate (program.id, &program.u_flags, &program.u_tex, &program.u_fog, &program.u_zscale,
-	        &program.u_fog_color, &program.u_fog_density);
+	locate (program);
 	program.u_tag = program.u_max_nodes = program.u_opaque_depth = -1;
 
 	/* The same, collecting the translucent fragments */
@@ -1047,8 +1095,7 @@ Renderer::setup ()
 		std::string src = fs_src;
 		src.insert (src.find ('\n') + 1, "#define COLLECT 1\n");
 		collect.id = hl::gl::compile_program (vs_src, src.c_str ());
-		locate (collect.id, &collect.u_flags, &collect.u_tex, &collect.u_fog, &collect.u_zscale,
-		        &collect.u_fog_color, &collect.u_fog_density);
+		locate (collect);
 		collect.u_tag = glGetUniformLocation (collect.id, "u_tag");
 		collect.u_max_nodes = glGetUniformLocation (collect.id, "u_max_nodes");
 		collect.u_opaque_depth = glGetUniformLocation (collect.id, "u_opaque_depth");
@@ -1114,7 +1161,7 @@ void
 Renderer::draw_scene ()
 {
 	unsigned scale = (unsigned) std::max (1, hl::Config::get ()->render_scale);
-	unsigned w = 640 * scale, h = 480 * scale;
+	unsigned w = width * scale, h = height * scale;
 
 	if (!fb || fb_w != w || fb_h != h) {
 		if (!fb) {
@@ -1199,10 +1246,27 @@ Renderer::set_scene_uniforms (const Program &p)
 	glUniform1i (p.u_tex, 0);
 	glUniform1i (p.u_fog, 1);
 	glUniform1f (p.u_zscale, 1.0f / frame->max_z);
+	glUniform1f (p.u_width, (float) width);
+	glUniform1i (p.u_stretch_2d, hl::Config::get ()->widescreen_2d == hl::WIDESCREEN_2D_STRETCHED);
 	glUniform3f (p.u_fog_color,
 	             ((frame->fog_color >> 16) & 255) / 255.0f,
 	             ((frame->fog_color >> 8) & 255) / 255.0f,
 	             (frame->fog_color & 255) / 255.0f);
+	glUniform3f (p.u_fog_color_vertex,
+	             ((frame->fog_color_vertex >> 16) & 255) / 255.0f,
+	             ((frame->fog_color_vertex >> 8) & 255) / 255.0f,
+	             (frame->fog_color_vertex & 255) / 255.0f);
+	/* ARGB to the shader's RGBA */
+	glUniform4f (p.u_clamp_max,
+	             ((frame->clamp_max >> 16) & 255) / 255.0f,
+	             ((frame->clamp_max >> 8) & 255) / 255.0f,
+	             (frame->clamp_max & 255) / 255.0f,
+	             (frame->clamp_max >> 24) / 255.0f);
+	glUniform4f (p.u_clamp_min,
+	             ((frame->clamp_min >> 16) & 255) / 255.0f,
+	             ((frame->clamp_min >> 8) & 255) / 255.0f,
+	             (frame->clamp_min & 255) / 255.0f,
+	             (frame->clamp_min >> 24) / 255.0f);
 	{
 		/* A byte of mantissa (1.7), a byte of signed exponent */
 		int e = (int8_t) (frame->fog_density & 255);
@@ -1227,6 +1291,7 @@ Renderer::draw_batch (const Program &p, const Batch &b)
 	flags |= ((b.tsp >> 19) & 1) ? 16 : 0;
 	flags |= ((b.isp >> 24) & 1) ? 32 : 0;
 	flags |= ((b.tsp >> 22) & 3) << 7;
+	flags |= ((b.tsp >> 21) & 1) ? 512 : 0;
 	glUniform1i (p.u_flags, flags);
 
 	if (textured) {
@@ -1441,7 +1506,7 @@ Renderer::on_end_frame ()
 	}
 
 	presentation->copy_view ();
-	crt_fb = presentation->begin (640, 480);
+	crt_fb = presentation->begin (width, height);
 	hl::Window::drawable_size (&dw, &dh);
 	hl::Window::layout (&layout);
 	glBindFramebuffer (GL_FRAMEBUFFER, 0);
@@ -1449,7 +1514,7 @@ Renderer::on_end_frame ()
 	if (crt_fb) {
 		glDisable (GL_SCISSOR_TEST);
 		glBindFramebuffer (GL_FRAMEBUFFER, crt_fb);
-		glViewport (0, 0, 640, 480);
+		glViewport (0, 0, width, height);
 	}
 	glUseProgram (blit_program);
 	glBindVertexArray (blit_vao);

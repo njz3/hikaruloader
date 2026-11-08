@@ -292,10 +292,12 @@ public:
 	uint32_t	dma_from_memory (unsigned ch);
 	/* The peripherals' clock, Pφ: the Hikaru's 200 MHz / 4 by default */
 	uint32_t	pclk_hz = 50000000;
-	/* The last TCNT read: where from (PC, PR, r15), the far stores then */
+	/* The last TCNT read: where from (PC, PR, r15), the far stores then
+	 * and since the read before (~0: from elsewhere), the GPRs then */
 	struct {
 		uint32_t pc, pr, sp;
-		uint64_t far_stores;
+		uint64_t far_stores, far_turn;
+		uint32_t r[16];
 	} poll = {};
 
 	/* The RAM or ROM the code was last fetched from (sh4_fetch) */
@@ -420,7 +422,22 @@ public:
 		bool		 tracking = false;
 		unsigned	 seen = 0;
 		unsigned	 misses = 0;	/* iterations not alike in a row */
-		uint64_t	 stores = 0;
+		/* The stores at the turn's start; those away from the stack at
+		 * the look's */
+		uint64_t	 stores = 0, far_stores = 0;
+		/* The live stack at the turn's start, from r15 up (STACK_KEPT
+		 * bytes), held after the first turn that stored: a turn that
+		 * calls a function stores below r15 (its return address, the
+		 * registers it saves), stores that are dead once the turn is
+		 * over; the live stack must stay as it was (Smashing Drive's
+		 * master waits for its frame so, calling a function that polls
+		 * the board at each turn) */
+		static const unsigned STACK_KEPT = 0x400;
+		uint32_t	 stack_sp = 0;
+		bool		 stack_held = false;
+		uint8_t		 stack[STACK_KEPT];
+		void		 hold_stack (Sh4 *ctx);
+		bool		 stack_kept (Sh4 *ctx) const;
 		/* The instructions of the last iteration, and the one before */
 		unsigned	 length = 0, last_length = 0;
 		uint32_t	 path[MAX_PATH], last_path[MAX_PATH];

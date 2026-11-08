@@ -51,10 +51,13 @@ struct Frame {
 	float max_z;
 	uint32_t background;
 	unsigned stride;	/* in order textures' lines, in texels */
-	/* The chip state's fog: its colour, density, and the table */
+	/* The chip state's fog: its colours (the table's, the vertices'),
+	 * density, and the table; the colour clamp's bounds (ARGB) */
 	uint32_t fog_color;
+	uint32_t fog_color_vertex;
 	uint32_t fog_density;
 	uint16_t fog_table[128];
+	uint32_t clamp_max, clamp_min;
 };
 
 /* The NEC PowerVR Neon 250 (a PowerVR series 2, PMX1) on the slave SH-4: its
@@ -122,7 +125,8 @@ private:
 	/* A polygon program's uniforms */
 	struct Program {
 		GLuint id;
-		GLint u_flags, u_tex, u_fog, u_zscale, u_fog_color, u_fog_density;
+		GLint u_flags, u_tex, u_fog, u_zscale, u_fog_color, u_fog_color_vertex, u_fog_density;
+		GLint u_width, u_stretch_2d, u_clamp_max, u_clamp_min;
 		/* The collecting one's (else -1) */
 		GLint u_tag, u_max_nodes, u_opaque_depth;
 	};

@@ -432,14 +432,16 @@ private:
  engine 8C19979C (0..1); throttle, right and left brakes, steering
  8C199600..0C; time left 8C1B94B0 plus its "+N" 8C1B9498 (s), race time
  8C1B9480 (frames); the checkpoints passed 8C1B9698, missed 8C1B969C; the
- stage 8C0A1EAC, its distance 8C1BD7D8 (cm).
+ stage 8C0A1EAC, the distance along it 8C1BD7F8 (cm; 8C1BD7D8 goes on from
+ the stage before); the CPU's riders: see riders ().
 
  Smashing Drive: the game's state 8C0766B8 (2 attract, 3 the choices and
  introduction, 5 and 6 driving, then continue and game over, 8 ranking, 9
  demo); the time 8C200B5C less the ride's 8C200B64 (frames), driving while
  some is left; the taxi: position 8C201530, matrix 8C20154C, velocity
  8C2015B8; 8C2015F8 the wheels off the ground (F all four); steering, gas
- 8C201058, 8C20105C; brake and horn bytes 8C201060, 8C201064.
+ 8C201058, 8C20105C; brake and horn bytes 8C201060, 8C201064. No rival: the
+ other taxis are traffic (8C211494 + k x 1F4).
 ****************************************************************************/
 
 class Gaelco : public Decoder {
@@ -479,11 +481,13 @@ public:
 			p.extra.push_back ({ "engine", ram.f32 (a (0x8C19979C)) });
 			p.extra.push_back ({ "brake_right", ram.f32 (a (0x8C199608)) });
 			p.extra.push_back ({ "brake_left", ram.f32 (a (0x8C19960C)) });
-			p.extra.push_back ({ "stage_distance", ram.f32 (a (0x8C1BD7D8)) / 100.0f });
+			float mine = ram.f32 (a (0x8C1BD7F8));
+			p.extra.push_back ({ "stage_distance", mine / 100.0f });
 			out.time_left = (float) (std::max (ram.i32 (a (0x8C1B94B0)), 0) + std::max (ram.i32 (a (0x8C1B9498)), 0));
 			out.race_time = ram.u32 (a (0x8C1B9480)) / (float) FPS;
 			out.checkpoint = (int) ram.u32 (a (0x8C1B9698));
 			out.stage = ram.i32 (a (0x8C0A1EAC));
+			riders (ram, out, mine);
 		} else {
 			uint32_t st = ram.u32 (a (0x8C0766B8));
 			float left = ((float) ram.u32 (a (0x8C200B5C)) - (float) ram.u32 (a (0x8C200B64))) / (float) FPS;
@@ -513,6 +517,56 @@ public:
 
 private:
 	bool atv;
+
+	/* ATV Track's riders the CPU drives, two at most, in the entity pool
+	 * 0C1AF8E0 + k x 164 (90 entries, the order they came in): class 001D
+	 * in the high half of +0, +F8 their body's position (the body, as the
+	 * player's 8C198000: 8C1BD858 or 8C1BF1C8), +13C their progress along
+	 * the stage (cm, as the player's 8C1BD7F8). They come once the player
+	 * has gone far enough, and wait for them; the game shows no place:
+	 * worked out from the progress */
+	void riders (const Ram &ram, Frame &out, float mine)
+	{
+		static const uint32_t POOL = 0x0C1AF8E0, ENTRY = 0x164, ENTRIES = 90;
+		std::vector<float> progress (1, mine);
+		size_t first = out.others.size ();
+
+		for (uint32_t k = 0; k < ENTRIES; k++) {
+			uint32_t e = POOL + k * ENTRY, b;
+
+			if ((ram.u32 (e) >> 16) != 0x001D)
+				continue;
+			b = (ram.u32 (e + 0xF8) & 0x1FFFFFFF) - 4;
+			if (b != 0x0C1BD858 && b != 0x0C1BF1C8)
+				continue;
+			Vehicle v;
+			body (ram, v, b + 0x04, b + 0x40, b + 0xC4);
+			int airborne = 1;
+			for (int n = 0; n < 4; n++) {
+				bool on = ram.f32 (b + 0x31C + 0xAC * n) != 0.0f;
+				v.wheels[n].contact = on ? 1 : 0;
+				if (on)
+					airborne = 0;
+			}
+			v.airborne = airborne;
+			v.gear = (int) ram.u32 (b + 0x17A4);
+			v.throttle = ram.f32 (b + 0x1604);
+			v.brake = std::max (ram.f32 (b + 0x1608), ram.f32 (b + 0x160C));
+			v.steer = -ram.f32 (b + 0x1600);
+			v.extra.push_back ({ "engine", ram.f32 (b + 0x179C) });
+			progress.push_back (ram.f32 (e + 0x13C));
+			v.extra.push_back ({ "stage_distance", progress.back () / 100.0f });
+			out.others.push_back (v);
+		}
+		/* Places: 1 and those ahead */
+		for (size_t i = 0; i < progress.size (); i++) {
+			int place = 1;
+			for (size_t j = 0; j < progress.size (); j++)
+				if (j != i && progress[j] > progress[i])
+					place++;
+			(i ? out.others[first + i - 1] : out.player).position = place;
+		}
+	}
 
 	/* Position (cm), matrix (columns right, up, forward), velocity (cm a
 	 * frame) */

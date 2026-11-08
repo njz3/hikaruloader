@@ -42,9 +42,11 @@ The telemetry (`src/hl/telemetry-games.cpp`), what its decoders lack:
   hover height's rest; the shaker's level against a deluxe cabinet's; the
   laps (4 taken, never driven to the end); the opponents' places are
   worked out from their progress.
-- ATV Track: the other quad (8C1A8908, same layout, not checked); no place
-  in the game.
-- Smashing Drive: the damage (8C20144C, probable), the fares; its wheel's
+- ATV Track: the riders' places worked out from their distance along the
+  stage (the game shows none); the second rider seen on screen once only.
+- Smashing Drive: the damage (8C22BF44 probably, a count that followed the
+  HUD's bar at two crashes, its range unknown; 8C20144C is the last hit's
+  strength), the fares; a linked game's other taxi; its wheel's
   way: the agent's Steering 1 (the ADC's 01, as ATV Track's handlebar to
   the right) turned the taxi left, and the game recalibrates its centre and
   range as it is played (8C0765EC, 8C0765E4): to check in its INPUT TEST
@@ -261,9 +263,24 @@ Still to do:
   alone; no modifier volumes, the texture formats 3, 4 and 6 and the palettes
   (none of the three games uses them).
 - Interrupt 7 (a frame drawn) is raised at once, not when the frame would be.
-- Speed on older PCs: an Intel Core i5-4590 (4 cores, GTX 1050 Ti) plays the
-  Hikaru games at 60 frames a second but ATV Track and Smashing Drive at 42 to
-  60 (about 50), two SH-4s at 200 MHz.
+- Widescreen: the 2D told from the 3D by its depth (the HUD at a 1/W of 1
+  or more, the backgrounds at 1e-6, the 3D below 0.2 in both games); ATV
+  Track leaves pieces of ground out at the sides (the game's culling), and
+  dimmed 4:3 boxes stay 4:3 with the 2D centred; Gaelco Football lacks a
+  billboard's piece on the right.
+- Fog: the table's, per pixel, not yet compared with a real board's
+  pictures. The three games use the table and no fog only, and never the
+  colour clamp: the vertices' fog, the table's "mode 2" and the clamp are
+  drawn as the PowerVR 2 manual says, checked by forcing them on the games'
+  polygons only.
+- Speed on older PCs: an Intel Core i5-4590 (4 cores, GTX 1050 Ti) played
+  the Hikaru games at 60 frames a second but ATV Track and Smashing Drive at
+  42 to 60 (about 55), two SH-4s at 200 MHz. Their master's wait for each
+  frame is now waited at once (a third of the time a frame); to measure on
+  that PC again. The slave's stores through the store queues
+  (`sh4_sq_put ()`), a tenth of its time, one at a time: writing them in
+  place gained nothing (the lookup's time instead); a whole queue at its
+  `pref` would.
 - The force feedback's direction and strength on a real wheel; Smashing Drive's
   wheel polarity is taken from what it writes at its ends.
 - ATV Track's and Gaelco Football's link, if any: only Smashing Drive's menu has

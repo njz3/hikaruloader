@@ -632,19 +632,28 @@ sh4_tmu_run_channel (Sh4 *ctx, unsigned ch, int cycles)
  * again (the same PC, PR and r15), storing nothing but to its stack in
  * between: the rest of the slice is waited at once, as the idle loops'
  * (the timers count the whole slice anyway). One read a slice then, not
- * thousands; off where the idle loops are */
+ * thousands; off where the idle loops are. A wait that keeps the time it
+ * read in memory stores away from the stack at each turn (ATV Track's
+ * master waits for its frame so, two words at each turn, AT:@0C075186): as
+ * many stores as in the turn before, the GPRs as they were at the read
+ * before (a copy timed so moves its pointers: not waited) */
 static void
 sh4_tmu_polled (Sh4 *ctx)
 {
 	hl::Cpu *cpu = ctx;
-	bool again = ctx->poll.pc == PC && ctx->poll.pr == ctx->regs.pr &&
-	             ctx->poll.sp == ctx->regs.r[15] &&
-	             ctx->poll.far_stores == ctx->far_stores;
+	bool place = ctx->poll.pc == PC && ctx->poll.pr == ctx->regs.pr &&
+	             ctx->poll.sp == ctx->regs.r[15];
+	uint64_t turn = ctx->far_stores - ctx->poll.far_stores;
+	bool again = place &&
+	             (turn == 0 || (turn == ctx->poll.far_turn &&
+	                            !memcmp (ctx->poll.r, ctx->regs.r, sizeof (ctx->poll.r))));
 
 	ctx->poll.pc = PC;
 	ctx->poll.pr = ctx->regs.pr;
 	ctx->poll.sp = ctx->regs.r[15];
 	ctx->poll.far_stores = ctx->far_stores;
+	ctx->poll.far_turn = place ? turn : ~(uint64_t) 0;
+	memcpy (ctx->poll.r, ctx->regs.r, sizeof (ctx->poll.r));
 	if (again && ctx->idle.enabled && !cpu->profile && cpu->breakpoints.empty () &&
 	    cpu->watchpoints.empty () && cpu->remaining > 1) {
 		ctx->cycles_skipped += (uint64_t) (cpu->remaining - 1);
@@ -2050,7 +2059,9 @@ delay_slot (Sh4 *ctx, uint32_t pc)
  * when r7 wraps) all the time. Within a CPU's slice nothing else runs: the
  * other CPU, the devices and the interrupts wait for its end, so a loop
  * whose iterations are alike stays so until then. Two alike in a row:
- *  - no store, the same instructions taken (the path), the same registers
+ *  - no store but below r15 (a function called: its return address, the
+ *    registers it saves; the live stack above r15 the same after a turn as
+ *    before), the same instructions taken (the path), the same registers
  *    but for some GPRs that each move by the same amount (counters);
  *  - a counter is only added to, never read otherwise on the path (no
  *    compare, no address): then where it stands changes nothing but itself;
@@ -2059,9 +2070,12 @@ delay_slot (Sh4 *ctx, uint32_t pc)
  * the counters moved as they would be, up to before an addc's carry (the
  * slave's port bit), before dt reaches 0. The timers count the whole slice
  * anyway (run ()). A loop's branch back may skip its body (MAX_SPAN: VON4's
- * waits on a ring buffer, 9 instructions over 58 bytes). The loops that
- * call functions (stores to their stack) and read the timer are waited
- * another way: see sh4_tmu_polled (). The translations take three kinds
+ * waits on a ring buffer, 9 instructions over 58 bytes). A loop that calls
+ * a function is looked at too, if its turn is short enough (MAX_PATH):
+ * Smashing Drive's master waits for its frame calling one that polls the
+ * board (0C05A88E), a fifth of the emulator's time. The loops that call
+ * functions and read the timer are waited another way: see
+ * sh4_tmu_polled (). The translations take three kinds
  * themselves, without this look: a delay loop "dt Rn; bf" alone in its
  * block (sh4-x64.cpp), a wait on memory "load; compare; branch"
  * (sh4_poll_skip ()), the turns of a loop let be (Sh4Block::quiet). Off
@@ -2079,14 +2093,46 @@ Sh4::IdleLoop::start (Sh4 *ctx, uint32_t tail_, uint32_t head_)
 	length = 0;
 	last_length = 0;
 	stores = ctx->stores;
+	far_stores = ctx->far_stores;
+	stack_held = false;
 	regs = ctx->regs;
+}
+
+/* The live stack as a turn starts, for stack_kept (): held at the end of
+ * the first turn that stored (a copy at each look's start took too long:
+ * thousands a frame), the next turns compared with it */
+void
+Sh4::IdleLoop::hold_stack (Sh4 *ctx)
+{
+	uint32_t sp = ctx->regs.r[15];
+	const uint8_t *at = (sp & 3) || sp >= 0xC0000000 ? NULL :
+	                    ((hl::Cpu *) ctx)->mmap->direct (sp & ADDR_MASK, false);
+	const uint8_t *end = at ? ((hl::Cpu *) ctx)->mmap->direct ((sp + STACK_KEPT - 4) & ADDR_MASK, false) : NULL;
+
+	stack_held = at && end == at + STACK_KEPT - 4;
+	stack_sp = sp;
+	if (stack_held)
+		memcpy (stack, at, STACK_KEPT);
+}
+
+/* The turn's stores, all near the stack, were below r15 where it started
+ * (dead once it is over): the live stack as it was, r15 back where it was */
+bool
+Sh4::IdleLoop::stack_kept (Sh4 *ctx) const
+{
+	const uint8_t *at;
+
+	if (!stack_held || ctx->regs.r[15] != stack_sp)
+		return false;
+	at = ((hl::Cpu *) ctx)->mmap->direct (stack_sp & ADDR_MASK, false);
+	return at && !memcmp (stack, at, STACK_KEPT);
 }
 
 void
 Sh4::IdleLoop::back_edge (Sh4 *ctx, uint32_t tail_, uint32_t head_)
 {
 	unsigned i;
-	bool same_regs, alike, known_turn;
+	bool same_regs, alike, known_turn, stored, stack_new;
 	Known &known_one = known_of (tail_, head_);
 
 	/* A loop found busy is let be, looked at again every so often (the
@@ -2118,17 +2164,23 @@ Sh4::IdleLoop::back_edge (Sh4 *ctx, uint32_t tail_, uint32_t head_)
 		return;
 	}
 	known_one.opened = 0;
-	if (ctx->stores != stores || !tracking) {
-		/* It writes, or is too long: not an idle loop */
+	stored = ctx->stores != stores;
+	if (!tracking || ctx->far_stores != far_stores ||
+	    (stored && stack_held && ctx->regs.r[15] == stack_sp && !stack_kept (ctx))) {
+		/* It writes (but to the dead stack), or is too long: not an
+		 * idle loop */
 		let_be (tail_, head_);
 		return;
 	}
+	/* The first turn that stored: the live stack held from here, the
+	 * turn not alike (the next one compared) */
+	stack_new = stored && !stack_kept (ctx);
 
 	/* The same path, the same registers but the GPRs, which move as in
 	 * the iteration before (the registers compared once for both looks:
 	 * the comparisons took a tenth of the idle slaves' time) */
 	same_regs = !memcmp (&ctx->regs.pc, &regs.pc, sizeof (regs) - offsetof (decltype (regs), pc));
-	alike = same_regs && length == last_length &&
+	alike = same_regs && !stack_new && length == last_length &&
 	        !memcmp (path, last_path, length * sizeof (path[0]));
 	for (i = 0; alike && i < 16; i++)
 		alike = (int32_t) (ctx->regs.r[i] - regs.r[i]) == delta[i];
@@ -2138,7 +2190,7 @@ Sh4::IdleLoop::back_edge (Sh4 *ctx, uint32_t tail_, uint32_t head_)
 	misses = alike ? 0 : misses + 1;
 	/* The turn of a loop run forward before: at once; looked at when it
 	 * serves (not alike, or for the plan of one run forward) */
-	known_turn = same_regs && (!alike || seen >= 2) &&
+	known_turn = same_regs && !stack_new && (!alike || seen >= 2) &&
 	             known_one.tail == tail_ && known_one.head == head_ &&
 	             known_one.length && known_one.length == length &&
 	             !memcmp (delta, known_one.delta, sizeof (delta)) &&
@@ -2184,6 +2236,10 @@ Sh4::IdleLoop::back_edge (Sh4 *ctx, uint32_t tail_, uint32_t head_)
 	memcpy (last_path, path, length * sizeof (path[0]));
 	last_length = length;
 	length = 0;
+	/* The next turn's stores counted from here */
+	stores = ctx->stores;
+	if (stack_new)
+		hold_stack (ctx);
 }
 
 void

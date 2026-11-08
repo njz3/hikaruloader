@@ -5,6 +5,23 @@ What each version brings, for those who play. How the versions are numbered
 and released: [DEVELOPMENT.md](DEVELOPMENT.md), "Versions and releases".
 
 
+In preparation
+--------------
+
+- ATV Track and Smashing Drive a third faster to emulate, for older PCs:
+  their main CPU's wait for each frame, which polls the board, is no longer
+  run turn after turn.
+- ATV Track and Smashing Drive's fog: the far scenery fades into the fog's
+  colour, as the PowerVR chip does it (it was never drawn: the fog table was
+  read from the far end). The chip's other fog modes and its colour clamp
+  are drawn too, for games that would use them.
+- The Gaelco games in widescreen too (*Widescreen 3D (16:9)* in the Display
+  tab): the 3D seen wider, the HUD at 4:3 in the middle or stretched to
+  16:9 with the sky and the pictures (*2D in widescreen*).
+- ATV Track's telemetry: the riders the game drives, with everyone's place;
+  the distance along the stage counted from each stage's start.
+
+
 0.5.1 (2026-11-07)
 ------------------
 

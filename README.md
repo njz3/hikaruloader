@@ -288,7 +288,9 @@ stretched display mode, `SCALE_FILTER` is read as `SCALING_FILTER`, and
 - *Widescreen 3D (16:9)*: the 3D is drawn at 854x480 and seen wider; its
   middle stays as the game draws it. The 2D (texts, logos) stays 4:3 in the
   middle, or is stretched to 16:9 for a game that needs it. The games were
-  made for 4:3: objects may be missing at the sides, or appear late.
+  made for 4:3: objects may be missing at the sides, or appear late. The
+  Gaelco games too: their HUD is the 2D, their sky and full-screen pictures
+  stretched with it; ATV Track leaves pieces of ground out at the sides.
 - *Draw distance* (x1 to x4): the scenery's detailed models and its fog go
   that many times farther. What a game leaves out itself is not drawn.
 - *Bezel* (`BEZEL`): what is around the picture where the window is wider
@@ -655,11 +657,12 @@ change of speed), `lap`, `progress`, `position` (its place); and the race
 |---|---|
 | NASCAR Arcade | The 29 other cars. Gear, rpm, throttle, brake and steering as the game reads them, `draft` (0 to 1, the HUD's DRAFT) |
 | Star Wars: Racer Arcade | The 11 other pods. Each engine's thrust as the game uses it (`thrust_left`, `thrust_right`, 0 to 1), `boost`, `boosts_left`, `hit` (the frame of a hit against a wall or a pod), `colliding` (while its jolt lasts), `wall` (a wall touched), `hover` (the height over the ground, m), `shaker` (0 to 1: the deluxe cabinet's bass shaker, fed by the option sound board, its low frequencies), the course |
-| ATV Track | Gear, the engine (`engine`, 0 to 1), throttle, each brake lever, steering; each wheel on the ground, `airborne`; the checkpoints passed, the stage and its distance |
-| Smashing Drive | Throttle, brake, steering, `horn`; each wheel on the ground, `airborne`; the time left of the ride |
+| ATV Track | The riders the game drives, two at most, once the player has gone far enough. Gear, the engine (`engine`, 0 to 1), throttle, each brake lever, steering; each wheel on the ground, `airborne`; the checkpoints passed, the stage and the distance along it (`stage_distance`, m, the riders' too) |
+| Smashing Drive | Throttle, brake, steering, `horn`; each wheel on the ground, `airborne`; the time left of the ride. No opponent: the other taxis are traffic |
 
 The places of Star Wars: Racer Arcade's opponents come from their progress
-along the track (the game keeps the player's alone).
+along the track (the game keeps the player's alone), and ATV Track's from
+the distance along the stage (the game shows none).
 
 
 When something goes wrong
