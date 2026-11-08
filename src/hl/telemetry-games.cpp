@@ -234,6 +234,9 @@ public:
    or GAME OVER.
  - The player's pod, at [0C016E08] in the race (elsewhere between two
    races): x y z +108; rows right, up, back +D8, +E8, +F8; velocity +330;
+   the engines' own rows at +118 (left) and +158 (right), the same for the
+   two, turned from the cockpit's about the pod's length only (some 8
+   degrees at full steering, 15 while it changes), x y z +148 and +188;
    its steering as used +410 ((right thrust - left thrust) / 2); the
    engines' thrust as used, right +6C and left +C8, of +270 (their
    maximum); +D0's bit 29 set while a hit's jolt lasts (a wall, a pod; its
@@ -311,6 +314,12 @@ public:
 			if (std::fabs (ny) < 0.5f && std::fabs (nx) + std::fabs (nz) > 0.5f)
 				wall = true;
 		}
+		/* The engines' tilt from the cockpit: their rows (the same for
+		 * the two), > 0 banked to the right */
+		float ex = ram.f32 (o + 0x118), ey = ram.f32 (o + 0x11C), ez = ram.f32 (o + 0x120);
+		float along_right = ex * ram.f32 (o + 0xD8) + ey * ram.f32 (o + 0xDC) + ez * ram.f32 (o + 0xE0);
+		float along_up = ex * ram.f32 (o + 0xE8) + ey * ram.f32 (o + 0xEC) + ez * ram.f32 (o + 0xF0);
+		p.extra.push_back ({ "engines_roll", -atan2f (along_up, along_right) });
 		p.extra.push_back ({ "thrust_left", left });
 		p.extra.push_back ({ "thrust_right", right });
 		p.extra.push_back ({ "boost", boosting ? 1.0f : 0.0f });

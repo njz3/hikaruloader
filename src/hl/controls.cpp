@@ -95,6 +95,8 @@ static const char *default_file =
 	"Pause = KEY_Space, GC0_BUTTON_GUIDE + GC0_BUTTON_X\n"
 	"SaveState = KEY_F4, GC0_BUTTON_GUIDE + GC0_BUTTON_RIGHTSHOULDER\n"
 	"LoadState = KEY_F1, GC0_BUTTON_GUIDE + GC0_BUTTON_LEFTSHOULDER\n"
+	"StateNewer = KEY_F2\n"
+	"StateOlder = KEY_F3\n"
 	"Menu = KEY_Tab, GC0_BUTTON_BACK, GC0_BUTTON_GUIDE + GC0_BUTTON_BACK\n"
 	"Back = KEY_Escape, GC0_BUTTON_GUIDE + GC0_BUTTON_B\n"
 	"ShowFps = KEY_F12\n"
@@ -206,8 +208,10 @@ static const struct {
 	  "The emulator's commands: Hikaruloader's own section, the other loaders\n"
 	  "leave it alone" },
 	{ "Emulator", "Pause", "Pauses and resumes the game" },
-	{ "Emulator", "SaveState", "Saves the state" },
-	{ "Emulator", "LoadState", "Loads the state" },
+	{ "Emulator", "SaveState", "Saves the state, as the latest of the five kept" },
+	{ "Emulator", "LoadState", "Loads the state chosen, the latest by default" },
+	{ "Emulator", "StateNewer", "Chooses the state to load: a newer one" },
+	{ "Emulator", "StateOlder", "Chooses the state to load: an older one" },
 	{ "Emulator", "Menu", "Opens and closes the settings" },
 	{ "Emulator", "Back", "Back to the picker the game was started from, else quits" },
 	{ "Emulator", "ShowFps", "Shows and hides the frame rate" },

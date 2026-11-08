@@ -111,6 +111,8 @@ const char *actionLabel(const std::string &key)
         {"Pause", N_("Pause")},
         {"SaveState", N_("Save the state")},
         {"LoadState", N_("Load the state")},
+        {"StateNewer", N_("Newer save state")},
+        {"StateOlder", N_("Older save state")},
         {"Menu", N_("Settings (this window)")},
         {"Back", N_("Back to the picker, or quit")},
         {"ShowFps", N_("Show the frame rate")},
@@ -688,6 +690,24 @@ void drawFfbGain()
                                    "motors. Above 100 percent, the strongest stop at what the device can do."));
 }
 
+// [ForceFeedback] HUD: saved at once to hikaruloader.ini, alone
+void drawFfbHudOption()
+{
+    hl::Config *cfg = hl::Config::get();
+    bool on = cfg->ffb_hud;
+    if (ImGui::Checkbox(tr("Show the effects over the game (debugging)"), &on))
+    {
+        hl::Config onDisk;
+        onDisk.set_defaults();
+        onDisk.load();
+        onDisk.ffb_hud = cfg->ffb_hud = on;
+        onDisk.save();
+    }
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("%s", tr("At the top left, the spring, the friction, the force, the sine and the\n"
+                                   "rumble, with the values the device is told."));
+}
+
 // [Input] BACKGROUND_INPUT: saved at once to hikaruloader.ini, alone, and
 // taken at once by SDL
 void drawBackgroundInput()
@@ -893,6 +913,7 @@ void drawControlsTab()
     header(tr("Force feedback"));
     drawFfbGain();
     drawFfbEffects();
+    drawFfbHudOption();
 
     header(tr("Dead zones and options"));
     drawOptions();

@@ -78,6 +78,8 @@ static const struct {
 	{ "PAUSE",	"Emulator",	"Pause",	{ SDLK_SPACE,	-1 } },
 	{ "SAVE_STATE",	"Emulator",	"SaveState",	{ SDLK_F4,	-1 } },
 	{ "LOAD_STATE",	"Emulator",	"LoadState",	{ SDLK_F1,	-1 } },
+	{ "STATE_NEWER", "Emulator",	"StateNewer",	{ SDLK_F2,	-1 } },
+	{ "STATE_OLDER", "Emulator",	"StateOlder",	{ SDLK_F3,	-1 } },
 	{ "SETTINGS",	"Emulator",	"Menu",		{ SDLK_TAB,	SDL_CONTROLLER_BUTTON_BACK } },
 	{ "SHOW_FPS",	"Emulator",	"ShowFps",	{ SDLK_F12,	-1 } },
 	{ "QUIT",	"Common",	"ExitGame",	{ SDLK_F9,	-1 } },

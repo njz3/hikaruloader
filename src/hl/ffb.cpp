@@ -35,7 +35,11 @@ namespace hl {
 /* The spring's dead band about the centre, of the game's wheel's travel */
 #define SPRING_DEADBAND	0.05
 
+/* The vibration's period */
+#define SINE_PERIOD_MS	50
+
 static float current[ForceFeedback::NUM_EFFECTS];
+static std::atomic<float> spring_center;
 static std::vector<ForceFeedback::Record> records;
 
 /* The SDL device, and its effects (-1: not made yet, or not supported) */
@@ -44,6 +48,7 @@ static std::atomic<SDL_Joystick *> joystick;
 static std::atomic<SDL_Haptic *> haptic;
 static std::mutex &device_lock = *new std::mutex;
 static unsigned supported;
+static char device_name[128];
 static int effect_id[ForceFeedback::NUM_EFFECTS];
 static bool running[ForceFeedback::NUM_EFFECTS];
 
@@ -65,6 +70,7 @@ close_device (void)
 		SDL_JoystickClose (joystick);
 	haptic = NULL;
 	joystick = NULL;
+	device_name[0] = '\0';
 	for (i = 0; i < ForceFeedback::NUM_EFFECTS; i++) {
 		effect_id[i] = -1;
 		running[i] = false;
@@ -106,8 +112,26 @@ open_device (void)
 	if (supported & SDL_HAPTIC_AUTOCENTER)
 		SDL_HapticSetAutocenter (haptic, 0);
 	HL_PRINT ("ffb: force feedback on '%s'", SDL_JoystickName (joystick));
+	snprintf (device_name, sizeof (device_name), "%s", SDL_JoystickName (joystick));
 	for (i = 0; i < ForceFeedback::NUM_EFFECTS; i++)
 		effect_id[i] = -1;
+}
+
+static bool
+inverted (void)
+{
+	static const bool invert = hl_util_get_bool_option ("FFB_INVERT", false);
+	return invert;
+}
+
+/* The spring's centre on the device, a fraction of its travel: nearer with
+ * WHEEL_ROTATION, the game's wheel being shorter than the device's */
+static float
+device_center (void)
+{
+	double scale = Config::get ()->wheel_scale ();
+	float center = (float) (spring_center / (scale < 1.0 ? 1.0 : scale));
+	return inverted () ? -center : center;
 }
 
 /* An effect at force, on the device: made the first time, then updated */
@@ -147,13 +171,14 @@ play (ForceFeedback::Effect effect, float force)
 			ForceFeedback::spring_on_wheel (force, Config::get ()->wheel_scale (), &coefficient, &deadband);
 			e.condition.right_coeff[0] = e.condition.left_coeff[0] = (Sint16) lrintf (coefficient * 32767.0f);
 			e.condition.deadband[0] = (Uint16) (deadband * 0xFFFF);
+			e.condition.center[0] = (Sint16) lrintf (device_center () * 32767.0f);
 		}
 		break;
 	case ForceFeedback::VIBRATE:
 		e.periodic.direction.type = SDL_HAPTIC_CARTESIAN;
 		e.periodic.direction.dir[0] = 1;
 		e.periodic.length = SDL_HAPTIC_INFINITY;
-		e.periodic.period = 50;
+		e.periodic.period = SINE_PERIOD_MS;
 		e.periodic.magnitude = (Sint16) lrintf (force * 32767.0f);
 		break;
 	default:
@@ -264,15 +289,12 @@ static float
 device_force (ForceFeedback::Effect effect, float force)
 {
 	static int gain = -1;
-	static bool invert;
 
-	if (gain < 0) {
+	if (gain < 0)
 		gain = hl_util_get_int_option ("FFB_GAIN", 100);
-		invert = hl_util_get_bool_option ("FFB_INVERT", false);
-	}
 	force = clamp1 (force * gain / 100.0f * Config::get ()->ffb_gain / 100.0f,
 	                (effect == ForceFeedback::CONSTANT) ? -1.0f : 0.0f);
-	return (invert && effect == ForceFeedback::CONSTANT) ? -force : force;
+	return (inverted () && effect == ForceFeedback::CONSTANT) ? -force : force;
 }
 
 void
@@ -281,6 +303,7 @@ ForceFeedback::set (Effect effect, float force, uint64_t frame)
 	unsigned i;
 
 	if (effect == STOP) {
+		spring_center = 0.0f;
 		for (i = CONSTANT; i < RUMBLE_LOW; i++)
 			set ((Effect) i, 0.0f, frame);
 		rumble (0.0f, 0.0f, frame);
@@ -308,12 +331,17 @@ ForceFeedback::set (Effect effect, float force, uint64_t frame)
 /* The controller's motors: what was last sent, and when */
 static uint64_t rumble_sent = ~0ull;
 
+static float
+rumble_force (float force)
+{
+	return clamp1 (force * hl_util_get_int_option ("FFB_GAIN", 100) / 100.0f * Config::get ()->ffb_gain / 100.0f, 0.0f);
+}
+
 static void
 send_rumble (uint64_t frame)
 {
 	SDL_Joystick *joy = (SDL_Joystick *) Controls::get ().player_joystick (0);
-	float gain = hl_util_get_int_option ("FFB_GAIN", 100) / 100.0f * Config::get ()->ffb_gain / 100.0f;
-	auto level = [&] (float x) { return (Uint16) lrintf (clamp1 (x * gain, 0.0f) * 65535.0f); };
+	auto level = [] (float x) { return (Uint16) lrintf (rumble_force (x) * 65535.0f); };
 
 	rumble_sent = frame;
 	/* Not the wheel with the forces: SDL would hold its joysticks' lock,
@@ -358,6 +386,25 @@ ForceFeedback::get (Effect effect)
 	return current[effect];
 }
 
+ForceFeedback::Status
+ForceFeedback::status ()
+{
+	Status s;
+
+	s.device = device_name;
+	spring_on_wheel (device_force (SPRING, current[SPRING]), Config::get ()->wheel_scale (),
+	                 &s.spring, &s.spring_deadband);
+	s.spring_offset = device_center ();
+	s.friction = device_force (FRICTION, current[FRICTION]);
+	s.constant = device_force (CONSTANT, current[CONSTANT]);
+	s.sine = device_force (VIBRATE, current[VIBRATE]);
+	s.sine_hz = 1000.0f / SINE_PERIOD_MS;
+	s.rumble_low = rumble_force (current[RUMBLE_LOW]);
+	s.rumble_high = rumble_force (current[RUMBLE_HIGH]);
+	s.rumble_on_wheel = joystick && Controls::get ().player_joystick (0) == joystick;
+	return s;
+}
+
 std::vector<ForceFeedback::Record>
 ForceFeedback::take_records ()
 {
@@ -398,6 +445,17 @@ ForceFeedback::devices_changed ()
 void
 ForceFeedback::wheel_changed ()
 {
+	if (current[SPRING] != 0.0f)
+		send_force (SPRING, device_force (SPRING, current[SPRING]));
+}
+
+void
+ForceFeedback::spring_offset (float offset)
+{
+	offset = clamp1 (offset, -1.0f);
+	if (offset == spring_center)
+		return;
+	spring_center = offset;
 	if (current[SPRING] != 0.0f)
 		send_force (SPRING, device_force (SPRING, current[SPRING]));
 }

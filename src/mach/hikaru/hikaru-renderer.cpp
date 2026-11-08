@@ -959,7 +959,9 @@ main (void)									\n \
 	 * moves it nearer: 1/z up by a part of itself (u_depth.y), or by	\n \
 	 * its slope across a pixel times u_depth.z */				\n \
 	float z = abs (p_position.z);						\n \
-	z = z / (1.0 + u_depth.y + u_depth.z * slope * z);			\n \
+	float depth_bias = u_depth.z > 0.0 ?					\n \
+		min (u_depth.z * slope * z, u_depth.y) : u_depth.y;		\n \
+	z = z / (1.0 + depth_bias);						\n \
 	float frag_depth = log2 (1.0 + z) * u_depth.x;				\n \
 	gl_FragDepth = frag_depth;						\n \
 										\n \
@@ -1329,15 +1331,22 @@ shader_cache_file (const std::string &name)
 	return path;
 }
 
-/* The driver the binaries were made by */
+/* The driver the binaries were made by, and the sources they were made from:
+ * a binary of an older version's shaders is compiled again */
 static std::string
 driver_name ()
 {
 	const char *v = (const char *) glGetString (GL_VENDOR);
 	const char *r = (const char *) glGetString (GL_RENDERER);
 	const char *g = (const char *) glGetString (GL_VERSION);
+	uint32_t hash = 2166136261u;
+	char sources[16];
 
-	return std::string (v ? v : "") + "|" + (r ? r : "") + "|" + (g ? g : "");
+	for (const char *s : { mesh_vs_source, mesh_fs_source })
+		for (; *s; s++)
+			hash = (hash ^ (uint8_t) *s) * 16777619u;
+	snprintf (sources, sizeof (sources), "%08X", hash);
+	return std::string (v ? v : "") + "|" + (r ? r : "") + "|" + (g ? g : "") + "|" + sources;
 }
 
 static bool
@@ -1874,6 +1883,8 @@ upload_alpha_range (Renderer *hr, hikaru_mesh_t *mesh)
 	HL_ASSERT_NO_GL_ERROR ();
 }
 
+#define SLOPE_BIAS_LIMIT	4e-6f
+
 /* The fragments' depth (the shader's u_depth): its scale, and the mesh's
  * depth bias (101), which moves it nearer. Its low 10 bits are the amount;
  * bit 10 picks the mode, as a 32-bit float depth buffer's bias:
@@ -1881,7 +1892,11 @@ upload_alpha_range (Renderer *hr, hikaru_mesh_t *mesh)
  *    of its power of 2. 1/z goes up by that part of itself, between
  *    amount * 2000 / 2^24 and twice that: here the middle, / ln 2;
  *  - set, a slope: 1/z up by its slope across a pixel times amount * 6 /
- *    256, at the native resolution.
+ *    256, at the native resolution. An almost edge-on surface has a huge
+ *    slope: 1/z goes up by at most SLOPE_BIAS_LIMIT * amount of itself
+ *    (u_depth.y in this mode), or SWRACER's wall tops cover the columns
+ *    standing on them. In proportion to the amount, for the layers
+ *    SWRACER piles on its track to keep their order.
  * PHARRIER's translucent meshes take 0x400, nothing, and 0x500; AIRTRIX's,
  * constants up to 982. All the polytypes take it */
 static void
@@ -1893,9 +1908,10 @@ upload_depth (Renderer *hr, hikaru_mesh_t *mesh)
 	depth[0] = 1.0f / log2f (1.0f + SCENE_FAR);
 	depth[1] = 0.0f;
 	depth[2] = 0.0f;
-	if (mesh->depth_bias & 0x400)
+	if (mesh->depth_bias & 0x400) {
 		depth[2] = amount * 6.0f / 256.0f * hr->framebuffer.scale;
-	else
+		depth[1] = amount * SLOPE_BIAS_LIMIT;
+	} else
 		depth[1] = amount * 2000.0f / 16777216.0f / logf (2.0f);
 	if (differs (program_cache[hr->meshes.slot].sent.depth, program_cache[hr->meshes.slot].sent.depth_was, depth))
 		glUniform3fv (hr->meshes.locs.u_depth, 1, depth);

@@ -419,8 +419,12 @@ Saves and files
   the PC's time; set in the test menu (CLOCK SETTING), how far it is from
   the PC's is kept there too.
 - `nvram/von4.card`: Virtual-On 4's card, its three tracks (see below).
-- `<game>.hlstate`: the save state of F4, which F1 loads. It holds the whole
-  machine; a state may not load in another version of the program.
+- `<game>-0.hlstate` to `<game>-4.hlstate`: the save states of F4, 0 the latest
+  and 4 the oldest: each F4 makes a new 0, moves the others up and drops the
+  last. F1 loads the latest, unless F2 (newer) or F3 (older) has chosen another
+  (its number and age are written at the top of the picture); then it is the
+  latest again. They hold the whole machine; a state may not load in another
+  version of the program.
 - `hikaruloader.ini`, `controls.ini`: the settings and the controls.
 - `hikaruloader.log`: the messages of the last start (the one before in
   `hikaruloader.old.log`). On by default; the Picker tab's "Write a log
@@ -573,6 +577,7 @@ force feedback is made from what the game does, read from its memory as the
 telemetry is. On a wheel (DirectInput): a centring and a damping that grow
 stiffer with the speed, the weight of the turns, a kick away from a wall or
 a pod hit, as strong as the speed lost, a rough shake along a wall, the
+centring's middle moved to the side the engines bank from the cockpit, the
 engines' rumble with their thrust and the shaker's sound over it, stronger
 while boosting, the bumps and the landings. On player 1's game controller,
 the same as its two motors' rumble (the low one the engines, the shaker, the
@@ -580,8 +585,17 @@ bumps and the hits; the high one the boost, the scraping, the hits).
 The Controls tab's *Emulated force feedback* box turns them on and off
 (`[ForceFeedback]` `EFFECTS` in `hikaruloader.ini`), at once;
 `STEERING`, `ENGINES`, `HITS`, `TERRAIN` and `RUMBLE`, each family's
-strength in percent (100 by default, 0 to 200). They stop outside a race and
-in a pause. `GAIN`, `FFB_GAIN` and `FFB_INVERT` apply to them too.
+strength in percent (100 by default, 0 to 200). On a wheel alone, each effect
+has its own strength on top of its family's, in the same percents: the
+forces `WHEEL_SPRING`, `WHEEL_FRICTION`, `WHEEL_TURN` and `WHEEL_KICK`, the
+vibrations `WHEEL_ENGINES` (70 by default), `WHEEL_BOOST`, `WHEEL_SCRAPE`,
+`WHEEL_IMPACT` and `WHEEL_BUMPS`. They stop outside a race and in a pause.
+`GAIN`, `FFB_GAIN` and `FFB_INVERT` apply to them too.
+
+To see what the wheel is told, in every game: the Controls tab's *Show the
+effects over the game* (`[ForceFeedback]` `HUD`, off by default) writes the
+spring, the friction, the force, the sine and the rumble at the top left,
+over the game, with the options applied.
 
 
 Cabinet outputs
@@ -666,7 +680,7 @@ change of speed), `lap`, `progress`, `position` (its place); and the race
 | Game | Also |
 |---|---|
 | NASCAR Arcade | The 29 other cars. Gear, rpm, throttle, brake and steering as the game reads them, `draft` (0 to 1, the HUD's DRAFT) |
-| Star Wars: Racer Arcade | The 11 other pods. Each engine's thrust as the game uses it (`thrust_left`, `thrust_right`, 0 to 1), `boost`, `boosts_left`, `hit` (the frame of a hit against a wall or a pod), `colliding` (while its jolt lasts), `wall` (a wall touched), `hover` (the height over the ground, m), `shaker` (0 to 1: the deluxe cabinet's bass shaker, fed by the option sound board, its low frequencies), the course |
+| Star Wars: Racer Arcade | The 11 other pods. The engines' tilt from the cockpit (`engines_roll`, radians, > 0 banked to the right). Each engine's thrust as the game uses it (`thrust_left`, `thrust_right`, 0 to 1), `boost`, `boosts_left`, `hit` (the frame of a hit against a wall or a pod), `colliding` (while its jolt lasts), `wall` (a wall touched), `hover` (the height over the ground, m), `shaker` (0 to 1: the deluxe cabinet's bass shaker, fed by the option sound board, its low frequencies), the course |
 | ATV Track | The riders the game drives, two at most, once the player has gone far enough. Gear, the engine (`engine`, 0 to 1), throttle, each brake lever, steering; each wheel on the ground, `airborne`; the checkpoints passed, the stage and the distance along it (`stage_distance`, m, the riders' too) |
 | Smashing Drive | Throttle, brake, steering, `horn`; each wheel on the ground, `airborne`; the time left of the ride. No opponent: the other taxis are traffic |
 

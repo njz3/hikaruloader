@@ -28,6 +28,8 @@
 #include <imgui.h>
 
 #include "hl/config.h"
+#include "hl/emulator.h"
+#include "hl/ffb.h"
 #include "hl/input.h"
 #include "hl/paths.h"
 #include "hl/renderer.h"
@@ -72,6 +74,69 @@ void drawNotice()
     ImGui::TextUnformatted(ui::tr("Nothing is saved: the settings and the game saves are read from the usual folders and not written."));
     ImGui::PopTextWrapPos();
     ImGui::End();
+}
+
+// The force feedback's effects, the values the device is told, for debugging
+// ([ForceFeedback] HUD): at the top left, over the game. Not translated
+void drawFfbHud()
+{
+    const hl::ForceFeedback::Status s = hl::ForceFeedback::status();
+    char text[400];
+    snprintf(text, sizeof(text),
+             "FFB: %s\n"
+             "spring: %.2f, offset %.2f, dead band %.3f\n"
+             "friction: %.2f\n"
+             "force: %+.2f\n"
+             "sine: %.2f, %.0f Hz\n"
+             "rumble: low %.2f, high %.2f%s",
+             s.device[0] ? s.device : "no device", s.spring, s.spring_offset, s.spring_deadband, s.friction, s.constant,
+             s.sine, s.sine_hz, s.rumble_low, s.rumble_high, s.rumble_on_wheel ? " (not sent to the wheel)" : "");
+    const ImVec2 size = ImGui::CalcTextSize(text);
+    const ImVec2 pos(10.0f, 8.0f);
+    ImDrawList *draw = ImGui::GetForegroundDrawList();
+    draw->AddRectFilled(ImVec2(pos.x - 4.0f, pos.y - 2.0f), ImVec2(pos.x + size.x + 4.0f, pos.y + size.y + 2.0f),
+                        IM_COL32(0, 0, 0, 170));
+    draw->AddText(pos, IM_COL32(230, 235, 240, 255), text);
+}
+
+// Which save state F1 will load, and what became of the last save or load: at
+// the top, in the middle
+void drawStateNotice(const hl::Emulator::StateNotice &n)
+{
+    char text[160];
+    const int slot = (int)n.slot;
+    switch (n.message)
+    {
+        case hl::Emulator::STATE_SELECTED:
+            if (n.age_seconds < 60)
+                snprintf(text, sizeof(text), ui::tr("Save state %d (%d s ago)"), slot, n.age_seconds);
+            else
+                snprintf(text, sizeof(text), ui::tr("Save state %d (%d min ago)"), slot, n.age_seconds / 60);
+            break;
+        case hl::Emulator::STATE_EMPTY:
+            snprintf(text, sizeof(text), ui::tr("Save state %d: empty"), slot);
+            break;
+        case hl::Emulator::STATE_LOADED:
+            snprintf(text, sizeof(text), ui::tr("Save state %d loaded"), slot);
+            break;
+        case hl::Emulator::STATE_LOAD_FAILED:
+            snprintf(text, sizeof(text), ui::tr("Save state %d could not be loaded"), slot);
+            break;
+        case hl::Emulator::STATE_SAVED:
+            snprintf(text, sizeof(text), "%s", ui::tr("State saved as number 0"));
+            break;
+        case hl::Emulator::STATE_SAVE_FAILED:
+            snprintf(text, sizeof(text), "%s", ui::tr("The state could not be saved"));
+            break;
+        default:
+            return;
+    }
+    const ImVec2 size = ImGui::CalcTextSize(text);
+    const ImVec2 pos((ImGui::GetMainViewport()->WorkSize.x - size.x) * 0.5f, 8.0f);
+    ImDrawList *draw = ImGui::GetForegroundDrawList();
+    draw->AddRectFilled(ImVec2(pos.x - 6.0f, pos.y - 3.0f), ImVec2(pos.x + size.x + 6.0f, pos.y + size.y + 3.0f),
+                        IM_COL32(0, 0, 0, 190));
+    draw->AddText(pos, IM_COL32(255, 225, 120, 255), text);
 }
 
 void setOpen(bool open)
@@ -152,19 +217,26 @@ bool ui::Interface::process_event (const SDL_Event *event)
 
 bool ui::Interface::overlay_wanted ()
 {
-    return g_ready && (g_open || hl::Config::get ()->fps_overlay || noticeShown());
+    return g_ready && (g_open || hl::Config::get ()->fps_overlay || hl::Config::get ()->ffb_hud || noticeShown() ||
+                       hl::Emulator::state_notice().message != hl::Emulator::STATE_NO_MESSAGE);
 }
 
 void ui::Interface::draw_overlay (int width, int height)
 {
     hl::Config *cfg = hl::Config::get ();
     const bool notice = noticeShown();
-    if (!g_ready || (!g_open && !cfg->fps_overlay && !notice))
+    const hl::Emulator::StateNotice state = hl::Emulator::state_notice();
+    const bool state_shown = state.message != hl::Emulator::STATE_NO_MESSAGE;
+    if (!g_ready || (!g_open && !cfg->fps_overlay && !cfg->ffb_hud && !notice && !state_shown))
         return;
 
     ui::newFrame();
     if (notice)
         drawNotice();
+    if (cfg->ffb_hud && !g_open)
+        drawFfbHud();
+    if (state_shown && !g_open)
+        drawStateNotice(state);
     if (cfg->fps_overlay)
     {
         char text[300];

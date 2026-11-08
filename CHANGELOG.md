@@ -5,6 +5,29 @@ What each version brings, for those who play. How the versions are numbered
 and released: [DEVELOPMENT.md](DEVELOPMENT.md), "Versions and releases".
 
 
+In preparation
+--------------
+
+- Five save states in rotation: F4 always makes a new number 0
+  (`<game>-0.hlstate`), the older ones move up to number 4 (`-4`). F1 loads the
+  latest, or the one chosen with F2 (newer) and F3 (older), shown at the top of
+  the picture. An older version's `<game>.hlstate` counts as number 0.
+- Star Wars: Racer Arcade: the track's edges no longer pass in front of the
+  columns, and the shadows on the far track stay. The surfaces seen almost
+  edge-on came much too near with the depth bias.
+- The compiled shaders kept on disk are made again when their sources change.
+- Star Wars: Racer Arcade's force feedback: each effect on the wheel has its
+  own strength in `hikaruloader.ini` (`[ForceFeedback]`, `WHEEL_SPRING`,
+  `WHEEL_ENGINES`, `WHEEL_IMPACT`...). The engines' vibration is 30% lower;
+  the boost's, the hits' and the bumps' stay as they were.
+- Star Wars: Racer Arcade's force feedback: the centring of the wheel now
+  follows the engines' tilt from the cockpit, to the side they bank. The
+  telemetry gives that tilt too (`engines_roll`).
+- To debug the force feedback: *Show the effects over the game* in the
+  Controls tab (`[ForceFeedback]` `HUD`, off by default) writes the spring,
+  the friction, the force, the sine and the rumble at the top left.
+
+
 0.5.4 (2026-11-08)
 ------------------
 

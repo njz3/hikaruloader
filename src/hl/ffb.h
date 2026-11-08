@@ -60,6 +60,22 @@ public:
 	/* frame: the machine's, for the records */
 	static void	 set (Effect effect, float force, uint64_t frame);
 	static float	 get (Effect effect);
+	/* The spring's centre, -1 to 1 of the game's wheel's travel, > 0 to
+	 * the right; 0 again at STOP */
+	static void	 spring_offset (float offset);
+	/* What the device is told now, the options applied, for the HUD: the
+	 * spring's coefficient, its offset and dead band, fractions of the
+	 * device's full scale; the rumble is not sent to the wheel that has
+	 * the forces (rumble_on_wheel) */
+	struct Status {
+		const char *device;
+		float	 spring, spring_offset, spring_deadband;
+		float	 friction, constant;
+		float	 sine, sine_hz;
+		float	 rumble_low, rumble_high;
+		bool	 rumble_on_wheel;
+	};
+	static Status	 status ();
 	/* Player 1's controller's motors, each frame while they turn: sent
 	 * again every half second, as SDL stops them after a while */
 	static void	 rumble (float low, float high, uint64_t frame);

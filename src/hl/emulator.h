@@ -69,8 +69,29 @@ public:
 	/* Frees the machine and its game, for the picker's next one */
 	void	 unload_game ();
 
-	/* <game>.hlstate (hl::Paths: in the write directory's <game>/) */
+	/* The save states of F4 and F1: NUM_STATE_SLOTS files in turn,
+	 * <game>-0.hlstate the latest and <game>-4.hlstate the oldest (hl::Paths:
+	 * in the write directory's <game>/); a <game>.hlstate of an older version
+	 * is the latest until the next save. Saving always makes a new latest;
+	 * loading takes state_slot, then back to the latest */
+	enum { NUM_STATE_SLOTS = 5 };
 	int	 load_or_save_state (bool load);
+	/* The state F1 will load: one newer (-1) or older (+1), in a circle */
+	void	 select_state (int delta);
+
+	/* What to write over the game about the states, for ui_overlay (any
+	 * thread); a state chosen other than the latest stays written */
+	enum StateMessage {
+		STATE_NO_MESSAGE, STATE_SELECTED, STATE_EMPTY, STATE_LOADED,
+		STATE_LOAD_FAILED, STATE_SAVED, STATE_SAVE_FAILED
+	};
+	struct StateNotice {
+		StateMessage	 message;
+		unsigned	 slot;
+		int		 age_seconds;
+	};
+	static StateNotice state_notice ();
+
 	/* Loading a state clears an abort */
 	int	 load_state (const char *path);
 	int	 save_state (const char *path);
@@ -108,6 +129,8 @@ public:
 	bool	 seek (uint64_t target);
 
 	bool		 paused;
+	/* The state F1 loads, 0 the latest */
+	unsigned	 state_slot = 0;
 	/* The machine aborted: it runs again once reset, or a state loaded */
 	bool		 crashed;
 	/* emu.quit () */

@@ -46,7 +46,8 @@ static const char global_help[] = "Usage: %s [options]\n"
 "			several separated by ';', looked in in that order\n"
 "	-r <string>	Name of the game to run (MAME set name); none: the picker\n"
 "	-n <num>	Only run for num frames\n"
-"	-l <num|file>	Load state num (<game>.hlstate), or a state file, at startup:\n"
+"	-l <num|file>	Load state num (<game>-<num>.hlstate, 0 the latest, 4 the\n"
+"			oldest), or a state file, at startup:\n"
 "			the emulation goes on from its frame\n"
 "	-s <port>	Open the Lua shell on 127.0.0.1:port (telnet, tools/hlshell.py)\n"
 "	-a		Agent mode, as Supermodel's and sm2-emu's: commands on stdin,\n"
@@ -308,8 +309,10 @@ next_game:
 
 	if (options.state_path[0])
 		emulator->load_state (options.state_path);
-	else if (options.start_state >= 0)
+	else if (options.start_state >= 0) {
+		emulator->state_slot = (unsigned) options.start_state % hl::Emulator::NUM_STATE_SLOTS;
 		emulator->load_or_save_state (true);
+	}
 
 	/* The Lua shell: for its port, init.lua beside the program, -x, and
 	 * the agent's lua command */

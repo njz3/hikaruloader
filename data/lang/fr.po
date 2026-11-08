@@ -1103,6 +1103,14 @@ msgid "Load the state"
 msgstr "Charger l'état"
 
 #: src/ui/ui_controls.cpp
+msgid "Newer save state"
+msgstr "Sauvegarde plus récente"
+
+#: src/ui/ui_controls.cpp
+msgid "Older save state"
+msgstr "Sauvegarde plus ancienne"
+
+#: src/ui/ui_controls.cpp
 msgid "Settings (this window)"
 msgstr "Paramètres (cette fenêtre)"
 
@@ -1255,6 +1263,14 @@ msgid "All the forces, of every game, on the wheel and on the controller's\nmoto
 msgstr "Toutes les forces, de tous les jeux, sur le volant et les moteurs de la\nmanette. Au-delà de 100 pour cent, les plus fortes s'arrêtent à ce que\npeut donner l'appareil."
 
 #: src/ui/ui_controls.cpp
+msgid "Show the effects over the game (debugging)"
+msgstr "Afficher les effets par-dessus le jeu (débogage)"
+
+#: src/ui/ui_controls.cpp
+msgid "At the top left, the spring, the friction, the force, the sine and the\nrumble, with the values the device is told."
+msgstr "En haut à gauche, le ressort, la friction, la force, le sinus et le\nrumble, avec les valeurs envoyées au périphérique."
+
+#: src/ui/ui_controls.cpp
 msgid "Read the controllers in the background"
 msgstr "Lire les manettes en arrière-plan"
 
@@ -1333,6 +1349,34 @@ msgstr "Impossible d'écrire dans le dossier d'écriture"
 #: src/ui/ui_overlay.cpp
 msgid "Nothing is saved: the settings and the game saves are read from the usual folders and not written."
 msgstr "Rien n'est sauvegardé : les réglages et les sauvegardes des jeux sont lus dans les dossiers habituels et ne sont pas écrits."
+
+#: src/ui/ui_overlay.cpp
+msgid "Save state %d (%d s ago)"
+msgstr "Sauvegarde %d (il y a %d s)"
+
+#: src/ui/ui_overlay.cpp
+msgid "Save state %d (%d min ago)"
+msgstr "Sauvegarde %d (il y a %d min)"
+
+#: src/ui/ui_overlay.cpp
+msgid "Save state %d: empty"
+msgstr "Sauvegarde %d : vide"
+
+#: src/ui/ui_overlay.cpp
+msgid "Save state %d loaded"
+msgstr "Sauvegarde %d chargée"
+
+#: src/ui/ui_overlay.cpp
+msgid "Save state %d could not be loaded"
+msgstr "La sauvegarde %d n'a pas pu être chargée"
+
+#: src/ui/ui_overlay.cpp
+msgid "State saved as number 0"
+msgstr "État sauvegardé en position 0"
+
+#: src/ui/ui_overlay.cpp
+msgid "The state could not be saved"
+msgstr "L'état n'a pas pu être sauvegardé"
 
 #: src/ui/ui_overlay.cpp
 msgid "%.1f FPS"

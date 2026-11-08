@@ -344,8 +344,11 @@ number: once a state is loaded, the emulation goes on from that frame. States
 are compressed. Until the first release their layout follows the machine's,
 so a state from another build may not load; Valkyrie's no longer do.
 
-- F4 saves `<game>.hlstate` (in the write directory's `<game>/` when there is
-  one), F1 loads it; `-l FILE` loads `FILE` at startup.
+- F4 saves `<game>-0.hlstate` (in the write directory's `<game>/` when there is
+  one), the others moved up to `-4`, the oldest; F1 loads the one F2 and F3
+  have chosen, by default the latest (a `<game>.hlstate` of an older version
+  counts as `-0` until the next save); `-l N` loads number `N` at startup,
+  `-l FILE` loads `FILE`.
 - From the shell: `emu.save_state (path)`, `emu.load_state (path)`.
 - `emu.snapshots (every [, keep [, dir]])` saves a state every `every` frames,
   keeping the last `keep` (20) in `dir` (`snapshots`); `emu.snapshots ()`
@@ -402,6 +405,7 @@ shared: change it only together with Supermodel and sm2-emu.
 | `obs [W H]` | The picture box-scaled to W x H (640 x 480): `obs W H`, then W*H*3 bytes, RGB, top row first |
 | `shot PATH` | The picture as a 24-bit BMP: `ok` |
 | `save PATH`, `load PATH` | Save states: `ok` |
+| `state [save\|load\|newer\|older]` | F4, F1, F2 and F3: `state N`, N the one chosen |
 | `ram ADDR LEN`, `mem ADDR LEN` | LEN bytes (hex arguments, at most 100000) through the master SH-4's bus: `ram LEN` (decimal), then the bytes |
 | `poke ADDR VALUE [SIZE]` | A write through the same bus (hex; size 1, 2, 4): `ok` |
 | `frame` | `frame N` |

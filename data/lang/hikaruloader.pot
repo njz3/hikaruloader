@@ -1100,6 +1100,14 @@ msgid "Load the state"
 msgstr ""
 
 #: src/ui/ui_controls.cpp
+msgid "Newer save state"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Older save state"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
 msgid "Settings (this window)"
 msgstr ""
 
@@ -1252,6 +1260,14 @@ msgid "All the forces, of every game, on the wheel and on the controller's\nmoto
 msgstr ""
 
 #: src/ui/ui_controls.cpp
+msgid "Show the effects over the game (debugging)"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "At the top left, the spring, the friction, the force, the sine and the\nrumble, with the values the device is told."
+msgstr ""
+
+#: src/ui/ui_controls.cpp
 msgid "Read the controllers in the background"
 msgstr ""
 
@@ -1329,6 +1345,34 @@ msgstr ""
 
 #: src/ui/ui_overlay.cpp
 msgid "Nothing is saved: the settings and the game saves are read from the usual folders and not written."
+msgstr ""
+
+#: src/ui/ui_overlay.cpp
+msgid "Save state %d (%d s ago)"
+msgstr ""
+
+#: src/ui/ui_overlay.cpp
+msgid "Save state %d (%d min ago)"
+msgstr ""
+
+#: src/ui/ui_overlay.cpp
+msgid "Save state %d: empty"
+msgstr ""
+
+#: src/ui/ui_overlay.cpp
+msgid "Save state %d loaded"
+msgstr ""
+
+#: src/ui/ui_overlay.cpp
+msgid "Save state %d could not be loaded"
+msgstr ""
+
+#: src/ui/ui_overlay.cpp
+msgid "State saved as number 0"
+msgstr ""
+
+#: src/ui/ui_overlay.cpp
+msgid "The state could not be saved"
 msgstr ""
 
 #: src/ui/ui_overlay.cpp

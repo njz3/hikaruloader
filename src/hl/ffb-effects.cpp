@@ -31,6 +31,8 @@
  * - The engines: a rumble with their thrust and the speed, the deluxe
  *   cabinet's bass shaker's level (the option sound board's low
  *   frequencies) over it, stronger while boosting.
+ * - The centring's middle follows the engines' tilt from the cockpit
+ *   ("engines_roll"), to the side they bank.
  * - The ground: a bump or a landing, the vertical acceleration leaving its
  *   own average, shakes.
  *
@@ -62,6 +64,10 @@ finite (float x, float fallback = 0)
 	return std::isfinite (x) ? x : fallback;
 }
 
+/* The spring's centre for the engines' tilt: half the wheel's travel at their
+ * 15 degrees, the most they reach */
+#define SPRING_OFFSET_PER_RADIAN	(0.5f / 0.2618f)
+
 /* Steps of 1/64: an update to the device at each change that can be felt,
  * some 100 a second at most over all the effects */
 static float
@@ -84,10 +90,16 @@ FfbEffects::frame (const telemetry::Frame &f)
 	float steering = cfg->ffb_steering / 100.0f, engines = cfg->ffb_engines / 100.0f;
 	float hits = cfg->ffb_hits / 100.0f, terrain = cfg->ffb_terrain / 100.0f;
 	float rumble = cfg->ffb_rumble / 100.0f;
+	/* On the wheel alone, each effect's own */
+	float wheel_spring = cfg->ffb_wheel_spring / 100.0f, wheel_friction = cfg->ffb_wheel_friction / 100.0f;
+	float wheel_turn = cfg->ffb_wheel_turn / 100.0f, wheel_kick = cfg->ffb_wheel_kick / 100.0f;
+	float wheel_engines = cfg->ffb_wheel_engines / 100.0f, wheel_boost = cfg->ffb_wheel_boost / 100.0f;
+	float wheel_scrape = cfg->ffb_wheel_scrape / 100.0f, wheel_impact = cfg->ffb_wheel_impact / 100.0f;
+	float wheel_bumps = cfg->ffb_wheel_bumps / 100.0f;
 
 	/* A new race, or frames skipped (a state loaded): from rest */
 	if (!playing || f.frame != last_frame + 1) {
-		corner = kick = jolt = 0;
+		corner = kick = jolt = wheel_jolt = 0;
 		avert_slow = finite (p.avert);
 		alat_slow = finite (p.alat);
 	}
@@ -117,24 +129,32 @@ FfbEffects::frame (const telemetry::Frame &f)
 		if (std::fabs (jerk) > 20.0f &&
 		    (std::fabs (kick) < 0.15f || (side * kick > 0 && strength > std::fabs (kick))))
 			kick = side * strength;
-		jolt = std::max (jolt, std::clamp (0.4f + impact / 15.0f, 0.4f, 1.0f));
+		float shake = std::clamp (0.4f + impact / 15.0f, 0.4f, 1.0f);
+		jolt = std::max (jolt, shake);
+		wheel_jolt = std::max (wheel_jolt, wheel_impact * shake);
 	}
 	/* A bump or a landing: the vertical acceleration off its average */
 	float bump = std::fabs (avert - avert_slow);
 	avert_slow += (avert - avert_slow) * 0.1f;
-	if (bump > 15.0f)
-		jolt = std::max (jolt, terrain * std::clamp ((bump - 15.0f) / 40.0f + 0.2f, 0.0f, 0.8f));
+	if (bump > 15.0f) {
+		float shake = terrain * std::clamp ((bump - 15.0f) / 40.0f + 0.2f, 0.0f, 0.8f);
+		jolt = std::max (jolt, shake);
+		wheel_jolt = std::max (wheel_jolt, wheel_bumps * shake);
+	}
 	float scrape = wall && speed > 5.0f ? std::min (speed / 80.0f, 1.0f) : 0.0f;
 	/* The turn's weight, smoothed over some 70 ms; held through a hit */
 	if (!hit)
 		corner += (std::clamp (alat / 60.0f, -0.35f, 0.35f) - corner) * 0.25f;
 
 	/* The wheel */
-	float spring = steering * (0.10f + 0.40f * fast) * (air ? 0.3f : 1.0f);
-	float friction = steering * (0.08f + 0.22f * fast);
-	float constant = std::clamp (steering * corner * (air ? 0.3f : 1.0f) + hits * kick, -1.0f, 1.0f);
-	float vibrate = engines * (0.04f + 0.12f * throttle * fast + 0.35f * shaker + (boost ? 0.20f : 0.0f)) +
-	                hits * (0.35f * scrape + 0.6f * jolt);
+	float spring = steering * wheel_spring * (0.10f + 0.40f * fast) * (air ? 0.3f : 1.0f);
+	float friction = steering * wheel_friction * (0.08f + 0.22f * fast);
+	float constant = std::clamp (steering * wheel_turn * corner * (air ? 0.3f : 1.0f) + hits * wheel_kick * kick, -1.0f, 1.0f);
+	float vibrate = engines * (wheel_engines * (0.04f + 0.12f * throttle * fast + 0.35f * shaker) +
+	                           wheel_boost * (boost ? 0.20f : 0.0f)) +
+	                hits * (wheel_scrape * 0.35f * scrape + 0.6f * wheel_jolt);
+	float offset = steering * extra (p, "engines_roll") * SPRING_OFFSET_PER_RADIAN;
+	ForceFeedback::spring_offset (step (std::clamp (offset, -0.5f, 0.5f)));
 	ForceFeedback::set (ForceFeedback::SPRING, step (std::clamp (spring, 0.0f, 1.0f)), f.frame);
 	ForceFeedback::set (ForceFeedback::FRICTION, step (std::clamp (friction, 0.0f, 1.0f)), f.frame);
 	ForceFeedback::set (ForceFeedback::CONSTANT, step (constant), f.frame);
@@ -148,6 +168,7 @@ FfbEffects::frame (const telemetry::Frame &f)
 	/* The kick fades in some 90 ms, the shake in 200 */
 	kick *= std::exp (-dt / 0.09f);
 	jolt *= std::exp (-dt / 0.2f);
+	wheel_jolt *= std::exp (-dt / 0.2f);
 	was_wall = wall;
 }
 
@@ -157,7 +178,7 @@ FfbEffects::stop (uint64_t frame)
 	if (!playing)
 		return;
 	playing = false;
-	corner = kick = jolt = 0;
+	corner = kick = jolt = wheel_jolt = 0;
 	ForceFeedback::set (ForceFeedback::STOP, 0.0f, frame);
 }
 

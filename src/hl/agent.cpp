@@ -468,6 +468,24 @@ Agent::run (const std::string &line)
 			reply ("ok");
 		else
 			reply ("err cannot load %s", args);
+	} else if (!strcmp (cmd, "state")) {
+		/* F4, F1, F2 and F3 */
+		int ret = 0;
+
+		if (!strcmp (args, "save"))
+			ret = emu->load_or_save_state (false);
+		else if (!strcmp (args, "load"))
+			ret = emu->load_or_save_state (true);
+		else if (!strcmp (args, "newer"))
+			emu->select_state (-1);
+		else if (!strcmp (args, "older"))
+			emu->select_state (1);
+		else if (*args)
+			ret = -1;
+		if (ret)
+			reply ("err state %s", args);
+		else
+			reply ("state %u", emu->state_slot);
 	} else if (!strcmp (cmd, "ffb")) {
 		/* The effects since the last call: FRAME INPUT EFFECT FORCE */
 		std::vector<ForceFeedback::Record> records = ForceFeedback::take_records ();

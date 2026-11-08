@@ -183,7 +183,11 @@ Config::set_defaults ()
 	cfg->telemetry_forza[0] = 0;
 	cfg->ffb_effects = true;
 	cfg->ffb_steering = cfg->ffb_engines = cfg->ffb_hits = cfg->ffb_terrain = cfg->ffb_rumble = 100;
+	cfg->ffb_wheel_spring = cfg->ffb_wheel_friction = cfg->ffb_wheel_turn = cfg->ffb_wheel_kick = 100;
+	cfg->ffb_wheel_boost = cfg->ffb_wheel_scrape = cfg->ffb_wheel_impact = cfg->ffb_wheel_bumps = 100;
+	cfg->ffb_wheel_engines = 70;
 	cfg->ffb_gain = 100;
+	cfg->ffb_hud = false;
 	/* As windowsloader and linuxloader */
 	cfg->buttons_from_one = true;
 	/* The wheel's whole turn for the game's, as before November 2026; the
@@ -457,6 +461,8 @@ Config::set_value (const char *section, const char *key, const char *value)
 		unsigned pct = (unsigned) MAX2 (0, MIN2 (200, atoi (value)));
 		if (!strcasecmp (key, "GAIN"))
 			cfg->ffb_gain = (unsigned) MAX2 (0, MIN2 (300, atoi (value)));
+		else if (!strcasecmp (key, "HUD"))
+			cfg->ffb_hud = parse_bool (value);
 		else if (!strcasecmp (key, "EFFECTS"))
 			cfg->ffb_effects = parse_bool (value);
 		else if (!strcasecmp (key, "STEERING"))
@@ -469,6 +475,24 @@ Config::set_value (const char *section, const char *key, const char *value)
 			cfg->ffb_terrain = pct;
 		else if (!strcasecmp (key, "RUMBLE"))
 			cfg->ffb_rumble = pct;
+		else if (!strcasecmp (key, "WHEEL_SPRING"))
+			cfg->ffb_wheel_spring = pct;
+		else if (!strcasecmp (key, "WHEEL_FRICTION"))
+			cfg->ffb_wheel_friction = pct;
+		else if (!strcasecmp (key, "WHEEL_TURN"))
+			cfg->ffb_wheel_turn = pct;
+		else if (!strcasecmp (key, "WHEEL_KICK"))
+			cfg->ffb_wheel_kick = pct;
+		else if (!strcasecmp (key, "WHEEL_ENGINES"))
+			cfg->ffb_wheel_engines = pct;
+		else if (!strcasecmp (key, "WHEEL_BOOST"))
+			cfg->ffb_wheel_boost = pct;
+		else if (!strcasecmp (key, "WHEEL_SCRAPE"))
+			cfg->ffb_wheel_scrape = pct;
+		else if (!strcasecmp (key, "WHEEL_IMPACT"))
+			cfg->ffb_wheel_impact = pct;
+		else if (!strcasecmp (key, "WHEEL_BUMPS"))
+			cfg->ffb_wheel_bumps = pct;
 	} else if (!strcasecmp (section, "Input")) {
 		if (!strcasecmp (key, "BUTTONS_FROM_ONE"))
 			cfg->buttons_from_one = parse_bool (value);
@@ -894,6 +918,10 @@ Config::save () const
 	         "# do. Default: %u\n", def.ffb_gain);
 	fprintf (fp, "GAIN = %u\n", cfg->ffb_gain);
 	fprintf (fp,
+	         "\n# For debugging: the effects' values at the top left, over the game.\n"
+	         "# Default: %s\n", bool_name (def.ffb_hud));
+	fprintf (fp, "HUD = %s\n", bool_name (cfg->ffb_hud));
+	fprintf (fp,
 	         "\n# Star Wars: Racer Arcade's cabinet has no motor: force feedback is made from\n"
 	         "# what the game does (its engines, its hits, its turns, the ground), on a\n"
 	         "# wheel (DirectInput) and on player 1's controller's motors. Default: %s\n",
@@ -909,6 +937,22 @@ Config::save () const
 	fprintf (fp, "HITS = %u\n", cfg->ffb_hits);
 	fprintf (fp, "TERRAIN = %u\n", cfg->ffb_terrain);
 	fprintf (fp, "RUMBLE = %u\n", cfg->ffb_rumble);
+	fprintf (fp,
+	         "\n# Each effect's strength on a wheel alone, in percent (0 to 200), on top of\n"
+	         "# its family's: WHEEL_SPRING the centring, WHEEL_FRICTION the damping,\n"
+	         "# WHEEL_TURN the weight of the turns, WHEEL_KICK a hit's kick, WHEEL_ENGINES\n"
+	         "# the engines' vibration, WHEEL_BOOST the boost's, WHEEL_SCRAPE a wall's,\n"
+	         "# WHEEL_IMPACT a hit's, WHEEL_BUMPS the bumps' and the landings'.\n"
+	         "# Default: %u, WHEEL_ENGINES %u\n", def.ffb_wheel_spring, def.ffb_wheel_engines);
+	fprintf (fp, "WHEEL_SPRING = %u\n", cfg->ffb_wheel_spring);
+	fprintf (fp, "WHEEL_FRICTION = %u\n", cfg->ffb_wheel_friction);
+	fprintf (fp, "WHEEL_TURN = %u\n", cfg->ffb_wheel_turn);
+	fprintf (fp, "WHEEL_KICK = %u\n", cfg->ffb_wheel_kick);
+	fprintf (fp, "WHEEL_ENGINES = %u\n", cfg->ffb_wheel_engines);
+	fprintf (fp, "WHEEL_BOOST = %u\n", cfg->ffb_wheel_boost);
+	fprintf (fp, "WHEEL_SCRAPE = %u\n", cfg->ffb_wheel_scrape);
+	fprintf (fp, "WHEEL_IMPACT = %u\n", cfg->ffb_wheel_impact);
+	fprintf (fp, "WHEEL_BUMPS = %u\n", cfg->ffb_wheel_bumps);
 
 	fprintf (fp, "\n[Input]\n");
 	fprintf (fp,

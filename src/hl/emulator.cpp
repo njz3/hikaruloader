@@ -21,6 +21,8 @@
 /* TODO: move to a scheduler-based system, so that machines register their
  * components and the scheduler executes them. */
 
+#include <atomic>
+#include <chrono>
 #include <filesystem>
 
 #include "hl/emulator.h"
@@ -81,6 +83,10 @@ Emulator::~Emulator ()
 	destroy (game);
 	destroy (game_list);
 }
+
+/* The save states' message over the game (show_state_notice) */
+static std::atomic<int> notice_message, notice_slot, notice_age;
+static std::atomic<Uint32> notice_until;
 
 static char *
 get_home_dir (void)
@@ -204,16 +210,136 @@ Emulator::unload_game ()
 	quit = false;
 	last_stop = STOP_NONE;
 	snapshots.clear ();
+	state_slot = 0;
+	notice_until = 0;
+}
+
+/* The save states' message over the game: 3 seconds, or until the next one */
+#define STATE_NOTICE_MS		3000
+#define STATE_NOTICE_HELD	0xFFFFFFFFu
+
+static void
+show_state_notice (Emulator::StateMessage message, unsigned slot, int age = 0, bool held = false)
+{
+	notice_message = (int) message;
+	notice_slot = (int) slot;
+	notice_age = age;
+	notice_until = held ? STATE_NOTICE_HELD : ((SDL_GetTicks () + STATE_NOTICE_MS) | 1);
+}
+
+Emulator::StateNotice
+Emulator::state_notice ()
+{
+	Uint32 until = notice_until;
+
+	if (!until || (until != STATE_NOTICE_HELD && SDL_TICKS_PASSED (SDL_GetTicks (), until)))
+		return { STATE_NO_MESSAGE, 0, 0 };
+	return { (StateMessage) notice_message.load (), (unsigned) notice_slot.load (), notice_age.load () };
+}
+
+static std::string
+state_file (const char *game, unsigned slot)
+{
+	return std::string (game) + "-" + std::to_string (slot) + ".hlstate";
+}
+
+/* The slot's file, empty when it has none */
+static std::string
+state_to_read (const char *game, unsigned slot)
+{
+	std::error_code ec;
+	std::string path = Paths::game_read (game, state_file (game, slot));
+
+	if (std::filesystem::exists (path, ec))
+		return path;
+	if (slot == 0) {
+		path = Paths::game_read (game, std::string (game) + ".hlstate");
+		if (std::filesystem::exists (path, ec))
+			return path;
+	}
+	return "";
+}
+
+/* A state saved beside them, and only then the rotation: a save that fails
+ * loses none of the others */
+static int
+save_rotating (Machine *mach)
+{
+	namespace fs = std::filesystem;
+	const char *game = mach->game->name;
+	std::string name (game);
+	std::string fresh = Paths::game_write (game, name + "-new.hlstate");
+	std::string newest = Paths::game_write (game, state_file (game, 0));
+	std::string older = Paths::game_write (game, name + ".hlstate");
+	std::error_code ec;
+	unsigned i;
+
+	if (mach->save_state (fresh.c_str ())) {
+		HL_ERROR ("failed to save state '%s'", fresh.c_str ());
+		fs::remove (fresh, ec);
+		return -1;
+	}
+	if (!fs::exists (newest, ec) && fs::exists (older, ec))
+		fs::rename (older, newest, ec);
+	for (i = Emulator::NUM_STATE_SLOTS - 1; i > 0; i--) {
+		std::string from = Paths::game_write (game, state_file (game, i - 1));
+		std::string to = Paths::game_write (game, state_file (game, i));
+
+		if (!fs::exists (from, ec))
+			continue;
+		fs::rename (from, to, ec);
+		if (ec)
+			HL_ERROR ("failed to rotate state '%s': %s", from.c_str (), ec.message ().c_str ());
+	}
+	fs::rename (fresh, newest, ec);
+	if (ec) {
+		HL_ERROR ("failed to name state '%s': %s", newest.c_str (), ec.message ().c_str ());
+		return -1;
+	}
+	HL_PRINT ("saved state '%s'", newest.c_str ());
+	return 0;
 }
 
 int
 Emulator::load_or_save_state (bool load)
 {
-	std::string file = std::string (mach->game->name) + ".hlstate";
-	std::string path = load ? Paths::game_read (mach->game->name, file)
-	                        : Paths::game_write (mach->game->name, file);
+	int ret;
 
-	return load ? load_state (path.c_str ()) : save_state (path.c_str ());
+	if (!load) {
+		ret = save_rotating (mach);
+		state_slot = 0;
+		show_state_notice (ret ? STATE_SAVE_FAILED : STATE_SAVED, 0);
+		return ret;
+	}
+	std::string path = state_to_read (mach->game->name, state_slot);
+	if (path.empty ()) {
+		HL_PRINT ("no state number %u to load", state_slot);
+		show_state_notice (STATE_EMPTY, state_slot, 0, state_slot != 0);
+		return -1;
+	}
+	ret = load_state (path.c_str ());
+	show_state_notice (ret ? STATE_LOAD_FAILED : STATE_LOADED, state_slot, 0, ret && state_slot != 0);
+	if (!ret)
+		state_slot = 0;
+	return ret;
+}
+
+void
+Emulator::select_state (int delta)
+{
+	namespace fs = std::filesystem;
+	std::error_code ec;
+
+	state_slot = (state_slot + NUM_STATE_SLOTS + delta) % NUM_STATE_SLOTS;
+	std::string path = state_to_read (mach->game->name, state_slot);
+	if (path.empty ()) {
+		show_state_notice (STATE_EMPTY, state_slot, 0, state_slot != 0);
+		return;
+	}
+	auto age = fs::file_time_type::clock::now () - fs::last_write_time (path, ec);
+	show_state_notice (STATE_SELECTED, state_slot,
+	                   ec ? 0 : (int) std::chrono::duration_cast<std::chrono::seconds> (age).count (),
+	                   state_slot != 0);
 }
 
 int
@@ -292,7 +418,6 @@ Emulator::process_events ()
 		/* Tab, and everything while the settings are open */
 		if (ui::Interface::process_event (&event))
 			continue;
-		/* XXX use CTRL+[1,5] for saving, SHIFT+[1,5] for loading */
 		switch (Input::handle_event (&event)) {
 		case ACTION_QUIT:
 			HL_PRINT ("quitting: the Quit input was pressed");
@@ -323,6 +448,12 @@ Emulator::process_events ()
 			break;
 		case ACTION_SAVE_STATE:
 			load_or_save_state (false);
+			break;
+		case ACTION_STATE_NEWER:
+			select_state (-1);
+			break;
+		case ACTION_STATE_OLDER:
+			select_state (1);
 			break;
 		case ACTION_SHOW_FPS:
 			Config::get ()->fps_overlay ^= 1;

@@ -280,9 +280,14 @@ public:
 	 * motors; each family's strength, a percentage */
 	bool		ffb_effects;
 	unsigned	ffb_steering, ffb_engines, ffb_hits, ffb_terrain, ffb_rumble;
+	/* Each effect's strength on a wheel alone, over its family's */
+	unsigned	ffb_wheel_spring, ffb_wheel_friction, ffb_wheel_turn, ffb_wheel_kick;
+	unsigned	ffb_wheel_engines, ffb_wheel_boost, ffb_wheel_scrape, ffb_wheel_impact, ffb_wheel_bumps;
 	/* All the forces, every game's, to a wheel and a controller's motors:
 	 * a percentage, 0 to 300 (hl::ForceFeedback) */
 	unsigned	ffb_gain;
+	/* The effects' values over the game, for debugging (ui_overlay) */
+	bool		ffb_hud;
 
 	/* [Input] */
 	bool		buttons_from_one; /* a joystick's buttons shown from 1,

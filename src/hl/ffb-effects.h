@@ -44,6 +44,7 @@ private:
 	float	 corner = 0;		/* the turn's weight, smoothed */
 	float	 kick = 0;		/* a hit's kick, decaying (> 0 to the left) */
 	float	 jolt = 0;		/* a hit's or a landing's shake, decaying */
+	float	 wheel_jolt = 0;	/* the same with the wheel's own gains */
 	float	 avert_slow = 0;	/* the vertical acceleration, smoothed */
 	float	 alat_slow = 0;		/* the lateral one, smoothed */
 	bool	 was_wall = false;
