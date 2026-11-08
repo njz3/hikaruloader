@@ -32,6 +32,7 @@
 #include "hl/ffb.h"
 #include "hl/input.h"
 #include "hl/paths.h"
+#include "hl/pointers.h"
 #include "hl/renderer.h"
 #include "hl/window.h"
 
@@ -142,6 +143,8 @@ void drawStateNotice(const hl::Emulator::StateNotice &n)
 void setOpen(bool open)
 {
     g_open = open;
+    // Read in the game only: see hl::Pointers::enable
+    hl::Pointers::enable(!open);
     // The settings need the pointer, the game may hide it
     SDL_ShowCursor(open || !hl::Config::get ()->hide_cursor ? SDL_ENABLE : SDL_DISABLE);
     // The inputs held when the settings opened would stay down in the game,
@@ -230,6 +233,13 @@ void ui::Interface::draw_overlay (int width, int height)
     if (!g_ready || (!g_open && !cfg->fps_overlay && !cfg->ffb_hud && !notice && !state_shown))
         return;
 
+    // Over the game, what is drawn must not bring back a hidden pointer: the
+    // backend shows it at each frame otherwise
+    ImGuiIO &io = ImGui::GetIO();
+    if (!g_open && cfg->hide_cursor)
+        io.ConfigFlags |= ImGuiConfigFlags_NoMouseCursorChange;
+    else
+        io.ConfigFlags &= ~ImGuiConfigFlags_NoMouseCursorChange;
     ui::newFrame();
     if (notice)
         drawNotice();

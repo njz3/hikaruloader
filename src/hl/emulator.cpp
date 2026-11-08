@@ -26,6 +26,7 @@
 #include <filesystem>
 
 #include "hl/emulator.h"
+#include "hl/pointers.h"
 #include "hl/ffb-effects.h"
 #include "hl/shell.h"
 #include "hl/agent.h"
@@ -213,6 +214,7 @@ Emulator::unload_game ()
 	snapshots.clear ();
 	state_slot = 0;
 	notice_until = 0;
+	Pointers::enable (false);
 }
 
 /* The save states' message over the game: 3 seconds, or until the next one */
@@ -706,6 +708,7 @@ Emulator::run (int num_frames)
 	next_frame = 0;
 	if (shell)
 		shell->call_hooks (Shell::EVENT_START);
+	Pointers::enable (true);
 	while (!quit && !process_events ()) {
 		/* The shell's commands, between two frames */
 		if (shell)

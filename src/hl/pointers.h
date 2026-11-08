@@ -44,8 +44,11 @@ public:
 		unsigned buttons;	/* 1 << Button */
 	};
 
-	/* Starts reading them, for the window */
+	/* For the window; they are read once enabled */
 	static void	 init (SDL_Window *window);
+	/* In a game, and on their page of the settings: their packets, a
+	 * thousand a second, delay the system's pointer in the menus */
+	static void	 enable (bool on);
 	static State	 get (unsigned index);
 	/* Their names, by number: the product's, as the device tells it */
 	static std::vector<std::string> names ();

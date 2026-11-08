@@ -32,6 +32,7 @@
 
 #include <imgui.h>
 
+#include "hl/pointers.h"
 #include "hl/config.h"
 #include "hl/controls.h"
 #include "hl/ffb.h"
@@ -467,6 +468,14 @@ void mappingPage()
     char title[192];
     snprintf(title, sizeof title, tr("Bindings: %s"), deviceName(g_mapping.device));
     std::string id = std::string(title) + "###mapping";
+    // A mouse's page reads it: see hl::Pointers::enable
+    static bool readingMouse = false;
+    const bool mouseWanted = g_mapping.device.player >= hl::Controls::MOUSE_PLAYER && ImGui::IsPopupOpen("###mapping");
+    if (mouseWanted != readingMouse)
+    {
+        readingMouse = mouseWanted;
+        hl::Pointers::enable(mouseWanted);
+    }
     if (!ImGui::BeginPopupModal(id.c_str(), NULL, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings))
         return;
 

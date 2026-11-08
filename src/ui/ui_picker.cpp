@@ -319,6 +319,7 @@ bool ui::Interface::pick_game (hl::GameList *list, char *name, size_t size, cons
 
     hl::Window::set_title (nullptr);
     SDL_ShowCursor(SDL_ENABLE);
+    ImGui::GetIO().ConfigFlags &= ~ImGuiConfigFlags_NoMouseCursorChange;
 
     while (true)
     {

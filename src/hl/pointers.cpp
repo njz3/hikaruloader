@@ -53,6 +53,9 @@ Pointers::inject (unsigned index, const State &state)
 
 /* The devices, sorted by their names; the handles Windows gives them */
 static std::vector<std::pair<std::string, HANDLE>> devices;
+/* Their products' names, asked of the devices once (the Controls tab wants
+ * them at each frame) */
+static std::vector<std::string> products;
 
 /* What the device calls itself, its VID and PID when it does not say */
 static std::string
@@ -78,10 +81,10 @@ product_name (const std::string &path)
 std::vector<std::string>
 Pointers::names ()
 {
-	std::vector<std::string> out;
+	std::vector<std::string> out (products);
 
-	for (unsigned i = 0; i < devices.size () && i < MOST; i++)
-		out.push_back (product_name (devices[i].first));
+	if (out.size () > MOST)
+		out.resize (MOST);
 	return out;
 }
 
@@ -92,6 +95,7 @@ list_devices (void)
 	std::vector<RAWINPUTDEVICELIST> list;
 
 	devices.clear ();
+	products.clear ();
 	if (GetRawInputDeviceList (NULL, &count, sizeof (RAWINPUTDEVICELIST)) != 0 || !count)
 		return;
 	list.resize (count);
@@ -110,8 +114,10 @@ list_devices (void)
 		devices.push_back ({ name, list[i].hDevice });
 	}
 	std::sort (devices.begin (), devices.end ());
-	for (unsigned i = 0; i < devices.size (); i++)
-		HL_PRINT ("pointer: MOUSE%u is %s", i, devices[i].first.c_str ());
+	for (unsigned i = 0; i < devices.size (); i++) {
+		products.push_back (product_name (devices[i].first));
+		HL_PRINT ("pointer: MOUSE%u is %s (%s)", i, products[i].c_str (), devices[i].first.c_str ());
+	}
 }
 
 static int
@@ -217,19 +223,34 @@ hook (void *, void *hwnd, unsigned int message, Uint64, Sint64 lparam)
 void
 Pointers::init (SDL_Window *window)
 {
-	RAWINPUTDEVICE device;
-
 	the_window = window;
 	list_devices ();
+	SDL_SetWindowsMessageHook (hook, NULL);
+}
+
+void
+Pointers::enable (bool on)
+{
+	static bool enabled;
+	RAWINPUTDEVICE device;
+
+	if (on == enabled)
+		return;
 	device.usUsagePage = 0x01;	/* generic desktop */
 	device.usUsage = 0x02;		/* mouse */
-	device.dwFlags = 0;		/* with the focus, the system's messages kept */
+	device.dwFlags = on ? 0 : RIDEV_REMOVE;	/* with the focus, the system's messages kept */
 	device.hwndTarget = NULL;
 	if (!RegisterRawInputDevices (&device, 1, sizeof (device))) {
 		HL_ERROR ("pointer: no raw input (error %lu)", GetLastError ());
 		return;
 	}
-	SDL_SetWindowsMessageHook (hook, NULL);
+	enabled = on;
+	if (!on) {
+		std::lock_guard<std::mutex> guard (lock);
+		for (unsigned i = 0; i < MOST; i++)
+			if (!injected[i])
+				states[i].buttons = 0;
+	}
 }
 
 Pointers::State
@@ -242,6 +263,11 @@ Pointers::get (unsigned index)
 }
 
 #else /* !_WIN32 */
+
+void
+Pointers::enable (bool)
+{
+}
 
 std::vector<std::string>
 Pointers::names ()
