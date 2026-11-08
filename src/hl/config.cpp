@@ -183,6 +183,7 @@ Config::set_defaults ()
 	cfg->telemetry_forza[0] = 0;
 	cfg->ffb_effects = true;
 	cfg->ffb_steering = cfg->ffb_engines = cfg->ffb_hits = cfg->ffb_terrain = cfg->ffb_rumble = 100;
+	cfg->ffb_gain = 100;
 	/* As windowsloader and linuxloader */
 	cfg->buttons_from_one = true;
 	/* The wheel's whole turn for the game's, as before November 2026; the
@@ -195,6 +196,7 @@ Config::set_defaults ()
 	/* A wheel and its pedals, or a game controller's stick and trigger,
 	 * drive the pod at once */
 	cfg->twin_levers = TWIN_LEVERS_COMBINED;
+	cfg->background_input = false;
 	for (i = 0; i < NUM_ACTIONS; i++)
 		cfg->bindings[i] = Input::default_binding ((Action) i);
 }
@@ -453,7 +455,9 @@ Config::set_value (const char *section, const char *key, const char *value)
 			snprintf (cfg->telemetry_forza, sizeof (cfg->telemetry_forza), "%s", value);
 	} else if (!strcasecmp (section, "ForceFeedback")) {
 		unsigned pct = (unsigned) MAX2 (0, MIN2 (200, atoi (value)));
-		if (!strcasecmp (key, "EFFECTS"))
+		if (!strcasecmp (key, "GAIN"))
+			cfg->ffb_gain = (unsigned) MAX2 (0, MIN2 (300, atoi (value)));
+		else if (!strcasecmp (key, "EFFECTS"))
 			cfg->ffb_effects = parse_bool (value);
 		else if (!strcasecmp (key, "STEERING"))
 			cfg->ffb_steering = pct;
@@ -481,6 +485,8 @@ Config::set_value (const char *section, const char *key, const char *value)
 		else if (!strcasecmp (key, "TWIN_LEVERS"))
 			cfg->twin_levers = (TwinLevers) parse_name (value, twin_levers_names, NUM_TWIN_LEVERS,
 			                                             cfg->twin_levers);
+		else if (!strcasecmp (key, "BACKGROUND_INPUT"))
+			cfg->background_input = parse_bool (value);
 	} else if (!strcasecmp (section, "Controls")) {
 		for (i = 0; i < NUM_ACTIONS; i++) {
 			const char *name = Input::action_name ((Action) i);
@@ -883,6 +889,11 @@ Config::save () const
 
 	fprintf (fp, "\n[ForceFeedback]\n");
 	fprintf (fp,
+	         "\n# All the forces, of every game, on a wheel and on a controller's motors, in\n"
+	         "# percent (0 to 300); above 100 the strongest stop at what the device can\n"
+	         "# do. Default: %u\n", def.ffb_gain);
+	fprintf (fp, "GAIN = %u\n", cfg->ffb_gain);
+	fprintf (fp,
 	         "\n# Star Wars: Racer Arcade's cabinet has no motor: force feedback is made from\n"
 	         "# what the game does (its engines, its hits, its turns, the ground), on a\n"
 	         "# wheel (DirectInput) and on player 1's controller's motors. Default: %s\n",
@@ -935,6 +946,11 @@ Config::save () const
 	         "# and the wheel (P1_Steer) the difference, the pod turning to the side\n"
 	         "# steered. Default: %s\n", twin_levers_names[def.twin_levers]);
 	fprintf (fp, "TWIN_LEVERS = %s\n", twin_levers_names[cfg->twin_levers]);
+	fprintf (fp,
+	         "\n# true, the joysticks, wheels and controllers go on working while another\n"
+	         "# window has the focus, their hotkeys too; the keyboard only ever works\n"
+	         "# with the focus. Default: %s\n", bool_name (def.background_input));
+	fprintf (fp, "BACKGROUND_INPUT = %s\n", bool_name (cfg->background_input));
 
 	/* The controls are controls.ini's (hl::Controls): the old [Controls]
 	 * is read once, into it, and no longer written */

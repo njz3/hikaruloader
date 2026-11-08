@@ -219,6 +219,8 @@ In the environment:
 - `MIE_HACK=1`: Valkyrie's hack instead of the MIE (below); `MIE_SPEED` and
   `MIE_IDLE_SKIP=0`, see below.
 - `FFB_GAIN`, `FFB_INVERT`: the force feedback (see README.md);
+- `FFB_SEND_MS`: the pause after each write to the wheel (16), on the force
+  feedback's thread; 0 lets the wheel's USB slow the frames down again;
   `DRIVEBOARD_SIMULATED=1`: the drive board's program simulated even with
   the srally2 set.
 - `COMM_BOARD = PROGRAM`'s ring (hikaru-commbd.cpp): `HR_COMM_LATENCY`, the

@@ -668,6 +668,47 @@ void drawFfbEffects()
                                    "strengths: [ForceFeedback] in hikaruloader.ini."));
 }
 
+// [ForceFeedback] GAIN: every force, every game's; saved at once to
+// hikaruloader.ini, alone, and felt at once
+void drawFfbGain()
+{
+    hl::Config *cfg = hl::Config::get();
+    int gain = (int)cfg->ffb_gain;
+    if (ImGui::SliderInt(tr("Force feedback gain"), &gain, 0, 300, "%d%%"))
+    {
+        hl::Config onDisk;
+        onDisk.set_defaults();
+        onDisk.load();
+        onDisk.ffb_gain = cfg->ffb_gain = (unsigned)std::clamp(((gain + 2) / 5) * 5, 0, 300);
+        onDisk.save();
+        hl::ForceFeedback::gain_changed();
+    }
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("%s", tr("All the forces, of every game, on the wheel and on the controller's\n"
+                                   "motors. Above 100 percent, the strongest stop at what the device can do."));
+}
+
+// [Input] BACKGROUND_INPUT: saved at once to hikaruloader.ini, alone, and
+// taken at once by SDL
+void drawBackgroundInput()
+{
+    hl::Config *cfg = hl::Config::get();
+    bool on = cfg->background_input;
+    if (ImGui::Checkbox(tr("Read the controllers in the background"), &on))
+    {
+        hl::Config onDisk;
+        onDisk.set_defaults();
+        onDisk.load();
+        onDisk.background_input = cfg->background_input = on;
+        onDisk.save();
+        SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, on ? "1" : "0");
+    }
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("%s", tr("The joysticks, wheels and controllers go on working while another\n"
+                                   "window has the focus, their hotkeys too. The keyboard only ever\n"
+                                   "works with the focus."));
+}
+
 // What the game reads now: the switches, the wheel and the pedals
 void drawGameInputs()
 {
@@ -848,10 +889,14 @@ void drawControlsTab()
 
     header(tr("Levers (Star Wars: Racer Arcade)"));
     drawLevers();
+
+    header(tr("Force feedback"));
+    drawFfbGain();
     drawFfbEffects();
 
     header(tr("Dead zones and options"));
     drawOptions();
+    drawBackgroundInput();
 
     mappingPage();
 }

@@ -600,6 +600,10 @@ Window::open (unsigned width, unsigned height)
 	if (shared_window)
 		return 0;
 
+	/* [Input] BACKGROUND_INPUT: SDL's joysticks without the focus; the keys
+	 * stay behind it (hl::Controls) */
+	SDL_SetHint (SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, Config::get ()->background_input ? "1" : "0");
+
 	if (SDL_Init (SDL_INIT_VIDEO | SDL_INIT_TIMER | SDL_INIT_GAMECONTROLLER)) {
 		HL_ERROR ("could not initialize SDL: '%s'", SDL_GetError ());
 		return -1;

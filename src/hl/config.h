@@ -280,6 +280,9 @@ public:
 	 * motors; each family's strength, a percentage */
 	bool		ffb_effects;
 	unsigned	ffb_steering, ffb_engines, ffb_hits, ffb_terrain, ffb_rumble;
+	/* All the forces, every game's, to a wheel and a controller's motors:
+	 * a percentage, 0 to 300 (hl::ForceFeedback) */
+	unsigned	ffb_gain;
 
 	/* [Input] */
 	bool		buttons_from_one; /* a joystick's buttons shown from 1,
@@ -296,6 +299,9 @@ public:
 	bool		shifter_neutral;
 	int		shift_neutral_ms;
 	TwinLevers	twin_levers;
+	/* The joysticks, wheels and controllers read without the window's
+	 * focus; the keyboard never is (hl::Controls) */
+	bool		background_input;
 	/* How many times further than its axis the game's wheel goes: 1 for
 	 * rotation 0, range / rotation else, never below 1 (the game's wheel
 	 * always reaches its ends) */

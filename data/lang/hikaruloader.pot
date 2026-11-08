@@ -60,6 +60,22 @@ msgid "Start button lamp"
 msgstr ""
 
 #: src/hl/outputs.cpp
+msgid "Coin counter"
+msgstr ""
+
+#: src/hl/outputs.cpp
+msgid "Player 1's start button lamp"
+msgstr ""
+
+#: src/hl/outputs.cpp
+msgid "Player 2's start button lamp"
+msgstr ""
+
+#: src/hl/outputs.cpp
+msgid "Seat motor"
+msgstr ""
+
+#: src/hl/outputs.cpp
 msgid "Left upper lamp"
 msgstr ""
 
@@ -80,15 +96,7 @@ msgid "Right upper lamp"
 msgstr ""
 
 #: src/hl/outputs.cpp
-msgid "Player 1's start button lamp"
-msgstr ""
-
-#: src/hl/outputs.cpp
 msgid "Player 1's nozzle vibration"
-msgstr ""
-
-#: src/hl/outputs.cpp
-msgid "Player 2's start button lamp"
 msgstr ""
 
 #: src/hl/outputs.cpp
@@ -892,6 +900,10 @@ msgid "Driving"
 msgstr ""
 
 #: src/ui/ui_controls.cpp
+msgid "Gaelco cabinets"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
 msgid "Emulator"
 msgstr ""
 
@@ -913,6 +925,10 @@ msgstr ""
 
 #: src/ui/ui_controls.cpp
 msgid "Start"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Player 2: start"
 msgstr ""
 
 #: src/ui/ui_controls.cpp
@@ -953,6 +969,34 @@ msgstr ""
 
 #: src/ui/ui_controls.cpp
 msgid "Card: insert or take back"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Player 2: up"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Player 2: down"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Player 2: left"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Player 2: right"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Player 2: button 1"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Player 2: button 2"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Player 2: button 3"
 msgstr ""
 
 #: src/ui/ui_controls.cpp
@@ -1021,10 +1065,6 @@ msgstr ""
 
 #: src/ui/ui_controls.cpp
 msgid "Right lever (its engine's thrust)"
-msgstr ""
-
-#: src/ui/ui_controls.cpp
-msgid "Gaelco cabinets"
 msgstr ""
 
 #: src/ui/ui_controls.cpp
@@ -1164,14 +1204,6 @@ msgid "Your wheel turns %d degrees: the game's wheel takes its whole turn."
 msgstr ""
 
 #: src/ui/ui_controls.cpp
-msgid "Emulated force feedback (wheel and controller)"
-msgstr ""
-
-#: src/ui/ui_controls.cpp
-msgid "The cabinet has no motor: the forces and the rumble are made from what\nthe game does (the engines, the hits, the turns, the ground). Their\nstrengths: [ForceFeedback] in hikaruloader.ini."
-msgstr ""
-
-#: src/ui/ui_controls.cpp
 msgid "Neutral when no gear is engaged"
 msgstr ""
 
@@ -1201,6 +1233,30 @@ msgstr ""
 
 #: src/ui/ui_controls.cpp
 msgid "Star Wars: Racer Arcade's two levers each give a pod engine's thrust: even, the pod goes straight; the side pushing harder turns it the other way. Combined, the accelerator is the thrust of both and the wheel the difference, the pod turning to the side steered. Original, as on the cabinet: Left lever and Right lever, an axis each, in the Driving section."
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Emulated force feedback (wheel and controller)"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "The cabinet has no motor: the forces and the rumble are made from what\nthe game does (the engines, the hits, the turns, the ground). Their\nstrengths: [ForceFeedback] in hikaruloader.ini."
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Force feedback gain"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "All the forces, of every game, on the wheel and on the controller's\nmotors. Above 100 percent, the strongest stop at what the device can do."
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Read the controllers in the background"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "The joysticks, wheels and controllers go on working while another\nwindow has the focus, their hotkeys too. The keyboard only ever\nworks with the focus."
 msgstr ""
 
 #: src/ui/ui_controls.cpp
@@ -1257,6 +1313,10 @@ msgstr ""
 
 #: src/ui/ui_controls.cpp
 msgid "Levers (Star Wars: Racer Arcade)"
+msgstr ""
+
+#: src/ui/ui_controls.cpp src/ui/ui_picker.cpp
+msgid "Force feedback"
 msgstr ""
 
 #: src/ui/ui_controls.cpp
@@ -1333,10 +1393,6 @@ msgstr ""
 
 #: src/ui/ui_picker.cpp
 msgid "no"
-msgstr ""
-
-#: src/ui/ui_picker.cpp
-msgid "Force feedback"
 msgstr ""
 
 #: src/ui/ui_picker.cpp

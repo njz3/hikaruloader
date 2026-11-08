@@ -31,7 +31,7 @@ namespace hl {
  * trigonometric way, as the agent protocol has it; the others are strengths,
  * 0 to 1. Each effect plays until changed; STOP stops them all. Options:
  * FFB_GAIN, a percentage (100), FFB_INVERT, the constant force the other
- * way. The servo board's spring is the one effect the device works out from
+ * way; [ForceFeedback] GAIN multiplies FFB_GAIN. The servo board's spring is the one effect the device works out from
  * the wheel's position: with [Input] WHEEL_ROTATION, the game's wheel is
  * shorter than the device's, and the spring as much stiffer. */
 class ForceFeedback {
@@ -71,6 +71,8 @@ public:
 	static void	 devices_changed ();
 	/* [Input] WHEEL_ROTATION or WHEEL_RANGE changed: the spring again */
 	static void	 wheel_changed ();
+	/* [ForceFeedback] GAIN changed: the forces going on again */
+	static void	 gain_changed ();
 	static void	 shutdown ();
 
 	/* The spring of the given strength (0 to 1) on a device whose travel

@@ -17,6 +17,11 @@
  */
 
 #include <math.h>
+#include <atomic>
+#include <chrono>
+#include <condition_variable>
+#include <mutex>
+#include <thread>
 
 #include "hl/ffb.h"
 #include "hl/config.h"
@@ -35,8 +40,9 @@ static std::vector<ForceFeedback::Record> records;
 
 /* The SDL device, and its effects (-1: not made yet, or not supported) */
 static bool sdl_ready, looked;
-static SDL_Joystick *joystick;
-static SDL_Haptic *haptic;
+static std::atomic<SDL_Joystick *> joystick;
+static std::atomic<SDL_Haptic *> haptic;
+static std::mutex &device_lock = *new std::mutex;
 static unsigned supported;
 static int effect_id[ForceFeedback::NUM_EFFECTS];
 static bool running[ForceFeedback::NUM_EFFECTS];
@@ -50,6 +56,7 @@ clamp1 (float v, float lo)
 static void
 close_device (void)
 {
+	std::lock_guard<std::mutex> device (device_lock);
 	unsigned i;
 
 	if (haptic)
@@ -69,6 +76,8 @@ static void
 open_device (void)
 {
 	int i;
+
+	std::lock_guard<std::mutex> device (device_lock);
 
 	looked = true;
 	if (!sdl_ready) {
@@ -165,6 +174,91 @@ play (ForceFeedback::Effect effect, float force)
 	}
 }
 
+/* A write to the device is a USB transfer, a whole frame's time on a wheel
+ * that answers slowly: they are made on a thread of their own, for the
+ * machine never to wait for them. It sends each effect's last force, a newer
+ * one taking the place of one not sent yet. A pause after each one
+ * (FFB_SEND_MS), as DirectInput makes the inputs' reading wait for the
+ * device's transfer: without it the wheel is always busy, and the frames
+ * wait all the same. Never destroyed: the thread may still be in a transfer
+ * as the program ends. */
+struct Sender {
+	std::thread		 thread;
+	std::mutex		 lock;
+	std::condition_variable	 wake;
+	bool			 pending, quit;
+	bool			 queued[ForceFeedback::NUM_EFFECTS];
+	float			 force[ForceFeedback::NUM_EFFECTS];
+	bool			 rumble;
+	SDL_JoystickID		 rumble_joystick;
+	Uint16			 rumble_low, rumble_high;
+};
+
+static Sender &sender = *new Sender ();
+
+static void
+send_loop (void)
+{
+	std::unique_lock<std::mutex> lock (sender.lock);
+	bool queued[ForceFeedback::NUM_EFFECTS];
+	float force[ForceFeedback::NUM_EFFECTS];
+	int interval = hl_util_get_int_option ("FFB_SEND_MS", 16);
+	unsigned i;
+
+	while (true) {
+		sender.wake.wait (lock, [] { return sender.pending || sender.quit; });
+		if (!sender.pending)
+			return;
+		memcpy (queued, sender.queued, sizeof (queued));
+		memcpy (force, sender.force, sizeof (force));
+		memset (sender.queued, 0, sizeof (sender.queued));
+		bool rumble = sender.rumble;
+		SDL_JoystickID id = sender.rumble_joystick;
+		Uint16 low = sender.rumble_low, high = sender.rumble_high;
+		sender.pending = sender.rumble = false;
+		lock.unlock ();
+
+		for (i = ForceFeedback::CONSTANT; i < ForceFeedback::RUMBLE_LOW; i++)
+			if (queued[i]) {
+				{
+					std::lock_guard<std::mutex> device (device_lock);
+					play ((ForceFeedback::Effect) i, force[i]);
+				}
+				std::this_thread::sleep_for (std::chrono::milliseconds (interval));
+			}
+		if (rumble) {
+			/* Its instance: the player's joystick may be gone */
+			SDL_Joystick *joy = SDL_JoystickFromInstanceID (id);
+			if (joy)
+				SDL_JoystickRumble (joy, low, high, 1000);
+		}
+		lock.lock ();
+	}
+}
+
+/* sender.lock held */
+static void
+wake_sender (void)
+{
+	if (!sender.thread.joinable ()) {
+		sender.quit = false;
+		sender.thread = std::thread (send_loop);
+	}
+	sender.pending = true;
+	sender.wake.notify_one ();
+}
+
+static void
+send_force (ForceFeedback::Effect effect, float force)
+{
+	if (!haptic)
+		return;
+	std::lock_guard<std::mutex> lock (sender.lock);
+	sender.queued[effect] = true;
+	sender.force[effect] = force;
+	wake_sender ();
+}
+
 /* What the device gets: the options applied */
 static float
 device_force (ForceFeedback::Effect effect, float force)
@@ -176,7 +270,8 @@ device_force (ForceFeedback::Effect effect, float force)
 		gain = hl_util_get_int_option ("FFB_GAIN", 100);
 		invert = hl_util_get_bool_option ("FFB_INVERT", false);
 	}
-	force = clamp1 (force * gain / 100.0f, (effect == ForceFeedback::CONSTANT) ? -1.0f : 0.0f);
+	force = clamp1 (force * gain / 100.0f * Config::get ()->ffb_gain / 100.0f,
+	                (effect == ForceFeedback::CONSTANT) ? -1.0f : 0.0f);
 	return (invert && effect == ForceFeedback::CONSTANT) ? -force : force;
 }
 
@@ -207,7 +302,7 @@ ForceFeedback::set (Effect effect, float force, uint64_t frame)
 
 	if (!looked)
 		open_device ();
-	play (effect, device_force (effect, force));
+	send_force (effect, device_force (effect, force));
 }
 
 /* The controller's motors: what was last sent, and when */
@@ -217,13 +312,20 @@ static void
 send_rumble (uint64_t frame)
 {
 	SDL_Joystick *joy = (SDL_Joystick *) Controls::get ().player_joystick (0);
-	float gain = hl_util_get_int_option ("FFB_GAIN", 100) / 100.0f;
+	float gain = hl_util_get_int_option ("FFB_GAIN", 100) / 100.0f * Config::get ()->ffb_gain / 100.0f;
 	auto level = [&] (float x) { return (Uint16) lrintf (clamp1 (x * gain, 0.0f) * 65535.0f); };
 
 	rumble_sent = frame;
-	if (joy)
-		SDL_JoystickRumble (joy, level (current[ForceFeedback::RUMBLE_LOW]),
-		                    level (current[ForceFeedback::RUMBLE_HIGH]), 1000);
+	/* Not the wheel with the forces: SDL would hold its joysticks' lock,
+	 * which the inputs' reading waits for, during the wheel's transfer */
+	if (!joy || joy == joystick)
+		return;
+	std::lock_guard<std::mutex> lock (sender.lock);
+	sender.rumble = true;
+	sender.rumble_joystick = SDL_JoystickInstanceID (joy);
+	sender.rumble_low = level (current[ForceFeedback::RUMBLE_LOW]);
+	sender.rumble_high = level (current[ForceFeedback::RUMBLE_HIGH]);
+	wake_sender ();
 }
 
 void
@@ -290,14 +392,26 @@ ForceFeedback::devices_changed ()
 	/* The effects going on, on the new device */
 	for (i = CONSTANT; i < RUMBLE_LOW; i++)
 		if (current[i] != 0.0f)
-			play ((Effect) i, device_force ((Effect) i, current[i]));
+			send_force ((Effect) i, device_force ((Effect) i, current[i]));
 }
 
 void
 ForceFeedback::wheel_changed ()
 {
-	if (haptic && current[SPRING] != 0.0f)
-		play (SPRING, device_force (SPRING, current[SPRING]));
+	if (current[SPRING] != 0.0f)
+		send_force (SPRING, device_force (SPRING, current[SPRING]));
+}
+
+void
+ForceFeedback::gain_changed ()
+{
+	unsigned i;
+
+	for (i = CONSTANT; i < RUMBLE_LOW; i++)
+		if (current[i] != 0.0f)
+			send_force ((Effect) i, device_force ((Effect) i, current[i]));
+	if (current[RUMBLE_LOW] + current[RUMBLE_HIGH] > 0)
+		send_rumble (rumble_sent);
 }
 
 void
@@ -312,6 +426,14 @@ ForceFeedback::spring_on_wheel (float strength, double scale, float *coefficient
 void
 ForceFeedback::shutdown ()
 {
+	if (sender.thread.joinable ()) {
+		{
+			std::lock_guard<std::mutex> lock (sender.lock);
+			sender.quit = true;
+			sender.wake.notify_one ();
+		}
+		sender.thread.join ();
+	}
 	if (haptic)
 		SDL_HapticStopAll (haptic);
 	close_device ();

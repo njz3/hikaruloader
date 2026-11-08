@@ -186,6 +186,12 @@ the hotkeys in the Controls tab, or delete the file to get the defaults.
 On Windows, Guide also opens the Xbox Game Bar: Windows' settings (Gaming,
 Xbox Game Bar) turn its controller button off.
 
+**Background input.** The Controls tab's *Read the controllers in the
+background* (off by default, `[Input]` `BACKGROUND_INPUT` in
+`hikaruloader.ini`, taken at once) keeps the joysticks, wheels and
+controllers working while another window has the focus, their hotkeys too.
+The keyboard only ever works with the focus.
+
 **Wheel rotation.** With a wheel, NASCAR Arcade's wheel goes from one end
 to the other over the wheel's whole turn by default. The Controls tab's
 *Wheel rotation* makes it 270, 360, 540, 900 or 1080 degrees of the wheel's
@@ -548,7 +554,11 @@ Z80; without it, a simulation of that program (`DRIVEBOARD_SIMULATED=1` in
 the environment forces the simulation). It starts in some 11 seconds (CF,
 CE, CD, then CC), as on the cabinet. Two environment variables adjust
 it: `FFB_GAIN`, a percentage (100 by default), and `FFB_INVERT=1` for a
-wheel that pushes the wrong way.
+wheel that pushes the wrong way. The Controls tab's *Force feedback gain*,
+0 to 300% (`[ForceFeedback]` `GAIN` in `hikaruloader.ini`, 100 by default,
+taken at once), multiplies all the forces, of every game, on a wheel and on
+a controller's motors; above 100% the strongest stop at what the device can
+do.
 
 With a wheel rotation (see "Keys and controllers"), the game's own forces
 follow the wheel's position as the game reads it, already scaled; the servo
@@ -571,7 +581,7 @@ The Controls tab's *Emulated force feedback* box turns them on and off
 (`[ForceFeedback]` `EFFECTS` in `hikaruloader.ini`), at once;
 `STEERING`, `ENGINES`, `HITS`, `TERRAIN` and `RUMBLE`, each family's
 strength in percent (100 by default, 0 to 200). They stop outside a race and
-in a pause. `FFB_GAIN` and `FFB_INVERT` apply to them too.
+in a pause. `GAIN`, `FFB_GAIN` and `FFB_INVERT` apply to them too.
 
 
 Cabinet outputs

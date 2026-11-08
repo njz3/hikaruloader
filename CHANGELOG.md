@@ -5,6 +5,21 @@ What each version brings, for those who play. How the versions are numbered
 and released: [DEVELOPMENT.md](DEVELOPMENT.md), "Versions and releases".
 
 
+In preparation
+--------------
+
+- Star Wars: Racer Arcade at full speed with a force feedback wheel: its
+  forces go to the wheel on a thread of their own, the game no longer
+  waiting for the USB (some 20 frames a second in a race on a SideWinder).
+- A gain for all the force feedback, of every game, on a wheel and on a
+  controller's motors: *Force feedback gain* in the Controls tab, 0 to 300%
+  (`[ForceFeedback]` `GAIN`), felt at once.
+- The controllers read in the background, the keyboard never: *Read the
+  controllers in the background* in the Controls tab (`[Input]`
+  `BACKGROUND_INPUT`, off by default), for a game playing behind another
+  window.
+
+
 0.5.2 (2026-11-08)
 ------------------
 

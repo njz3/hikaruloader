@@ -63,6 +63,22 @@ msgid "Start button lamp"
 msgstr "Lampe du bouton Start"
 
 #: src/hl/outputs.cpp
+msgid "Coin counter"
+msgstr "Compteur de pièces"
+
+#: src/hl/outputs.cpp
+msgid "Player 1's start button lamp"
+msgstr "Lampe du bouton Start du joueur 1"
+
+#: src/hl/outputs.cpp
+msgid "Player 2's start button lamp"
+msgstr "Lampe du bouton Start du joueur 2"
+
+#: src/hl/outputs.cpp
+msgid "Seat motor"
+msgstr "Moteur du siège"
+
+#: src/hl/outputs.cpp
 msgid "Left upper lamp"
 msgstr "Lampe en haut à gauche"
 
@@ -83,16 +99,8 @@ msgid "Right upper lamp"
 msgstr "Lampe en haut à droite"
 
 #: src/hl/outputs.cpp
-msgid "Player 1's start button lamp"
-msgstr "Lampe du bouton Start du joueur 1"
-
-#: src/hl/outputs.cpp
 msgid "Player 1's nozzle vibration"
 msgstr "Vibration de la lance du joueur 1"
-
-#: src/hl/outputs.cpp
-msgid "Player 2's start button lamp"
-msgstr "Lampe du bouton Start du joueur 2"
 
 #: src/hl/outputs.cpp
 msgid "VR R button lamp"
@@ -895,6 +903,10 @@ msgid "Driving"
 msgstr "Conduite"
 
 #: src/ui/ui_controls.cpp
+msgid "Gaelco cabinets"
+msgstr "Bornes Gaelco"
+
+#: src/ui/ui_controls.cpp
 msgid "Emulator"
 msgstr "Émulateur"
 
@@ -911,42 +923,16 @@ msgid "Coin 1"
 msgstr "Pièce 1"
 
 #: src/ui/ui_controls.cpp
-msgid "Seat motor"
-msgstr "Moteur du siège"
-
-msgid "Coin counter"
-msgstr "Compteur de pièces"
-
 msgid "Coin 2"
 msgstr "Pièce 2"
-
-msgid "Player 2: start"
-msgstr "Joueur 2 : start"
-
-msgid "Player 2: up"
-msgstr "Joueur 2 : haut"
-
-msgid "Player 2: down"
-msgstr "Joueur 2 : bas"
-
-msgid "Player 2: left"
-msgstr "Joueur 2 : gauche"
-
-msgid "Player 2: right"
-msgstr "Joueur 2 : droite"
-
-msgid "Player 2: button 1"
-msgstr "Joueur 2 : bouton 1"
-
-msgid "Player 2: button 2"
-msgstr "Joueur 2 : bouton 2"
-
-msgid "Player 2: button 3"
-msgstr "Joueur 2 : bouton 3"
 
 #: src/ui/ui_controls.cpp
 msgid "Start"
 msgstr "Start"
+
+#: src/ui/ui_controls.cpp
+msgid "Player 2: start"
+msgstr "Joueur 2 : start"
 
 #: src/ui/ui_controls.cpp
 msgid "Quit"
@@ -987,6 +973,34 @@ msgstr "Bouton 4"
 #: src/ui/ui_controls.cpp
 msgid "Card: insert or take back"
 msgstr "Carte : insérer ou reprendre"
+
+#: src/ui/ui_controls.cpp
+msgid "Player 2: up"
+msgstr "Joueur 2 : haut"
+
+#: src/ui/ui_controls.cpp
+msgid "Player 2: down"
+msgstr "Joueur 2 : bas"
+
+#: src/ui/ui_controls.cpp
+msgid "Player 2: left"
+msgstr "Joueur 2 : gauche"
+
+#: src/ui/ui_controls.cpp
+msgid "Player 2: right"
+msgstr "Joueur 2 : droite"
+
+#: src/ui/ui_controls.cpp
+msgid "Player 2: button 1"
+msgstr "Joueur 2 : bouton 1"
+
+#: src/ui/ui_controls.cpp
+msgid "Player 2: button 2"
+msgstr "Joueur 2 : bouton 2"
+
+#: src/ui/ui_controls.cpp
+msgid "Player 2: button 3"
+msgstr "Joueur 2 : bouton 3"
 
 #: src/ui/ui_controls.cpp
 msgid "Steering wheel"
@@ -1055,10 +1069,6 @@ msgstr "Levier gauche (la poussée de son réacteur)"
 #: src/ui/ui_controls.cpp
 msgid "Right lever (its engine's thrust)"
 msgstr "Levier droit (la poussée de son réacteur)"
-
-#: src/ui/ui_controls.cpp
-msgid "Gaelco cabinets"
-msgstr "Bornes Gaelco"
 
 #: src/ui/ui_controls.cpp
 msgid "Volume up (ATV Track, Smashing Drive)"
@@ -1197,14 +1207,6 @@ msgid "Your wheel turns %d degrees: the game's wheel takes its whole turn."
 msgstr "Votre volant tourne de %d degrés : le volant du jeu prend toute sa rotation."
 
 #: src/ui/ui_controls.cpp
-msgid "Emulated force feedback (wheel and controller)"
-msgstr "Retour de force émulé (volant et manette)"
-
-#: src/ui/ui_controls.cpp
-msgid "The cabinet has no motor: the forces and the rumble are made from what\nthe game does (the engines, the hits, the turns, the ground). Their\nstrengths: [ForceFeedback] in hikaruloader.ini."
-msgstr "La borne n'a pas de moteur : les forces et les vibrations sont tirées\nde ce que fait le jeu (les réacteurs, les chocs, les virages, le sol).\nLeurs forces : [ForceFeedback] dans hikaruloader.ini."
-
-#: src/ui/ui_controls.cpp
 msgid "Neutral when no gear is engaged"
 msgstr "Point mort quand aucune vitesse n'est engagée"
 
@@ -1235,6 +1237,30 @@ msgstr "Original : un axe par levier"
 #: src/ui/ui_controls.cpp
 msgid "Star Wars: Racer Arcade's two levers each give a pod engine's thrust: even, the pod goes straight; the side pushing harder turns it the other way. Combined, the accelerator is the thrust of both and the wheel the difference, the pod turning to the side steered. Original, as on the cabinet: Left lever and Right lever, an axis each, in the Driving section."
 msgstr "Les deux leviers de Star Wars: Racer Arcade donnent chacun la poussée d'un réacteur du module : égales, il va tout droit ; le côté qui pousse le plus le fait tourner de l'autre côté. En combiné, l'accélérateur donne la poussée des deux et le volant la différence, le module tournant du côté où l'on braque. En original, comme sur la borne : Levier gauche et Levier droit, un axe chacun, dans la section Conduite."
+
+#: src/ui/ui_controls.cpp
+msgid "Emulated force feedback (wheel and controller)"
+msgstr "Retour de force émulé (volant et manette)"
+
+#: src/ui/ui_controls.cpp
+msgid "The cabinet has no motor: the forces and the rumble are made from what\nthe game does (the engines, the hits, the turns, the ground). Their\nstrengths: [ForceFeedback] in hikaruloader.ini."
+msgstr "La borne n'a pas de moteur : les forces et les vibrations sont tirées\nde ce que fait le jeu (les réacteurs, les chocs, les virages, le sol).\nLeurs forces : [ForceFeedback] dans hikaruloader.ini."
+
+#: src/ui/ui_controls.cpp
+msgid "Force feedback gain"
+msgstr "Gain du retour de force"
+
+#: src/ui/ui_controls.cpp
+msgid "All the forces, of every game, on the wheel and on the controller's\nmotors. Above 100 percent, the strongest stop at what the device can do."
+msgstr "Toutes les forces, de tous les jeux, sur le volant et les moteurs de la\nmanette. Au-delà de 100 pour cent, les plus fortes s'arrêtent à ce que\npeut donner l'appareil."
+
+#: src/ui/ui_controls.cpp
+msgid "Read the controllers in the background"
+msgstr "Lire les manettes en arrière-plan"
+
+#: src/ui/ui_controls.cpp
+msgid "The joysticks, wheels and controllers go on working while another\nwindow has the focus, their hotkeys too. The keyboard only ever\nworks with the focus."
+msgstr "Les joysticks, volants et manettes continuent de répondre quand une\nautre fenêtre a le focus, leurs raccourcis aussi. Le clavier ne répond\nque si la fenêtre a le focus."
 
 #: src/ui/ui_controls.cpp
 msgid "Gear (NASCAR Arcade)"
@@ -1291,6 +1317,10 @@ msgstr "Levier de vitesses (NASCAR Arcade)"
 #: src/ui/ui_controls.cpp
 msgid "Levers (Star Wars: Racer Arcade)"
 msgstr "Leviers (Star Wars: Racer Arcade)"
+
+#: src/ui/ui_controls.cpp src/ui/ui_picker.cpp
+msgid "Force feedback"
+msgstr "Retour de force"
 
 #: src/ui/ui_controls.cpp
 msgid "Dead zones and options"
@@ -1367,10 +1397,6 @@ msgstr "oui (carte de communication, émulée : [Network] dans hikaruloader.ini)
 #: src/ui/ui_picker.cpp
 msgid "no"
 msgstr "non"
-
-#: src/ui/ui_picker.cpp
-msgid "Force feedback"
-msgstr "Retour de force"
 
 #: src/ui/ui_picker.cpp
 msgid "yes (drive board: its EPROM from srally2.zip, simulated without)"
