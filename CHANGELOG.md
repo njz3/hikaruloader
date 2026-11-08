@@ -5,8 +5,8 @@ What each version brings, for those who play. How the versions are numbered
 and released: [DEVELOPMENT.md](DEVELOPMENT.md), "Versions and releases".
 
 
-In preparation
---------------
+0.6.0 (2026-11-08)
+------------------
 
 - The Gaelco games run at the SH-4 clock of the settings, no longer at twice it.
 - The SH-4 clock is 150 MHz by default, 100 to 200 on its slider: some games
