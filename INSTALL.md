@@ -99,7 +99,10 @@ Step by step, on Windows, with Visual Studio, CMake and vcpkg.
   setx VCPKG_ROOT C:\libs\vcpkg
   ```
 
-  then open a new terminal, for `VCPKG_ROOT` to be set there.
+  then open a new terminal, for `VCPKG_ROOT` to be set there. The vcpkg
+  that comes with Visual Studio (its `VC\vcpkg` folder) will do as well. A
+  clone older than the baseline of `vcpkg.json` (see 3.) is brought up to
+  date with `git -C %VCPKG_ROOT% pull`.
 - Python 3, optionally, for the tools of `tools\` (the translations, see
   [DEVELOPMENT.md](DEVELOPMENT.md)).
 
@@ -132,7 +135,9 @@ cmake -S . -B build -A x64 -DCMAKE_TOOLCHAIN_FILE=%VCPKG_ROOT%/scripts/buildsyst
 (In PowerShell, `$env:VCPKG_ROOT` in place of `%VCPKG_ROOT%`.) The first
 time, vcpkg reads `vcpkg.json` and builds SDL2, GLEW, jansson, miniz and
 Dear ImGui with its OpenGL 3 backend, for x64: several minutes, then they
-are kept.
+are kept. Their versions are those of its `builtin-baseline`, a commit of
+vcpkg's ports (Dear ImGui 1.92.9, which `3rdparty/imgui_backends` needs);
+another baseline is another set of versions, to try before changing it.
 
 ### 4. Building
 
