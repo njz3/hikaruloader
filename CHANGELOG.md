@@ -5,6 +5,17 @@ What each version brings, for those who play. How the versions are numbered
 and released: [DEVELOPMENT.md](DEVELOPMENT.md), "Versions and releases".
 
 
+0.6.1 (2026-11-08)
+------------------
+
+- Star Wars: Racer Arcade in widescreen: the game now sees the 16:9 width, so
+  the pods at the sides of the picture come whole, no longer in pieces or not
+  at all.
+- ATV Track in widescreen: no more black wedges of ground at the sides.
+- NASCAR Arcade, Planet Harriers, Air Trix and Virtual On 4 see the 16:9 width
+  too in widescreen.
+
+
 0.6.0 (2026-11-08)
 ------------------
 
