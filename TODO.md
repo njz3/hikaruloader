@@ -268,8 +268,9 @@ Still to do:
 - Interrupt 7 (a frame drawn) is raised at once, not when the frame would be.
 - Widescreen: the 2D told from the 3D by its depth (the HUD at a 1/W of 1
   or more, the backgrounds at 1e-6, the 3D below 0.2 in both games); ATV
-  Track's culling is widened on its slave (0C006CB6), Smashing Drive's and
-  Gaelco Football's are not (no such routine found in the slave); dimmed 4:3 boxes stay 4:3 with the 2D centred; Gaelco Football lacks a
+  Track's and Smashing Drive's culling is widened on their slaves (0C006CB6,
+  0C00348C); Gaelco Football's objects' test (8C0048B4, k 0.8) did not run in
+  the attract mode, and is left as it is; dimmed 4:3 boxes stay 4:3 with the 2D centred; Gaelco Football lacks a
   billboard's piece on the right.
 - Fog: the table's, per pixel, not yet compared with a real board's
   pictures. The three games use the table and no fog only, and never the

@@ -1354,6 +1354,19 @@ patch_atvtrack_slave (hl::Cpu *cpu, uint32_t pc, uint32_t inst)
 	return inst;
 }
 
+/* The same on Smashing Drive's slave: its view cone's k (table 8C012E14 + 14),
+ * width / 2f, computed at 0C003470 and then read back for the normalised
+ * planes; the fmov.s storing it about to run */
+static uint32_t
+patch_smashdrv_slave (hl::Cpu *cpu, uint32_t pc, uint32_t inst)
+{
+	Sh4 *ctx = (Sh4 *) cpu;
+
+	if ((pc & 0x1FFFFFFF) == 0x0C00348C && inst == 0xF52A && hl::Config::get ()->widescreen)
+		ctx->regs.f.f[2 ^ 1].f *= 854.0f / 640.0f;
+	return inst;
+}
+
 static int
 gaelco_init (Gaelco *gaelco)
 {
@@ -1464,6 +1477,8 @@ gaelco_init (Gaelco *gaelco)
 	sh4_set_porta_handlers (gaelco->sh_s, porta_get_s, porta_put_s);
 	if (!strncmp (game->name, "atvtrack", 8))
 		gaelco->sh_s->install_patch (patch_atvtrack_slave, { 0x0C006CB6 });
+	if (!strncmp (game->name, "smashdrv", 8))
+		gaelco->sh_s->install_patch (patch_smashdrv_slave, { 0x0C00348C, 0x8C00348C });
 
 	/* The names the Lua shell knows them by */
 	gaelco->sh_m->name	= "master";

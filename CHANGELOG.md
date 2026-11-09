@@ -5,6 +5,13 @@ What each version brings, for those who play. How the versions are numbered
 and released: [DEVELOPMENT.md](DEVELOPMENT.md), "Versions and releases".
 
 
+0.6.2 (2026-11-09)
+------------------
+
+- Smashing Drive in widescreen: the game now sees the 16:9 width, no more
+  black areas at the sides of the picture.
+
+
 0.6.1 (2026-11-08)
 ------------------
 
