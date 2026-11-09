@@ -130,8 +130,15 @@ Sh4BlockCache::decode (Sh4 *ctx, uint32_t pc, Sh4Block *block)
 	for (unsigned i = 0; i < num_own; i++)
 		if (pc >= own_lo[i] && pc <= own_hi[i])
 			block->checkable = true;
+	/* From the instruction cache where it holds the line */
+	auto word = [&] (uint32_t at) {
+		const uint16_t *line = icache.line (at);
+
+		return line ? line[(at >> 1) & (Sh4ICache::LINE_WORDS - 1)] :
+		              *(const uint16_t *) (win.base + (at & win.mask));
+	};
 	for (a = pc; a + 1 <= end && block->ops.size () < MAX_OPS; a += 2) {
-		uint16_t inst = *(const uint16_t *) (win.base + (a & win.mask));
+		uint16_t inst = word (a);
 		Sh4Op op = { sh4_handler (inst), inst, ctx->patches (a) };
 
 		block->words[block->num_words++] = inst;
@@ -142,8 +149,7 @@ Sh4BlockCache::decode (Sh4 *ctx, uint32_t pc, Sh4Block *block)
 			 * or trapa's (none) */
 			if (inst != 0x001B && (inst & 0xFF00) != 0xC300 && a + 3 <= end &&
 			    !ctx->patches (a + 2)) {
-				block->words[block->num_words++] =
-					*(const uint16_t *) (win.base + ((a + 2) & win.mask));
+				block->words[block->num_words++] = word (a + 2);
 				block->slot_kept = true;
 			}
 			break;
@@ -238,11 +244,29 @@ Sh4BlockCache::fresh (Sh4Block *block)
 		HL_ERROR ("SH-4 block @%08X rewritten, the code epoch the same", block->pc);
 		return false;
 	}
-	if (!block->current ())
-		return false;
+	if (!block->current ()) {
+		if (!held_in_cache (block))
+			return false;
+		/* Looked at again at each entry: not compared for the epoch */
+		held_epoch = epoch;
+		return true;
+	}
 	if (block->checkable) {
 		block->checked = epoch;
 		stamp (block);
+	}
+	return true;
+}
+
+bool
+Sh4BlockCache::held_in_cache (const Sh4Block *block) const
+{
+	for (unsigned i = 0; i < block->num_words; i++) {
+		const uint32_t at = block->pc + 2 * i;
+		const uint16_t *line = icache.line (at);
+
+		if (!line || line[(at >> 1) & (Sh4ICache::LINE_WORDS - 1)] != block->words[i])
+			return false;
 	}
 	return true;
 }
@@ -318,5 +342,6 @@ Sh4BlockCache::clear ()
 	for (std::unique_ptr<Page> &page : pages)
 		page.reset ();
 	num_decoded = 0;
+	icache.reset ();
 	new_epoch ();
 }

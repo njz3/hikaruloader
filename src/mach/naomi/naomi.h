@@ -23,6 +23,8 @@
 #ifndef __HL_NAOMI_H__
 #define __HL_NAOMI_H__
 
+#include "hl/driveboard.h"
+#include <deque>
 #include <atomic>
 #include <condition_variable>
 #include <memory>
@@ -39,8 +41,13 @@
 #include "hl/nvram.h"
 #include "hl/x76f100.h"
 
+#include "cpu/sh/sh4.h"
 #include "cpu/z80/z80.h"
 #include "mach/hikaru/hikaru-5881.h"
+
+namespace hikaru {
+class Aica;
+}
 
 namespace naomi {
 
@@ -540,6 +547,73 @@ private:
 	uint16_t dma_offset, seen_status;
 };
 
+/* Club Kart's card reader, on the SCIF; see naomi-card.cpp */
+class ClubKartCard : public SerialPipe {
+public:
+	explicit ClubKartCard (const char *game);
+
+	void	 write (uint8_t value) override;
+	int	 available () override;
+	uint8_t	 read () override;
+	/* Each frame: the card's control */
+	void	 frame ();
+
+private:
+	static const unsigned TRACK = 0x45;
+
+	bool	 load ();
+	void	 save ();
+	void	 command ();
+	void	 reply (int cmd);
+	static uint8_t crc (const uint8_t *begin, const uint8_t *end);
+
+	std::string read_path, write_path;
+	std::deque<uint8_t> out;
+	std::vector<uint8_t> in;
+	uint8_t	 data[TRACK];
+	bool	 inserted = false, read_pending = false, was_held = false;
+};
+
+/* The servo board 838-14174 of the wheels on the MIDI port; see naomi-servo.cpp */
+class ServoBoard {
+public:
+	explicit ServoBoard (Board *board);
+
+	void	 attach ();
+	void	 reset ();
+	/* Each millisecond */
+	void	 tick ();
+	void	 midi_received (uint8_t data);
+	int	 save_state (hl::State *state);
+	int	 load_state (hl::State *state);
+
+private:
+	hikaru::Aica *aica () const;
+	void	 effect (int which, float force);
+	int	 wheel_position () const;
+	bool	 holding_back () const;
+	void	 apply_torque ();
+	void	 apply_spring ();
+	void	 apply_damper ();
+	void	 apply_sine ();
+	void	 apply_effects ();
+	void	 stop_effects ();
+	void	 reset_board ();
+	void	 send (uint8_t b1, uint8_t b2, uint8_t b3);
+	void	 reply ();
+	void	 process (uint8_t cmd, uint8_t b1, uint8_t b2);
+
+	Board	*board;
+	struct {
+		uint8_t	 frame[4], params[16][2], select[2];
+		uint32_t received, state, reply_address, now_ms, search_end, last_frame_ms;
+		bool	 calibrating, active, short_mode, dropped, holds_back, relayed;
+		float	 power, position, center, speed, sine;
+		int	 torque;
+		uint16_t table[256];
+	} s = {};
+};
+
 /* One NAOMI board, whole: an SH-4 at 200 MHz, a Holly (two and an Elan on the
  * NAOMI 2), an AICA with its ARM7, the MIE, a cartridge. An object with no state
  * outside it, its parts talking to it alone: a machine holds several of them
@@ -557,6 +631,13 @@ public:
 	bool	 init ();
 	/* The MIE's EEPROM made right for the game, as its header says */
 	void	 configure_eeprom ();
+	/* On the master of the games that have one; NULL else */
+	std::unique_ptr<ServoBoard> servo;
+	std::unique_ptr<ClubKartCard> card;
+	/* F355 Challenge's, on the I/O board's lines */
+	hl::DriveBoard *drive_board = NULL;
+	void	 setup_servo ();
+	unsigned servo_lines = 0;
 	void	 default_backup ();
 	void	 reset (hl::ResetType type);
 	/* The software reset (SB_SFRES): the SH-4 and the Holly */

@@ -55,6 +55,9 @@ class Sh4;
  * until rearm (). The Hikaru's framebuffer so: the 2D layers' rows copied
  * to the drawing thread those written alone.
  *
+ * The instruction cache (Sh4ICache): a store over a line it holds does not
+ * reach the code fetched from it, until the line goes or CCR.ICI clears it.
+ *
  * Sh4::run_blocks () runs them one instruction at a time, as run () does
  * (interrupts, the slice's cycles, the patches, the idle loops): the very
  * same machine, without the fetches and the decoding. The next stage
@@ -130,9 +133,51 @@ public:
 	}
 };
 
+/* The instruction cache, 8 KB of 32-byte lines, direct mapped. A real one for
+ * what its lines hold: code in a line stays as it was fetched while the line
+ * is there, whatever is written to the memory behind it (a RAM test running
+ * over its own code, the SH-4 manual's reason for CCR.ICI). Each block looks
+ * at its lines as it starts: one comparison a line, in its translation.
+ *
+ * tags[]: the line each index last fetched, its address >> 5, 29 bits, also
+ * where the cache is off or the area uncached (P2): those hold no copy
+ * (held[] clear), the memory is the code. CCR.IIX's index is not modelled */
+class Sh4ICache {
+public:
+	static const unsigned LINE_BITS = 5, NUM_LINES = 256, LINE_WORDS = 16;
+	static const uint32_t NONE = 0xFFFFFFFFu;
+
+	uint32_t		 tags[NUM_LINES];
+	bool			 held[NUM_LINES];
+	uint16_t		 data[NUM_LINES][LINE_WORDS];
+
+	static unsigned		 index (uint32_t addr) { return (addr >> LINE_BITS) & (NUM_LINES - 1); }
+	static uint32_t		 tag (uint32_t addr) { return (addr & 0x1FFFFFFF) >> LINE_BITS; }
+	void			 reset ()
+	{
+		for (unsigned i = 0; i < NUM_LINES; i++) {
+			tags[i] = NONE;
+			held[i] = false;
+		}
+	}
+	bool			 present (uint32_t addr) const
+	{
+		return tags[index (addr)] == tag (addr);
+	}
+	/* The line's words when the cache holds them, else NULL */
+	const uint16_t		*line (uint32_t addr) const
+	{
+		const unsigned i = index (addr);
+
+		return tags[i] == tag (addr) && held[i] ? data[i] : NULL;
+	}
+};
+
 class Sh4BlockCache {
 public:
 	static const unsigned MAX_OPS = Sh4Block::MAX_OPS;
+
+	Sh4ICache		 icache;
 
 	Sh4BlockCache () = default;
 	Sh4BlockCache (const Sh4BlockCache &) = delete;
@@ -154,6 +199,16 @@ public:
 	}
 	void			 clear ();
 	unsigned		 decoded () const { return num_decoded; }
+	/* The instruction cache emptied (CCR.ICI, a line invalidated): the
+	 * code is the memory's again */
+	void			 icache_changed () { new_epoch (); }
+	/* A line replaced: a block that ran from a line gone (its memory
+	 * rewritten meanwhile) looked at again */
+	void			 line_replaced ()
+	{
+		if (held_epoch == epoch)
+			new_epoch ();
+	}
 
 	/* Code epochs (above). The CPU's own RAM or ROM, from lo to hi (29
 	 * bits): where nothing writes but the CPU and what the machine tells
@@ -223,12 +278,18 @@ private:
 	bool			 decode (Sh4 *ctx, uint32_t pc, Sh4Block *block);
 	/* Its code still the memory's: compared when its epoch is old */
 	bool			 fresh (Sh4Block *block);
+	/* Its code rewritten behind the lines the instruction cache holds */
+	bool			 held_in_cache (const Sh4Block *block) const;
+	/* The epoch a block last ran on so (0: none) */
+	uint32_t		 held_epoch = 0;
 };
 
 /* The interpreter's handler for an instruction (sh4.cpp) */
 Sh4Handler	 sh4_handler (uint16_t inst);
 /* The instruction may change the program counter (a branch, a jump) */
 bool		 sh4_may_branch (uint16_t inst);
+/* The lines of the block at pc, up to the byte at last, fetched (sh4.cpp) */
+void		 sh4_icache_fill (Sh4 *ctx, uint32_t pc, uint32_t last);
 /* A 32-bit load and store as the handlers make them (sh4.cpp): on-chip
  * registers, store queues, the memory map, the stores counted, the write
  * hooks: the translations' way when they cannot go straight */

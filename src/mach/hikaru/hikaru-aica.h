@@ -21,6 +21,7 @@
 #ifndef __HL_HIKARU_AICA_H__
 #define __HL_HIKARU_AICA_H__
 
+#include <deque>
 #include <vector>
 
 #include "hl/device.h"
@@ -56,7 +57,15 @@ public:
 	void	(*main_irq_hook) (hl::Machine *mach, bool raised) = NULL;
 	/* The SH-4's interrupt line: MCIPD & MCIEB */
 	bool	 main_irq_level () const;
+	/* The MIDI port, for a machine wired to it (the NAOMI's servo board):
+	 * told of each byte written to MOBUF; a byte for the game to read;
+	 * the 16 bits of 2808: MIBUF, its flags, the byte taken if pop */
+	void	(*midi_out) (void *user, uint8_t data) = NULL;
+	void	*midi_user = NULL;
+	void	 midi_send (uint8_t data);
+	uint16_t midi_read (bool pop);
 
+	std::deque<uint8_t> midi_in;
 	hl::Buffer *ram;
 	hl::Buffer *regs;
 	/* The RTC: seconds since 1964-01-01 00:00, the BOOTROM's date routine's

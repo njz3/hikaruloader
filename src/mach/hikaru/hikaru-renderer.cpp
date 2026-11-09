@@ -1042,6 +1042,12 @@ get_light_type (hikaru_light_t *lit)
 	 * Odin's author, Réda Chérif-Touil, saw on a BRAVEFF cabinet (the
 	 * light its stages add to every lightset); normalized, the shader's
 	 * direction was no number */
+	/* A cone (451) on a light without any distance attenuation is a spot
+	 * all the same: hikcheck's night road, lit by one at the eye */
+	if (get_light_attenuation_type (lit) == HIKARU_LIGHT_ATT_INF &&
+	    lit->has_direction && lit->has_position && lit->has_specular &&
+	    (lit->specular[0] | lit->specular[1]) != 0)
+		return HIKARU_LIGHT_TYPE_SPOT;
 	if (get_light_attenuation_type (lit) == HIKARU_LIGHT_ATT_INF)
 		return (lit->direction[0] == 0.0f && lit->direction[1] == 0.0f &&
 		        lit->direction[2] == 0.0f) ?
@@ -1131,7 +1137,10 @@ get_glsl_variant (Renderer *hr, hikaru_mesh_t *mesh)
 
 	/* The viewport's fog, on the materials that take it (881 z clear);
 	 * the debug key turns it off */
+	/* 621's bit 16 set, as only hikcheck has it with a colour: no fog, its
+	 * texts stand beyond the end of the black fog it gives */
 	variant.has_fog		= hr->vp_list[mesh->vp_index].depth.q_enabled &&
+	                          !hr->vp_list[mesh->vp_index].depth.q_unknown &&
 	                          mat->depth_blend == 0 &&
 	                          !hr->debug.flags[HR_DEBUG_FOG];
 
@@ -2683,6 +2692,13 @@ Renderer::end_mesh (uint32_t addr)
 		return;
 
 	HL_ASSERT (hr->meshes.current);
+
+	/* Drawn for the second monitor (781's front buffer 2 or 3): one output
+	 * here, the first monitor's. Its triangles went into the same picture */
+	if (hr->gpu->fb_config.num_1 >= 2) {
+		hr->push.num_verts = 0;
+		hr->push.num_tris = 0;
+	}
 
 	/* Upload the pushed vertex data. */
 	upload_vertex_data (hr, hr->meshes.current);
@@ -4428,6 +4444,10 @@ draw (Renderer *hr)
 
 	n1 = gpu->fb_config.num_1;
 	n2 = gpu->fb_config.num_2;
+	/* The list for the second monitor came last (a 781 naming buffer 2 or
+	 * 3, with meshes), the first monitor's scene stays what is shown */
+	if (n1 >= 2 && hr->total_meshes)
+		n1 = 0;
 
 	factor = 0.0f;
 	if (gpu->fb_config.blend)

@@ -19,6 +19,7 @@
 #ifndef __HL_OUTPUTS_H__
 #define __HL_OUTPUTS_H__
 
+#include <deque>
 #include <mutex>
 #include <string>
 #include <vector>
@@ -77,6 +78,13 @@ public:
 	/* The reply of a client's real drive board (m3ffb_rx): false when no
 	 * client gives one */
 	bool	 drive_reply (uint8_t *reply);
+	/* A servo board 838-14174 on the machine's MIDI port: each frame as
+	 * "midiffb = HH HH HH"; a client's real board answering in
+	 * "midiffb_rx = HH.." lines, hex (relayed until that client leaves) */
+	void	 midi_board ();
+	void	 midi_frame (uint8_t status, uint8_t data1, uint8_t data2);
+	bool	 midi_relayed ();
+	bool	 midi_answer (std::string *answer);
 
 	/* Between two frames: the settings taken (at once), the clients
 	 * accepted, what they sent read, what waits sent */
@@ -118,6 +126,10 @@ private:
 
 	/* The first byte of the outputs command */
 	uint8_t	 jvs_first = 0;
+	/* The servo board's: its name, the client answering, what it sent */
+	bool	 has_midi = false;
+	uintptr_t midi_from = (uintptr_t) -1;
+	std::deque<std::string> midi_rx;
 
 	void	 open_server ();
 	void	 close_server ();

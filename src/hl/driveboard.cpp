@@ -130,6 +130,8 @@ DriveBoard::update_ffb ()
 	int d = (int) torque - 0x80;
 	float constant = 0.0f, spring_force, friction_force;
 
+	if (program->drives_wheel ())
+		return;
 	if (idle) {
 		ForceFeedback::set (ForceFeedback::STOP, 0.0f, mach->frame);
 		return;

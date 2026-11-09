@@ -96,6 +96,7 @@ uniform vec3 u_fog_color_vertex;
 uniform vec4 u_clamp_max;
 uniform vec4 u_clamp_min;
 uniform float u_pt_ref;
+uniform float u_trilinear;
 #ifdef COLLECT
 layout (binding = 0, offset = 0) uniform atomic_uint u_count;
 layout (binding = 0, r32ui) uniform coherent uimage2D u_heads;
@@ -166,6 +167,8 @@ void main ()
 		color.rgb = mix (color.rgb, u_fog_color_vertex, v_offset.a);
 	else if (fog == 3)
 		color = vec4 (u_fog_color, fog_table (v_z));
+	/* After the fog: the two passes add up to it once */
+	color *= u_trilinear;
 	float depth = v_z * u_zscale;
 #ifdef COLLECT
 	/* Into its pixel's list, unless the opaque polygons hide it: always
@@ -423,7 +426,7 @@ rgba_yuv (int y, int u, int v)
 {
 	int r = y + (11 * (v - 128)) / 8;
 	int g = y - (11 * (u - 128) + 22 * (v - 128)) / 32;
-	int b = y + (25 * (u - 128)) / 16;
+	int b = y + (55 * (u - 128)) / 32;
 
 	r = std::max (0, std::min (255, r));
 	g = std::max (0, std::min (255, g));
@@ -661,6 +664,7 @@ locate (P &p)
 	p.u_scale = glGetUniformLocation (p.id, "u_scale");
 	p.u_target = glGetUniformLocation (p.id, "u_target");
 	p.u_pt_ref = glGetUniformLocation (p.id, "u_pt_ref");
+	p.u_trilinear = glGetUniformLocation (p.id, "u_trilinear");
 }
 
 void
@@ -827,6 +831,21 @@ BoardRenderer::draw_batch (const Program &p, const Draw &d, const Batch &b, bool
 	flags |= ((b.tsp >> 22) & 3) << 7;
 	flags |= ((b.tsp >> 21) & 1) ? 512 : 0;
 	glUniform1i (p.u_flags, flags | punch_flag);
+	{
+		/* Trilinear filtering, the PowerVR's way, in two passes of a same
+		 * mipmapped polygon added together (FILTER 2 and 3 in the TSP word):
+		 * each is weighted by the two low bits of the mipmap D adjust, in
+		 * quarters, the first by what the second leaves */
+		unsigned filter = (b.tsp >> 13) & 3;
+		float weight = 1.0f;
+
+		if (textured && filter > 1 && !punch_flag && (b.tcw >> 31)) {
+			weight = 0.25f * ((b.tsp >> 8) & 3);
+			if (filter == 2)
+				weight = 1.0f - weight;
+		}
+		glUniform1f (p.u_trilinear, weight);
+	}
 
 	if (b.clip_on) {
 		glEnable (GL_SCISSOR_TEST);
@@ -898,15 +917,21 @@ BoardRenderer::draw_modifiers (const Draw &d, float sx, float sy)
 	glDisable (GL_BLEND);
 	glDisable (GL_SCISSOR_TEST);
 	glEnable (GL_STENCIL_TEST);
+	int base = -1;
+
 	for (const ModVol &m : scene.mod_volumes) {
 		unsigned mode = m.isp >> 29;
+		/* OR for an open volume or quads, XOR for a closed one */
+		bool either = !((m.isp >> 26) & 1) && mode > 0;
 
 		if (!m.count)
 			continue;
 		glEnable (GL_DEPTH_TEST);
 		glDepthFunc (GL_GREATER);
 		glStencilMask (2);
-		if (mode == 0) {
+		if (base < 0)
+			base = (int) m.first;
+		if (!either) {
 			glStencilFunc (GL_ALWAYS, 0, 2);
 			glStencilOp (GL_KEEP, GL_KEEP, GL_INVERT);
 		} else {
@@ -924,7 +949,9 @@ BoardRenderer::draw_modifiers (const Draw &d, float sx, float sy)
 				glStencilFunc (GL_EQUAL, 1, 3);
 				glStencilOp (GL_ZERO, GL_ZERO, GL_KEEP);
 			}
-			glDrawArrays (GL_TRIANGLES, m.first, m.count);
+			/* The volume's sum, over all its pieces */
+			glDrawArrays (GL_TRIANGLES, base, m.first + m.count - base);
+			base = -1;
 		}
 	}
 	glColorMask (GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);

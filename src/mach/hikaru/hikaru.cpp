@@ -1238,22 +1238,6 @@ widen_view (uint32_t inst, unsigned n, uint32_t &distance)
 		distance += (854 - 640) / 2;
 }
 
-static uint32_t
-patch_braveff (hl::Cpu *cpu, uint32_t pc, uint32_t inst)
-{
-	Sh4 *ctx = (Sh4 *) cpu;
-
-	switch (pc) {
-	case 0x0C0407D0:
-		/* XXX One case of a state dispatcher (@0C040762) calls
-		 * 0C06A620 instead of 0C0693D8. Not reached in the attract,
-		 * nor in the first 30 s of play: its reason is unknown */
-		R(3) = 0x0C06A620;
-		break;
-	}
-	return inst;
-}
-
 /* PHARRIER's debug switches, once a patch's (none needed now: its ROM
  * board's self-test at 0C103460 passes with the 315-5881):
  *
@@ -1275,14 +1259,6 @@ patch_sgnascar (hl::Cpu *cpu, uint32_t pc, uint32_t inst)
 	Sh4 *ctx = (Sh4 *) cpu;
 
 	switch (pc) {
-	case 0x0C0130CE:
-		/* Skip the "BAD IO BOARD" infinite loop: the game waits up to
-		 * 600 frames for the MIE to report the JVS board, which the
-		 * faked MIE never does. The Z80 does: no skip, or the game
-		 * moves on before the MIE is ready, and goes another way */
-		if (((hikaru::Mie *) ((Hikaru *) cpu->mach)->mie)->hack)
-			R(4) = 1;
-		break;
 	case 0x0C0742B4:
 		/* The view's planes, for the widescreen (see widen_view) */
 		widen_view (inst, 3, R(3));
@@ -1350,10 +1326,8 @@ hikaru_install_game_patches (Hikaru *hikaru)
 	 * that the hardware is: BRAVEFF's sound hangs (0C05B53E,
 	 * 0C05B4F6: the AICA's ARM) and 0C0D522A (T was 1 already);
 	 * SGNASCAR's 0C00BC9A (the EEPROM's data, now emulated, pass) */
-	if (!strcmp (game->name, "braveff"))
-		cpu->install_patch (patch_braveff, { 0x0C0407D0 });
-	else if (!strcmp (game->name, "sgnascar"))
-		cpu->install_patch (patch_sgnascar, { 0x0C0130CE, 0x0C0742B4, 0x0C0742BC });
+	if (!strcmp (game->name, "sgnascar"))
+		cpu->install_patch (patch_sgnascar, { 0x0C0742B4, 0x0C0742BC });
 	else if (!strcmp (game->name, "swracer"))
 		cpu->install_patch (patch_swracer, { 0x0C14E9AE, 0x0C14E9EA });
 	else if (!strcmp (game->name, "pharrier"))

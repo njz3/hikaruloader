@@ -193,6 +193,21 @@ get_sr (Sh4 *ctx)
 	return SR.full;
 }
 
+void
+Sh4::scif_update ()
+{
+	Sh4 *ctx = this;
+	uint16_t scr;
+
+	if (!scif_pipe)
+		return;
+	scr = IREG_GET (2, SCIF_SCSCR2);
+	if (scr & 0x80)
+		set_irq_state (SH4_IESOURCE_TXIF, hl::IRQ_STATE_RAISED);
+	if ((scr & 0x40) && scif_pipe->available ())
+		set_irq_state (SH4_IESOURCE_RXIF, hl::IRQ_STATE_RAISED);
+}
+
 static void
 set_fpscr (Sh4 *ctx, uint32_t val)
 {
@@ -795,18 +810,29 @@ sh4_ireg_get (Sh4 *ctx, unsigned size, uint32_t addr, void *val)
 		break;
 	/* The SCIF: always ready to send, nothing received */
 	case SCIF_SCFSR2:
-		set_ptr (val, size, (IREG_GET (2, addr) & ~0x0003) | 0x0060);
+		/* A pipe on it: no error flag, whatever was written back */
+		if (ctx->scif_pipe)
+			set_ptr (val, size, 0x0060 | (ctx->scif_pipe->available () ? 3 : 0));
+		else
+			set_ptr (val, size, (IREG_GET (2, addr) & ~0x0003) | 0x0060);
 		break;
 	case SCIF_SCFDR2:
+		set_ptr (val, size, ctx->scif_pipe ? MIN2 (ctx->scif_pipe->available (), 16) : 0);
+		break;
 	case SCIF_SCFRDR2:
-		set_ptr (val, size, 0);
+		set_ptr (val, size, ctx->scif_pipe ? ctx->scif_pipe->read () : 0);
+		break;
+	case SCIF_SCLSR2:
+		if (ctx->scif_pipe) {
+			set_ptr (val, size, 0);
+			return 0;
+		}
 		break;
 	case SCIF_SCSMR2:
 	case SCIF_SCBRR2:
 	case SCIF_SCSCR2:
 	case SCIF_SCFCR2:
 	case SCIF_SCSPTR2:
-	case SCIF_SCLSR2:
 		break;
 	/* The SCI, likewise: TDRE and TEND set, nothing received (gfootbal
 	 * waits for TDRE) */
@@ -879,6 +905,10 @@ sh4_ireg_put (Sh4 *ctx, unsigned size, uint32_t addr, uint64_t val)
 	 * Track's); the SCI's too */
 	case SCI_SCTDR1:
 	case SCIF_SCFTDR2:
+		if ((addr & 0xFFFFFF) == SCIF_SCFTDR2 && ctx->scif_pipe) {
+			ctx->scif_pipe->write ((uint8_t) val);
+			return 0;
+		}
 		if (val == '\n' || ctx->scif_line.size () >= 200) {
 			HL_PRINT ("%s: SCIF: %s", ctx->name ? ctx->name : "sh4", ctx->scif_line.c_str ());
 			ctx->scif_line.clear ();
@@ -907,7 +937,6 @@ sh4_ireg_put (Sh4 *ctx, unsigned size, uint32_t addr, uint64_t val)
 	case CCN_PTEA:
 	case CCN_TRA:
 	case CCN_EXPEVT:
-	case CCN_CCR:
 	case CCN_QACR0:
 	case CCN_QACR1:
 	case BSC_BCR1:
@@ -918,6 +947,16 @@ sh4_ireg_put (Sh4 *ctx, unsigned size, uint32_t addr, uint64_t val)
 	case BSC_PCTRA:
 		/* The NAOMI's BIOS writes them in 16 bits too */
 		HL_ASSERT (size == 4 || ctx->rfcr_counts);
+		break;
+	case CCN_CCR:
+		HL_ASSERT (size == 4 || ctx->rfcr_counts);
+		/* ICI empties the instruction cache, read back as 0 as OCI;
+		 * ICE switched, its lines not kept */
+		if ((val & 0x800) || ((val ^ IREG_GET (4, CCN_CCR)) & 0x100)) {
+			ctx->blocks.icache.reset ();
+			ctx->blocks.icache_changed ();
+		}
+		val &= ~(uint64_t) 0x808;
 		break;
 	/* UBC */
 	case UBC_BBRA:
@@ -1395,6 +1434,22 @@ sh4_tlb_array_put (Sh4 *ctx, uint32_t addr, uint32_t val)
 	unsigned i;
 
 	switch (addr >> 24) {
+	case 0xF0:
+	case 0xF1: {
+		/* The instruction cache's address and data arrays. A written
+		 * entry is left to be fetched again; associative (A, bit 3):
+		 * the line of that tag, only */
+		const unsigned line = Sh4ICache::index (addr);
+		Sh4ICache &ic = ctx->blocks.icache;
+
+		if ((addr >> 24) == 0xF1 || !(addr & 8) ||
+		    ((ic.tags[line] << Sh4ICache::LINE_BITS) & 0x1FFFFC00) == (val & 0x1FFFFC00)) {
+			ic.tags[line] = Sh4ICache::NONE;
+			ic.held[line] = false;
+			ctx->blocks.icache_changed ();
+		}
+		break;
+	}
 	case 0xF2: {
 		Sh4::Tlb &e = ctx->mmu.itlb[(addr >> 8) & 3];
 		e.vpn = val & 0xFFFFFC00;
@@ -1546,6 +1601,35 @@ Sh4::ddt_done (unsigned ch, uint32_t source)
 #define AREA(addr_) \
 	(((addr_) >> 26) & 7)
 
+/* The lines from pc to last come in. A copy held when the cache is on, the
+ * area cached (not P2, P4) and the line in a RAM or ROM; the others noted as
+ * fetched, so that their blocks do not come here again */
+void
+sh4_icache_fill (Sh4 *ctx, uint32_t pc, uint32_t last)
+{
+	Sh4ICache &ic = ctx->blocks.icache;
+	hl::Mmap::Window *code = &ctx->code;
+	const uint32_t area = pc >> 29;
+	const bool cached = (IREG_GET (4, CCN_CCR) & 0x100) && area != 5 && area != 7;
+	uint32_t a = pc & ADDR_MASK & ~((1u << Sh4ICache::LINE_BITS) - 1);
+
+	last &= ADDR_MASK;
+	for (; a <= last; a += 1u << Sh4ICache::LINE_BITS) {
+		const unsigned i = Sh4ICache::index (a);
+
+		if (ic.tags[i] == Sh4ICache::tag (a))
+			continue;
+		ic.tags[i] = Sh4ICache::tag (a);
+		ic.held[i] = false;
+		if (cached && ((a >= code->lo && a + 31 <= code->hi) || ctx->mmap->window (a, code)) &&
+		    a + 31 <= code->hi) {
+			memcpy (ic.data[i], code->base + (a & code->mask), sizeof (ic.data[i]));
+			ic.held[i] = true;
+		}
+		ctx->blocks.line_replaced ();
+	}
+}
+
 static int
 sh4_fetch (Sh4 *ctx, uint32_t addr, uint16_t *inst)
 {
@@ -1556,6 +1640,17 @@ sh4_fetch (Sh4 *ctx, uint32_t addr, uint16_t *inst)
 	if (ctx->mmu_exact)
 		addr = sh4_translate_fetch (ctx, addr);
 	a = addr & ADDR_MASK;
+
+	if (!ctx->blocks.icache.present (a))
+		sh4_icache_fill (ctx, addr, addr);
+	{
+		const uint16_t *line = ctx->blocks.icache.line (a);
+
+		if (line) {
+			*inst = line[(a >> 1) & (Sh4ICache::LINE_WORDS - 1)];
+			return 0;
+		}
+	}
 
 	/* From the RAM or ROM of the last fetch, without a lookup; another
 	 * one becomes it */
@@ -2685,6 +2780,7 @@ sh4_run_blocks (Sh4 *ctx, bool skip_idle)
 			continue;
 		}
 
+		sh4_icache_fill (ctx, PC, PC + 2 * block->num_words - 1);
 		for (i = 0; ; ) {
 			const Sh4Op &op = block->ops[i];
 			uint32_t pc = PC;

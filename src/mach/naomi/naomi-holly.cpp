@@ -631,9 +631,17 @@ void
 Holly::ta_store (Vertex v, bool end)
 {
 	if (ta.strip_n >= 2) {
-		if ((ta.strip_n - 2) & 1)
-			ta_triangle (ta.strip[0], v, ta.strip[1]);
-		else
+		if ((ta.strip_n - 2) & 1) {
+			/* Flat shading: the colour of the triangle's last vertex
+			 * sent, which this order puts second */
+			Vertex last = ta.strip[1];
+
+			if (!((ta.isp >> 23) & 1)) {
+				last.base = v.base;
+				last.offset = v.offset;
+			}
+			ta_triangle (ta.strip[0], v, last);
+		} else
 			ta_triangle (ta.strip[0], ta.strip[1], v);
 	}
 	if (ta.strip_n >= 1)
@@ -666,12 +674,18 @@ Holly::ta_polygon_header (const uint32_t *w)
 	if (pcw & (1 << 23))
 		ta.clip_mode = (pcw >> 16) & 3;
 
-	if (col == 2 && !volume) {
+	if (col == 2 && !volume && !(textured && offset)) {
+		/* Polygon type 1, 32 bytes: its face colour at 10-1C */
+		ta.face[0] = to_float (w[4]);
+		ta.face[1] = to_float (w[5]);
+		ta.face[2] = to_float (w[6]);
+		ta.face[3] = to_float (w[7]);
+	} else if (col == 2 && !volume) {
 		ta.face[0] = to_float (w[8]);
 		ta.face[1] = to_float (w[9]);
 		ta.face[2] = to_float (w[10]);
 		ta.face[3] = to_float (w[11]);
-		if (textured && offset) {
+		{
 			ta.face_offset[0] = to_float (w[12]);
 			ta.face_offset[1] = to_float (w[13]);
 			ta.face_offset[2] = to_float (w[14]);
@@ -821,7 +835,8 @@ Holly::ta_modifier (const uint32_t *w)
 
 	for (i = 1; i <= 9; i++)
 		scene->mod_vertices.push_back (to_float (w[i]));
-	if (!scene->mod_volumes.empty ())
+	/* The translucent lists' volumes are not drawn */
+	if (ta.list == 1 && !scene->mod_volumes.empty ())
 		scene->mod_volumes.back ().count += 3;
 }
 
@@ -887,7 +902,8 @@ Holly::ta_packet (const uint32_t *w)
 
 			ta.mod = 1;
 			ta.sprite = 0;
-			mv.isp = w[1];
+			/* Bit 26: the volume's last triangles, from the PCW */
+			mv.isp = (w[1] & ~(1u << 26)) | (((pcw >> 6) & 1) << 26);
 			mv.first = (uint32_t) building->mod_vertices.size () / 3;
 			mv.count = 0;
 			if (list == 1)

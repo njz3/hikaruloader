@@ -79,7 +79,6 @@ public:
 	 * (Hikaru::save_nvram) */
 	hl::Eeprom93C46 eeprom;
 	/* Valkyrie's: no Z80, the mailbox faked */
-	bool hack;
 
 	/* The Z80's ports */
 	struct {
@@ -153,7 +152,6 @@ private:
 	/* The SH-4's 00800000-0081FFFF */
 	uint8_t sh4_read (uint8_t port);
 	void sh4_write (uint8_t port, uint8_t val);
-	int get_hack (unsigned size, uint32_t addr, void *val);
 
 public:
 	/* The bus request, on the local bus at 02000000 (all 16 MB alike):

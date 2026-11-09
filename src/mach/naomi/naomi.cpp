@@ -34,6 +34,7 @@
 #include "cpu/sh/sh4.h"
 #include "mach/hikaru/hikaru-aica.h"
 #include "mach/naomi/naomi.h"
+#include "hl/outputs.h"
 #include "mach/naomi/naomi-renderer.h"
 
 namespace naomi {
@@ -147,9 +148,10 @@ public:
 			return ret;
 		}
 		ret = aica->get (size, addr, &data);
-		if ((addr & 0x00FFFFFF) == 0x00702808 && size >= 2)
+		/* Nothing on the MIDI port: both FIFOs empty */
+		if (!((hikaru::Aica *) aica)->midi_out && (addr & 0x00FFFFFF) == 0x00702808 && size >= 2)
 			data |= 0x0900;
-		else if ((addr & 0x00FFFFFF) == 0x00702809)
+		else if (!((hikaru::Aica *) aica)->midi_out && (addr & 0x00FFFFFF) == 0x00702809)
 			data |= 0x09;
 		set_ptr (val, size, data);
 		return ret;
@@ -371,8 +373,11 @@ Board::init ()
 	mie->monitor_15khz = rom_board->size () > 0x42A && *(uint8_t *) rom_board->ptr (0x42A) == 2;
 	jvs = new hl::JvsBus (machine);
 	/* F355 Challenge's cabinets have the drive board's I/O board, the 837-13844 */
-	if (!strncmp (game->name, "f355", 4))
-		io_board = new hl::SegaIoBoard13844 (machine, jvs, NULL);
+	if (!strncmp (game->name, "f355", 4)) {
+		if (!index)
+			drive_board = new hl::DriveBoard (machine, new hl::DriveBoardF355 (machine));
+		io_board = new hl::SegaIoBoard13844 (machine, jvs, drive_board);
+	}
 	else
 		io_board = new hl::SegaIoBoard (machine, jvs);
 
@@ -509,6 +514,8 @@ void
 Board::software_reset ()
 {
 	holly->reset_requested = false;
+	if (servo)
+		servo->reset ();
 		/* As at power-on: the BIOS would restart again on a manual reset's EXPEVT */
 	sh->reset (hl::RESET_HARD);
 	holly->reset (hl::RESET_SOFT);
@@ -525,6 +532,27 @@ Board::reset (hl::ResetType type)
 	comm.reset ();
 	porta = 0;
 	main_serial.reset ();
+}
+
+/* The wheels with the servo board 838-14174 on the MIDI port: by the title in
+ * the cartridge's header; Driving Simulator's is encrypted */
+void
+Board::setup_servo ()
+{
+	hl::Buffer *rom = game->section_data ("rom_board");
+	const char *title = (const char *) rom->ptr (0x30);
+
+	if (strncmp (title, "CLUB KART IN JAPAN", 18) && strncmp (title, "THE KING OF ROUTE66", 19) &&
+	    strcmp (game->name, "sgdrvsim"))
+		return;
+	servo.reset (new ServoBoard (this));
+	servo->attach ();
+	HL_PRINT ("naomi: a servo board 838-14174 on the MIDI port");
+	/* The first Club Kart's card reader */
+	if (!strncmp (game->name, "clubkrt", 7) || !strcmp (game->name, "clubk2k3")) {
+		card.reset (new ClubKartCard (game->name));
+		((Sh4 *) sh)->scif_pipe = card.get ();
+	}
 }
 
 unsigned
@@ -545,6 +573,13 @@ Board::run_lines (unsigned line, unsigned count)
 	unsigned n;
 
 	for (n = line; n < line + count && n < frame_lines; n++) {
+		/* About a millisecond */
+		if (servo && ++servo_lines >= frame_lines * 60 / 1000) {
+			servo_lines = 0;
+			servo->tick ();
+		}
+		if (card)
+			((Sh4 *) sh)->scif_update ();
 		sh->run (cycles_per_line);
 		aica->exec (cycles_per_line);
 		mie->exec (mie_t_states);
@@ -561,6 +596,8 @@ Board::end_frame (std::vector<int16_t> *audio)
 {
 	std::vector<int32_t> &in = ((hikaru::Aica *) aica)->out;
 
+	if (card)
+		card->frame ();
 	if (audio) {
 		for (size_t i = 0; i + 1 < in.size (); i += 2) {
 			int32_t l = std::max (-32768, std::min (32767, in[i]));
@@ -592,6 +629,8 @@ Board::save_state (hl::State *state)
 	int ret = 0;
 
 	ret |= main_serial.save_state (state);
+	if (servo)
+		ret |= servo->save_state (state);
 	SAVE (porta);
 	ret |= cart->save_state (state);
 	ret |= comm.save_state (state);
@@ -604,6 +643,8 @@ Board::load_state (hl::State *state)
 	int ret = 0;
 
 	ret |= main_serial.load_state (state);
+	if (servo)
+		ret |= servo->load_state (state);
 	LOAD (porta);
 	ret |= cart->load_state (state);
 	ret |= comm.load_state (state);
@@ -1032,6 +1073,10 @@ Naomi::create (hl::Game *game)
 		}
 	}
 	naomi->audio_channels = 2;
+	/* The slaves' I/O boards were declared after it */
+	if (naomi->master ()->drive_board)
+		hl::Outputs::get ()->board (14, true);
+	naomi->master ()->setup_servo ();
 	naomi->setup_screens ();
 	naomi->renderer = new Renderer (naomi);
 	naomi->load_nvram ();

@@ -165,7 +165,7 @@ Keys and controllers
 | F2, F3 | Choose the state F1 loads, newer or older, among the last five (shown at the top of the picture) |
 | A mouse or a light gun | Brave Firefighters' sights, Planet Harriers' stick (see "Mice and light guns") |
 | Tab; a controller's Back, Guide + Back | Settings |
-| F7; Guide + Y | Virtual-On 4's card: in the reader's slot, or taken back (see below) |
+| F7; Guide + Y | Virtual-On 4's and Club Kart's card: in the reader's slot, or taken back (see below) |
 | F12 | The frame rate over the picture |
 | F8 | NAOMI cabinets of several boards: the next board's picture; with several screens, the middle one and a board without a screen in turn (F355 Deluxe's master) |
 | F9; Guide + Start | Quit |
@@ -263,6 +263,8 @@ effect at once.
   to 100), and *Bend the cut parts onto the edges* (`CROP_BARREL`) shows
   them squeezed on the edges, as on a cylinder seen from the front, the
   middle undistorted (`BARREL_CENTER`, `BARREL_RADIUS`).
+- F355 Challenge's drive board (EPR-21867) is emulated on the force feedback wheel; its commands go out as `m3ffb` and a client's `m3ffb_rx` answers replace the emulated ones, as on NASCAR Arcade.
+- The servo board 838-14174 of the NAOMI wheels (Club Kart, The King of Route 66, Driving Simulator) is emulated on the force feedback wheel; its frames also go out on the network outputs as `midiffb = HH HH HH`. A client that answers `midiffb_rx = HH..` (BackForceFeeder, in front of a real board) takes over: the game reads its answers and the wheel plays nothing, until it leaves.
 - *Several boards* (`MULTI_SCREEN`), for the NAOMI cabinets of several boards, read when a game
   starts: `ONE` shows one board (F8 the next), `SIDE_BY_SIDE` puts the screens in a row in the
   window, for a very wide monitor, `WINDOWS` gives each a window. `SCREEN_ORDER` gives the boards
@@ -858,22 +860,12 @@ type:
 bin/valkyrie -R $PATH_TO_ROM_DIRECTORY -r hikaru_0.92
 ```
 
-If you want to run a game, you have to also enable a hack that fakes the
-IO board a little bit better, as follows:
-
-```
-MIE_HACK=1 bin/valkyrie -R $PATH_TO_ROM_DIRECTORY -r airtrix
-```
-
-If you forget to enable the hack, the game will either get stuck, or endlessly
-display an "I/O board initializing" screen.
-
 If you are a developer, and want to display on screen the contents of the
 frame buffer or texture RAM, to see what gets uploaded, then set the
 `HR_DRAW_FB` or `HR_DRAW_TEXRAM` environment variables, as follows:
 
 ```
-MIE_HACK=1 HR_DRAW_TEXRAM=1 bin/valkyrie -R $PATH_TO_ROM_DIRECTORY -r airtrix
+HR_DRAW_TEXRAM=1 bin/valkyrie -R $PATH_TO_ROM_DIRECTORY -r airtrix
 ```
 
 You can also install valkyrie for your user with:

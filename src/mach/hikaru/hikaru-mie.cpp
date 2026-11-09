@@ -135,13 +135,6 @@ static const uint8_t boot_stub[] = {
 /* The JVS bus's answers */
 #define IRQ_JVS		3
 
-/* Valkyrie's MAINBD switches, for MIE_HACK */
-static uint16_t get_mainbd_switches (void)
-{
-	return (hl::Input::action (hl::ACTION_TEST) ? 8 : 0) |
-	       (hl::Input::action (hl::ACTION_SERVICE) ? 4 : 0);
-}
-
 /* The Z80's side */
 
 uint8_t
@@ -527,7 +520,7 @@ Mie::write_lo (uint16_t addr, uint8_t val)
 	uint8_t old = (uint8_t) ram_lo->get (1, addr & 0x7FF);
 
 	ram_lo->put (1, addr & 0x7FF, val);
-	if (addr == 0x7800 && (old & 0x80) && !(val & 0x80) && !hack)
+	if (addr == 0x7800 && (old & 0x80) && !(val & 0x80))
 		z80->reset ();
 }
 
@@ -557,36 +550,6 @@ Mie::sh4_write (uint8_t port, uint8_t val)
 	port_write (port, val);
 }
 
-/* Valkyrie's MAINBD ports, for MIE_HACK */
-int
-Mie::get_hack (unsigned size, uint32_t addr, void *val)
-{
-	uint16_t *val16 = (uint16_t *) val, tmp;
-
-	if (addr > 0x00800014 || size != 2)
-		return -1;
-	switch (addr & 0xFF) {
-	case 0x00:
-	case 0x06:
-	case 0x0A:
-		/* no-op */
-		break;
-	case 0x08:
-		/* XXX hack: passes the check at @0C00B860 in all the
-		 * BOOTROM versions */
-		tmp = regs->get (2, 0x08);
-		regs->put (2, 0x08, tmp ^ 0xF);
-		break;
-	case 0x0C:
-		regs->put (2, 0x0C, 0xFFFF & ~get_mainbd_switches ());
-		break;
-	default:
-		return -1;
-	}
-	*val16 = regs->get (2, addr & 0x1F);
-	return 0;
-}
-
 int
 Mie::get (unsigned size, uint32_t addr, void *val)
 {
@@ -597,8 +560,6 @@ Mie::get (unsigned size, uint32_t addr, void *val)
 	if (addr >= 0x00800000 && addr <= 0x0081FFFF) {
 		uint8_t port = (uint8_t) (addr >> 1);
 
-		if (mie->hack)
-			return get_hack (size, addr, val);
 		/* The ports on the even bytes; the odd ones read FF */
 		switch (size) {
 		case 1:
@@ -617,16 +578,6 @@ Mie::get (unsigned size, uint32_t addr, void *val)
 	} else if (addr >= 0x00820000 && addr <= 0x0083FFFF) {
 		uint16_t z = (uint16_t) ((addr - 0x00820000) >> 1);
 
-		if (mie->hack) {
-			/* XXX hack: fakes MIE better, but then the games
-			 * don't poll the MAINBD switches anymore. See
-			 * AT:@0C69B34E */
-			if (addr == 0x00838004)
-				set_ptr (val, size, 3);
-			else if (addr == 0x00838008)
-				set_ptr (val, size, 6);
-			return 0;
-		}
 		/* The Z80's bytes on the even addresses */
 		if (size == 4)
 			set_ptr (val, 4, read (z) | (read ((uint16_t) (z + 1)) << 16));
@@ -644,24 +595,6 @@ Mie::put (unsigned size, uint32_t addr, uint64_t val)
 	if (addr >= 0x00800000 && addr <= 0x0081FFFF) {
 		uint8_t port = (uint8_t) (addr >> 1);
 
-		if (hack) {
-			/* Valkyrie's: they went nowhere */
-			if (addr > 0x00800014 || size != 2)
-				return -1;
-			switch (addr & 0xFF) {
-			case 0x00:
-			case 0x02:
-			case 0x04:
-			case 0x06:
-			case 0x08:
-			case 0x0A:
-			case 0x0C:
-			case 0x10:
-				return 0;
-			default:
-				return -1;
-			}
-		}
 		switch (size) {
 		case 1:
 			if (!(addr & 1))
@@ -710,8 +643,6 @@ same_state (const Z80::Registers &a, const Z80::Registers &b)
 int
 Mie::exec (int cycles)
 {
-	if (hack)
-		return cycles;
 	if (jvs->line_mode ()) {
 		run_line (cycles);
 		return cycles;
@@ -1027,10 +958,6 @@ Mie::reset (hl::ResetType type)
 			save_eeprom ();
 		}
 	}
-
-	/* Valkyrie's hack, for debugging: MIE_HACK=1 in the environment (a
-	 * setting until November 2026) */
-	mie->hack = hl_util_get_bool_option ("MIE_HACK", false);
 }
 
 int
@@ -1072,8 +999,6 @@ Mie::debug_string ()
 {
 	static char text[160];
 
-	if (hack)
-		return "faked (MIE_HACK), no Z80";
 	snprintf (text, sizeof (text), "Z80 PC %04X SP %04X%s, irq %02X/%02X, 7800=%02X, JVS %s",
 	          z80->regs.pc, z80->regs.sp, z80->regs.halted ? " halted" : "",
 	          io.irq_enable, io.irq_pending, read (0x7800), jvs->debug_string ());

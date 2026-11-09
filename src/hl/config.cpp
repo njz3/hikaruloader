@@ -422,8 +422,6 @@ Config::set_value (const char *section, const char *key, const char *value)
 		else if (!strcasecmp (key, "LAST_GAME"))
 			snprintf (cfg->last_game, sizeof (cfg->last_game), "%s", value);
 	} else if (!strcasecmp (section, "Emulation")) {
-		/* MIE_HACK, a setting before November 2026, is no longer read:
-		 * the environment variable alone (hikaru-mie.cpp) */
 		if (!strcasecmp (key, "CPU_CORE"))
 			cfg->dynarec = strcasecmp (value, "INTERPRETER") != 0;
 		else if (!strcasecmp (key, "MEMORY_ACCESS"))

@@ -29,6 +29,15 @@
 #include "hl/cpu.h"
 #include "cpu/sh/sh4-blocks.h"
 
+/* What a machine plugs on the SCIF */
+class SerialPipe {
+public:
+	virtual ~SerialPipe () {}
+	virtual void	 write (uint8_t value) = 0;
+	virtual int	 available () = 0;
+	virtual uint8_t	 read () = 0;
+};
+
 class Sh4X64;
 
 typedef union {
@@ -292,6 +301,11 @@ public:
 	uint32_t	dma_from_memory (unsigned ch);
 	/* RFCR counts its refreshes (else it reads as port A, the Hikaru's) */
 	bool		rfcr_counts = false;
+	/* The SCIF's other end: NULL, what is sent goes to the log */
+	SerialPipe	*scif_pipe = NULL;
+	/* Its interrupts, as the pipe and the SCSCR2 stand: ready to send as
+	 * long as TIE is set, a byte to take */
+	void		scif_update ();
 	uint32_t	rfcr = 0;
 	/* Whatever its machine wants to find from the CPU */
 	void		*user = NULL;

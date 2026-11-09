@@ -217,6 +217,7 @@ Sh4Offsets::Sh4Offsets (Sh4 *ctx)
 	chain_stores = (int32_t) ((const uint8_t *) &ctx->chain.stores - base);
 	chain_ends = (int32_t) ((const uint8_t *) &ctx->chain.ends - base);
 	chain_gone = (int32_t) ((const uint8_t *) &ctx->chain.gone - base);
+	icache = (int32_t) ((const uint8_t *) ctx->blocks.icache.tags - base);
 	sr = (int32_t) ((const uint8_t *) &ctx->regs.sr - base);
 	gbr = (int32_t) ((const uint8_t *) &ctx->regs.gbr - base);
 	remaining = (int32_t) ((const uint8_t *) &ctx->remaining - base);
@@ -1372,7 +1373,7 @@ Sh4X64::translate (Sh4 *ctx, Sh4Block *block)
 	 * known (bt, bf; bt/s, bf/s, bra, bsr) */
 	int32_t to[Sh4Block::MAX_OPS] = {};
 	bool fixed[Sh4Block::MAX_OPS] = {};
-	Label end, probe, probe_checks, chain, leave;
+	Label end, probe, probe_checks, chain, leave, icache_miss, icache_done;
 	uint8_t *buf, *body;
 	size_t i;
 
@@ -1455,6 +1456,16 @@ Sh4X64::translate (Sh4 *ctx, Sh4Block *block)
 	e.mov (RBX, RCX);
 	e.mov (RSI, RDX);
 	body = e.here ();
+
+	/* Its lines in the instruction cache, or fetched: the address known
+	 * here, a comparison each */
+	const uint32_t icache_last = block->pc + 2 * block->num_words - 1;
+	for (uint32_t line = Sh4ICache::tag (block->pc); line <= Sh4ICache::tag (icache_last); line++) {
+		e.alu_mem_imm (Emitter::ALU_CMP, RBX, o.icache + (int32_t) (4 * (line & (Sh4ICache::NUM_LINES - 1))),
+		               (int32_t) line);
+		e.jcc (CC_NE, icache_miss);
+	}
+	e.bind (icache_done);
 
 	/* A delay loop, "dt Rn; bf" back to its start (SWRACER's master waits
 	 * so 700 times a frame, 26 to 217 turns, each through sh4_chain ()
@@ -1757,6 +1768,14 @@ Sh4X64::translate (Sh4 *ctx, Sh4Block *block)
 	e.pop (RSI);
 	e.pop (RBX);
 	e.ret ();
+
+	/* Fetching its lines; nothing of the guest's in the registers yet */
+	e.bind (icache_miss);
+	e.mov (RCX, RBX);
+	e.mov32 (RDX, RSI);
+	e.mov_imm32 (R8, icache_last);
+	e.call ((const void *) sh4_icache_fill);
+	e.jmp (icache_done);
 
 	/* The slow paths, out of the way */
 	for (const Cold &c : cold) {

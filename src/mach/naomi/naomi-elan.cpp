@@ -867,7 +867,8 @@ Elan::polygon_list (const uint32_t *ich)
 		in_n[1] = (float) (int8_t) (header >> 8) / 127.0f;
 		in_n[2] = (float) (int8_t) (header >> 16) / 127.0f;
 		for (c = 0; c < 3; c++)
-			normal[c] = normal_matrix[c] * in_n[0] + normal_matrix[c + 3] * in_n[1] + normal_matrix[c + 6] * in_n[2];
+			normal[c] = normal_matrix[c * 3] * in_n[0] + normal_matrix[c * 3 + 1] * in_n[1] +
+			            normal_matrix[c * 3 + 2] * in_n[2];
 		normalize3 (normal);
 
 		if (bump)
@@ -897,9 +898,16 @@ Elan::polygon_list (const uint32_t *ich)
 			odd = true;
 		} else {
 			if (n >= 2) {
-				if (odd)
-					triangle (p, v, q, clip);
-				else
+				if (odd) {
+					/* Flat shading: the last vertex's colour */
+					Transformed last = q;
+
+					if (!gouraud) {
+						last.screen.base = v.screen.base;
+						last.screen.offset = v.screen.offset;
+					}
+					triangle (p, v, last, clip);
+				} else
 					triangle (p, q, v, clip);
 				odd = !odd;
 			}

@@ -144,6 +144,7 @@ enum {
 	INT_CPU		= 1 << 5,
 	INT_TIMA	= 1 << 6,
 	INT_MIDI_OUT	= 1 << 9,
+	INT_MIDI_IN	= 1 << 3,
 	INT_SAMPLE	= 1 << 10,
 	INT_ALL		= 0x7FF
 };
@@ -196,11 +197,39 @@ struct Aica::DspStep {
  Registers
 ****************************************************************************/
 
+void
+Aica::midi_send (uint8_t data)
+{
+	midi_in.push_back (data);
+	st.scipd |= INT_MIDI_IN;
+	st.mcipd |= INT_MIDI_IN;
+	update_arm_irq ();
+	update_main_irq ();
+}
+
+uint16_t
+Aica::midi_read (bool pop)
+{
+	uint16_t val = 0x0800;	/* MOEMP: what is written goes at once */
+
+	if (midi_in.empty ())
+		return val | 0x0100;	/* MIEMP */
+	val |= 0x0200 | midi_in.front ();	/* MIFUL */
+	if (pop)
+		midi_in.pop_front ();
+	return val;
+}
+
 uint32_t
 Aica::reg_read (unsigned size, uint32_t offs)
 {
 	uint32_t reg = offs & ~3u, val;
 
+	/* The MIDI port wired (the NAOMI's servo board): the byte taken by a
+	 * read of its low byte, ARM or SH-4 */
+	if (reg == 0x2808 && midi_out)
+		return size == 4 ? midi_read (true) :
+		       ((uint32_t) midi_read ((offs & 3) == 0) >> ((offs & 3) * 8)) & ((1u << (size * 8)) - 1);
 	switch (reg) {
 	case REG_TIMA:
 	case REG_TIMB:
@@ -254,6 +283,8 @@ Aica::reg_write (unsigned size, uint32_t offs, uint32_t val)
 	/* Read only; reading 2810 would clear its flag */
 	if (reg == REG_EG || reg == REG_CA)
 		return;
+	if (reg == REG_MSLC && (offs & 3) == 0 && midi_out)
+		midi_out (midi_user, (uint8_t) val);
 	if (size != 4) {
 		/* Into the register's word */
 		unsigned shift = (offs & 3) * 8;

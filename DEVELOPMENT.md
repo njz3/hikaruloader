@@ -216,8 +216,7 @@ In the environment:
   1964-01-01 00:00, decimal or 0x hex) whatever the PC's time. In agent
   mode it starts at 0x5BFC8900 (26 Nov 2012 00:00) without it, so that runs
   repeat.
-- `MIE_HACK=1`: Valkyrie's hack instead of the MIE (below); `MIE_SPEED` and
-  `MIE_IDLE_SKIP=0`, see below.
+- `MIE_SPEED` and `MIE_IDLE_SKIP=0`, see below.
 - `FFB_GAIN`, `FFB_INVERT`: the force feedback (see README.md);
 - `FFB_SEND_MS`: the pause after each write to the wheel (16), on the force
   feedback's thread; 0 lets the wheel's USB slow the frames down again;
@@ -316,10 +315,6 @@ channel n at 2n), checked in the game's JVS TEST screen.
   frames. The games' names (`game_outputs`) were read in their OUTPUT TEST
   through the agent, a TCP client printing each line: each item turned on,
   the output that changed.
-- `MIE_HACK=1` in the environment brings back Valkyrie's hack, for
-  debugging: no Z80, no JVS, Test and Service alone (no controls, no
-  outputs). It was a setting, "Fake the MIE", until November 2026; an
-  `hikaruloader.ini`'s `MIE_HACK` is no longer read.
 - The Z80 runs at 16 MHz, as in MAME: 1600 / the SH-4 clock in MHz T-states
   per 100 SH-4 cycles (16 at 100 MHz; `mie:option ('speed', n)`, or
   `MIE_SPEED`). SGNASCAR's MIE program then waits some 4 seconds before the

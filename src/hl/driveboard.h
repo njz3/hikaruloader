@@ -54,6 +54,8 @@ public:
 	virtual int	 save_state (State *state) = 0;
 	virtual int	 load_state (State *state) = 0;
 	virtual const char *debug_string () { return NULL; }
+	/* It plays the effects itself: the servo board's registers are unused */
+	virtual bool	 drives_wheel () const { return false; }
 
 	/* The commands taken, to the log */
 	bool		 log = false;
@@ -80,6 +82,37 @@ public:
  *
  * Its registers in the Lua shell: get (1, 0) the reply, get (1, 1) the
  * command, get (1, 2) the torque. Option "log": the commands taken. */
+/* F355 Challenge's (EPR-21867), its program as high level code: the effects
+ * go to the wheel directly. See driveboard-f355.cpp */
+class DriveBoardF355 : public DriveBoardProgram {
+public:
+	explicit DriveBoardF355 (Machine *mach);
+
+	void	 reset () override;
+	void	 nmi (uint8_t command, uint8_t wheel, Servo &servo) override;
+	uint8_t	 reply () const override;
+	bool	 drives_wheel () const override { return true; }
+	int	 save_state (State *state) override;
+	int	 load_state (State *state) override;
+
+private:
+	void	 execute (uint8_t cmd);
+	void	 set_strength (uint8_t level);
+	void	 update_spring ();
+	void	 update_damper ();
+	void	 update_torque ();
+
+	Machine	*mach;
+	struct {
+		bool	 running, half, vibration_reversed;
+		uint8_t	 reply_source, last_command, pending, pending_nmis, wheel;
+		uint8_t	 ramp_length, strength, ramp_from, ramp_to, ramp_steps, ramp_step, damping;
+		uint8_t	 reference, reference_high, constant, vibration_nmis;
+		uint32_t vibration;
+		float	 power, last_torque;
+	} s;
+};
+
 class DriveBoard : public Device, private DriveBoardProgram::Servo {
 public:
 	static const unsigned NMI_HZ = 500;

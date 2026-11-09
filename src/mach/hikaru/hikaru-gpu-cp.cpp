@@ -1374,6 +1374,20 @@ I (0x161)
 	switch ((inst[0] >> 8) & 0xF) {
 
 	case 0x1:
+		/* Bits 12-15 at 6, on the translation's element: the matrix
+		 * moved along its own axes, as many times as it is sent (a
+		 * road's segments or the letters of a word, the same model
+		 * called again after each) */
+		if ((inst[0] & 0x000FF000) == 0x00036000) {
+			const float x = *(float *) &inst[1];
+			const float y = *(float *) &inst[2];
+			const float z = *(float *) &inst[3];
+			unsigned j;
+
+			for (j = 0; j < 3; j++)
+				mv->mtx[3][j] += x * mv->mtx[0][j] + y * mv->mtx[1][j] + z * mv->mtx[2][j];
+			break;
+		}
 		/* Ignore conditional version. PHARRIER's and SWRACER's attracts
 		 * send 30 to 1300 a frame */
 		if (inst[0] & 0x0008F000) {

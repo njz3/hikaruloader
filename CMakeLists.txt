@@ -98,6 +98,9 @@ set (HIKARU_SRC
 	src/mach/naomi/naomi-comm.cpp
 	src/mach/naomi/naomi-multiboard.cpp
 	src/mach/naomi/naomi-renderer.cpp
+	src/mach/naomi/naomi-servo.cpp
+	src/mach/naomi/naomi-card.cpp
+	src/hl/driveboard-f355.cpp
 	src/hl/driveboard-z80.cpp
 	src/hl/tmp90ph44.cpp
 	src/hl/ioboard.cpp

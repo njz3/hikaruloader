@@ -45,6 +45,9 @@
 
 namespace hl {
 
+/* Item::bit of the servo board's frames */
+static const int MIDI_BIT = -3;
+
 static const uintptr_t NO_SOCKET = (uintptr_t) -1;
 /* A client this far behind reads nothing: dropped */
 static const size_t MAX_PENDING = 64 * 1024;
@@ -199,6 +202,7 @@ Outputs::board (unsigned count, bool drive_board)
 
 	jvs_count = MIN2 (count, 16u);
 	has_drive = drive_board;
+	has_midi = false;
 	items.clear ();
 	/* The lamps known at 0: a client learns their names at once */
 	for (n = 1; n <= jvs_count; n++)
@@ -245,6 +249,7 @@ Outputs::stop ()
 	items.clear ();
 	jvs_count = 0;
 	has_drive = false;
+	has_midi = false;
 	forget_reply ();
 }
 
@@ -267,7 +272,10 @@ Outputs::line (const Item &item) const
 {
 	char text[96];
 
-	if (item.bit == -1)
+	if (item.bit == MIDI_BIT)
+		snprintf (text, sizeof (text), "%s = %02X %02X %02X\r", item.name.c_str (), (item.value >> 16) & 0xFF,
+		          (item.value >> 8) & 0xFF, item.value & 0xFF);
+	else if (item.bit == -1)
 		snprintf (text, sizeof (text), "%s = %02X\r", item.name.c_str (), item.value & 0xFF);
 	else
 		snprintf (text, sizeof (text), "%s = %d\r", item.name.c_str (), item.value);
@@ -327,8 +335,51 @@ Outputs::drive_command (uint8_t command)
 	std::lock_guard<std::mutex> hold (lock);
 
 	for (Item &item : items)
-		if (item.bit < 0)
+		if (item.bit == -1)
 			set (item, command);
+}
+
+void
+Outputs::midi_board ()
+{
+	std::lock_guard<std::mutex> hold (lock);
+
+	has_midi = true;
+	items.push_back ({ "midiffb", MIDI_BIT, NULL, false, 0, false });
+}
+
+/* Each frame goes out, the same again too: a real board answers each one */
+void
+Outputs::midi_frame (uint8_t status, uint8_t data1, uint8_t data2)
+{
+	std::lock_guard<std::mutex> hold (lock);
+
+	for (Item &item : items)
+		if (item.bit == MIDI_BIT) {
+			item.value = (status << 16) | (data1 << 8) | data2;
+			item.known = true;
+			send_all (line (item));
+		}
+}
+
+bool
+Outputs::midi_relayed ()
+{
+	std::lock_guard<std::mutex> hold (lock);
+
+	return midi_from != NO_SOCKET;
+}
+
+bool
+Outputs::midi_answer (std::string *answer)
+{
+	std::lock_guard<std::mutex> hold (lock);
+
+	if (midi_rx.empty ())
+		return false;
+	*answer = midi_rx.front ();
+	midi_rx.pop_front ();
+	return true;
 }
 
 bool
@@ -347,6 +398,8 @@ Outputs::forget_reply ()
 {
 	reply_set = false;
 	reply_from = NO_SOCKET;
+	midi_from = NO_SOCKET;
+	midi_rx.clear ();
 }
 
 /* The server */
@@ -496,7 +549,7 @@ Outputs::received (Client &client, const std::string &text)
 	unsigned long byte;
 	char *end;
 
-	if (equal == std::string::npos || !has_drive)
+	if (equal == std::string::npos || (!has_drive && !has_midi))
 		return;
 	auto trim = [] (const std::string &s) {
 		size_t first = s.find_first_not_of (" \t");
@@ -505,7 +558,15 @@ Outputs::received (Client &client, const std::string &text)
 	};
 	name = trim (text.substr (0, equal));
 	value = trim (text.substr (equal + 1));
-	if (strcasecmp (name.c_str (), "m3ffb_rx") || value.empty () || value.size () > 2)
+	if (has_midi && !strcasecmp (name.c_str (), "midiffb_rx")) {
+		if (midi_from != client.sock)
+			HL_PRINT ("outputs: the servo board's answers now come from a client's real board (midiffb_rx)");
+		midi_from = client.sock;
+		if (midi_rx.size () < 256)
+			midi_rx.push_back (value);
+		return;
+	}
+	if (!has_drive || strcasecmp (name.c_str (), "m3ffb_rx") || value.empty () || value.size () > 2)
 		return;
 	byte = strtoul (value.c_str (), &end, 16);
 	if (*end)
@@ -668,6 +729,16 @@ Outputs::rows (const char *(*tr) (const char *))
 		                  tr ("Received from a client (BackForceFeeder): a real drive board's reply, "
 		                      "which the game reads instead of the emulated one"),
 		                  reply_set ? text : "-" });
+	}
+	for (const Item &item : items) {
+		if (item.bit != MIDI_BIT)
+			continue;
+		rows.push_back ({ item.name, tr ("3 bytes in hex"), tr ("Each frame the game sends to its servo board 838-14174"),
+		                  item.known ? line (item).substr (item.name.size () + 3, 8) : "-" });
+		rows.push_back ({ "midiffb_rx", tr ("bytes in hex"),
+		                  tr ("Received from a client (BackForceFeeder): a real servo board's answer, "
+		                      "which the game reads instead of the emulated one"),
+		                  midi_from != NO_SOCKET ? tr ("relayed") : "-" });
 	}
 	rows.push_back ({ "mame_stop", "1", tr ("When the game ends"), "-" });
 	return rows;

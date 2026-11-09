@@ -65,7 +65,7 @@ struct Sh4Offsets {
 	/* A jump's target across its slot, the last block's count (chaining);
 	 * the code epoch (sh4-blocks.h); what the chaining's probe looks at */
 	int32_t target, chain_n, epoch, state, mmu_on, noting, chain_stores, chain_ends,
-		chain_gone;
+		chain_gone, icache;
 	/* The FPU's: the banks' first words (FR's, XF's), FPSCR, FPUL */
 	int32_t fr, xf, fpscr, fpul;
 
