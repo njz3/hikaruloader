@@ -30,7 +30,17 @@ enum DisplayMode {
 	DISPLAY_BORDERLESS,
 
 	NUM_DISPLAY_MODES
+};
+
+/* [Display] MULTI_SCREEN: the cabinets of several boards */
+enum {
+	MULTI_ONE,		/* one board's picture, the key changing it */
+	MULTI_SIDE_BY_SIDE,	/* all of them in a row in the window */
+	MULTI_WINDOWS,		/* each in a window of its own */
+	NUM_MULTI_SCREEN
 };
+
+enum { MAX_SCREENS = 3 };
 
 /* ASPECT_RATIO, as linuxloader, Supermodel, Flycast and sm2-emu name it
  * (hl/aspect.h): the frame the picture is shown in, and how it fills it */
@@ -144,7 +154,21 @@ public:
 	void		 games_dir_in_use (char *dst, size_t size) const;
 
 	/* [Display] */
+	int		multi_screen;
+	/* The boards with a monitor, left to right ("2,1,3"), for games of
+	 * several boards; else the game's own order */
+	char		screen_order[32];
+	/* Each screen's monitor (hl::Window::find_display); empty or AUTO */
+	char		screen_display[MAX_SCREENS][64];
 	int		display_mode;
+	/* --display-mode: name (WINDOW, FULLSCREEN or BORDERLESS, each also
+	 * _STRETCH) in use for this start, in place of the file's, which save ()
+	 * keeps unless the setting is changed in the meantime. False for
+	 * another name */
+	bool		override_display_mode (const char *name);
+	bool		display_overridden = false;
+	int		display_mode_file = 0, display_mode_cli = 0;
+	bool		display_stretch_file = false, display_stretch_cli = false;
 	bool		display_stretch; /* DISPLAY_MODE's _STRETCH: the frame
 					  * fills the window or the screen */
 	int		window_scale;	/* 1 ... 4 times 640x480 */

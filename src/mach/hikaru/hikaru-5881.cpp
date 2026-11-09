@@ -572,8 +572,9 @@ Crypt5881::set_addr_low (uint16_t data)
 void
 Crypt5881::set_addr_high (uint16_t data)
 {
-	(void) data;
 	s.cur_address &= 0x0000FFFF;
+	if (high_address)
+		s.cur_address |= (uint32_t) data << 16;
 	s.enc_ready = 0;
 	s.buffer_bit = 7;
 	s.buffer_bit2 = 15;
@@ -593,7 +594,7 @@ Crypt5881::read_le ()
 	uint16_t v;
 
 	/* A dummy word before the stream */
-	if (s.first_read) {
+	if (s.first_read && dummy_first) {
 		s.first_read = 0;
 		return 0;
 	}

@@ -30,7 +30,8 @@ static const unsigned current_version = 1;
 enum {
 	MODE_ALTERNATIVE,
 	MODE_INTERLEAVE,
-	MODE_CONCATENATE
+	MODE_CONCATENATE,
+	MODE_PLACE
 };
 
 Buffer *
@@ -108,6 +109,8 @@ get_section_size (json_t *data, unsigned ndata, unsigned mode)
 		case MODE_CONCATENATE:
 			total_bytes += nbytes;
 			break;
+		case MODE_PLACE:
+			break;
 		}
 	}
 	return total_bytes;
@@ -144,10 +147,13 @@ load_section (json_t *root, GameSection *section, RomSet *set)
 		mode = MODE_INTERLEAVE;
 	else if (!strcmp (type_value, "concatenate"))
 		mode = MODE_CONCATENATE;
+	else if (!strcmp (type_value, "place"))
+		mode = MODE_PLACE;
 	else
 		return -1;
 
-	total_size = get_section_size (data, ndata, mode);
+	total_size = (mode == MODE_PLACE) ? (uint32_t) json_integer_value (json_object_get (root, "size")) :
+	             get_section_size (data, ndata, mode);
 	if (!total_size)
 		return -1;
 
@@ -198,6 +204,40 @@ load_section (json_t *root, GameSection *section, RomSet *set)
 			if (i % ways == ways - 1)
 				base += buf->size () * ways;
 			hl::destroy (buf);
+		}
+		break;
+	}
+	case MODE_PLACE: {
+		/* A region with its files at given offsets, as MAME's ROM_LOAD
+		 * ("step": 4 for its ROM_LOAD32_WORD: 16 bits of each 32), then
+		 * the region's parts it copies ("copy") */
+		json_t *copies = json_object_get (root, "copy");
+		section->buffer = Buffer::create (total_size, 0);
+		if (!section->buffer)
+			return -1;
+		memset (section->buffer->ptr (0), (int) json_integer_value (json_object_get (root, "fill")), total_size);
+		for (i = 0; i < ndata; i++) {
+			json_t *datum = json_array_get (data, i);
+			uint32_t offset = (uint32_t) json_integer_value (json_object_get (datum, "offset"));
+			unsigned step = (unsigned) json_integer_value (json_object_get (datum, "step"));
+			Buffer *buf = load_datum (datum, set);
+			unsigned j;
+			if (!buf)
+				return -1;
+			if (step == 4) {
+				for (j = 0; j + 2 <= buf->size () && offset + j * 2 + 2 <= total_size; j += 2)
+					section->buffer->put (2, offset + j * 2, buf->get (2, j));
+			} else if (offset + buf->size () <= total_size)
+				memcpy (section->buffer->ptr (offset), buf->ptr (0), buf->size ());
+			hl::destroy (buf);
+		}
+		for (i = 0; i < json_array_size (copies); i++) {
+			json_t *c = json_array_get (copies, i);
+			uint32_t src = (uint32_t) json_integer_value (json_object_get (c, "src"));
+			uint32_t dst = (uint32_t) json_integer_value (json_object_get (c, "dst"));
+			uint32_t n = (uint32_t) json_integer_value (json_object_get (c, "size"));
+			if (src + n <= total_size && dst + n <= total_size)
+				memmove (section->buffer->ptr (dst), section->buffer->ptr (src), n);
 		}
 		break;
 	}
@@ -303,6 +343,24 @@ Game::create (GameList *game_list, const char *path, const char *name)
 	strcpy (game->mach, entry->mach);
 	strcpy (game->parent, entry->parent);
 	strcpy (game->audio, entry->audio);
+	{
+		const char *text;
+
+		if ((text = json_string_value (json_object_get (entry->root, "board"))))
+			snprintf (game->board, sizeof (game->board), "%s", text);
+		if ((text = json_string_value (json_object_get (entry->root, "key"))))
+			game->key = (uint32_t) strtoul (text, NULL, 16);
+		if ((text = json_string_value (json_object_get (entry->root, "id"))))
+			game->id = (uint32_t) strtoul (text, NULL, 16);
+		game->naomi2 = json_is_true (json_object_get (entry->root, "naomi2"));
+		game->boards = (unsigned) json_integer_value (json_object_get (entry->root, "boards"));
+		{
+			json_t *screens = json_object_get (entry->root, "screens");
+
+			for (size_t k = 0; k < json_array_size (screens) && k < 4; k++)
+				game->screens[game->num_screens++] = (unsigned) json_integer_value (json_array_get (screens, k));
+		}
+	}
 
 	set = open_romset (entry, path);
 	ret = load_sections (entry->root, game, set, path);

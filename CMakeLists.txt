@@ -47,6 +47,7 @@ set (HL_SRC
 	src/hl/controls.cpp
 	src/hl/renderer.cpp
 	src/hl/window.cpp
+	src/hl/displays.cpp
 	src/hl/aspect.cpp
 	src/hl/bezel.cpp
 	src/hl/crt_preset.cpp
@@ -89,6 +90,14 @@ set (HIKARU_SRC
 	src/mach/hikaru/hikaru-gpu-private.cpp
 	src/mach/hikaru/hikaru-aica.cpp
 	src/mach/gaelco/gaelco.cpp
+	src/mach/naomi/naomi.cpp
+	src/mach/naomi/naomi-holly.cpp
+	src/mach/naomi/naomi-elan.cpp
+	src/mach/naomi/naomi-cart.cpp
+	src/mach/naomi/naomi-mie.cpp
+	src/mach/naomi/naomi-comm.cpp
+	src/mach/naomi/naomi-multiboard.cpp
+	src/mach/naomi/naomi-renderer.cpp
 	src/hl/driveboard-z80.cpp
 	src/hl/tmp90ph44.cpp
 	src/hl/ioboard.cpp
@@ -221,6 +230,8 @@ add_custom_command (TARGET hikaruloader POST_BUILD
 		${CMAKE_SOURCE_DIR}/data/lang $<TARGET_FILE_DIR:hikaruloader>/data/lang
 	COMMAND ${CMAKE_COMMAND} -E copy_directory
 		${CMAKE_SOURCE_DIR}/data/crt $<TARGET_FILE_DIR:hikaruloader>/data/crt
+	COMMAND ${CMAKE_COMMAND} -E copy_directory
+		${CMAKE_SOURCE_DIR}/data/naomi $<TARGET_FILE_DIR:hikaruloader>/data/naomi
 	COMMAND ${CMAKE_COMMAND} -E copy_directory
 		${CMAKE_SOURCE_DIR}/data/shaders $<TARGET_FILE_DIR:hikaruloader>/data/shaders)
 

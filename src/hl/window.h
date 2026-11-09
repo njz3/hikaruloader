@@ -45,6 +45,17 @@ public:
 	/* Full screen, window size, v-sync, cursor */
 	static void		 apply_display ();
 
+	/* The monitors, in the log. Which one a setting names: a number, the
+	 * one Windows gives it (its DISPLAY<n>); INDEX:<n>, SDL's own from 0;
+	 * else a part of its name. -1: none, or AUTO. See displays.cpp */
+	static void		 log_displays ();
+	static int		 find_display (const char *name);
+	/* The window on that display, at x, y in a window (the desktop's
+	 * coordinates); display -1: in the middle of the first, as at start */
+	static void		 place (int display, int x, int y);
+	/* After the game's name in the title */
+	static void		 set_title_detail (const char *detail);
+
 	/* The machine's picture, 640x480 (854x480 in widescreen): the
 	 * window's size and the aspect ratio follow it. From the main thread */
 	static void		 set_native_size (int width, int height);
@@ -108,6 +119,27 @@ public:
 	 * it in the window and returns true. The screenshots and the pause
 	 * call it first, for the last frame; NULL: none */
 	static void		 set_flush (bool (* hook) (void *data), void *data);
+};
+
+/* A further window of the machine, drawn with the main one's context: a
+ * cabinet's other screens. After [Display] DISPLAY_MODE as the main one is */
+class ExtraWindow {
+public:
+	ExtraWindow (const char *title, int display, int x, int y, int w, int h);
+	~ExtraWindow ();
+
+	ExtraWindow (const ExtraWindow &) = delete;
+	ExtraWindow &operator= (const ExtraWindow &) = delete;
+
+	void		 set_title (const char *title);
+	/* Drawing goes to it, whose size is returned */
+	void		 begin (int *width, int *height);
+	/* Shown; drawing goes back to the main window */
+	void		 end ();
+	Uint32		 id () const { return window ? SDL_GetWindowID (window) : 0; }
+
+private:
+	SDL_Window	*window;
 };
 
 } /* namespace hl */

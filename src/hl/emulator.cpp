@@ -46,6 +46,7 @@
 #ifdef HL_HAVE_HIKARU
 #include "mach/hikaru/hikaru.h"
 #include "mach/gaelco/gaelco.h"
+#include "mach/naomi/naomi.h"
 #endif
 
 namespace hl {
@@ -141,6 +142,8 @@ Emulator::create_machine ()
 		return hikaru::Hikaru::create (game);
 	if (!strcmp (game->mach, "gaelco"))
 		return gaelco::Gaelco::create (game);
+	if (!strcmp (game->mach, "naomi"))
+		return naomi::Naomi::create (game);
 	return NULL;
 }
 
@@ -461,6 +464,10 @@ Emulator::process_events ()
 			break;
 		case ACTION_SHOW_FPS:
 			Config::get ()->fps_overlay ^= 1;
+			break;
+		case ACTION_NEXT_SCREEN:
+			if (mach)
+				mach->next_screen ();
 			break;
 		default:
 			break;

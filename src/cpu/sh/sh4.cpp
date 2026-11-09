@@ -203,9 +203,9 @@ set_fpscr (Sh4 *ctx, uint32_t val)
 	if (old.bit.fr != FPSCR.bit.fr)
 		swap_f_banks (ctx);
 
-	/* SZ and PR can't be both set */
-	if (FPSCR.bit.sz && FPSCR.bit.pr)
-		HL_CPU_ABORT (ctx, "invalid FPSCR: SZ and PR both set");
+	/* SZ and PR both set is only undefined for the FPU's arithmetic: the
+	 * moves do as SZ says, and Strike Fighter's kernel sets SZ to save the
+	 * registers of a task it interrupted in double precision */
 }
 
 static uint32_t
@@ -704,7 +704,21 @@ sh4_ireg_get (Sh4 *ctx, unsigned size, uint32_t addr, void *val)
 	set_ptr (val, size, IREG_GET (size, addr));
 
 	switch (addr & 0xFFFFFF) {
+	case 0x000030:
+		/* The processor's version (SH7091), which the NAOMI's BIOS and
+		 * games read */
+		set_ptr (val, size, 0x040205C1);
+		return 0;
+	case RTC_R64CNT:
+		set_ptr (val, size, ctx->rfcr++ & 0x7F);
+		return 0;
 	case BSC_RFCR:
+		if (ctx->rfcr_counts) {
+			/* The refreshes counted, which the NAOMI's BIOS waits for */
+			set_ptr (val, size, 0x11 + (ctx->rfcr++ & 0x1FF));
+			break;
+		}
+		/* fall through */
 	case BSC_PDTRA:
 	case CPG_WTCSR:
 		HL_ASSERT (size == 2);
@@ -902,7 +916,8 @@ sh4_ireg_put (Sh4 *ctx, unsigned size, uint32_t addr, uint64_t val)
 	case BSC_WCR3:
 	case BSC_MCR:
 	case BSC_PCTRA:
-		HL_ASSERT (size == 4);
+		/* The NAOMI's BIOS writes them in 16 bits too */
+		HL_ASSERT (size == 4 || ctx->rfcr_counts);
 		break;
 	/* UBC */
 	case UBC_BBRA:
@@ -1475,8 +1490,46 @@ sh4_sq_get (Sh4 *ctx, unsigned size, uint32_t addr, void *val)
 static int
 sh4_sq_put (Sh4 *ctx, unsigned size, uint32_t addr, uint64_t val)
 {
+	if (ctx->sq_buffered) {
+		unsigned q = (addr >> 5) & 1, offs = addr & 0x1F;
+
+		if (size == 8 && offs <= 24)
+			memcpy ((uint8_t *) ctx->sq[q] + offs, &val, 8);
+		else if (size <= 4 && offs + size <= 32)
+			memcpy ((uint8_t *) ctx->sq[q] + offs, &val, size);
+		return 0;
+	}
 	uint32_t sq_addr = get_sq_addr (ctx, addr) | (addr & 0x1F);
 	return sh4_put (ctx, size, sq_addr | (addr & 0x1F), val);
+}
+
+void
+Sh4::sq_flush (uint32_t addr)
+{
+	Sh4 *ctx = this;
+	uint32_t target = get_sq_addr (ctx, addr);
+	unsigned q = (addr >> 5) & 1, i;
+
+	for (i = 0; i < 8; i++)
+		((hl::Cpu *) ctx)->write (4, (target + i * 4) & 0x1FFFFFFF, ctx->sq[q][i]);
+}
+
+uint32_t
+Sh4::ddt_source (unsigned ch)
+{
+	Sh4 *ctx = this;
+	return IREG_GET (4, DMAC_SAR0 + ch * 0x10);
+}
+
+void
+Sh4::ddt_done (unsigned ch, uint32_t source)
+{
+	Sh4 *ctx = this;
+	uint32_t offs = ch * 0x10;
+
+	IREG_PUT (4, DMAC_SAR0 + offs, source);
+	IREG_PUT (4, DMAC_TCR0 + offs, 0);
+	IREG_PUT (4, DMAC_CHCR0 + offs, IREG_GET (4, DMAC_CHCR0 + offs) | 2);
 }
 
 /* Bus Access */

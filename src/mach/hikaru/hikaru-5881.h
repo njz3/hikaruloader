@@ -47,6 +47,10 @@ public:
 
 	/* The game's key */
 	uint32_t key;
+	/* The NAOMI's cartridges: their addresses have a high half (the
+	 * Hikaru's boards take it as 0), and no dummy word starts the stream */
+	bool	 high_address = false;
+	bool	 dummy_first = true;
 	Read	 read_cb;
 	void	*opaque;
 

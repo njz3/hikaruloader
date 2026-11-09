@@ -132,6 +132,7 @@ hikaruloader.exe [options]
 | `-n <frames>` | Quits after that many frames |
 | `-L`, `--list` | Lists the games and quits: title, set, version, year and maker, the MAME sets each one needs, each ROM file with its CRC32, and how many of them the games folder holds |
 | `--write-dir=<folder>`, `--write-dir <folder>` | Writes everything in that folder: settings, log, saves (see "Write directory") |
+| `--display-mode=<mode>`, `--display-mode <mode>` | The display mode for this start, in place of the settings' `DISPLAY_MODE`, which stays as it is in `hikaruloader.ini`: `WINDOW`, `FULLSCREEN` or `BORDERLESS`, each also with `_STRETCH` (`--display-mode=FULLSCREEN`) |
 | `-v` | More messages in the log |
 | `-h` | Shows the options |
 
@@ -166,6 +167,7 @@ Keys and controllers
 | Tab; a controller's Back, Guide + Back | Settings |
 | F7; Guide + Y | Virtual-On 4's card: in the reader's slot, or taken back (see below) |
 | F12 | The frame rate over the picture |
+| F8 | NAOMI cabinets of several boards: the next board's picture; with several screens, the middle one and a board without a screen in turn (F355 Deluxe's master) |
 | F9; Guide + Start | Quit |
 | Escape; Guide + B | Back to the picker, or quit |
 
@@ -261,6 +263,12 @@ effect at once.
   to 100), and *Bend the cut parts onto the edges* (`CROP_BARREL`) shows
   them squeezed on the edges, as on a cylinder seen from the front, the
   middle undistorted (`BARREL_CENTER`, `BARREL_RADIUS`).
+- *Several boards* (`MULTI_SCREEN`), for the NAOMI cabinets of several boards, read when a game
+  starts: `ONE` shows one board (F8 the next), `SIDE_BY_SIDE` puts the screens in a row in the
+  window, for a very wide monitor, `WINDOWS` gives each a window. `SCREEN_ORDER` gives the boards
+  with a monitor, left to right (`2,1,3`). With `WINDOWS`, `SCREEN_1_DISPLAY` to `SCREEN_3_DISPLAY`
+  name each window's monitor: the number Windows gives it (`2`), `INDEX:1` counting from 0, or a
+  part of its name (`DELL`); the log lists the monitors at its start.
 - *Display mode* (`DISPLAY_MODE`): window, full screen or borderless full
   screen (both at the desktop's resolution: no mode change), the frame at
   its shape in the middle; or *stretched* (`WINDOW_STRETCH`...), the frame

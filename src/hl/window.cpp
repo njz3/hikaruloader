@@ -18,6 +18,7 @@
  * along with Hikaruloader.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <algorithm>
 #include <vector>
 
 #include "hl/window.h"
@@ -44,6 +45,12 @@ static void refresh_frame_title (void);
 static int native_w = 640, native_h = 480;
 static char last_message[256];
 
+/* A cabinet's other screens' windows, and where the main one goes (display
+ * -1: in the middle of the first) */
+static std::vector<const ExtraWindow *> extras;
+static int place_display = -1, place_x, place_y;
+static bool place_changed;
+
 /* The last frame, redrawn under the settings while the game is paused */
 static struct {
 	GLuint program, vao, texture;
@@ -62,8 +69,12 @@ Window::closing (const SDL_Event *event)
 {
 	if (event->type == SDL_QUIT)
 		return true;
-	return event->type == SDL_WINDOWEVENT && event->window.event == SDL_WINDOWEVENT_CLOSE &&
-	       shared_window && event->window.windowID == SDL_GetWindowID (shared_window);
+	if (event->type != SDL_WINDOWEVENT || event->window.event != SDL_WINDOWEVENT_CLOSE)
+		return false;
+	for (const ExtraWindow *extra : extras)
+		if (event->window.windowID == extra->id ())
+			return true;
+	return shared_window && event->window.windowID == SDL_GetWindowID (shared_window);
 }
 
 void
@@ -167,6 +178,17 @@ Window::apply_display ()
 	if (!shared_window)
 		return;
 
+	if (place_changed) {
+		place_changed = false;
+		if (cfg->display_mode != hl::DISPLAY_WINDOW) {
+			SDL_SetWindowFullscreen (shared_window, 0);
+			applied_mode = -1;
+		}
+		if (place_display < 0)
+			SDL_SetWindowPosition (shared_window, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
+		else
+			SDL_SetWindowPosition (shared_window, place_x, place_y);
+	}
 	if (cfg->display_mode != applied_mode) {
 		Uint32 flags = cfg->display_mode == hl::DISPLAY_FULLSCREEN ? SDL_WINDOW_FULLSCREEN :
 		               cfg->display_mode == hl::DISPLAY_BORDERLESS ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0;
@@ -184,13 +206,91 @@ Window::apply_display ()
 	    (cfg->window_scale != applied_scale || native_w != applied_width)) {
 		SDL_SetWindowSize (shared_window, native_w * cfg->window_scale,
 		                   native_h * cfg->window_scale);
-		SDL_SetWindowPosition (shared_window, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
+		if (place_display < 0)
+			SDL_SetWindowPosition (shared_window, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
+		else
+			SDL_SetWindowPosition (shared_window, place_x, place_y);
 		applied_scale = cfg->window_scale;
 		applied_width = native_w;
 	}
 
 	SDL_GL_SetSwapInterval (cfg->vsync ? 1 : 0);
 	SDL_ShowCursor (cfg->hide_cursor ? SDL_DISABLE : SDL_ENABLE);
+}
+
+void
+Window::place (int display, int x, int y)
+{
+	if (display == place_display && x == place_x && y == place_y)
+		return;
+	place_display = display;
+	place_x = x;
+	place_y = y;
+	place_changed = true;
+	apply_display ();
+}
+
+ExtraWindow::ExtraWindow (const char *title, int display, int x, int y, int w, int h)
+{
+	Config *cfg = Config::get ();
+
+	/* Several full screen windows: the one losing the focus stays */
+	SDL_SetHint (SDL_HINT_VIDEO_MINIMIZE_ON_FOCUS_LOSS, "0");
+	window = SDL_CreateWindow (title, x, y, w, h, SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
+	if (!window) {
+		HL_ERROR ("could not create a window for a screen: '%s'", SDL_GetError ());
+		return;
+	}
+	if (cfg->display_mode != DISPLAY_WINDOW) {
+		SDL_DisplayMode mode;
+
+		if (cfg->display_mode == DISPLAY_FULLSCREEN && !SDL_GetDesktopDisplayMode (display, &mode))
+			SDL_SetWindowDisplayMode (window, &mode);
+		SDL_SetWindowFullscreen (window, cfg->display_mode == DISPLAY_FULLSCREEN ? SDL_WINDOW_FULLSCREEN
+		                                                                         : SDL_WINDOW_FULLSCREEN_DESKTOP);
+	}
+	/* Only the main window's swap waits for the screen, else one frame
+	 * would take as many refreshes as there are windows */
+	SDL_GL_MakeCurrent (window, shared_context);
+	SDL_GL_SetSwapInterval (0);
+	SDL_GL_MakeCurrent (shared_window, shared_context);
+	extras.push_back (this);
+	HL_PRINT ("window: a screen's window on display %d", display);
+}
+
+ExtraWindow::~ExtraWindow ()
+{
+	extras.erase (std::remove (extras.begin (), extras.end (), this), extras.end ());
+	if (window)
+		SDL_DestroyWindow (window);
+	if (extras.empty ())
+		SDL_ResetHint (SDL_HINT_VIDEO_MINIMIZE_ON_FOCUS_LOSS);
+}
+
+void
+ExtraWindow::set_title (const char *title)
+{
+	if (window)
+		SDL_SetWindowTitle (window, title);
+}
+
+void
+ExtraWindow::begin (int *width, int *height)
+{
+	*width = *height = 1;
+	if (window) {
+		SDL_GL_MakeCurrent (window, shared_context);
+		SDL_GL_GetDrawableSize (window, width, height);
+	}
+}
+
+void
+ExtraWindow::end ()
+{
+	if (window) {
+		SDL_GL_SwapWindow (window);
+		SDL_GL_MakeCurrent (shared_window, shared_context);
+	}
 }
 
 static void
@@ -408,6 +508,8 @@ static struct {
 
 /* The game part of the window's title: "<title> [<set>]", or empty */
 static char title_name[256];
+/* After it: the board shown, on a cabinet of several */
+static char title_detail[64];
 /* The machine's frame, the one the title shows, and when it changed */
 static uint64_t title_frame, title_frame_shown;
 static uint32_t title_frame_ticks;
@@ -417,10 +519,11 @@ static void
 update_title (void)
 {
 	char title[512];
-	const char *paused = title_paused ? " (Paused)" : "";
+	char paused[96];
 
 	if (!shared_window)
 		return;
+	snprintf (paused, sizeof (paused), "%s%s", title_detail, title_paused ? " (Paused)" : "");
 	title_frame_shown = title_frame;
 	if (title_name[0] && Config::get ()->title_frame)
 		snprintf (title, sizeof (title), "%s%s - frame %llu - %.1f fps - Hikaruloader %s",
@@ -472,6 +575,13 @@ Window::set_paused (bool paused)
 	if (paused == title_paused)
 		return;
 	title_paused = paused;
+	update_title ();
+}
+
+void
+Window::set_title_detail (const char *detail)
+{
+	snprintf (title_detail, sizeof (title_detail), "%s", detail ? detail : "");
 	update_title ();
 }
 
@@ -713,6 +823,7 @@ Window::open (unsigned width, unsigned height)
 	 * catch more serious errors later. */
 	gl::clear_errors ();
 
+	Window::log_displays ();
 	Window::apply_display ();
 	return 0;
 }

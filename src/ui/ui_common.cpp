@@ -258,6 +258,23 @@ void drawDisplayTab()
     wrappedNote(tr("On a CRT driven at a super resolution (1920x240): its real shape as the aspect ratio (4:3 or 16:9, black bars) "
                    "and a stretched mode. The frame then covers the screen, whatever the shape of its pixels."));
 
+    // MULTI_SCREEN, SCREEN_<n>_DISPLAY: the NAOMI cabinets of several boards
+    const char *multiLabels[] = {tr("One board at a time"), tr("Side by side in one window"),
+                                 tr("One window per board")};
+    if (ImGui::Combo(tr("Several boards"), &cfg->multi_screen, multiLabels, IM_ARRAYSIZE(multiLabels)))
+        changed = true;
+    ImGui::BeginDisabled(cfg->multi_screen != hl::MULTI_WINDOWS);
+    for (int i = 0; i < hl::MAX_SCREENS; i++)
+    {
+        char label[64];
+        snprintf(label, sizeof(label), "%s %d", tr("Monitor of window"), i + 1);
+        if (ImGui::InputText(label, cfg->screen_display[i], sizeof(cfg->screen_display[i])))
+            changed = true;
+    }
+    ImGui::EndDisabled();
+    wrappedNote(tr("Read when a game starts. A monitor: the number Windows gives it, INDEX:<n> counting from 0, or a "
+                   "part of its name; AUTO for the next one. F8 shows the next board."));
+
     ImGui::BeginDisabled(cfg->display_mode != hl::DISPLAY_WINDOW);
     if (ImGui::BeginCombo(tr("Window size"), windowSizeLabel(cfg->window_scale)))
     {

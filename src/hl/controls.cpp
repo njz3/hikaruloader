@@ -128,6 +128,7 @@ static const char *default_file =
 	"Menu = KEY_Tab, GC0_BUTTON_BACK, GC0_BUTTON_GUIDE + GC0_BUTTON_BACK\n"
 	"Back = KEY_Escape, GC0_BUTTON_GUIDE + GC0_BUTTON_B\n"
 	"ShowFps = KEY_F12\n"
+	"NextScreen = KEY_F8\n"
 	"\n"
 	"[ControllerGUIDs]\n";
 
@@ -265,6 +266,7 @@ static const struct {
 	{ "Emulator", "Menu", "Opens and closes the settings" },
 	{ "Emulator", "Back", "Back to the picker the game was started from, else quits" },
 	{ "Emulator", "ShowFps", "Shows and hides the frame rate" },
+	{ "Emulator", "NextScreen", "NAOMI cabinets of several boards: the next board's picture" },
 	{ "ControllerGUIDs", NULL,
 	  "P<n>_GUID = an SDL joystick GUID: that controller is player n's, JOY<n-1>,\n"
 	  "whatever order Windows lists them in (hikaruloader.log gives the GUIDs)" },

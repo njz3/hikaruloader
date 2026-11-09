@@ -290,6 +290,21 @@ public:
 	bool		dma_ready (unsigned ch);
 	void		dma_to_memory (unsigned ch, uint32_t word);
 	uint32_t	dma_from_memory (unsigned ch);
+	/* RFCR counts its refreshes (else it reads as port A, the Hikaru's) */
+	bool		rfcr_counts = false;
+	uint32_t	rfcr = 0;
+	/* Whatever its machine wants to find from the CPU */
+	void		*user = NULL;
+	/* The store queues kept until their pref, as the chip does (the NAOMI's
+	 * games fill them in any order, and the TA takes 32 bytes at a time);
+	 * else each store goes through at once */
+	bool		sq_buffered = false;
+	uint32_t	sq[2][8] = {};
+	void		sq_flush (uint32_t addr);
+	/* A DDT transfer a device runs itself (Holly's channel 2): where the
+	 * channel's source is, then the channel done as if it had run */
+	uint32_t	ddt_source (unsigned ch);
+	void		ddt_done (unsigned ch, uint32_t source);
 	/* The peripherals' clock, Pφ: the Hikaru's 200 MHz / 4 by default */
 	uint32_t	pclk_hz = 50000000;
 	/* The last TCNT read: where from (PC, PR, r15), the far stores then

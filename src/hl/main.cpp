@@ -37,6 +37,7 @@ static struct {
 	bool agent;
 	bool list;
 	char script[256];
+	char display_mode[32];
 } options;
 
 static hl::Emulator *emulator;
@@ -64,6 +65,10 @@ static const char global_help[] = "Usage: %s [options]\n"
 "			and dumps in path/<game>/; the settings and nvram copied\n"
 "			there when it has none, then read there only. Relative: to\n"
 "			the program's folder\n"
+"	--display-mode=<mode>\n"
+"			This start's DISPLAY_MODE, whatever hikaruloader.ini says and\n"
+"			leaving it as it is (also --display-mode <mode>): WINDOW,\n"
+"			FULLSCREEN or BORDERLESS, each also with _STRETCH\n"
 "	-v		Set verbosity (affects debug messages)\n"
 "	-h              Show this help\n";
 
@@ -99,6 +104,16 @@ parse_global_opts (int argc, char **argv)
 			i += words - 1;
 		else if (i > 0 && (!strcmp (argv[i], "--list") || !strcmp (argv[i], "-list")))
 			options.list = true;
+		else if (i > 0 && !strncmp (argv[i], "--display-mode=", 15))
+			snprintf (options.display_mode, sizeof (options.display_mode), "%s", argv[i] + 15);
+		else if (i > 0 && !strcmp (argv[i], "--display-mode")) {
+			if (i + 1 >= argc) {
+				HL_ERROR ("--display-mode needs a mode");
+				show_help (argc, argv);
+				return -1;
+			}
+			snprintf (options.display_mode, sizeof (options.display_mode), "%s", argv[++i]);
+		}
 		else
 			args[num++] = argv[i];
 	}
@@ -262,6 +277,15 @@ main (const int argc, char **argv)
 	 * line changes any */
 	if (!loaded && cfg->save ())
 		HL_PRINT ("wrote the default settings to '%s'", ini_path.c_str ());
+	if (options.display_mode[0]) {
+		if (!cfg->override_display_mode (options.display_mode)) {
+			HL_ERROR ("unknown display mode '%s': WINDOW, FULLSCREEN or BORDERLESS, each also with _STRETCH",
+			          options.display_mode);
+			show_help (argc, argv);
+			goto fail;
+		}
+		HL_PRINT ("display mode for this start: %s", options.display_mode);
+	}
 	/* -R stands for the games folder of the settings */
 	if (options.rom_path[0])
 		snprintf (cfg->games_dir, sizeof (cfg->games_dir), "%s", options.rom_path);

@@ -79,6 +79,10 @@ public:
 	 * reads or runs one */
 	virtual void	 set_current_cpu (Cpu *cpu) { (void) cpu; }
 
+	/* The NextScreen input: the next board's picture, on the cabinets of
+	 * several boards */
+	virtual void	 next_screen () {}
+
 	/* Clears the buffers (the batteries' aside), resets the devices, the
 	 * machine, the renderer */
 	void		 reset (ResetType type);

@@ -27,6 +27,10 @@ static Config config;
 static bool config_ready = false;
 static char config_path[1024] = "hikaruloader.ini";
 
+static const char *multi_screen_names[NUM_MULTI_SCREEN] = {
+	"ONE", "SIDE_BY_SIDE", "WINDOWS"
+};
+
 static const char *display_names[NUM_DISPLAY_MODES] = {
 	"WINDOW", "FULLSCREEN", "BORDERLESS"
 };
@@ -111,6 +115,10 @@ Config::set_defaults ()
 
 	memset (cfg, 0, sizeof (*cfg));
 	cfg->display_mode = DISPLAY_WINDOW;
+	cfg->multi_screen = MULTI_ONE;
+	snprintf (cfg->screen_order, sizeof (cfg->screen_order), "AUTO");
+	for (int i = 0; i < MAX_SCREENS; i++)
+		snprintf (cfg->screen_display[i], sizeof (cfg->screen_display[i]), "AUTO");
 	cfg->display_stretch = false;
 	cfg->window_scale = 1;	/* the Hikaru's own 640 x 480 */
 	cfg->aspect = ASPECT_ORIGINAL;
@@ -317,7 +325,14 @@ Config::set_value (const char *section, const char *key, const char *value)
 			if (cfg->display_stretch)
 				mode[len - 8] = '\0';
 			cfg->display_mode = parse_name (mode, display_names, NUM_DISPLAY_MODES, cfg->display_mode);
-		} else if (!strcasecmp (key, "WINDOW_SCALE"))
+		} else if (!strcasecmp (key, "MULTI_SCREEN"))
+			cfg->multi_screen = parse_name (value, multi_screen_names, NUM_MULTI_SCREEN, cfg->multi_screen);
+		else if (!strcasecmp (key, "SCREEN_ORDER"))
+			snprintf (cfg->screen_order, sizeof (cfg->screen_order), "%s", value);
+		else if (!strncasecmp (key, "SCREEN_", 7) && key[7] >= '1' && key[7] < '1' + MAX_SCREENS &&
+		         !strcasecmp (key + 8, "_DISPLAY"))
+			snprintf (cfg->screen_display[key[7] - '1'], sizeof (cfg->screen_display[0]), "%s", value);
+		else if (!strcasecmp (key, "WINDOW_SCALE"))
 			cfg->window_scale = MAX2 (1, MIN2 (4, atoi (value)));
 		else if (!strcasecmp (key, "ASPECT_RATIO")) {
 			/* Before November 2026: INTEGER (whole multiples) and
@@ -540,6 +555,33 @@ Config::set_value (const char *section, const char *key, const char *value)
 }
 
 bool
+Config::override_display_mode (const char *name)
+{
+	char mode[32];
+	size_t len = strlen (name);
+	bool stretch;
+	int i;
+
+	if (len >= sizeof (mode))
+		return false;
+	snprintf (mode, sizeof (mode), "%s", name);
+	stretch = len > 8 && !strcasecmp (mode + len - 8, "_STRETCH");
+	if (stretch)
+		mode[len - 8] = '\0';
+	for (i = 0; i < NUM_DISPLAY_MODES; i++)
+		if (!strcasecmp (mode, display_names[i]))
+			break;
+	if (i == NUM_DISPLAY_MODES)
+		return false;
+	display_mode_file = display_mode;
+	display_stretch_file = display_stretch;
+	display_mode = display_mode_cli = i;
+	display_stretch = display_stretch_cli = stretch;
+	display_overridden = true;
+	return true;
+}
+
+bool
 Config::load ()
 {
 	Config *cfg = this;
@@ -637,12 +679,35 @@ Config::save () const
 	         "# frame fills the window or the screen. On a CRT at a super resolution\n"
 	         "# (1920x240), the screen's real shape as ASPECT_RATIO (4:3 or 16:9) and a\n"
 	         "# _STRETCH mode. Default: %s\n", display_names[def.display_mode]);
-	fprintf (fp, "DISPLAY_MODE = %s%s\n", display_names[cfg->display_mode],
-	         cfg->display_stretch ? "_STRETCH" : "");
+	/* --display-mode is this start's: the file keeps its own, unless the
+	 * setting was changed since */
+	bool kept = cfg->display_overridden && cfg->display_mode == cfg->display_mode_cli &&
+	            cfg->display_stretch == cfg->display_stretch_cli;
+	int saved_mode = kept ? cfg->display_mode_file : cfg->display_mode;
+	bool saved_stretch = kept ? cfg->display_stretch_file : cfg->display_stretch;
+	fprintf (fp, "DISPLAY_MODE = %s%s\n", display_names[saved_mode],
+	         saved_stretch ? "_STRETCH" : "");
 	fprintf (fp,
 	         "\n# The window's size, 1 to 4 times the Hikaru's 640x480 (it can also be\n"
 	         "# resized with the mouse). Default: %d\n", def.window_scale);
 	fprintf (fp, "WINDOW_SCALE = %d\n", cfg->window_scale);
+	fprintf (fp,
+	         "\n# NAOMI cabinets of several boards, read when a game starts: ONE shows one\n"
+	         "# board's picture (NextScreen, F8, goes to the next board), SIDE_BY_SIDE\n"
+	         "# puts them in a row in the window, for a very wide monitor, and WINDOWS\n"
+	         "# gives each its window. Default: %s\n", multi_screen_names[def.multi_screen]);
+	fprintf (fp, "MULTI_SCREEN = %s\n", multi_screen_names[cfg->multi_screen]);
+	fprintf (fp,
+	         "\n# The boards with a monitor, left to right, numbered from 1 (\"2,1,3\").\n"
+	         "# AUTO: the game's own. Default: AUTO\n");
+	fprintf (fp, "SCREEN_ORDER = %s\n", cfg->screen_order[0] ? cfg->screen_order : "AUTO");
+	fprintf (fp,
+	         "\n# With WINDOWS, the monitor of the windows, left to right: the number\n"
+	         "# Windows gives it (1, 2, 3), INDEX:<n> for SDL's numbering from 0, or a\n"
+	         "# part of the monitor's name. The log lists them at its start. AUTO: the\n"
+	         "# next monitor there is. Default: AUTO\n");
+	for (int i = 0; i < MAX_SCREENS; i++)
+		fprintf (fp, "SCREEN_%d_DISPLAY = %s\n", i + 1, cfg->screen_display[i][0] ? cfg->screen_display[i] : "AUTO");
 	fprintf (fp,
 	         "\n# The picture at whole multiples of its size only (1x, 2x, 3x...), for\n"
 	         "# even pixels, the frame's bars larger: true or false. Not with a\n"

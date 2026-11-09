@@ -80,6 +80,14 @@ to_pixels (int r[4], float x, float y, float w, float h, int tw, int th)
 	r[3] = MAX2 (1, y1 - y0);
 }
 
+static int layout_screens = 1;
+
+void
+set_layout_screens (int n)
+{
+	layout_screens = MAX2 (n, 1);
+}
+
 void
 screen_layout (ScreenLayout *l, int tw, int th, int pw, int ph)
 {
@@ -87,7 +95,7 @@ screen_layout (ScreenLayout *l, int tw, int th, int pw, int ph)
 	int aspect = std::clamp (cfg->aspect, 0, NUM_ASPECTS - 1);
 	Fit fit = kinds[aspect].fit;
 	float picture = (float) MAX2 (pw, 1) / MAX2 (ph, 1);
-	float shape = fit == FIT_ORIGINAL ? picture : kinds[aspect].shape;
+	float shape = fit == FIT_ORIGINAL ? picture : kinds[aspect].shape * layout_screens;
 	float W = (float) MAX2 (tw, 1), H = (float) MAX2 (th, 1);
 	float fw, fh, fx, fy, iw = 1.0f, ih = 1.0f, ix, iy, place;
 	float image[4];

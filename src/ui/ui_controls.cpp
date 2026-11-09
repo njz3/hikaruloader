@@ -133,6 +133,7 @@ const char *actionLabel(const std::string &key)
         {"Menu", N_("Settings (this window)")},
         {"Back", N_("Back to the picker, or quit")},
         {"ShowFps", N_("Show the frame rate")},
+        {"NextScreen", N_("Next board's picture (several boards)")},
         {"Steer", N_("Steering wheel")},
         {"Aim", N_("Stick moving a sight")},
         {"Gas", N_("Accelerator")},

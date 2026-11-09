@@ -73,6 +73,8 @@ enum Action {
 	ACTION_STATE_OLDER,
 	ACTION_SETTINGS,
 	ACTION_SHOW_FPS,
+	/* The next board's picture, on the cabinets of several boards */
+	ACTION_NEXT_SCREEN,
 	ACTION_QUIT,
 	/* Back to the picker, or out (Escape) */
 	ACTION_BACK,

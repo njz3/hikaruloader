@@ -54,6 +54,10 @@ struct ScreenLayout {
 	int	 bezel[4];
 };
 
+/* Several screens side by side in the picture: each keeps the aspect ratio's
+ * shape, the frame being n times as wide */
+void	 set_layout_screens (int n);
+
 /* The layout in a target of tw x th pixels for a picture of pw x ph */
 void	 screen_layout (ScreenLayout *l, int tw, int th, int pw, int ph);
 

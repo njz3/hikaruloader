@@ -378,6 +378,12 @@ Aica::update_main_irq ()
 {
 	bool raised = (st.mcipd & st.mcieb & INT_ALL) != 0;
 
+	if (main_irq_hook) {
+		if (raised != st.main_irq)
+			main_irq_hook (mach, raised);
+		st.main_irq = raised;
+		return;
+	}
 	if (raised && !st.main_irq) {
 		st.main_irqs++;
 		if (master)

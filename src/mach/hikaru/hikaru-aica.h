@@ -51,6 +51,9 @@ public:
 	int save_state (hl::State *state) override;
 	int load_state (hl::State *state) override;
 	const char *debug_string () override;
+	/* A machine of its own wiring (the NAOMI's): told when the SH-4's
+	 * interrupt line changes, instead of the Hikaru's */
+	void	(*main_irq_hook) (hl::Machine *mach, bool raised) = NULL;
 	/* The SH-4's interrupt line: MCIPD & MCIEB */
 	bool	 main_irq_level () const;
 

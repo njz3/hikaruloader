@@ -1134,6 +1134,10 @@ hikaru_set_rombd_config (Hikaru *hikaru)
 		has_rom = false;
 		hikaru->eprom = NULL;
 		hikaru->maskrom = NULL;
+	} else if (!strcmp (name, "hikcheck")) {
+		/* Sega's test program: two flash modules (bank 0), an M48T35Y
+		 * at IC35 (bank 3, read as a ROM), no mask ROMs */
+		eprom_bank_size = 4;
 	} else if (!strcmp (name, "airtrix")) {
 		eprom_bank_size = 4;
 		maskrom_bank_size = 16;

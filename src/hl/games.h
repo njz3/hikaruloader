@@ -97,6 +97,18 @@ public:
 	char parent[32];
 	/* GameEntry's */
 	char audio[16];
+	/* The NAOMI's: its cartridge board ("rom", "m1", "m2", "m4"), that
+	 * board's key and id (MAME's parameters), a NAOMI 2 */
+	char board[8] = {};
+	uint32_t key = 0;
+	uint32_t id = 0;
+	bool naomi2 = false;
+	/* The boards of its cabinet, linked (multiboard); 0: one */
+	unsigned boards = 0;
+	/* Those with a monitor, numbered from 1, left to right (F355 Twin: its
+	 * slave alone); none listed: all */
+	unsigned screens[4] = { 0, 0, 0, 0 };
+	unsigned num_screens = 0;
 	std::vector<GameSection> sections;
 };
 

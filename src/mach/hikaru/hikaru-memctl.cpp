@@ -429,7 +429,7 @@ rombd_get (Hikaru *hikaru, unsigned size, uint32_t bus_addr, void *val)
 			HL_CPU_ERROR (hikaru->sh_current, "ROMBD out-of-bounds R%u %08X [%08X]",
 			              size * 8, bus_addr, real_offs);
 
-	} else if (bank >= config->maskrom_bank[0] &&
+	} else if (hikaru->maskrom && bank >= config->maskrom_bank[0] &&
 	           bank <= config->maskrom_bank[1]) {
 		/* ROMBD MASKROM */
 		/* XXX take in account MASKROM stretching here */
@@ -1091,7 +1091,7 @@ bus_page (Hikaru *hikaru, uint32_t bus_addr)
 			rom = hikaru->eprom;
 			bank_size = config->eprom_bank_size == 2 ? 4*MB : 8*MB;
 			num = bank - config->eprom_bank[0];
-		} else if (bank >= config->maskrom_bank[0] && bank <= config->maskrom_bank[1]) {
+		} else if (hikaru->maskrom && bank >= config->maskrom_bank[0] && bank <= config->maskrom_bank[1]) {
 			rom = hikaru->maskrom;
 			bank_size = 16*MB;
 			num = bank - config->maskrom_bank[0];
