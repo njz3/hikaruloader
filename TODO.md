@@ -10,8 +10,6 @@ this file's history (git).
 GENERAL
 -------
 
-- hikcheck's two-monitor test: its texts ("MONITOR #1", "31KHz Mode" or "24KHz Mode") do not
-  show; polygons of its display lists, seen only before its vignette appears.
 - NAOMI, seen in a pass over the 259 sets (3000 frames, attract only):
   - a jump to code never loaded: vathlete (past its I/O boards, an invalid instruction at
     8C04F88C at frame 973);

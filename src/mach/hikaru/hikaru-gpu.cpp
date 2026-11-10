@@ -1281,6 +1281,7 @@ Gpu::reset (hl::ResetType type)
 
 	memset ((void *) &gpu->regs, 0, sizeof (gpu->regs));
 	memset ((void *) &gpu->state, 0, sizeof (gpu->state));
+	memset ((void *) &gpu->vp_current, 0, sizeof (gpu->vp_current));
 
 	gpu->cp.is_running = 0;
 	gpu->skin.sp = 0;
@@ -1357,6 +1358,7 @@ Gpu::load_state (hl::State *state)
 	LOAD (gpu->pattern);
 	LOAD (gpu->texoffset[1]);
 	LOAD (gpu->state);
+	gpu->vp_current = gpu->state.viewports.scratch;
 	gpu->skin.sp = 0;
 	gpu->link.valid = gpu->link.has_pushed = false;
 	gpu->patterns = 0;

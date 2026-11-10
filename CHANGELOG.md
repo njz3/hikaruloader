@@ -19,6 +19,9 @@ Next version
   the master's.
 - The Game tab's screens (one board, side by side, a window each, their
   monitors) apply when the settings close, without a restart.
+- Fixed: the texts of hikcheck's two-monitor test ("MONITOR #1", "MONITOR #2",
+  its count and "PRESS TEST BUTTON TO EXIT") were missing: the viewport a
+  game goes back to after one it pushed is the one it had recalled.
 - Fixed: Air Trix's copyright and trademark on its title were unreadable (the
   GPU's copies within the framebuffer kept the pixels' order in their words).
 - NAOMI: the pictures drawn by a thread of their own with `THREADED_RENDERING`

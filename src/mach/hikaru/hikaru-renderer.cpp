@@ -40,7 +40,8 @@
 
 namespace hikaru {
 
-#define VP0	VP.scratch
+/* The viewport recalled, which the polygons use (see 003) */
+#define VP0	VPC
 #define MAT0	MAT.scratch
 #define TEX0	TEX.scratch
 #define LS0	LIT.scratchset
@@ -2347,7 +2348,10 @@ update_and_set_rendstate (Renderer *hr, hikaru_mesh_t *mesh)
 	memset ((void *) mesh, 0, sizeof (hikaru_mesh_t));
 
 	LOG ("RENDSTATE updating vp %u/%u", hr->num_vps, MAX_VIEWPORTS);
-	hr->vp_list[hr->num_vps++] = VP0;
+	hr->vp_list[hr->num_vps] = VP0;
+	/* The ambient light (011) the last one written: not the viewport's */
+	memcpy (hr->vp_list[hr->num_vps++].color.ambient, VP.scratch.color.ambient,
+	        sizeof (VP.scratch.color.ambient));
 	HL_ASSERT (hr->num_vps < MAX_VIEWPORTS);
 
 	LOG ("RENDSTATE updating mat %u/%u", hr->num_mats, MAX_MATERIALS);

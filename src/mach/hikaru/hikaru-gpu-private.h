@@ -482,6 +482,12 @@ public:
 	 * states either */
 	uint32_t patterns;
 
+	/* The viewport the polygons use: the one recalled (003), not the
+	 * registers 021-991 write into, which a commit (004) copies to the
+	 * table (see 003 in hikaru-gpu-cp.cpp). Out of the save states, which
+	 * keep their layout: a state loaded takes the registers' viewport */
+	hikaru_viewport_t vp_current;
+
 	struct {
 		uint32_t log_dma	: 1;
 		uint32_t log_idma	: 1;
@@ -503,6 +509,7 @@ public:
 #define LOD		gpu->state.lod
 #define POLY		gpu->state.poly
 #define VP		gpu->state.viewports
+#define VPC		gpu->vp_current
 #define MV		gpu->state.modelviews
 #define MAT		gpu->state.materials
 #define TEX		gpu->state.texheads

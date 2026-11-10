@@ -871,7 +871,7 @@ I (0x055)
 
 	LOD.cond = LOD.value < (thresh * 4.0f);
 	LOD.size = (LOD.distance > 0.0f) ?
-	           LOD_SCALE * 2.0f * thresh * fabsf (VP.scratch.clip.f) / LOD.distance : 0.0f;
+	           LOD_SCALE * 2.0f * thresh * fabsf (VPC.clip.f) / LOD.distance : 0.0f;
 }
 
 D (0x055)
@@ -1208,15 +1208,21 @@ D (0x004)
  *
  * Information kindly provided by DreamZzz.
  *
+ * The recall picks the viewport the polygons use (Gpu::vp_current) and
+ * leaves the registers 021-991 write into alone, as Odin (Réda Chérif-Touil,
+ * GPL v3+) has it: the viewport pushed is the one recalled before, not what
+ * the registers hold since. hikcheck's two-monitor test recalls its text
+ * viewport (640x480, f 1280), sets the registers to its 3D view, commits
+ * that, pushes it and pops back to the text's: its "MONITOR #1" and "PRESS
+ * TEST BUTTON TO EXIT" went through the 3D's projection, a third of their
+ * size, lost in the middle of the picture.
+ *
  * See PH:@0C015AF6, PH:@0C015B12, PH:@0C015B32.
  */
 
 I (0x003)
 {
-	hikaru_viewport_t *vp = &VP.scratch;
-	vec3s_t ambient;
-
-	memcpy (ambient, vp->color.ambient, sizeof (ambient));
+	hikaru_viewport_t *vp = &VPC;
 
 	switch ((inst[0] >> 12) & 0xF) {
 	case 0:
@@ -1238,9 +1244,6 @@ I (0x003)
 		HL_ASSERT (0);
 		break;
 	}
-
-	/* The ambient light (011) stays: it is not the viewport's */
-	memcpy (vp->color.ambient, ambient, sizeof (ambient));
 }
 
 D (0x003)
