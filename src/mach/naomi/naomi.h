@@ -950,6 +950,8 @@ public:
 	/* [Network] LINK as the game's own settings hold it, from its title;
 	 * see naomi-comm.cpp */
 	void	 link_settings ();
+	/* A fresh save: see naomi-comm.cpp */
+	void	 watch_link_settings ();
 	/* A byte of a record of the EEPROM, or of the backup memory's: false
 	 * when the game has not written that record yet */
 	bool	 eeprom_write (unsigned offs, uint8_t val);
@@ -1000,6 +1002,8 @@ public:
 	bool	 vblank_due = false;
 	/* [Network] LINK could not be set yet: the record is not there */
 	bool	 link_settings_due = false;
+	/* Seconds left to watch for the game's first record */
+	unsigned link_watch = 0;
 	hl::Device *aica;
 	hl::JvsBus *jvs;
 	hl::Device *io_board;
@@ -1069,6 +1073,9 @@ public:
 	void	 load_nvram ();
 	void	 save_nvram ();
 	void	 keep_nvram ();
+	/* At the frame's end: the machine restarts once */
+	bool	 reset_due = false;
+	friend class Board;
 	hl::Nvram nvram;
 	std::string nvram_path;
 	unsigned nvram_due;

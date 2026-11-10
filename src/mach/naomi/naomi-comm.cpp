@@ -712,6 +712,34 @@ Board::link_settings ()
 	}
 }
 
+/* A fresh save: the game's first start writes its record over the link's
+ * setting, having already read it. Once it has, the setting put back and,
+ * that one time, the machine restarted so that the game reads it */
+void
+Board::watch_link_settings ()
+{
+	const hl::Config *cfg = hl::Config::get ();
+	int node;
+
+	if (cfg->link <= 0 || is_atomiswave || index) {
+		link_watch = 0;
+		return;
+	}
+	node = cfg->link == 1 ? 0 : (int) cfg->link_node;
+
+	const std::vector<uint8_t> eeprom (mie->eeprom.mem, mie->eeprom.mem + sizeof (mie->eeprom.mem));
+	const uint8_t *flash = (const uint8_t *) sram->ptr (0);
+	const std::vector<uint8_t> saved (flash, flash + sram->size ());
+
+	if (!apply_game_settings (this, node, cfg->link == 3))
+		return;
+	if (memcmp (eeprom.data (), mie->eeprom.mem, eeprom.size ()) || memcmp (saved.data (), flash, saved.size ())) {
+		HL_PRINT ("naomi: LINK: the game's first record written, the setting put back: restarting once");
+		link_watch = 0;
+		((Naomi *) machine)->reset_due = true;
+	}
+}
+
 /*
  * Driving Simulator's Dashboard
  * =============================

@@ -758,6 +758,10 @@ Board::end_frame (std::vector<int16_t> *audio)
 		sanwa->reader->frame ();
 	if (link_settings_due && !(machine->frame % 60))
 		link_settings ();
+	if (link_watch && !(machine->frame % 60)) {
+		link_watch--;
+		watch_link_settings ();
+	}
 	if (audio) {
 		for (size_t i = 0; i + 1 < in.size (); i += 2) {
 			int32_t l = std::max (-32768, std::min (32767, in[i]));
@@ -1000,6 +1004,7 @@ Naomi::load_nvram ()
 		HL_PRINT ("naomi: the game's settings from '%s'", read.c_str ());
 		break;
 	case hl::Nvram::MISSING:
+		master ()->link_watch = 120;
 		master ()->default_backup ();
 		master ()->default_eeprom ();
 		break;
@@ -1275,6 +1280,10 @@ Naomi::run_frame ()
 	for (i = 1; i < boards.size (); i++)
 		boards[i]->end_frame (NULL);
 	keep_nvram ();
+	if (reset_due) {
+		reset_due = false;
+		reset (hl::RESET_HARD);
+	}
 	return 0;
 }
 
