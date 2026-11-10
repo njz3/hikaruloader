@@ -185,6 +185,7 @@ public:
 	unsigned screens () const override { return second.seen ? 2 : 1; }
 	void next_screen () override;
 	void apply_multi_screen () override;
+	void apply_widescreen () override;
 
 	/* What draw () reads of the GPU's: copied at the frame's end */
 	struct {

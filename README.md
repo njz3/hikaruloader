@@ -319,6 +319,8 @@ stretched display mode, `SCALE_FILTER` is read as `SCALING_FILTER`, and
   made for 4:3: objects may be missing at the sides, or appear late. The
   Gaelco games too: their HUD is the 2D, their sky and full-screen pictures
   stretched with it; ATV Track leaves pieces of ground out at the sides.
+  Switched during a game, it applies when the settings close; the game sees
+  the wider view from the next time it computes its own.
 - *Draw distance* (x1 to x4): the scenery's detailed models and its fog go
   that many times farther. What a game leaves out itself is not drawn.
 - *Bezel* (`BEZEL`): what is around the picture where the window is wider

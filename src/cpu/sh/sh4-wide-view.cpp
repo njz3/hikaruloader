@@ -224,6 +224,10 @@ wide_view_patch (hl::Cpu *cpu, uint32_t pc, uint32_t inst)
 {
 	Sh4 *ctx = (Sh4 *) cpu;
 
+	/* Switched in the settings during a game: the game's view widened
+	 * again when it computes it next */
+	if (!hl::Config::get ()->widescreen)
+		return inst;
 	if (is_lds_fpul (inst)) {
 		uint32_t &distance = ctx->regs.r[frn (inst)];
 
@@ -257,6 +261,5 @@ wide_view_match (hl::Cpu *cpu, uint32_t pc, uint32_t inst)
 void
 sh4_wide_view_install (hl::Cpu *cpu)
 {
-	if (hl::Config::get ()->widescreen)
-		cpu->install_patch (wide_view_patch, wide_view_match);
+	cpu->install_patch (wide_view_patch, wide_view_match);
 }

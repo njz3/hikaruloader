@@ -5,6 +5,14 @@ What each version brings, for those who play. How the versions are numbered
 and released: [DEVELOPMENT.md](DEVELOPMENT.md), "Versions and releases".
 
 
+Next version
+------------
+
+- Widescreen 3D (16:9) switched during a game: applied when the settings close,
+  the window's picture 854 or 640 wide at once; the game's own view widened
+  from the next time it computes it (Hikaru, NAOMI, Gaelco).
+
+
 0.7.2 (2026-11-11)
 ------------------
 

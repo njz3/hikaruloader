@@ -381,7 +381,7 @@ void drawDisplayTab()
     ImGui::PushTextWrapPos(0.0f);
     ImGui::TextDisabled("%s", tr("The 3D seen wider, at 16:9, its middle as the game draws it; the 2D (texts, logos) at 4:3 in the middle, "
                                  "or stretched for a game that needs it. The game may leave objects out at the sides, made for 4:3. "
-                                 "Takes effect at the game's next start."));
+                                 "Applied when the settings close."));
     ImGui::PopTextWrapPos();
 
     ImGui::SliderFloat(tr("Draw distance"), &cfg->draw_distance, 1.0f, 4.0f, "x%.1f");

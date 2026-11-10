@@ -489,8 +489,8 @@ msgid "2D in widescreen"
 msgstr "2D en grand écran"
 
 #: src/ui/ui_common.cpp
-msgid "The 3D seen wider, at 16:9, its middle as the game draws it; the 2D (texts, logos) at 4:3 in the middle, or stretched for a game that needs it. The game may leave objects out at the sides, made for 4:3. Takes effect at the game's next start."
-msgstr "La 3D vue plus large, en 16:9, son milieu tel que le jeu le dessine ; la 2D (textes, logos) en 4:3 au milieu, ou étirée pour un jeu qui le demande. Le jeu, fait pour le 4:3, peut omettre des objets sur les côtés. Prend effet au prochain lancement du jeu."
+msgid "The 3D seen wider, at 16:9, its middle as the game draws it; the 2D (texts, logos) at 4:3 in the middle, or stretched for a game that needs it. The game may leave objects out at the sides, made for 4:3. Applied when the settings close."
+msgstr "La 3D vue plus large, en 16:9, son milieu tel que le jeu le dessine ; la 2D (textes, logos) en 4:3 au milieu, ou étirée pour un jeu qui le demande. Le jeu, fait pour le 4:3, peut omettre des objets sur les côtés. Appliqué à la fermeture des réglages."
 
 #: src/ui/ui_common.cpp
 msgid "Draw distance"

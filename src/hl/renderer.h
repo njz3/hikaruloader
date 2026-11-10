@@ -79,6 +79,9 @@ public:
 	/* The settings closed: MULTI_SCREEN and the windows' monitors as
 	 * they now say */
 	virtual void	apply_multi_screen () {}
+	/* The settings closed: WIDESCREEN as it now says, the scene and the
+	 * window's picture 854 or 640 wide */
+	virtual void	apply_widescreen () {}
 
 	unsigned width;
 	unsigned height;

@@ -76,6 +76,8 @@ public:
 	Picture	 draw_picture ();
 	/* A picture over the bound framebuffer's viewport */
 	void	 blit (const Picture &p);
+	/* WIDESCREEN switched: the screen's scenes that wide from the next */
+	void	 set_width (unsigned w) { width = w; }
 
 private:
 	struct Texture {
@@ -176,6 +178,7 @@ public:
 	/* The windows' titles: which board each shows */
 	void	 update_titles ();
 	void	 apply_multi_screen () override;
+	void	 apply_widescreen () override;
 
 	/* THREADED_RENDERING: the pictures drawn by a thread of their own */
 	struct Thread;

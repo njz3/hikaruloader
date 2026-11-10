@@ -4529,6 +4529,21 @@ Renderer::apply_multi_screen ()
 	HL_PRINT ("hikaru: MULTI_SCREEN %d from now on", multi);
 }
 
+/* The settings closed: the scene 854 or 640 wide, its buffers built again
+ * at the next frame (build_scene_buffers) */
+void
+Renderer::apply_widescreen ()
+{
+	unsigned w = hl::Config::get ()->widescreen ? 854 : 640;
+
+	if (is_drawer || w == scene_w)
+		return;
+	scene_w = w;
+	width = w;
+	hl::Window::set_native_size ((int) (second.laid_out ? w * 2 : w), 480);
+	HL_PRINT ("hikaru: the scene %u wide from now on (WIDESCREEN)", w);
+}
+
 /* The list for the board's second video output, in its own buffers and its
  * own window, after the first monitor's picture */
 static void
@@ -5206,6 +5221,9 @@ Renderer::hand_over ()
 	std::swap (tex_list, d->tex_list);
 	std::swap (ls_list, d->ls_list);
 	std::swap (ls_tables, d->ls_tables);
+	/* WIDESCREEN switched in the settings */
+	d->scene_w = scene_w;
+	d->width = width;
 	for (vpi = 0; vpi < 8; vpi++)
 		for (i = 0; i < 8; i++) {
 			hikaru_mesh_t *drawn = mesh_list[vpi][i];

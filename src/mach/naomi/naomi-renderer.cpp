@@ -1769,6 +1769,28 @@ display_names ()
 	return s;
 }
 
+/* The settings closed: the scenes 854 or 640 wide (WIDESCREEN), the drawing
+ * thread idle meanwhile */
+void
+Renderer::apply_widescreen ()
+{
+	unsigned w = hl::Config::get ()->widescreen ? 854 : 640, across;
+
+	if (w == width)
+		return;
+	if (thread)
+		wait_thread (false);
+	width = w;
+	for (auto &d : drawers)
+		if (d)
+			d->set_width (w);
+	if (blitter)
+		blitter->set_width (w);
+	across = naomi->multi_screen == hl::MULTI_SIDE_BY_SIDE ? (unsigned) naomi->screen_order.size () : 1;
+	hl::Window::set_native_size ((int) (width * across), (int) height);
+	HL_PRINT ("naomi: the scenes %u wide from now on (WIDESCREEN)", w);
+}
+
 /* The settings closed: the windows as MULTI_SCREEN and SCREEN_<n>_DISPLAY now
  * say, without a restart */
 void

@@ -83,7 +83,13 @@ public:
 	 * several boards */
 	virtual void	 next_screen () { if (renderer) renderer->next_screen (); }
 	/* The settings closed, between two frames */
-	virtual void	 settings_closed () { if (renderer) renderer->apply_multi_screen (); }
+	virtual void	 settings_closed ()
+	{
+		if (renderer) {
+			renderer->apply_widescreen ();
+			renderer->apply_multi_screen ();
+		}
+	}
 	/* The screens of its cabinet */
 	virtual unsigned screens () const { return renderer ? renderer->screens () : 1; }
 	/* A flight stick whose up and down can be inverted */

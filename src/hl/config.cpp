@@ -808,8 +808,8 @@ Config::save () const
 	fprintf (fp, "SORT_TRANSLUCENT_PIXELS = %s\n", bool_name (cfg->sort_translucent_pixels));
 	fprintf (fp,
 	         "\n# The 3D at 16:9 (854x480): the scene seen wider, its middle as the\n"
-	         "# game draws it. The game may leave objects out at the sides. Taken at\n"
-	         "# the game's start: true or false. Default: %s\n", bool_name (def.widescreen));
+	         "# game draws it. The game may leave objects out at the sides. Also in\n"
+	         "# the settings during a game: true or false. Default: %s\n", bool_name (def.widescreen));
 	fprintf (fp, "WIDESCREEN = %s\n", bool_name (cfg->widescreen));
 	fprintf (fp,
 	         "\n# The 2D layers (texts, logos) in widescreen: CENTERED, at 4:3 in the\n"

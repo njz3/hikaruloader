@@ -1055,6 +1055,20 @@ Renderer::Renderer (Neon250 *gpu) :
 	setup ();
 }
 
+/* The settings closed: the scene 854 or 640 wide (WIDESCREEN), its buffer
+ * made again at the next frame */
+void
+Renderer::apply_widescreen ()
+{
+	unsigned w = hl::Config::get ()->widescreen ? 854 : 640;
+
+	if (w == width)
+		return;
+	width = w;
+	hl::Window::set_native_size ((int) width, (int) height);
+	HL_PRINT ("gaelco: the scene %u wide from now on (WIDESCREEN)", w);
+}
+
 Renderer::~Renderer ()
 {
 	/* The picker's, after a game in widescreen */

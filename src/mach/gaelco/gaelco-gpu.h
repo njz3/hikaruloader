@@ -111,6 +111,7 @@ class Renderer : public hl::Renderer {
 public:
 	explicit Renderer (Neon250 *gpu);
 	~Renderer () override;
+	void	 apply_widescreen () override;
 
 protected:
 	void on_end_frame () override;
