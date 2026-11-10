@@ -133,6 +133,7 @@ hikaruloader.exe [options]
 | `-l <file>` | Loads that save state at the start: the game goes on from its frame. `-l 0` to `-l 4` load one of the game's own states, those F4 saves, 0 the latest |
 | `-n <frames>` | Quits after that many frames |
 | `-L`, `--list` | Lists the games and quits: title, set, version, year and maker, the MAME sets each one needs, each ROM file with its CRC32, and how many of them the games folder holds |
+| `--find <text>` | Lists the games whose set, parent, title or maker hold each word of the text, whatever the case, one a line, and quits (`--find "f355 twin"`, `--find taxi`); with `-L`, those games in full |
 | `--write-dir=<folder>`, `--write-dir <folder>` | Writes everything in that folder: settings, log, saves (see "Write directory") |
 | `--display-mode=<mode>`, `--display-mode <mode>` | The display mode for this start, in place of the settings' `DISPLAY_MODE`, which stays as it is in `hikaruloader.ini`: `WINDOW`, `FULLSCREEN` or `BORDERLESS`, each also with `_STRETCH` (`--display-mode=FULLSCREEN`) |
 | `-v` | More messages in the log |

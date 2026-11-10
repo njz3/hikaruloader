@@ -38,6 +38,7 @@ static struct {
 	unsigned shell_port;
 	bool agent;
 	bool list;
+	char find[256];		/* --find's words */
 	char script[256];
 	char display_mode[32];
 } options;
@@ -63,6 +64,9 @@ static const char global_help[] = "Usage: %s [options]\n"
 "	-x <file>	Run a Lua script once the game is loaded, after init.lua\n"
 "	-L		List the games (also --list): title, set, version, MAME\n"
 "			sets, ROM files and CRC32s, those found under -R's path\n"
+"	--find <text>	The games whose set, parent, title or maker hold each\n"
+"			of text's words, whatever the case (also --find=<text>):\n"
+"			a line each; with -L, in full. --find \"f355 twin\"\n"
 "	--write-dir=<path>\n"
 "			Write all under path, as Supermodel and Flycast (also\n"
 "			--write-dir <path>, or WRITE_DIR in hikaruloader.ini): the\n"
@@ -109,6 +113,16 @@ parse_global_opts (int argc, char **argv)
 			i += words - 1;
 		else if (i > 0 && (!strcmp (argv[i], "--list") || !strcmp (argv[i], "-list")))
 			options.list = true;
+		else if (i > 0 && !strncmp (argv[i], "--find=", 7))
+			snprintf (options.find, sizeof (options.find), "%s", argv[i] + 7);
+		else if (i > 0 && (!strcmp (argv[i], "--find") || !strcmp (argv[i], "-find"))) {
+			if (i + 1 >= argc) {
+				HL_ERROR ("--find needs a text");
+				show_help (argc, argv);
+				return -1;
+			}
+			snprintf (options.find, sizeof (options.find), "%s", argv[++i]);
+		}
 		else if (i > 0 && !strncmp (argv[i], "--display-mode=", 15))
 			snprintf (options.display_mode, sizeof (options.display_mode), "%s", argv[i] + 15);
 		else if (i > 0 && !strcmp (argv[i], "--display-mode")) {
@@ -324,9 +338,16 @@ main (const int argc, char **argv)
 		goto fail;
 	}
 
-	/* -L: the list, and no window */
+	/* -L: the list, and no window; --find alone: the games found, a line
+	 * each; with -L, theirs in full */
+	if (options.find[0] && !options.list) {
+		emulator->game_list->print_found (stdout, options.find);
+		hl::destroy (emulator);
+		hl::Log::close ();
+		return 0;
+	}
 	if (options.list) {
-		emulator->game_list->print (stdout, rom_path);
+		emulator->game_list->print (stdout, rom_path, options.find[0] ? options.find : NULL);
 		hl::destroy (emulator);
 		hl::Log::close ();
 		return 0;

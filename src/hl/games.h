@@ -70,7 +70,11 @@ public:
 	/* The games, for -L: title, set, version, year, maker, the MAME
 	 * sets, the ROM files and their CRC32s, the main ROM's, how many of
 	 * them are under path */
-	void		 print (FILE *fp, const char *path);
+	void		 print (FILE *fp, const char *path, const char *find = NULL);
+	/* --find: those whose set, parent, title or maker hold each word of
+	 * find, whatever the case, one a line */
+	void		 print_found (FILE *fp, const char *find);
+	static bool	 matches (const GameEntry &entry, const char *find);
 
 	std::vector<GameEntry> entries;
 	json_t		*root;

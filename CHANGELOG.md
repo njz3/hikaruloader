@@ -15,6 +15,10 @@ Next version
   once, as in MAME: it goes there in 250 ms and back to the middle in 100 ms
   when let go, both held or turned the other way (`Axis_Key_Ramp`,
   `Axis_Key_Return` in `controls.ini`, 0 for at once).
+- `--find <text>`: the games whose set, title or maker hold each word of the
+  text, whatever the case (`--find "f355 twin"`); with `-L`, those in full.
+- Fixed: the Controls tab changed nothing for the NAOMI and Atomiswave games,
+  which read rows of their own: those rows are on each device's page now.
 
 
 0.7.2 (2026-11-11)

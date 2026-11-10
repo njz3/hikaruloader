@@ -537,13 +537,59 @@ print_files (FILE *fp, json_t *data, const char *sep)
 	fprintf (fp, "\n");
 }
 
+/* Each word of find, whatever the case, somewhere in the set's name, its
+ * parent's, its title or its maker: "f355 twin", "TAXI", "sega 2000" */
+bool
+GameList::matches (const GameEntry &entry, const char *find)
+{
+	std::string hay = std::string (entry.name) + " " + entry.parent + " " + entry.description + " " +
+	                  entry.manufacturer + " " + entry.year;
+	std::string word;
+	const char *p = find;
+
+	for (char &c : hay)
+		c = (char) tolower ((unsigned char) c);
+	for (;;) {
+		if (!*p || isspace ((unsigned char) *p)) {
+			if (!word.empty () && hay.find (word) == std::string::npos)
+				return false;
+			word.clear ();
+			if (!*p)
+				return true;
+		} else
+			word += (char) tolower ((unsigned char) *p);
+		p++;
+	}
+}
+
 void
-GameList::print (FILE *fp, const char *path)
+GameList::print_found (FILE *fp, const char *find)
+{
+	unsigned n = 0;
+
+	for (const GameEntry &entry : entries) {
+		char title[128], version[32];
+
+		if (!strcmp (entry.name, entry.bios) || !matches (entry, find))
+			continue;
+		if (!n++)
+			fprintf (fp, "%-10s  %-42s  %-9s  %-7s  %s\n", "set", "title", "version", "machine", "year, maker");
+		split_description (entry.description, title, sizeof (title), version, sizeof (version));
+		fprintf (fp, "%-10s  %-42s  %-9s  %-7s  %s  %s\n", entry.name, title, version,
+		         json_string_value (json_object_get (entry.root, "mach")) ?
+		         json_string_value (json_object_get (entry.root, "mach")) : "?",
+		         entry.year, entry.manufacturer);
+	}
+	fprintf (fp, "%s%u game%s for \"%s\"\n", n ? "\n" : "", n, n == 1 ? "" : "s", find);
+}
+
+void
+GameList::print (FILE *fp, const char *path, const char *find)
 {
 	unsigned i, count = 0;
 
 	for (const GameEntry &entry : entries)
-		count += strcmp (entry.name, entry.bios) != 0;
+		count += strcmp (entry.name, entry.bios) != 0 && (!find || matches (entry, find));
 	fprintf (fp, "%u games; their ROMs looked for in %s\n", count, path);
 	fprintf (fp, "\n%-10s  %-42s  %-9s  %-8s  %s\n", "set", "title", "version",
 	         "cabinet", "year, maker");
@@ -557,7 +603,7 @@ GameList::print (FILE *fp, const char *path)
 		size_t s;
 
 		/* The BIOS set is the games' requirement, not a game */
-		if (!strcmp (entry->name, entry->bios))
+		if (!strcmp (entry->name, entry->bios) || (find && !matches (*entry, find)))
 			continue;
 
 		split_description (entry->description, title, sizeof (title),
