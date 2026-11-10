@@ -35,6 +35,17 @@
  * interrupt by writing bit 0 of the status low, and the board the NAOMI's EXT
  * interrupt (PCI). The firmware's start-up leaves what it found at 0C01FC04.
  * Every second it looks at a word the BIOS's board test sets (0C01FC08).
+ *
+ * The Net DIMM boards (games.json "net_dimm") hold their firmware 3.17 and the
+ * memory of a network game: the top 16 MB of it are the buffers of the commands,
+ * written by the NAOMI through the cartridge's PIO data port; the commands of
+ * group 1 are the network's (DimmNet, naomi-netdimm.cpp).
+ *
+ * A GD-ROM keeps its game in the high-density area, from sector 45000; a CD
+ * (the World Club Champion Football and Mahjong MJ boards) in its only track,
+ * its file in the ROM directory. Which of the two is written on the disc
+ * itself: byte 6EE of the PIC (the network firmware's) does not say; Dragon
+ * Treasure's GD-ROMs have it set.
  */
 
 #include <algorithm>
@@ -360,12 +371,12 @@ static void find_file(const char *name, const u8 *dir_sector, u32 &file_start, u
 				break;
 			fname[i] = c;
 		}
-		//printf("file: [%s]\n", fname);
+		printf("file: [%s]\n", fname);fflush(stdout);
 		bool found = false;
 		if (name[0] == '*')
 		{
 			char *p = strchr(fname, name[1]);
-			if (p != nullptr && !strcmp(p, &name[1]))
+			if (p != nullptr && !strcasecmp(p, &name[1]))
 				found = true;
 		}
 		else
@@ -411,13 +422,23 @@ public:
 			uint32_t len, tag;
 			uint8_t flags;
 
-			if (chd_get_metadata (chd, GDROM_OLD_METADATA_TAG, n, text, sizeof (text), &len, &tag, &flags) != CHDERR_NONE &&
-			    chd_get_metadata (chd, GDROM_TRACK_METADATA_TAG, n, text, sizeof (text), &len, &tag, &flags) != CHDERR_NONE)
+			if (chd_get_metadata (chd, CDROM_TRACK_METADATA2_TAG, n, text, sizeof (text), &len, &tag, &flags) == CHDERR_NONE) {
+				/* A CD: the World Club Champion Football and Mahjong MJ boards */
+				sscanf (text, CDROM_TRACK_METADATA2_FORMAT, &id, type, subtype, &frames, &pregap, pgtype, pgsub, &postgap);
+				if (n == 0)
+					pregap = 0;
+			} else if (chd_get_metadata (chd, CDROM_TRACK_METADATA_TAG, n, text, sizeof (text), &len, &tag, &flags) == CHDERR_NONE) {
+				sscanf (text, CDROM_TRACK_METADATA_FORMAT, &id, type, subtype, &frames);
+			} else if (chd_get_metadata (chd, GDROM_OLD_METADATA_TAG, n, text, sizeof (text), &len, &tag, &flags) != CHDERR_NONE &&
+				   chd_get_metadata (chd, GDROM_TRACK_METADATA_TAG, n, text, sizeof (text), &len, &tag, &flags) != CHDERR_NONE) {
 				break;
-			sscanf (text, GDROM_TRACK_METADATA_FORMAT, &id, type, subtype, &frames, &pad, &pregap, pgtype, pgsub, &postgap);
+			} else {
+				sscanf (text, GDROM_TRACK_METADATA_FORMAT, &id, type, subtype, &frames, &pad, &pregap, pgtype, pgsub, &postgap);
+			}
 
 			Track t;
-			uint32_t in_file = (pregap > 0 && pgtype[0] == 'V') ? (uint32_t) pregap : 0;
+			printf("track %d: [%s]\n", n, text); fflush(stdout);
+			uint32_t in_file =(pregap > 0 && pgtype[0] == 'V') ? (uint32_t) pregap : 0;
 
 			t.start = total + pregap;
 			total = t.start + frames - in_file;
@@ -501,9 +522,9 @@ GdCart::load (hl::Machine *machine, hl::Game *game, const uint8_t *pic, uint32_t
 {
 	char name[128];
 	uint64_t key = 0;
-	uint8_t netpic = 0;
 	uint8_t buffer[2048], dir[2048];
 	uint32_t file_start = 0, file_size = 0, i, dir_sector = 0;
+	bool on_cd = false;
 	GdDisc disc;
 	std::string path = find_chd (game, game->gdrom);
 
@@ -526,17 +547,20 @@ GdCart::load (hl::Machine *machine, hl::Game *game, const uint8_t *pic, uint32_t
 		key |= (uint64_t) pic[0x780 + i * 2] << (56 - i * 8);
 	}
 	key |= pic[0x7A0];
-	netpic = pic[0x6EE];
 
 	auto sector = [&] (uint32_t s, uint8_t *out) { return disc.read (s + 150, out); };
 
-	/* The primary volume descriptor, the path table */
-	if (!sector ((netpic ? 0 : 45000) + 16, buffer))
+	/* The primary volume descriptor, the path table: at the high-density
+	 * area's start when the disc has one */
+	printf("name %s\n",name);fflush(stdout);
+	on_cd = !sector (45000 + 16, buffer) || memcmp (buffer + 1, "CD001", 5) != 0;
+	if (on_cd && !sector (16, buffer))
 		return NULL;
 	uint32_t table = buffer[0x8C] | (buffer[0x8D] << 8) | (buffer[0x8E] << 16) | ((uint32_t) buffer[0x8F] << 24);
 	if (!sector (table, buffer))
 		return NULL;
-	if (!netpic) {
+	printf("oncd %d table %u\n", on_cd, table); for (int z = 0; z < 96; z++) printf("%02x ", buffer[z]); printf("\n"); fflush(stdout);
+	if (!on_cd) {
 		uint32_t d = buffer[2] | (buffer[3] << 8) | (buffer[4] << 16) | ((uint32_t) buffer[5] << 24);
 
 		dir_sector = d;
@@ -557,6 +581,7 @@ GdCart::load (hl::Machine *machine, hl::Game *game, const uint8_t *pic, uint32_t
 				uint32_t d = buffer[i + 2] | (buffer[i + 3] << 8) | (buffer[i + 4] << 16) | ((uint32_t) buffer[i + 5] << 24);
 
 				memcpy (name, "ROM.BIN", 8);
+				dir_sector = d;
 				if (!sector (d, dir))
 					return NULL;
 				found = true;
@@ -566,6 +591,7 @@ GdCart::load (hl::Machine *machine, hl::Game *game, const uint8_t *pic, uint32_t
 		if (!found) {
 			uint32_t d = buffer[2] | (buffer[3] << 8) | (buffer[4] << 16) | ((uint32_t) buffer[5] << 24);
 
+			dir_sector = d;
 			if (!sector (d, dir))
 				return NULL;
 		}
@@ -574,14 +600,19 @@ GdCart::load (hl::Machine *machine, hl::Game *game, const uint8_t *pic, uint32_t
 	{
 		uint32_t where = dir_sector, sectors = (dir[10] | (dir[11] << 8) | (dir[12] << 16) | ((uint32_t) dir[13] << 24)) / 2048;
 
+		sectors = MAX2 (1u, MIN2 (sectors, 256u));
 		file_start = file_size = 0;
-		for (i = 0; i < MAX2 (1u, MIN2 (sectors, 256u)) && !file_start; i++) {
-			if (i && !sector (where + i, dir))
-				return NULL;
-			find_file (name, dir, file_start, file_size);
+		/* The name the PIC gives; else, its name not on the disc, any
+		 * .BIN (the update discs) */
+		for (const char *wanted : { (const char *) name, "*.BIN" }) {
+			for (i = 0; i < sectors && !file_start; i++) {
+				if (!sector (where + i, dir))
+					return NULL;
+				find_file (wanted, dir, file_start, file_size);
+			}
+			if (file_start)
+				break;
 		}
-		if (!file_start)
-			find_file ("*.BIN", dir, file_start, file_size);
 	}
 	if (!file_start) {
 		HL_ERROR ("naomi: %s: the game's file '%s' is not on the disc", game->name, name);
@@ -589,8 +620,15 @@ GdCart::load (hl::Machine *machine, hl::Game *game, const uint8_t *pic, uint32_t
 	}
 	uint32_t rounded = (file_size + 2047) & ~2047u, size = 4096;
 
-	while (size < rounded)
-		size <<= 1;
+	/* A Net DIMM has 128, 256 or 512 MB, its buffers in the top 16 */
+	if (game->net_dimm) {
+		size = 128 * MB;
+		while (size < rounded + 16 * MB)
+			size <<= 1;
+	} else {
+		while (size < rounded)
+			size <<= 1;
+	}
 	hl::Buffer *dimm = hl::Buffer::create (size, 0, hl::Buffer::LE32);
 	if (!dimm)
 		return NULL;
@@ -618,9 +656,14 @@ GdCart::load (hl::Machine *machine, hl::Game *game, const uint8_t *pic, uint32_t
 GdCart::GdCart (Board *board_, hl::Buffer *dimm) :
 	Cart (dimm, Cart::TYPE_ROM, 0, 0, NULL),
 	board (board_),
-	bytes (dimm->size ())
+	bytes (dimm->size ()),
+	memory ((uint8_t *) dimm->ptr (0)),
+	lines_ns (0),
+	mailbox_wait (0)
 {
 	memset (&d, 0, sizeof (d));
+	if (board->game->net_dimm)
+		net.reset (new DimmNet (memory, bytes, bytes - 16 * MB));
 }
 
 void
@@ -661,7 +704,14 @@ GdCart::command ()
 	const int group = (d.command >> 13) & 3, cmd = (d.command >> 9) & 15;
 
 	if (group != 0) {
-		/* The network's: no board on a network here */
+		if (net && group == 1) {
+			DimmNet::Reply r;
+
+			if (net->command ((uint16_t) (0x2000 | (cmd << 9)), (uint8_t) d.command, r))
+				reply (r.command, r.failed, r.offset, r.parameter);
+			return;
+		}
+		/* No board on a network here */
 		reply (d.command & 0x7E00, true, 0, 0xFFFFFFFF);
 		return;
 	}
@@ -670,8 +720,12 @@ GdCart::command ()
 		 * GD-ROM connected, firmware 1.02, then the base address */
 		uint32_t config = (bytes >= 512 * MB ? 3u : bytes >= 256 * MB ? 2u : 1u) << 16;
 
-		poke (0x0C01FC04, config | 0x60000000 | (bytes >> 20));
-		poke (0x0C01FC0C, 0x1020000 | 0x264);
+		if (net)
+			net_startup ();
+		else {
+			poke (0x0C01FC04, config | 0x60000000 | (bytes >> 20));
+			poke (0x0C01FC0C, 0x1020000 | 0x264);
+		}
 		/* The DIMM board's serial number: the X76F100's */
 		for (unsigned i = 0; i < 4; i++) {
 			uint32_t w;
@@ -688,11 +742,111 @@ GdCart::command ()
 	}
 }
 
+/* Firmware 3.17's: network enabled and its settings, the buffers' offset */
+void
+GdCart::net_startup ()
+{
+	uint32_t size = bytes >= 512 * MB ? 3u : bytes >= 256 * MB ? 2u : 1u;
+	uint32_t ip = net->address ();
+	uint32_t a = (ip >> 24) | ((ip >> 8) & 0xFF00) | ((ip << 8) & 0xFF0000) | (ip << 24);
+
+	poke (0x0C01FC04, (size << 16) | 0x78000000 | ((bytes - 16 * MB) >> 20));
+	poke (0x0C01FC0C, 0x3170000 | 0x264);
+	poke (0x0C01FC10, 0);
+	poke (0x0C01FC14, 1);
+	poke (0x0C01FC20, 0x78000);
+	poke (0x0C01FC24, 0x3E000A);
+	poke (0x0C01FC28, 0x18077F);
+	poke (0x0C01FC2C, 0x10014);
+	poke (0x0C01FC18, 0x10002);
+	/* Network order; the mask, the gateway and the DNS of a /24 */
+	poke (0x0C01FC60, a);
+	poke (0x0C01FC64, 0x00FFFFFF);
+	poke (0x0C01FC68, (a & 0x00FFFFFF) | 0x01000000);
+	poke (0x0C01FC6C, (a & 0x00FFFFFF) | 0x01000000);
+	poke (0x0C01FC70, 0);
+	for (uint32_t at = 0x0C01FC74; at <= 0x0C01FC94; at += 4)
+		poke (at, 0);
+}
+
+void
+GdCart::text (uint32_t addr, const char *line)
+{
+	char t[16] = { 0 };
+
+	strncpy (t, line, sizeof (t));
+	for (unsigned k = 0; k < 16; k += 4) {
+		uint32_t w;
+
+		memcpy (&w, t + k, 4);
+		poke (addr + k, w);
+	}
+}
+
+/* What a Net DIMM's firmware answers to the test request */
+void
+GdCart::net_test (uint32_t request)
+{
+	if (request & 1) {
+		poke (0x0C01FC08, request & ~1u);
+		text (0x0C01FD00, "CHECKING DIMM BD");
+		text (0x0C01FD10, "DIMM0 - GOOD");
+		text (0x0C01FD20, "DIMM1 - GOOD");
+		text (0x0C01FD30, "--- COMPLETED---");
+		poke (0x0C01FC0C, 0x0317A264);
+	} else if (request & 0x40) {
+		uint32_t ip = net->address ();
+
+		poke (0x0C01FC08, request & ~0x40u);
+		poke (0x0C01FC60, (ip >> 24) | ((ip >> 8) & 0xFF00) | ((ip << 8) & 0xFF0000) | (ip << 24));
+		poke (0x0C01FC0C, 0x03170264);
+	} else if (request & 0x400) {
+		poke (0x0C01FC08, request & ~0x400u);
+		poke (0x0C01FC70, 0);
+		poke (0x0C01FC0C, 0x03170264);
+	} else if (request & 0x10000) {
+		poke (0x0C01FC08, request & ~0x10000u);
+		poke (0x0C01FC0C, 0x03170264);
+	} else if (request & 0x20000) {
+		poke (0x0C01FC08, request & ~0x20000u);
+		text (0x0C01FD00, "CHECKING NETWORK");
+		text (0x0C01FD10, "NO CABLE TEST");
+		text (0x0C01FD20, "--- COMPLETED---");
+		poke (0x0C01FC0C, 0x03170264);
+	} else if (request) {
+		poke (0x0C01FC08, 0);
+		poke (0x0C01FC0C, 0x03170100);
+	}
+}
+
+void
+GdCart::poll (unsigned lines)
+{
+	if (mailbox_wait)
+		mailbox_wait--;
+	if (!net)
+		return;
+
+	/* 60 frames of 544 lines to a second: close enough for time-outs */
+	lines_ns += (uint64_t) lines * 30637;
+
+	uint64_t us = lines_ns / 1000;
+
+	lines_ns %= 1000;
+	if (d.irq || mailbox_wait)
+		return;
+
+	DimmNet::Reply r;
+
+	if (net->poll (us, r))
+		reply (r.command, r.failed, r.offset, r.parameter);
+}
+
 /* Each frame: once a second the board looks at the test request */
 void
 GdCart::frame ()
 {
-	if (!d.started || ++d.frames < 60 || d.irq)
+	if (!d.started || ++d.frames < 60 || d.irq || mailbox_wait)
 		return;
 	d.frames = 0;
 
@@ -702,6 +856,10 @@ GdCart::frame ()
 	d.offset = 0xFC08;
 	d.parameterl = d.parameterh = 0;
 	interrupt (true);
+	if (net) {
+		net_test (request);
+		return;
+	}
 	if (request & 1) {
 		static const char *const lines[4] = { "CHECKING DIMM BD", "DIMM0 - GOOD", "DIMM1 - GOOD", "--- COMPLETED---" };
 
@@ -749,21 +907,38 @@ GdCart::put (unsigned reg, uint32_t val)
 	switch (reg) {
 	case 0x3C:
 		d.command = (uint16_t) val;
+		mailbox_wait = 8;
 		break;
 	case 0x40:
 		d.offset = (uint16_t) val;
+		mailbox_wait = 8;
 		break;
 	case 0x44:
 		d.parameterl = (uint16_t) val;
+		mailbox_wait = 8;
 		break;
 	case 0x48:
 		d.parameterh = (uint16_t) val;
+		mailbox_wait = 8;
 		break;
 	case 0x4C:
 		if (val & 0x100)
 			interrupt (false);
-		if (!(val & 1))
+		if (!(val & 1)) {
+			mailbox_wait = 0;
 			command ();
+		}
+		break;
+	case 0x08:
+		/* The PIO port writes the DIMM's memory: a Net DIMM's buffers */
+		if (net) {
+			uint32_t at = pio_offset () & (bytes - 1);
+
+			memory[at] = (uint8_t) val;
+			if (at + 1 < bytes)
+				memory[at + 1] = (uint8_t) (val >> 8);
+		}
+		Cart::put (reg, val);
 		break;
 	default:
 		Cart::put (reg, val);
@@ -776,6 +951,9 @@ GdCart::reset ()
 {
 	Cart::reset ();
 	memset (&d, 0, sizeof (d));
+	if (net)
+		net->close_all ();
+	mailbox_wait = 0;
 }
 
 int
@@ -791,6 +969,10 @@ GdCart::load_state (hl::State *state)
 {
 	int ret = Cart::load_state (state);
 
+	/* What the sockets knew cannot be saved */
+	if (net)
+		net->close_all ();
+	mailbox_wait = 0;
 	return ret | state->get (&d, sizeof (d));
 }
 

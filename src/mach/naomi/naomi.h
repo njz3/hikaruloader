@@ -24,6 +24,7 @@
 #define __HL_NAOMI_H__
 
 #include "hl/driveboard.h"
+#include "mach/naomi/naomi-netdimm.h"
 #include "hl/cardreader.h"
 #include <deque>
 #include <atomic>
@@ -171,6 +172,9 @@ public:
 	/* For the 315-5881 */
 	uint16_t crypt_read (uint32_t addr);
 
+protected:
+	uint32_t pio_offset () const { return s.rom_offset; }
+
 private:
 	void	 setup (uint32_t address, bool is_dma);
 	/* What the board reads next, into out; its address moved on */
@@ -262,6 +266,8 @@ public:
 	int	 load_state (hl::State *state) override;
 	/* As each frame ends */
 	void	 frame ();
+	/* Every few lines: the network's commands that have ended */
+	void	 poll (unsigned lines);
 
 private:
 	void	 poke (uint32_t addr, uint32_t val);
@@ -269,9 +275,17 @@ private:
 	void	 interrupt (bool on);
 	void	 reply (uint16_t command, bool failed, uint16_t offset, uint32_t parameter);
 	void	 command ();
+	void	 net_startup ();
+	void	 net_test (uint32_t request);
+	void	 text (uint32_t addr, const char *line);
 
 	Board	*board;
 	uint32_t bytes;
+	uint8_t	*memory;
+	/* A Net DIMM's: the sockets, the emulated time */
+	std::unique_ptr<DimmNet> net;
+	uint64_t lines_ns;
+	unsigned mailbox_wait;	/* the NAOMI is filling the mailbox: polls left */
 	struct {
 		uint16_t command, offset, parameterl, parameterh;
 		uint32_t frames;

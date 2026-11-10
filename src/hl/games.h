@@ -112,6 +112,8 @@ public:
 	bool naomi2 = false;
 	/* A NAOMI game's GD-ROM: its CHD's name */
 	char gdrom[32] = "";
+	/* Its DIMM board is a Net DIMM (games.json "net_dimm") */
+	bool net_dimm = false;
 	/* The boards of its cabinet, linked (multiboard); 0: one */
 	unsigned boards = 0;
 	/* Complete systems on a ring of communication boards in one cabinet

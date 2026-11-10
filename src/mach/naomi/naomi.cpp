@@ -719,6 +719,9 @@ Board::run_lines (unsigned line, unsigned count)
 		if (mie)
 			mie->exec (mie_t_states);
 		holly->line (n);
+		/* The sockets of a Net DIMM, every few lines */
+		if (gd && !(n & 15))
+			gd->poll (16);
 		if (holly->reset_requested)
 			software_reset ();
 		if (elan)

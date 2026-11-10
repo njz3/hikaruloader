@@ -14,9 +14,12 @@ GENERAL
   of Virtua Striker 3, Club Kart, The King of Route 66 and Airline Pilots:
   to see in play; per-pixel translucency only. The Elan's vertex lists take
   no time and its interrupt output is not wired: neither is documented.
-- GD-ROM: the Net DIMM's network commands answer "failed": no link between
-  cabinets on the DIMM board.
-
+- Net DIMM games: their network commands answer, Virtua Fighter 4 reaches
+  its network check. Not yet playing: Dragon Treasure stops on `G2 I/O
+  TROUBLE` (13), Mahjong MJ on its I/O board, World Club Champion Football
+  waits for its server (192.168.102.1, the terminal's); the DIMM firmware
+  update discs read no firmware version. The DIMM's TCP service on port
+  10703 (set_information, peek, host control) is not there.
 - An event-driven scheduler. The machine runs a line at a time (544 a
   frame): each SH-4 a line's cycles, then the MEMCTL's DMA, the GPU, the
   MIE and the AICAs.

@@ -519,6 +519,29 @@ its start (a game not known has it set in its test menu); `LINK_NODE`, 1 to
 game's backup as it is: F355 Twin then starts alone, unlinked. Driving
 Simulator's three systems are all in one Hikaruloader, no `[Network]` needed.
 
+The GD-ROM games of a Net DIMM board (Virtua Fighter 4, Dragon Treasure, World
+Club Champion Football, Mahjong MJ) have a real network of their own: UDP and
+TCP sockets, on the addresses the game believes it has. The settings of
+`[Network]` for them:
+
+- `DIMM_IP`: the board's address, as the game's menus show it. Default
+  `192.168.1.30`.
+- `DIMM_MAP`: where the other boards are, entries separated by `;`, each
+  `address=host`, `address:port=host:port` or `address=host+offset` (the
+  game's port moved by the offset). `address` is one the game uses (`*` any
+  other, or a name it asks the DNS for); `host` the real one. Addresses left
+  out are not reachable, no name is looked up: by default nothing leaves the
+  PC.
+- `DIMM_PORT_OFFSET`: added to the ports this board binds, for two instances
+  on one PC. Default `0`.
+- `DIMM_LISTEN`: the board's bound ports on the PC's network too; else on
+  `127.0.0.1` alone. `false` by default: two PCs want it `true`.
+
+Two instances on one PC, each with its own write directory, the second with
+`DIMM_IP = 192.168.1.31`, `DIMM_PORT_OFFSET = 100` and
+`DIMM_MAP = 192.168.1.30=127.0.0.1+0`, the first with
+`DIMM_MAP = 192.168.1.31=127.0.0.1+100`.
+
 ### Three or four cabinets
 
 Set `COMM_BOARD = PROGRAM` on every instance, and chain their ports in a

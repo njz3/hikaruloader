@@ -104,6 +104,7 @@ set (HIKARU_SRC
 	src/mach/naomi/naomi-hopper.cpp
 	src/mach/naomi/naomi-aw.cpp
 	src/mach/naomi/naomi-gd.cpp
+	src/mach/naomi/naomi-netdimm.cpp
 	src/hl/driveboard-f355.cpp
 	src/hl/driveboard-z80.cpp
 	src/hl/tmp90ph44.cpp

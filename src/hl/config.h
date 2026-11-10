@@ -291,6 +291,14 @@ public:
 	unsigned	port_in;	/* the previous cabinet comes in there */
 	char		address_out[64];/* the next cabinet, and its port */
 	unsigned	port_out;
+	/* The Net DIMM boards' network (naomi::DimmNet), at the game's start:
+	 * the board's address, where the addresses the game uses are, what
+	 * its bound ports are moved by, and whether other machines can reach
+	 * it (else 127.0.0.1 alone) */
+	char		dimm_ip[32];
+	char		dimm_map[512];
+	int		dimm_port_offset;
+	bool		dimm_listen;
 
 	/* [Outputs]: the lamps and the drive board's commands, for the tools
 	 * that drive real ones (hl::Outputs); at once */

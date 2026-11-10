@@ -183,6 +183,12 @@ Config::set_defaults ()
 	cfg->port_in = 1970;
 	strcpy (cfg->address_out, "127.0.0.1");
 	cfg->port_out = 1970;
+	/* A Net DIMM alone: nothing reachable but itself, nothing that listens
+	 * outside this PC */
+	strcpy (cfg->dimm_ip, "192.168.1.30");
+	cfg->dimm_map[0] = 0;
+	cfg->dimm_port_offset = 0;
+	cfg->dimm_listen = false;
 	/* Off, as in MAME, Supermodel and Flycast: a server on the PC's
 	 * addresses; their ports */
 	cfg->outputs_network = false;
@@ -484,6 +490,14 @@ Config::set_value (const char *section, const char *key, const char *value)
 			snprintf (cfg->address_out, sizeof (cfg->address_out), "%s", value);
 		else if (!strcasecmp (key, "PORT_OUT"))
 			cfg->port_out = (unsigned) MAX2 (1, MIN2 (65535, atoi (value)));
+		else if (!strcasecmp (key, "DIMM_IP"))
+			snprintf (cfg->dimm_ip, sizeof (cfg->dimm_ip), "%s", value);
+		else if (!strcasecmp (key, "DIMM_MAP"))
+			snprintf (cfg->dimm_map, sizeof (cfg->dimm_map), "%s", value);
+		else if (!strcasecmp (key, "DIMM_PORT_OFFSET"))
+			cfg->dimm_port_offset = MAX2 (0, MIN2 (60000, atoi (value)));
+		else if (!strcasecmp (key, "DIMM_LISTEN"))
+			cfg->dimm_listen = parse_bool (value);
 	} else if (!strcasecmp (section, "Outputs")) {
 		if (!strcasecmp (key, "NETWORK"))
 			cfg->outputs_network = parse_bool (value);
@@ -990,6 +1004,32 @@ Config::save () const
 	fprintf (fp, "PORT_IN = %u\n", cfg->port_in);
 	fprintf (fp, "ADDRESS_OUT = %s\n", cfg->address_out);
 	fprintf (fp, "PORT_OUT = %u\n", cfg->port_out);
+	fprintf (fp,
+	         "\n# The Net DIMM boards' network (Virtua Fighter 4, Dragon Treasure, World Club\n"
+	         "# Champion Football, Mahjong MJ...). DIMM_IP: this board's address on the\n"
+	         "# network the game believes it is on; the game's own test menus show it.\n"
+	         "# Default: %s\n", def.dimm_ip);
+	fprintf (fp, "DIMM_IP = %s\n", cfg->dimm_ip);
+	fprintf (fp,
+	         "\n# Where the other boards are. Entries separated by ';', each\n"
+	         "#   address[:port]=host[:port] or address[:port]=host+offset\n"
+	         "# 'address' is one the game uses (* any other, or a name it asks the DNS\n"
+	         "# for), 'host' the real one (a dotted address). '+offset' moves the game's\n"
+	         "# port. Addresses left out are not reachable, names are not looked up:\n"
+	         "# by default nothing leaves this PC.\n"
+	         "# Two instances on one PC, DIMM_PORT_OFFSET = 100 on the second:\n"
+	         "#   the first:  DIMM_MAP = 192.168.1.31=127.0.0.1+100\n"
+	         "#   the second: DIMM_IP = 192.168.1.31 and DIMM_MAP = 192.168.1.30=127.0.0.1+0\n"
+	         "# Default: empty\n");
+	fprintf (fp, "DIMM_MAP = %s\n", cfg->dimm_map);
+	fprintf (fp,
+	         "\n# Added to the ports this board binds: two instances on one PC. Default: %d\n", def.dimm_port_offset);
+	fprintf (fp, "DIMM_PORT_OFFSET = %d\n", cfg->dimm_port_offset);
+	fprintf (fp,
+	         "\n# Whether the board's bound ports listen on the PC's network. Needed when the\n"
+	         "# other board is on another PC; else they are on 127.0.0.1 alone. Default: %s\n",
+	         bool_name (def.dimm_listen));
+	fprintf (fp, "DIMM_LISTEN = %s\n", bool_name (cfg->dimm_listen));
 
 	fprintf (fp, "\n[Outputs]\n");
 	fprintf (fp,
