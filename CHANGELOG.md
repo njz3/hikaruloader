@@ -5,8 +5,8 @@ What each version brings, for those who play. How the versions are numbered
 and released: [DEVELOPMENT.md](DEVELOPMENT.md), "Versions and releases".
 
 
-Next version
-------------
+0.7.2 (2026-11-11)
+------------------
 
 - Planet Harriers with a controller: the stick goes where the controller's
   stick is again (moved, the hero kept jumping from one edge to the other);
