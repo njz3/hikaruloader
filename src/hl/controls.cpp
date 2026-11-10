@@ -40,6 +40,8 @@ static const char *default_file =
 	"Brake_DeadZone = 500\n"
 	"Aim_DeadZone = 4000\n"
 	"Aim_Speed = 100\n"
+	"Axis_Key_Ramp = 250\n"
+	"Axis_Key_Return = 100\n"
 	"\n"
 	"[Common]\n"
 	"Test = KEY_F5\n"
@@ -193,6 +195,8 @@ static const struct {
 	{ "Config", "Brake_DeadZone", "The brake's dead zone" },
 	{ "Config", "Aim_DeadZone", "The dead zone of a stick moving a sight" },
 	{ "Config", "Aim_Speed", "How fast a stick moves a sight, in percent" },
+	{ "Config", "Axis_Key_Ramp", "A key or a button on an axis (the wheel, a pedal): milliseconds to go all the way, 0 at once" },
+	{ "Config", "Axis_Key_Return", "The same, back to the middle when let go or turned the other way" },
 	{ "Common", NULL, "The cabinet's switches, in every game" },
 	{ "Common", "Test", "The Test button" },
 	{ "Common", "P1_Service", "The Service button" },
@@ -1432,12 +1436,13 @@ Controls::axis (const char *section, const char *key)
 
 	const Binding *b = enabled ? binding (section, key) : NULL;
 	double v = 0.0, dz = deadzone (key);
+	bool plus = false, minus = false;
 	/* The steering wheel: a wheel's axis goes that much further ([Input]
 	 * WHEEL_ROTATION), a game controller's stick its own way */
 	double scale = (!strcasecmp (section, "Driving") && !strcasecmp (key, "P1_Steer")) ?
 	               Config::get ()->wheel_scale () : 1.0;
 
-	/* The input turned furthest wins */
+	/* The input turned furthest wins; the keys and buttons are ramped */
 	if (b)
 		for (const auto &alt : b->alternatives) {
 			const Source &s = alt[0];
@@ -1448,16 +1453,50 @@ Controls::axis (const char *section, const char *key)
 				a = apply_deadzone (source_axis (s), dz);
 				if (s.kind == SRC_JOY_AXIS)
 					a = steer (a, scale);
-			} else
-				a = source_pressed (s, is_hotkey (alt)) ? ((s.part == PART_NEGATIVE) ? -1.0 : 1.0) : 0.0;
+			} else {
+				if (source_pressed (s, is_hotkey (alt)))
+					(s.part == PART_NEGATIVE ? minus : plus) = true;
+				continue;
+			}
 			if (fabs (a) > fabs (v))
 				v = a;
 		}
 	if (pressed (section, (std::string (key) + "_Left").c_str ()))
-		v = -1.0;
+		minus = true;
 	if (pressed (section, (std::string (key) + "_Right").c_str ()))
-		v = 1.0;
+		plus = true;
+
+	{
+		double k = ramp_keys (section, key, (plus ? 1.0 : 0.0) - (minus ? 1.0 : 0.0));
+
+		if (fabs (k) > fabs (v))
+			v = k;
+	}
 	return v;
+}
+
+/* As MAME's keys on an analog control: up to the end in Axis_Key_Ramp ms,
+ * back to the middle in Axis_Key_Return when let go, both held, or turned
+ * the other way (then on from the middle at the first speed) */
+double
+Controls::ramp_keys (const char *section, const char *key, double target)
+{
+	KeyAxis &k = key_axes[normalize (section) + "/" + normalize (key)];
+	Uint64 now = SDL_GetPerformanceCounter ();
+	double dt = k.last ? std::min ((double) (now - k.last) / (double) SDL_GetPerformanceFrequency (), 0.05) : 0.0;
+	std::string ramp_text = value ("Config", "Axis_Key_Ramp"), return_text = value ("Config", "Axis_Key_Return");
+	double ramp = (ramp_text.empty () ? 250 : atoi (ramp_text.c_str ())) / 1000.0;
+	double back = (return_text.empty () ? 100 : atoi (return_text.c_str ())) / 1000.0;
+	auto toward = [] (double from, double to, double step) {
+		return from < to ? std::min (from + step, to) : std::max (from - step, to);
+	};
+
+	k.last = now;
+	if (target == 0.0 || (k.value != 0.0 && (k.value > 0.0) != (target > 0.0)))
+		k.value = back > 0.0 ? toward (k.value, 0.0, dt / back) : 0.0;
+	else
+		k.value = ramp > 0.0 ? toward (k.value, target, dt / ramp) : target;
+	return k.value;
 }
 
 void
@@ -1492,16 +1531,25 @@ Controls::pedal (const char *section, const char *key)
 		return std::clamp (*h, 0.0, 1.0);
 
 	const Binding *b = enabled ? binding (section, key) : NULL;
-	double v = pressed (section, (std::string (key) + "_Digital").c_str ()) ? 1.0 : 0.0;
-	double dz = deadzone (key);
+	bool down = pressed (section, (std::string (key) + "_Digital").c_str ());
+	double v = 0.0, dz = deadzone (key);
 
 	if (b)
 		for (const auto &alt : b->alternatives) {
-			double p = apply_deadzone (source_pedal (alt[0]), dz);
+			const Source &s = alt[0];
+			double p;
+
+			/* A key, a button, half an axis as one: ramped */
+			if ((s.kind != SRC_JOY_AXIS && s.kind != SRC_GC_AXIS) ||
+			    s.part == PART_POSITIVE || s.part == PART_NEGATIVE) {
+				down |= source_pressed (s);
+				continue;
+			}
+			p = apply_deadzone (source_pedal (s), dz);
 			if (p > v)
 				v = p;
 		}
-	return v;
+	return std::max (v, ramp_keys (section, key, down ? 1.0 : 0.0));
 }
 
 int

@@ -239,6 +239,16 @@ private:
 		uint64_t	 last = 0;
 	};
 	std::map<std::string, Aim> aims;
+	/* Each axis's keys and buttons: where they have brought it, the last
+	 * time ([Config] Axis_Key_Ramp, Axis_Key_Return) */
+	struct KeyAxis {
+		double		 value = 0.0;
+		uint64_t	 last = 0;
+	};
+	std::map<std::string, KeyAxis> key_axes;
+	/* Where the keys and buttons bring the axis now, toward target (-1, 0
+	 * or 1) */
+	double		 ramp_keys (const char *section, const char *key, double target);
 	unsigned	 mouse_buttons;
 	double		 mouse_x, mouse_y;
 	std::string	 capture_found;

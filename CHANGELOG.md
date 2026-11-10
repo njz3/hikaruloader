@@ -11,6 +11,10 @@ Next version
 - Widescreen 3D (16:9) switched during a game: applied when the settings close,
   the window's picture 854 or 640 wide at once; the game's own view widened
   from the next time it computes it (Hikaru, NAOMI, Gaelco).
+- A key or a button on the wheel or a pedal no longer sends it all the way at
+  once, as in MAME: it goes there in 250 ms and back to the middle in 100 ms
+  when let go, both held or turned the other way (`Axis_Key_Ramp`,
+  `Axis_Key_Return` in `controls.ini`, 0 for at once).
 
 
 0.7.2 (2026-11-11)

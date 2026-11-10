@@ -160,7 +160,7 @@ Keys and controllers
 | Enter, a controller's Start | Start |
 | The arrows, a controller's D-pad or left stick | Up, down, left, right |
 | Left Ctrl, Left Alt, Left Shift, Z; a controller's A, B, X, Y | Buttons 1 to 4 |
-| A controller's left stick and triggers, a wheel's axes | Steering, accelerator, brake (the arrows too, all the way) |
+| A controller's left stick and triggers, a wheel's axes | Steering, accelerator, brake (the arrows too: all the way in 250 ms, back to the middle in 100 ms, `Axis_Key_Ramp` and `Axis_Key_Return` in `controls.ini`'s `[Config]`) |
 | Page Up, Page Down; a controller's R1, L1 | NASCAR Arcade's gear up, down |
 | V; a controller's Y | NASCAR Arcade's view change (`ViewChange`, linuxloader's name; Down too, as on the cabinet's I/O board) |
 | P; Guide + X | Pause |
