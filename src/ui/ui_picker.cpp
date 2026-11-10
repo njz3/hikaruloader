@@ -49,7 +49,10 @@ struct Entry
 struct Picker
 {
     hl::GameList *list = nullptr;
+    // The games shown: those whose files are all in the games folders
     std::vector<Entry> entries;
+    // The machines' games the picker knows, shown or not
+    int known = 0;
     std::string gamesDir;
     // Its folders, one or several (';')
     std::vector<std::string> gamesFolders;
@@ -66,6 +69,7 @@ struct Picker
         gamesDir = dir;
         gamesFolders = hl::RomSet::split_folders(dir);
         entries.clear();
+        known = 0;
         for (unsigned i = 0; i < list->entries.size (); i++)
         {
             // The other machines' games start from the command line (-r, -z)
@@ -75,7 +79,9 @@ struct Picker
             Entry entry;
             entry.index = i;
             list->check (i, dir, &entry.found, &entry.total);
-            entries.push_back(entry);
+            known++;
+            if (entry.ready())
+                entries.push_back(entry);
         }
         // The pictures of the games found, when the setting downloads them
         std::vector<std::string> sets;
@@ -133,13 +139,10 @@ struct Picker
         ImGui::TextDisabled("%s", hint);
         ImGui::Separator();
 
-        int ready = 0;
-        for (const Entry &entry : entries)
-            ready += entry.ready();
         if (gamesFolders.size() > 1)
-            ImGui::TextDisabled(ui::tr("%d of %d games ready in %d folders"), ready, (int)entries.size(), (int)gamesFolders.size());
+            ImGui::TextDisabled(ui::tr("%d of %d games ready in %d folders"), (int)entries.size(), known, (int)gamesFolders.size());
         else
-            ImGui::TextDisabled(ui::tr("%d of %d games ready in %s"), ready, (int)entries.size(), gamesDir.c_str());
+            ImGui::TextDisabled(ui::tr("%d of %d games ready in %s"), (int)entries.size(), known, gamesDir.c_str());
         if (!message.empty())
         {
             ImGui::PushTextWrapPos(0.0f);
@@ -149,7 +152,6 @@ struct Picker
 
         if (entries.empty())
         {
-            ImGui::TextUnformatted(ui::tr("No game is defined in data/games.json."));
             ImGui::End();
             ImGui::PopStyleColor();
             ImGui::PopStyleVar();

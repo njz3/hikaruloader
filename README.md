@@ -104,9 +104,9 @@ Starting a game
 ---------------
 
 Started without arguments, Hikaruloader shows its picker: the Hikaru and
-Gaelco games of the games folder, each marked Ready, Incomplete (some files
-missing) or Not found. NAOMI, Atomiswave and GD-ROM games are not in it for
-now: they start from the command line. The arrows (or a controller's D-pad) choose, Enter (a controller's A,
+Gaelco games whose files are all in the games folder, none when there are
+none. NAOMI, Atomiswave and GD-ROM games are not in it for now: they start
+from the command line. The arrows (or a controller's D-pad) choose, Enter (a controller's A,
 or a double click) launches, Tab opens the settings, Escape quits. The games
 folder is the one of the settings (Picker tab), else `roms` beside the
 program. There can be several, separated by `;`
@@ -774,7 +774,7 @@ the distance along the stage (the game shows none).
 When something goes wrong
 -------------------------
 
-- A game is missing or Incomplete in the picker: `hikaruloader.exe -L`
+- A game is missing in the picker: `hikaruloader.exe -L`
   lists the files each game needs, and which ones the games folder lacks.
 - The game is slow: lower the SH-4 clock, 100 MHz at the least (57 for the
   games but Air Trix, in `SH4_CLOCK`) and the drawing on its own thread; the frame rate (F12) shows
