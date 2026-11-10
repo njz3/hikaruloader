@@ -1006,10 +1006,14 @@ hikaru_gpu_begin_dma (Gpu *gpu)
 			src_x, src_y, dst_x, dst_y, w, h);
 	}
 
+	/* Pixel x in the FB's half word x ^ 1, the left one of a 32-bit word
+	 * in its high half, as the layers read them: a copy to a column of
+	 * the other parity keeps the glyphs' columns in order (AIRTRIX's
+	 * copyright and trademark) */
 	for (i = 0; i < h; i++) {
 		for (j = 0; j < w; j++) {
-			uint32_t src_offs = (src_y + i) * 4096 + (src_x + j) * 2;
-			uint32_t dst_offs = (dst_y + i) * 4096 + (dst_x + j) * 2;
+			uint32_t src_offs = (src_y + i) * 4096 + ((src_x + j) ^ 1) * 2;
+			uint32_t dst_offs = (dst_y + i) * 4096 + ((dst_x + j) ^ 1) * 2;
 			uint16_t pixel;
 			pixel = gpu->fb->get (2, src_offs);
 			gpu->fb->put (2, dst_offs, pixel);
@@ -1017,8 +1021,8 @@ hikaru_gpu_begin_dma (Gpu *gpu)
 	}
 	/* The rows written, for the layers' copy (hand_over ()) */
 	if (w && h)
-		((Renderer *) gpu->renderer)->fb_wrote (dst_y * 4096 + dst_x * 2,
-		                                        (h - 1) * 4096 + w * 2);
+		((Renderer *) gpu->renderer)->fb_wrote (dst_y * 4096 + (dst_x & ~1u) * 2,
+		                                        (h - 1) * 4096 + w * 2 + 4);
 
 	REG1A (0x24) |= 1;
 }

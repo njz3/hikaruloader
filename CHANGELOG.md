@@ -19,6 +19,8 @@ Next version
   the master's.
 - The Game tab's screens (one board, side by side, a window each, their
   monitors) apply when the settings close, without a restart.
+- Fixed: Air Trix's copyright and trademark on its title were unreadable (the
+  GPU's copies within the framebuffer kept the pixels' order in their words).
 
 
 0.7.1 (2026-11-10)
