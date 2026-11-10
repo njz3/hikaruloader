@@ -1302,10 +1302,27 @@ BoardRenderer::draw_scene (const Draw &d, Target &t, bool to_texture)
 void
 BoardRenderer::write_back (const Draw &d, Target &t)
 {
+	/* A 4x4 ordered dither, added before the low bits go */
+	static const uint8_t dither_order[16] = {
+		5, 13, 7, 15,
+		9, 1, 11, 3,
+		6, 14, 4, 12,
+		10, 2, 8, 0,
+	};
 	std::vector<uint8_t> rgba (t.w * t.h * 4);
 	hl::Buffer *vram = holly->vram;
 	uint32_t base = d.fb_w_sof1 & 0x00FFFFFF, stride = (d.fb_w_linestride & 0x1FF) * 8;
 	unsigned pack = d.fb_w_ctrl & 7, x, y;
+	bool dither = (d.fb_w_ctrl >> 3) & 1;
+	uint32_t kval = (d.fb_w_ctrl >> 8) & 0xFF, alpha_threshold = (d.fb_w_ctrl >> 16) & 0xFF;
+	auto dithered = [&] (uint32_t c, unsigned bits, unsigned px, unsigned py) {
+		uint32_t level;
+
+		if (!dither)
+			return c;
+		level = dither_order[(py & 3) * 4 + (px & 3)] >> (4 - bits);
+		return std::min (255u, c + level);
+	};
 
 	glBindFramebuffer (GL_FRAMEBUFFER, t.fb);
 	glReadPixels (0, 0, t.w, t.h, GL_RGBA, GL_UNSIGNED_BYTE, rgba.data ());
@@ -1321,17 +1338,49 @@ BoardRenderer::write_back (const Draw &d, Target &t)
 			if (at + 4 > vram->size ())
 				return;
 			switch (pack) {
-			case 0: vram->put (2, at, (r >> 3) << 10 | (g >> 3) << 5 | (b >> 3)); at += 2; break;
-			case 1: vram->put (2, at, (r >> 3) << 11 | (g >> 2) << 5 | (b >> 3)); at += 2; break;
-			case 2: vram->put (2, at, (a >> 4) << 12 | (r >> 4) << 8 | (g >> 4) << 4 | (b >> 4)); at += 2; break;
-			case 3: vram->put (2, at, (a >> 7) << 15 | (r >> 3) << 10 | (g >> 3) << 5 | (b >> 3)); at += 2; break;
+			case 0:	/* K, the top of fb_kval */
+				r = dithered (r, 3, x, y);
+				g = dithered (g, 3, x, y);
+				b = dithered (b, 3, x, y);
+				vram->put (2, at, (kval >> 7) << 15 | (r >> 3) << 10 | (g >> 3) << 5 | (b >> 3));
+				at += 2;
+				break;
+			case 1:
+				r = dithered (r, 3, x, y);
+				g = dithered (g, 2, x, y);
+				b = dithered (b, 3, x, y);
+				vram->put (2, at, (r >> 3) << 11 | (g >> 2) << 5 | (b >> 3));
+				at += 2;
+				break;
+			case 2:
+				r = dithered (r, 4, x, y);
+				g = dithered (g, 4, x, y);
+				b = dithered (b, 4, x, y);
+				a = dithered (a, 4, x, y);
+				vram->put (2, at, (a >> 4) << 12 | (r >> 4) << 8 | (g >> 4) << 4 | (b >> 4));
+				at += 2;
+				break;
+			case 3:	/* A, the comparison with fb_alpha_threshold */
+				r = dithered (r, 3, x, y);
+				g = dithered (g, 3, x, y);
+				b = dithered (b, 3, x, y);
+				vram->put (2, at, (a >= alpha_threshold ? 1u : 0u) << 15 | (r >> 3) << 10 | (g >> 3) << 5 | (b >> 3));
+				at += 2;
+				break;
 			case 4:
 				vram->put (1, at, b);
 				vram->put (1, at + 1, g);
 				vram->put (1, at + 2, r);
 				at += 3;
 				break;
-			default: vram->put (4, at, a << 24 | r << 16 | g << 8 | b); at += 4; break;
+			case 5:	/* K, fb_kval */
+				vram->put (4, at, kval << 24 | r << 16 | g << 8 | b);
+				at += 4;
+				break;
+			default:
+				vram->put (4, at, a << 24 | r << 16 | g << 8 | b);
+				at += 4;
+				break;
 			}
 		}
 	}
