@@ -64,7 +64,7 @@ enum {
 };
 
 /* The M2's RAM */
-static const uint32_t M2_RAM_SIZE = 32768;
+static const uint32_t M2_RAM_SIZE = 65536;
 
 static uint16_t
 crypt_read_cb (void *opaque, uint32_t addr)
@@ -314,7 +314,7 @@ Cart::put (unsigned reg, uint32_t val)
 			uint32_t offs = s.rom_offset;
 
 			if (offs & 0x00020000) {
-				offs &= M2_RAM_SIZE - 1;
+				offs &= M2_RAM_SIZE - 2;
 				m2_ram[offs] = (uint8_t) val;
 				m2_ram[offs + 1] = (uint8_t) (val >> 8);
 			} else {

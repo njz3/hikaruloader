@@ -799,6 +799,8 @@ sh4_ireg_get (Sh4 *ctx, unsigned size, uint32_t addr, void *val)
 	case RTC_R64CNT:
 		set_ptr (val, size, ctx->rfcr++ & 0x7F);
 		return 0;
+	case CPG_WTCNT:
+		break;
 	case BSC_RFCR:
 		if (ctx->rfcr_counts) {
 			/* The refreshes counted, which the NAOMI's BIOS waits for */
@@ -966,6 +968,7 @@ sh4_ireg_put (Sh4 *ctx, unsigned size, uint32_t addr, uint64_t val)
 	case BSC_RTCNT:
 	case BSC_RTCOR:
 	case BSC_RFCR:
+	case CPG_WTCNT:
 	case CPG_WTCSR:
 		HL_ASSERT (size == 2);
 		break;
@@ -2929,6 +2932,9 @@ Sh4::run (int cycles)
 		return 0;
 
 	cpu->remaining = cycles;
+	/* SLEEP ends with the first interrupt it may take */
+	if (cpu->state == hl::CPU_STATE_SLEEP && irq_ready)
+		cpu->state = hl::CPU_STATE_RUN;
 	/* The MMU switched: the blocks decoded before, dropped */
 	if (mmu.flush_blocks) {
 		blocks.clear ();
