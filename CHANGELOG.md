@@ -5,6 +5,14 @@ What each version brings, for those who play. How the versions are numbered
 and released: [DEVELOPMENT.md](DEVELOPMENT.md), "Versions and releases".
 
 
+Next version
+------------
+
+- Capcom vs. SNK, Project Justice, Power Stone 2, Gundam: Federation vs. Zeon
+  and Sega Tetris no longer stop during their attract: their cartridges' 64 KB
+  decryption buffer had only half its size.
+
+
 0.7.0 (2026-11-10)
 ------------------
 

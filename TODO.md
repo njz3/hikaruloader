@@ -11,7 +11,6 @@ GENERAL
 -------
 
 - NAOMI, seen in a pass over the 259 sets (3000 frames, attract only):
-  - a jump to code never loaded: capsnk, pjustic, pstone2, gundmct, sgtetris;
   - the I/O board refused ("does not fulfill the game specs" or "I/O board bad"):
     dygolf, vathlete, wwfroyal, shootopl, mj1, hopper, shorse*;
   - M4: CAUTION 51 (illvelo, mamonoro), ERROR 02 still (mushi2k61, mushi2k62, sl2007);
