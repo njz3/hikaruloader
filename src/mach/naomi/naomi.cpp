@@ -431,8 +431,19 @@ Board::init ()
 		io_board = board13844;
 	}
 	/* The other boards of a machine of whole systems have no I/O board */
-	else if (!index || !machine->networked)
+	else if (!index || !machine->networked) {
 		io_board = new hl::SegaIoBoard (machine, jvs);
+		/* The cabinet's other boards, each further along the chain (the
+		 * far end gets the first address); the controls stay on the first */
+		for (i = 1; i < game->io_boards.size (); i++) {
+			if (game->io_boards[i] == "837-13938")
+				new hl::SegaIoBoard13938 (machine, jvs);
+			else if (game->io_boards[i] == "837-13551")
+				(new hl::SegaIoBoard (machine, jvs))->cabinet = false;
+			else
+				HL_ERROR ("naomi: unknown I/O board %s", game->io_boards[i].c_str ());
+		}
+	}
 
 	hikaru::Aica *sound = new hikaru::Aica (machine, aica_ram, true);
 	sound->main_irq_hook = aica_irq;

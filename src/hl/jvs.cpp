@@ -22,6 +22,7 @@
 #include "hl/driveboard.h"
 #include "hl/buffer.h"
 #include "hl/input.h"
+#include "hl/pointers.h"
 #include "hl/controls.h"
 #include "hl/state.h"
 #include "hl/outputs.h"
@@ -556,6 +557,10 @@ JvsDevice::answer (const uint8_t *data, size_t size, std::vector<uint8_t> &repor
 			used = 2;
 			ok = left >= used && analogs (cmd[1], out);
 			break;
+		case 0x23: /* Encoders: channels */
+			used = 2;
+			ok = left >= used && rotary (cmd[1], out);
+			break;
 		case 0x30: /* Coins taken: slot, count */
 		case 0x31:
 			used = 4;
@@ -636,6 +641,8 @@ SegaIoBoard::count_coins ()
 	static const Action slots[2] = { ACTION_COIN1, ACTION_COIN2 };
 	unsigned i;
 
+	if (!cabinet)
+		return;
 	for (i = 0; i < 2; i++) {
 		bool held = Input::action (slots[i]);
 		if (held && !coin_held[i])
@@ -706,9 +713,9 @@ SegaIoBoard::switches (unsigned players, unsigned bytes, std::vector<uint8_t> &o
 			          (unsigned long long) mach->frame, now & 1, now >> 1);
 		last = now;
 	}
-	out.push_back (Input::action (ACTION_TEST) ? 0x80 : 0x00);
+	out.push_back (system_bits ());
 	for (p = 0; p < players; p++) {
-		uint16_t bits = switch_word (p, swap_left_right, pointer_game);
+		uint16_t bits = SegaIoBoard::player_bits (p);
 		for (i = 0; i < bytes; i++)
 			out.push_back ((uint8_t) (bits >> (8 - 8 * i)));
 	}
@@ -718,13 +725,13 @@ SegaIoBoard::switches (unsigned players, unsigned bytes, std::vector<uint8_t> &o
 uint8_t
 SegaIoBoard::system_bits ()
 {
-	return Input::action (ACTION_TEST) ? 0x80 : 0x00;
+	return (cabinet && Input::action (ACTION_TEST)) ? 0x80 : 0x00;
 }
 
 uint16_t
 SegaIoBoard::player_bits (unsigned player)
 {
-	return switch_word (player, swap_left_right, pointer_game);
+	return cabinet ? switch_word (player, swap_left_right, pointer_game) : 0;
 }
 
 /* The wheel and the pedals read from the controllers once a call for
@@ -801,6 +808,8 @@ SegaIoBoard::read_controls ()
 {
 	Controls &c = Controls::get ();
 
+	if (!cabinet)
+		return;
 	/* Star Wars: Racer Arcade's levers: C000 at rest, 4000 pushed all the
 	 * way, as the game's CALIBRATION has them from the factory (MAX C0,
 	 * MIN 40); the thrust grows from C0 to 50 (468 km/h from 50). At rest
@@ -872,7 +881,8 @@ SegaIoBoard::outputs (unsigned bytes, const uint8_t *data)
 	if (bytes != 1)
 		return false;
 	output = data[0] & 0xFC;
-	Outputs::get ()->jvs (&output, 1);
+	if (cabinet)
+		Outputs::get ()->jvs (&output, 1);
 	return true;
 }
 
@@ -947,6 +957,104 @@ SegaIoBoard::debug_string ()
 	snprintf (text, sizeof (text), "address %02X, coins %u %u, outputs %02X, wheel %04X",
 	          address, coin[0], coin[1], output, analog[0]);
 	return text;
+}
+
+/* SegaIoBoard13938 */
+
+/* A window's width, -1 to 1, makes this many counts */
+static const double ENCODER_COUNTS = 960.0;
+
+SegaIoBoard13938::SegaIoBoard13938 (Machine *mach, JvsBus *bus) :
+	SegaIoBoard (mach, bus)
+{
+	cabinet = false;
+	reset (RESET_HARD);
+}
+
+const char *
+SegaIoBoard13938::identity ()
+{
+	return "SEGA ENTERPRISES,LTD.;837-13938 ENCORDER BD  ;Ver0.01;99/08";
+}
+
+void
+SegaIoBoard13938::functions (std::vector<uint8_t> &out)
+{
+	static const uint8_t list[] = {
+		0x01, 1, 9, 0,		/* Switches: 1 player, 9 */
+		0x04, 4, 0, 0,		/* Encoders: 4 */
+		0x12, 8, 0, 0,		/* Outputs: 8 */
+	};
+	out.insert (out.end (), list, list + sizeof (list));
+}
+
+bool
+SegaIoBoard13938::rotary (unsigned channels, std::vector<uint8_t> &out)
+{
+	unsigned i;
+
+	if (channels > 4)
+		return false;
+	Pointers::State mouse = Pointers::get (0);
+	/* X grows to the right; Y grows upwards, as a trackball's */
+	rolled_x += (mouse.x - last_x) * ENCODER_COUNTS;
+	rolled_y -= (mouse.y - last_y) * ENCODER_COUNTS;
+	last_x = mouse.x;
+	last_y = mouse.y;
+	encoder[0] = (uint16_t) (int32_t) lround (rolled_x);
+	encoder[1] = (uint16_t) (int32_t) lround (rolled_y);
+	for (i = 0; i < channels; i++) {
+		out.push_back ((uint8_t) (encoder[i] >> 8));
+		out.push_back ((uint8_t) encoder[i]);
+	}
+	return true;
+}
+
+bool
+SegaIoBoard13938::outputs (unsigned bytes, const uint8_t *data)
+{
+	if (bytes != 1)
+		return false;
+	output = data[0];
+	return true;
+}
+
+void
+SegaIoBoard13938::reset (ResetType type)
+{
+	SegaIoBoard::reset (type);
+	memset (encoder, 0, sizeof (encoder));
+	last_x = last_y = rolled_x = rolled_y = 0.0;
+}
+
+int
+SegaIoBoard13938::save_state (State *state)
+{
+	int ret = SegaIoBoard::save_state (state);
+	ret |= state->put (encoder, sizeof (encoder));
+	ret |= state->put (&rolled_x, sizeof (rolled_x));
+	ret |= state->put (&rolled_y, sizeof (rolled_y));
+	return ret;
+}
+
+int
+SegaIoBoard13938::load_state (State *state)
+{
+	int ret = SegaIoBoard::load_state (state);
+	ret |= state->get (encoder, sizeof (encoder));
+	ret |= state->get (&rolled_x, sizeof (rolled_x));
+	ret |= state->get (&rolled_y, sizeof (rolled_y));
+	return ret;
+}
+
+int
+SegaIoBoard13938::get (unsigned size, uint32_t addr, void *val)
+{
+	if (size == 2 && addr >= 0x20 && addr < 0x28 && !(addr & 1)) {
+		set_ptr (val, 2, encoder[(addr - 0x20) >> 1]);
+		return 0;
+	}
+	return SegaIoBoard::get (size, addr, val);
 }
 
 /* SegaIoBoard13844 */

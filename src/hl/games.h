@@ -114,6 +114,10 @@ public:
 	char gdrom[32] = "";
 	/* Its DIMM board is a Net DIMM (games.json "net_dimm") */
 	bool net_dimm = false;
+	/* The JVS I/O boards of its cabinet (games.json "io_boards"), the one
+	 * nearest the main board first, by their Sega numbers; none listed: the
+	 * machine's usual board */
+	std::vector<std::string> io_boards;
 	/* The boards of its cabinet, linked (multiboard); 0: one */
 	unsigned boards = 0;
 	/* Complete systems on a ring of communication boards in one cabinet
