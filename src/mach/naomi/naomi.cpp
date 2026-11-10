@@ -581,6 +581,13 @@ Board::setup_servo ()
 	servo.reset (new ServoBoard (this));
 	servo->attach ();
 	HL_PRINT ("naomi: a servo board 838-14174 on the MIDI port");
+	/* Initial D's card reader, on the SH-4's SCIF */
+	if (!strncmp (title, "INITIAL D", 9)) {
+		std::string file = std::string ("nvram/") + game->name + ".card";
+
+		sanwa.reset (new SanwaCard (machine, hl::Paths::game_write (game->name, file)));
+		((Sh4 *) sh)->scif_pipe = sanwa.get ();
+	}
 	/* The first Club Kart's card reader */
 	if (!strncmp (game->name, "clubkrt", 7) || !strcmp (game->name, "clubk2k3")) {
 		card.reset (new ClubKartCard (game->name));
@@ -611,7 +618,7 @@ Board::run_lines (unsigned line, unsigned count)
 			servo_lines = 0;
 			servo->tick ();
 		}
-		if (card)
+		if (card || sanwa)
 			((Sh4 *) sh)->scif_update ();
 		sh->run (cycles_per_line);
 		aica->exec (cycles_per_line);
@@ -634,6 +641,8 @@ Board::end_frame (std::vector<int16_t> *audio)
 		card->frame ();
 	if (gd)
 		gd->frame ();
+	if (sanwa)
+		sanwa->reader.frame ();
 	if (audio) {
 		for (size_t i = 0; i + 1 < in.size (); i += 2) {
 			int32_t l = std::max (-32768, std::min (32767, in[i]));

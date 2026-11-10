@@ -24,6 +24,7 @@
 #define __HL_NAOMI_H__
 
 #include "hl/driveboard.h"
+#include "hl/cardreader.h"
 #include <deque>
 #include <atomic>
 #include <condition_variable>
@@ -683,6 +684,17 @@ private:
 	bool	 inserted = false, read_pending = false, was_held = false;
 };
 
+/* A Sanwa CRP-1231 card reader on the SCIF (Initial D's) */
+class SanwaCard : public SerialPipe {
+public:
+	SanwaCard (hl::Machine *machine, const std::string &path) : reader (machine, path) {}
+
+	void	 write (uint8_t value) override { reader.receive (value); }
+	int	 available () override { return reader.has_byte () ? 1 : 0; }
+	uint8_t	 read () override { return reader.has_byte () ? reader.send () : 0; }
+	hl::CardReader reader;
+};
+
 /* The servo board 838-14174 of the wheels on the MIDI port; see naomi-servo.cpp */
 class ServoBoard {
 public:
@@ -743,6 +755,7 @@ public:
 	/* On the master of the games that have one; NULL else */
 	std::unique_ptr<ServoBoard> servo;
 	std::unique_ptr<ClubKartCard> card;
+	std::unique_ptr<SanwaCard> sanwa;
 	/* F355 Challenge's, on the I/O board's lines */
 	hl::DriveBoard *drive_board = NULL;
 	void	 setup_servo ();
