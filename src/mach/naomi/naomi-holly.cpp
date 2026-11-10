@@ -725,8 +725,10 @@ Holly::ta_polygon_header (const uint32_t *w)
 	ta.two_volume = volume && ((pcw >> 7) & 1);
 	ta.tsp1 = ta.two_volume ? w[4] : 0;
 	ta.tcw1 = ta.two_volume ? w[5] : 0;
-	if (pcw & (1 << 23))
-		ta.clip_mode = (pcw >> 16) & 3;
+	/* The user clip from each header, whether Group_En (bit 23) is set or
+	 * not (as MAME's powervr2.cpp reads it): F355 Challenge's dashboard,
+	 * after the mirror's polygons clipped inside, asks for outside without */
+	ta.clip_mode = (pcw >> 16) & 3;
 
 	if (col == 2 && !volume && !(textured && offset)) {
 		/* Polygon type 1, 32 bytes: its face colour at 10-1C */
@@ -1019,8 +1021,7 @@ Holly::ta_packet (const uint32_t *w)
 		ta.sprite = 1;
 		ta.mod = 0;
 		ta.new_batch = 1;
-		if (pcw & (1 << 23))
-			ta.clip_mode = (pcw >> 16) & 3;
+		ta.clip_mode = (pcw >> 16) & 3;
 		break;
 	}
 	case 7: {

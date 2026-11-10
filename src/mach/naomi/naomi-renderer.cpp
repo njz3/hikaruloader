@@ -2430,6 +2430,10 @@ BoardRenderer::draw_translucent_per_pixel ()
 	glDisable (GL_BLEND);
 	for (const Batch &b : draw->scene->batches[LIST_TRANSLUCENT])
 		draw_batch (collect, *draw, b, false, pixel_scale_x (), pixel_scale_y ());
+	/* The last batch's user clip off: the volumes, the copy and the resolve
+	 * cover the whole picture, the resolve emptying every pixel's list for
+	 * the next frame */
+	glDisable (GL_SCISSOR_TEST);
 	glMemoryBarrier (GL_SHADER_STORAGE_BARRIER_BIT | GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 	if (collect_areas) {
 		draw_translucent_volumes ();

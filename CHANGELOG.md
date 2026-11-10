@@ -23,6 +23,9 @@ Next version
   GPU's copies within the framebuffer kept the pixels' order in their words).
 - NAOMI: the pictures drawn by a thread of their own with `THREADED_RENDERING`
   (on by default, as for the Hikaru), the boards' emulation going on meanwhile.
+- Ferrari F355 Challenge: the deluxe cabinet's sound (its volume control,
+  on the drive board's I/O board, turned up), and in a race the dashboard,
+  the lap times and the track map on every version.
 
 
 0.7.1 (2026-11-10)

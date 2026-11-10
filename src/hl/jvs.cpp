@@ -1202,6 +1202,10 @@ SegaIoBoard13844::reset (ResetType type)
 	SegaIoBoard::reset (type);
 	output2 = 0;
 	line_reply = 0xFF;
+	/* The cabinet's sound volume control on the fifth analog input, turned
+	 * all the way up: F355 Challenge takes its master volume from it (16
+	 * times the square root of its top byte over 256, silent under 8) */
+	analog[4] = 0xFFFF;
 	Gearbox::get ().reset ();
 }
 
