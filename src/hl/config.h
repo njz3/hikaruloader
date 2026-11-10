@@ -247,6 +247,8 @@ public:
 					 * (the board's); at the game's start */
 	/* The one in use, in its range */
 	static unsigned	 sh4_clock_mhz ();
+	unsigned	naomi_sh4_clock; /* the NAOMI's and Atomiswave's, as it */
+	static unsigned	 naomi_sh4_clock_mhz ();
 	int		region;		/* the board's country: -1 the EEPROM's
 					 * own, else 0 Japan, 1 USA, 2 Export,
 					 * 3 Australia, 4 Korea; at the game's

@@ -571,6 +571,12 @@ void drawEmulationTab(bool inGame)
                                  "run below 60 frames a second on this PC). 150 MHz by default: at 100 MHz some games show graphical glitches; below, Air Trix's "
                                  "skater loses his body."));
     ImGui::PopTextWrapPos();
+    ImGui::SliderInt(tr("NAOMI SH-4 clock"), (int *) &cfg->naomi_sh4_clock, 100, 200, "%d MHz");
+    restartNote(inGame);
+    ImGui::PushTextWrapPos(0.0f);
+    ImGui::TextDisabled("%s", tr("The SH-4 clock of the NAOMI, NAOMI 2 and Atomiswave: their games unpack their pictures by the time each "
+                                 "frame leaves, so 200 MHz, the board's, by default: slower, pictures show before they are complete."));
+    ImGui::PopTextWrapPos();
 
     // The low-level emulations, off by default (IO_BOARD_PROGRAM, SECURITY_CHIPS)
     ImGui::Separator();

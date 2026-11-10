@@ -161,6 +161,7 @@ Config::set_defaults ()
 	 * its time (see hikaru.cpp). 100 at least for AIRTRIX, whose slave
 	 * poses the skater before the GPU draws him (57 before November 2026) */
 	cfg->sh4_clock = 150;
+	cfg->naomi_sh4_clock = 200;
 	/* The country the board's EEPROM holds */
 	cfg->region = 2;	/* Export */
 	/* The simulations, which every game plays with */
@@ -229,6 +230,12 @@ unsigned
 Config::sh4_clock_mhz ()
 {
 	return MAX2 (20u, MIN2 (200u, get ()->sh4_clock));
+}
+
+unsigned
+Config::naomi_sh4_clock_mhz ()
+{
+	return MAX2 (20u, MIN2 (200u, get ()->naomi_sh4_clock));
 }
 
 double
@@ -428,6 +435,8 @@ Config::set_value (const char *section, const char *key, const char *value)
 			cfg->memory_access = (MemoryAccess) parse_name (value, memory_names, NUM_MEMORY_ACCESSES, cfg->memory_access);
 		else if (!strcasecmp (key, "SH4_CLOCK"))
 			cfg->sh4_clock = (unsigned) MAX2 (20, MIN2 (200, atoi (value)));
+		else if (!strcasecmp (key, "NAOMI_SH4_CLOCK"))
+			cfg->naomi_sh4_clock = (unsigned) MAX2 (20, MIN2 (200, atoi (value)));
 		else if (!strcasecmp (key, "REGION"))
 			cfg->region = parse_name (value, region_names, (int) NUMELEM (region_names), cfg->region + 1) - 1;
 		else if (!strcasecmp (key, "IO_BOARD_PROGRAM"))
@@ -877,6 +886,12 @@ Config::save () const
 	         "# frames a second). Air Trix needs 100 at least: below, its skater's\n"
 	         "# body is missing. From the game's start. Default: %u\n", def.sh4_clock);
 	fprintf (fp, "SH4_CLOCK = %u\n", cfg->sh4_clock);
+	fprintf (fp,
+	         "\n# The NAOMI's, NAOMI 2's and Atomiswave's SH-4 clock in MHz, 20 to 200\n"
+	         "# (the board's). Their games unpack their pictures by what time each frame\n"
+	         "# leaves: slower, pictures show before they are complete. From the game's\n"
+	         "# start. Default: %u\n", def.naomi_sh4_clock);
+	fprintf (fp, "NAOMI_SH4_CLOCK = %u\n", cfg->naomi_sh4_clock);
 	fprintf (fp,
 	         "\n# The board's country, which the games read for their language and\n"
 	         "# texts: AUTO, the one its EEPROM holds (the BIOS's COUNTRY SETTING);\n"
