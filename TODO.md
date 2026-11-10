@@ -26,6 +26,8 @@ GENERAL
     that is no longer released (the channel 2 DMA's source moved to 0C0CA380 that frame);
   - spawn, hmgeo, alienfnt want a linked cabinet in their factory settings (blank EEPROM):
     their own test menus change it; mushi2k62 and rhytngk black at frame 2400.
+  - f355twin: half its sounds, no music, and silent for its first 50 s of attract; its
+    master volume is full on both boards (not the volume input of the deluxe cabinet).
 - NAOMI: the translucent modifier volumes change no picture in the attracts
   of Virtua Striker 3, Club Kart, The King of Route 66 and Airline Pilots:
   to see in play; per-pixel translucency only. The Elan's vertex lists take
