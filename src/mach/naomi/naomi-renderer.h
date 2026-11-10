@@ -73,7 +73,7 @@ private:
 		GLuint id;
 		GLint u_flags, u_tex, u_fog, u_zscale, u_fog_color, u_fog_color_vertex, u_fog_density;
 		GLint u_width, u_stretch_2d, u_clamp_max, u_clamp_min;
-		GLint u_scale, u_target, u_pt_ref, u_lod_bias, u_max_lod;
+		GLint u_scale, u_target, u_pt_ref, u_lod_bias, u_max_lod, u_shade_scale;
 		/* The collecting one's (else -1) */
 		GLint u_tag, u_max_nodes, u_opaque_depth;
 	};
@@ -88,6 +88,8 @@ private:
 	void make_target (Target &t, unsigned w, unsigned h);
 	void draw_scene (const Draw &d, Target &t, bool to_texture);
 	void draw_batch (const Program &p, const Draw &d, const Batch &b, bool opaque, float sx, float sy);
+	void draw_piece (const Program &p, const Batch &b, uint32_t tsp, uint32_t tcw, uint32_t first, bool shadowed,
+	                 bool opaque);
 	void draw_modifiers (const Draw &d, float sx, float sy);
 	void set_scene_uniforms (const Program &p);
 	bool oit_buffers (unsigned w, unsigned h);
@@ -104,6 +106,11 @@ private:
 	Target *target = nullptr;
 	float pixel_x = 1.0f, pixel_y = 1.0f;
 	int punch_flag = 0;
+	bool depth_pass = false;
+	/* The stencil has the modifier volumes' area 1 in bit 0 */
+	bool volumes_ready = false;
+	/* Where Scene::vertices1 starts in the vertex buffer */
+	uint32_t vertices1_at = 0;
 	float pixel_scale_x () const { return (float) target->w / pixel_x; }
 	float pixel_scale_y () const { return (float) target->h / pixel_y; }
 	std::unordered_map<uint64_t, Texture> textures;

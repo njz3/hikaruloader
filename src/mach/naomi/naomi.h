@@ -80,6 +80,11 @@ struct Batch {
 	uint16_t x0, y0, x1, y1;
 	bool clip_on;
 	bool shadow;		/* a modifier volume changes it */
+	/* "With two volumes": inside a modifier volume, these words instead,
+	 * and the vertices from first1 of Scene::vertices1 */
+	bool two_volume;
+	uint32_t tsp1, tcw1;
+	uint32_t first1;
 };
 
 /* A modifier volume's triangles: three xyz each */
@@ -91,6 +96,7 @@ struct ModVol {
 /* What the TA made of a list of parameters */
 struct Scene {
 	std::vector<Vertex> vertices;
+	std::vector<Vertex> vertices1;
 	std::vector<Batch> batches[NUM_LISTS];
 	std::vector<float> mod_vertices;
 	std::vector<ModVol> mod_volumes;
@@ -455,8 +461,8 @@ private:
 	void	 ta_vertex (const uint32_t *w);
 	void	 ta_sprite (const uint32_t *w);
 	void	 ta_modifier (const uint32_t *w);
-	void	 ta_store (Vertex v, bool end);
-	void	 ta_triangle (Vertex a, Vertex b, Vertex c);
+	void	 ta_store (Vertex v, const Vertex &v1, bool end);
+	void	 ta_triangle (Vertex a, Vertex b, Vertex c, const Vertex *second = NULL);
 	Batch	&ta_batch ();
 	void	 yuv_data (const uint32_t *w, unsigned words);
 	void	 yuv_block ();
@@ -498,13 +504,14 @@ private:
 		uint8_t	 mod;		/* a modifier volume's triangles */
 		uint8_t	 sprite;
 		uint32_t vertex_type;
-		uint32_t pcw, isp, tsp, tcw;
-		float	 face[4], face_offset[4];
+		uint32_t pcw, isp, tsp, tcw, tsp1, tcw1;
+		float	 face[4], face1[4], face_offset[4];
 		uint32_t sprite_base, sprite_offset;
 		uint8_t	 clip_mode;
 		uint16_t clip[4];
 		uint8_t	 new_batch;
-		Vertex	 strip[2];
+		uint8_t	 two_volume;
+		Vertex	 strip[2], strip1[2];
 		uint32_t strip_n;
 	} ta;
 	struct {

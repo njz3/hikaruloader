@@ -79,7 +79,8 @@ void main ()
 
 /* u_flags: bits 0-1 the shading, 2 textured, 3 the base's alpha used, 4 the
  * texture's alpha ignored, 5 the offset added, 7-8 the fog, 9 the colour
- * clamped, 10 punch-through, 11 and 12 tri-linear's passes A and B */
+ * clamped, 10 punch-through, 11 and 12 tri-linear's passes A and B, 13 inside
+ * a modifier volume in Intensity Volume mode */
 static const char *fs_src = R"(#version 430
 in vec2 v_uv;
 in vec4 v_base;
@@ -98,6 +99,7 @@ uniform vec4 u_clamp_min;
 uniform float u_pt_ref;
 uniform float u_lod_bias;
 uniform float u_max_lod;
+uniform float u_shade_scale;
 #ifdef COLLECT
 layout (binding = 0, offset = 0) uniform atomic_uint u_count;
 layout (binding = 0, r32ui) uniform coherent uimage2D u_heads;
@@ -126,7 +128,13 @@ float fog_table (float z_)
 void main ()
 {
 	vec4 color = v_base;
+	vec3 offset = v_offset.rgb;
 	float trilinear = 1.0;
+	/* Inside an Intensity Volume, before the texture is combined */
+	if ((u_flags & 8192) != 0) {
+		color.rgb *= u_shade_scale;
+		offset *= u_shade_scale;
+	}
 	if ((u_flags & 8) == 0)
 		color.a = 1.0;
 	if ((u_flags & 4) != 0) {
@@ -162,7 +170,7 @@ void main ()
 			break;
 		}
 		if ((u_flags & 32) != 0)
-			color.rgb += v_offset.rgb;
+			color.rgb += offset;
 	}
 	/* Punch-through: under PT_ALPHA_REF, nothing */
 	if ((u_flags & 1024) != 0 && color.a < u_pt_ref)
@@ -734,6 +742,7 @@ locate (P &p)
 	p.u_scale = glGetUniformLocation (p.id, "u_scale");
 	p.u_target = glGetUniformLocation (p.id, "u_target");
 	p.u_pt_ref = glGetUniformLocation (p.id, "u_pt_ref");
+	p.u_shade_scale = glGetUniformLocation (p.id, "u_shade_scale");
 	p.u_lod_bias = glGetUniformLocation (p.id, "u_lod_bias");
 	p.u_max_lod = glGetUniformLocation (p.id, "u_max_lod");
 }
@@ -869,6 +878,7 @@ BoardRenderer::set_scene_uniforms (const Program &p)
 	glUniform2f (p.u_scale, d.scale_x, d.scale_y);
 	glUniform2f (p.u_target, pixel_x, pixel_y);
 	glUniform1f (p.u_pt_ref, d.pt_alpha_ref / 255.0f);
+	glUniform1f (p.u_shade_scale, (d.shad_scale & 255) / 256.0f);
 	glUniform3f (p.u_fog_color, ((d.fog_color >> 16) & 255) / 255.0f, ((d.fog_color >> 8) & 255) / 255.0f,
 	             (d.fog_color & 255) / 255.0f);
 	glUniform3f (p.u_fog_color_vertex, ((d.fog_color_vertex >> 16) & 255) / 255.0f,
@@ -885,47 +895,46 @@ BoardRenderer::set_scene_uniforms (const Program &p)
 	}
 }
 
+/* A batch, or its part in one of a modifier volume's two areas: its TSP and
+ * texture words, its vertices at first, shadowed or not */
 void
-BoardRenderer::draw_batch (const Program &p, const Draw &d, const Batch &b, bool opaque, float sx, float sy)
+BoardRenderer::draw_piece (const Program &p, const Batch &b, uint32_t tsp, uint32_t tcw, uint32_t first, bool shadowed,
+                           bool opaque)
 {
 	bool textured = (b.isp >> 25) & 1;
 	int flags = 0;
 
-	(void) d;
-	if (!b.count)
-		return;
-	flags |= (b.tsp >> 6) & 3;
+	flags |= (tsp >> 6) & 3;
 	flags |= textured ? 4 : 0;
-	flags |= ((b.tsp >> 20) & 1) ? 8 : 0;
-	flags |= ((b.tsp >> 19) & 1) ? 16 : 0;
+	flags |= ((tsp >> 20) & 1) ? 8 : 0;
+	flags |= ((tsp >> 19) & 1) ? 16 : 0;
 	flags |= ((b.isp >> 24) & 1) ? 32 : 0;
-	flags |= ((b.tsp >> 22) & 3) << 7;
-	flags |= ((b.tsp >> 21) & 1) ? 512 : 0;
+	flags |= ((tsp >> 22) & 3) << 7;
+	flags |= ((tsp >> 21) & 1) ? 512 : 0;
+	flags |= shadowed ? 8192 : 0;
 	{
 		/* Tri-linear filtering, the PowerVR's way, in two passes of a same
 		 * mipmapped polygon added together (FILTER 2 and 3 in the TSP
 		 * word); punch-through polygons have no such thing */
-		unsigned filter = (b.tsp >> 13) & 3;
+		unsigned filter = (tsp >> 13) & 3;
 
-		if (textured && filter > 1 && !punch_flag && is_mipmapped (b.tcw))
+		if (textured && filter > 1 && !punch_flag && is_mipmapped (tcw))
 			flags |= filter == 2 ? 2048 : 4096;
+	}
+	/* The depth pass needs the textures of the punch-through polygons alone */
+	if (depth_pass && !punch_flag) {
+		flags &= ~4;
+		textured = false;
 	}
 	glUniform1i (p.u_flags, flags | punch_flag);
 
-	if (b.clip_on) {
-		glEnable (GL_SCISSOR_TEST);
-		glScissor ((GLint) (b.x0 * sx), (GLint) (target->h - b.y1 * sy),
-		           (GLsizei) ((b.x1 - b.x0) * sx), (GLsizei) ((b.y1 - b.y0) * sy));
-	} else
-		glDisable (GL_SCISSOR_TEST);
-
 	if (textured) {
-		unsigned filter = (b.tsp >> 13) & 3;
-		bool mip = is_mipmapped (b.tcw);
-		bool clamp_u = (b.tsp >> 16) & 1, clamp_v = (b.tsp >> 15) & 1;
-		bool flip_u = (b.tsp >> 18) & 1, flip_v = (b.tsp >> 17) & 1;
+		unsigned filter = (tsp >> 13) & 3;
+		bool mip = is_mipmapped (tcw);
+		bool clamp_u = (tsp >> 16) & 1, clamp_v = (tsp >> 15) & 1;
+		bool flip_u = (tsp >> 18) & 1, flip_v = (tsp >> 17) & 1;
 
-		glBindTexture (GL_TEXTURE_2D, texture (b.tcw, b.tsp));
+		glBindTexture (GL_TEXTURE_2D, texture (tcw, tsp));
 		glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filter ? GL_LINEAR : GL_NEAREST);
 		/* One level at a time; tri-linear's two levels are its passes' */
 		glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,
@@ -937,42 +946,67 @@ BoardRenderer::draw_batch (const Program &p, const Draw &d, const Batch &b, bool
 		                 clamp_v ? GL_CLAMP_TO_EDGE : flip_v ? GL_MIRRORED_REPEAT : GL_REPEAT);
 		{
 			/* The "MIP-map D adjust", a factor on D of two fractional bits */
-			unsigned bias = (b.tsp >> 8) & 15;
+			unsigned bias = (tsp >> 8) & 15;
 
 			glUniform1f (p.u_lod_bias, bias ? log2f (bias / 4.0f) : 0.0f);
-			glUniform1f (p.u_max_lod, (float) log2_of (8u << ((b.tsp >> 3) & 7)));
+			glUniform1f (p.u_max_lod, (float) log2_of (8u << ((tsp >> 3) & 7)));
 		}
 	}
 
 	if (p.u_tag >= 0) {
-		glUniform1ui (p.u_tag, ((b.tsp >> 29) & 7) | (((b.tsp >> 26) & 7) << 3) | ((b.first / 3) << 6));
-	} else {
-		if (opaque)
-			glDisable (GL_BLEND);
-		else {
-			glEnable (GL_BLEND);
-			glBlendFunc (blend_factor (b.tsp >> 29, true), blend_factor (b.tsp >> 26, false));
-		}
-		glDepthFunc (depth_func (b.isp >> 29));
-		glDepthMask ((!opaque || ((b.isp >> 26) & 1)) ? GL_FALSE : GL_TRUE);
-		glStencilFunc (GL_ALWAYS, b.shadow ? 0x80 : 0, 0x80);
+		glUniform1ui (p.u_tag, ((tsp >> 29) & 7) | (((tsp >> 26) & 7) << 3) | ((first / 3) << 6));
+	} else if (opaque)
+		glDisable (GL_BLEND);
+	else {
+		glEnable (GL_BLEND);
+		glBlendFunc (blend_factor (tsp >> 29, true), blend_factor (tsp >> 26, false));
 	}
-	glDrawArrays (GL_TRIANGLES, b.first, b.count);
+	glDrawArrays (GL_TRIANGLES, first, b.count);
 }
 
-/* The modifier volumes' shadows, on what the opaque and punch-through polygons
- * marked (bit 7 of the stencil): bit 1 counts the faces in front of the depth,
- * bit 0 is what the volume covers; those pixels then dimmed by FPU_SHAD_SCALE */
+void
+BoardRenderer::draw_batch (const Program &p, const Draw &d, const Batch &b, bool opaque, float sx, float sy)
+{
+	(void) d;
+	if (!b.count)
+		return;
+	if (b.clip_on) {
+		glEnable (GL_SCISSOR_TEST);
+		glScissor ((GLint) (b.x0 * sx), (GLint) (target->h - b.y1 * sy),
+		           (GLsizei) ((b.x1 - b.x0) * sx), (GLsizei) ((b.y1 - b.y0) * sy));
+	} else
+		glDisable (GL_SCISSOR_TEST);
+
+	if (p.u_tag < 0) {
+		glDepthFunc (depth_func (b.isp >> 29));
+		glDepthMask ((!opaque || ((b.isp >> 26) & 1)) ? GL_FALSE : GL_TRUE);
+	}
+	if (opaque && volumes_ready && b.shadow) {
+		/* The two areas: outside, then inside the volumes */
+		glStencilFunc (GL_EQUAL, 0, 1);
+		draw_piece (p, b, b.tsp, b.tcw, b.first, false, opaque);
+		glStencilFunc (GL_EQUAL, 1, 1);
+		if (b.two_volume)
+			draw_piece (p, b, b.tsp1, b.tcw1, vertices1_at + b.first1, false, opaque);
+		else
+			draw_piece (p, b, b.tsp, b.tcw, b.first, (draw->shad_scale & 0x100) != 0, opaque);
+	} else {
+		if (p.u_tag < 0 && !depth_pass)
+			glStencilFunc (GL_ALWAYS, 0, 0);
+		draw_piece (p, b, b.tsp, b.tcw, b.first, false, opaque);
+	}
+}
+
+/* The modifier volumes against the depth the opaque and punch-through polygons
+ * left: bit 1 of the stencil counts the faces in front of the depth, bit 0 is
+ * what the volume covers, the polygons' "area 1" */
 void
 BoardRenderer::draw_modifiers (const Draw &d, float sx, float sy)
 {
 	const Scene &scene = *d.scene;
-	float scale = (d.shad_scale & 0x100) ? (d.shad_scale & 255) / 256.0f : 0.0f;
 
 	(void) sx;
 	(void) sy;
-	if (scene.mod_volumes.empty ())
-		return;
 	glUseProgram (mod_program);
 	glUniform1f (u_mod_zscale, 1.0f / std::max (scene.max_z, d.background_z));
 	glUniform2f (u_mod_scale, d.scale_x, d.scale_y);
@@ -1022,27 +1056,29 @@ BoardRenderer::draw_modifiers (const Draw &d, float sx, float sy)
 			base = -1;
 		}
 	}
-	glColorMask (GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
 	glDisable (GL_DEPTH_TEST);
 	glStencilMask (0xFF);
-	glStencilFunc (GL_EQUAL, 0x81, 0x81);
-	glStencilOp (GL_KEEP, GL_KEEP, GL_KEEP);
-	glEnable (GL_BLEND);
-	glBlendFunc (GL_ZERO, GL_CONSTANT_ALPHA);
-	glBlendColor (0.0f, 0.0f, 0.0f, scale);
-	{
-		const float quad[18] = {
-			0.0f, 0.0f, 1.0f, 100000.0f, 0.0f, 1.0f, 0.0f, 100000.0f, 1.0f,
-		};
-
-		glUniform2f (u_mod_scale, 1.0f, 1.0f);
-		glUniform1f (u_mod_zscale, 0.0f);
-		glBufferData (GL_ARRAY_BUFFER, 9 * sizeof (float), quad, GL_STREAM_DRAW);
-		glDrawArrays (GL_TRIANGLES, 0, 3);
-	}
 	glDisable (GL_STENCIL_TEST);
-	glDisable (GL_BLEND);
-	glEnable (GL_DEPTH_TEST);
+}
+
+/* Whether the opaque or punch-through lists have shadowed polygons and volumes
+ * to shadow them */
+static bool
+has_shadows (const Scene &scene)
+{
+	bool volumes = false;
+
+	for (const ModVol &m : scene.mod_volumes)
+		volumes = volumes || m.count;
+	if (!volumes)
+		return false;
+	for (const Batch &b : scene.batches[LIST_OPAQUE])
+		if (b.shadow)
+			return true;
+	for (const Batch &b : scene.batches[LIST_PUNCH])
+		if (b.shadow)
+			return true;
+	return false;
 }
 
 void
@@ -1085,7 +1121,12 @@ BoardRenderer::draw_scene (const Draw &d, Target &t, bool to_texture)
 	glUseProgram (program.id);
 	glBindVertexArray (vao);
 	glBindBuffer (GL_ARRAY_BUFFER, vbo);
-	glBufferData (GL_ARRAY_BUFFER, scene.vertices.size () * sizeof (Vertex), scene.vertices.data (), GL_STREAM_DRAW);
+	vertices1_at = (uint32_t) scene.vertices.size ();
+	glBufferData (GL_ARRAY_BUFFER, (scene.vertices.size () + scene.vertices1.size ()) * sizeof (Vertex), NULL,
+	              GL_STREAM_DRAW);
+	glBufferSubData (GL_ARRAY_BUFFER, 0, scene.vertices.size () * sizeof (Vertex), scene.vertices.data ());
+	glBufferSubData (GL_ARRAY_BUFFER, scene.vertices.size () * sizeof (Vertex),
+	                 scene.vertices1.size () * sizeof (Vertex), scene.vertices1.data ());
 	set_scene_uniforms (program);
 	glActiveTexture (GL_TEXTURE1);
 	glBindTexture (GL_TEXTURE_1D, fog_tex);
@@ -1094,9 +1135,38 @@ BoardRenderer::draw_scene (const Draw &d, Target &t, bool to_texture)
 
 	glEnable (GL_DEPTH_TEST);
 	glDisable (GL_CULL_FACE);
-	glEnable (GL_STENCIL_TEST);
-	glStencilMask (0x80);
-	glStencilOp (GL_KEEP, GL_KEEP, GL_REPLACE);
+	glStencilOp (GL_KEEP, GL_KEEP, GL_KEEP);
+
+	volumes_ready = false;
+	if (has_shadows (scene)) {
+		/* The volumes come after the lists' depth, and decide how these
+		 * polygons are shaded: a pass for the depth alone first (the core
+		 * has it per tile before it shades them) */
+		depth_pass = true;
+		glColorMask (GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
+		punch_flag = 0;
+		for (const Batch &b : scene.batches[LIST_OPAQUE])
+			draw_batch (program, d, b, true, sx, sy);
+		punch_flag = 1024;
+		for (const Batch &b : scene.batches[LIST_PUNCH])
+			draw_batch (program, d, b, true, sx, sy);
+		punch_flag = 0;
+		depth_pass = false;
+		glDisable (GL_SCISSOR_TEST);
+		draw_modifiers (d, sx, sy);
+		glColorMask (GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+		glUseProgram (program.id);
+		glBindVertexArray (vao);
+		glBindBuffer (GL_ARRAY_BUFFER, vbo);
+		glDepthMask (GL_TRUE);
+		glClearDepth (std::min (1.0, (double) d.background_z / std::max (scene.max_z, d.background_z)));
+		glClear (GL_DEPTH_BUFFER_BIT);
+		glClearDepth (1.0);
+		glEnable (GL_DEPTH_TEST);
+		glStencilMask (0);
+		glEnable (GL_STENCIL_TEST);
+		volumes_ready = true;
+	}
 
 	punch_flag = 0;
 	for (const Batch &b : scene.batches[LIST_OPAQUE])
@@ -1106,14 +1176,11 @@ BoardRenderer::draw_scene (const Draw &d, Target &t, bool to_texture)
 		draw_batch (program, d, b, true, sx, sy);
 	punch_flag = 0;
 
+	volumes_ready = false;
 	glDisable (GL_STENCIL_TEST);
+	glStencilMask (0xFF);
 	glDisable (GL_SCISSOR_TEST);
-	draw_modifiers (d, sx, sy);
 
-	glUseProgram (program.id);
-	glBindVertexArray (vao);
-	glBindBuffer (GL_ARRAY_BUFFER, vbo);
-	glBufferData (GL_ARRAY_BUFFER, scene.vertices.size () * sizeof (Vertex), scene.vertices.data (), GL_STREAM_DRAW);
 	if (per_pixel)
 		draw_translucent_per_pixel ();
 	else {
