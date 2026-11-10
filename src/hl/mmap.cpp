@@ -348,7 +348,16 @@ Mmap::get (unsigned size, uint32_t addr, void *data)
 	if (use_pages && addr < (NUM_PAGES << PAGE_BITS)) {
 		const uint8_t *page = read_pages[addr >> PAGE_BITS];
 		if (page) {
-			memcpy (data, page + (addr & ((1u << PAGE_BITS) - 1)), size);
+			uint32_t in_page = addr & ((1u << PAGE_BITS) - 1);
+
+			/* Misaligned, over the page's end: the next page may be
+			 * another buffer, or none */
+			if (in_page + size > (1u << PAGE_BITS)) {
+				for (unsigned i = 0; i < size; i++)
+					get (1, addr + i, (uint8_t *) data + i);
+				return 0;
+			}
+			memcpy (data, page + in_page, size);
 			return 0;
 		}
 	}
@@ -362,6 +371,12 @@ Mmap::get (unsigned size, uint32_t addr, void *data)
 
 	if (region->flags & HL_REGION_DIRECT) {
 		uint32_t offs = addr & region->mask;
+
+		/* Misaligned, over the buffer's end */
+		if (offs + size > region->buf->size ()) {
+			set_ptr (data, size, 0);
+			return 0;
+		}
 		set_ptr (data, size, region->buf->get (size, offs));
 		return 0;
 	}
@@ -383,7 +398,14 @@ Mmap::put (unsigned size, uint32_t addr, uint64_t data)
 	if (use_pages && addr < (NUM_PAGES << PAGE_BITS)) {
 		uint8_t *page = write_pages[addr >> PAGE_BITS];
 		if (page) {
-			memcpy (page + (addr & ((1u << PAGE_BITS) - 1)), &data, size);
+			uint32_t in_page = addr & ((1u << PAGE_BITS) - 1);
+
+			if (in_page + size > (1u << PAGE_BITS)) {
+				for (unsigned i = 0; i < size; i++)
+					put (1, addr + i, (data >> (i * 8)) & 0xFF);
+				return 0;
+			}
+			memcpy (page + in_page, &data, size);
 			return 0;
 		}
 	}
@@ -401,7 +423,9 @@ Mmap::put (unsigned size, uint32_t addr, uint64_t data)
 
 	if (region->flags & HL_REGION_DIRECT) {
 		uint32_t offs = addr & region->mask;
-		region->buf->put (size, offs, data);
+
+		if (offs + size <= region->buf->size ())
+			region->buf->put (size, offs, data);
 		return 0;
 	}
 

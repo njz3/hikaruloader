@@ -95,7 +95,7 @@ public:
 			             (uint64_t) vram->get (4, Holly::map32 ((addr + 4) & 0x00FFFFFC)) << 32;
 			set_ptr (val, 8, v);
 		} else
-			set_ptr (val, size, vram->get (size, Holly::map32 (addr & 0x00FFFFFF)));
+			set_ptr (val, size, vram->get (size, Holly::map32 (addr & 0x00FFFFFF & ~(size - 1))));
 		return 0;
 	}
 	int put (unsigned size, uint32_t addr, uint64_t val) override
@@ -104,7 +104,7 @@ public:
 			vram->put (4, Holly::map32 (addr & 0x00FFFFFC), (uint32_t) val);
 			vram->put (4, Holly::map32 ((addr + 4) & 0x00FFFFFC), (uint32_t) (val >> 32));
 		} else
-			vram->put (size, Holly::map32 (addr & 0x00FFFFFF), val);
+			vram->put (size, Holly::map32 (addr & 0x00FFFFFF & ~(size - 1)), val);
 		return 0;
 	}
 private:
