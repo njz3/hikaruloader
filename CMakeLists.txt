@@ -102,6 +102,7 @@ set (HIKARU_SRC
 	src/mach/naomi/naomi-servo.cpp
 	src/mach/naomi/naomi-card.cpp
 	src/mach/naomi/naomi-hopper.cpp
+	src/mach/naomi/naomi-g2board.cpp
 	src/mach/naomi/naomi-aw.cpp
 	src/mach/naomi/naomi-gd.cpp
 	src/mach/naomi/naomi-netdimm.cpp

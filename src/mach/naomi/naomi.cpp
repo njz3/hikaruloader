@@ -260,6 +260,11 @@ Board::setup_mmap ()
 	Nothing *zero = new Nothing (machine, 0);
 	AicaBus *aica_bus = new AicaBus (machine, aica);
 	hl::Device *g2 = link ? (hl::Device *) link : new Nothing (machine, 0xFFFFFFFF);
+	if (!link && !strcmp (game->g2_board, "837-14381")) {
+		g2_board = new G2Board (machine);
+		g2_board->name = "g2_board";
+		g2 = g2_board;
+	}
 	int ret = 0;
 	uint32_t mirror;
 
@@ -876,6 +881,8 @@ Board::nvram_read (const hl::Nvram &nvram)
 		cart->eeprom.load (d->data (), d->size ());
 	if (hopper && (d = nvram.get ("HOPR")))
 		hopper->load (d->data (), d->size ());
+	if (g2_board && (d = nvram.get ("G2RA")))
+		memcpy (g2_board->ram, d->data (), std::min (d->size (), sizeof (g2_board->ram)));
 }
 
 /* A new cabinet's backup memory where the game needs one: F355 Twin's says it
@@ -953,6 +960,8 @@ Board::nvram_write (hl::Nvram &nvram)
 	nvram.set (name, cart->eeprom.image, hl::X76F100::IMAGE_SIZE);
 	if (hopper)
 		nvram.set ("HOPR", hopper->settings (), hopper->settings_size ());
+	if (g2_board)
+		nvram.set ("G2RA", g2_board->ram, sizeof (g2_board->ram));
 }
 
 bool
@@ -972,6 +981,10 @@ Board::nvram_changed ()
 	}
 	if (hopper && hopper->changed ())
 		return true;
+	if (g2_board && g2_board->changed) {
+		g2_board->changed = false;
+		return true;
+	}
 	if (!memcmp (now, nvram_old, sizeof (now)))
 		return false;
 	memcpy (nvram_old, now, sizeof (now));

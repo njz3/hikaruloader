@@ -810,6 +810,27 @@ private:
 	bool	 inserted = false, read_pending = false, was_held = false;
 };
 
+/* The medal games' 837-14381 on the G2 bus; see naomi-g2board.cpp */
+class G2Board : public hl::Device {
+public:
+	explicit G2Board (hl::Machine *mach);
+
+	int	 get (unsigned size, uint32_t addr, void *val) override;
+	int	 put (unsigned size, uint32_t addr, uint64_t val) override;
+	void	 reset (hl::ResetType type) override;
+	int	 save_state (hl::State *state) override;
+	int	 load_state (hl::State *state) override;
+	bool	 set_option (const char *name, int value) override;
+
+	uint8_t	 ram[0x10000];
+	uint16_t regs[8];
+	/* Its RAM written since the file was */
+	bool	 changed = false;
+
+private:
+	bool	 log = false;
+};
+
 /* The SWP hopper board of the medal games, on the SCIF; see naomi-hopper.cpp */
 class SwpHopper : public SerialPipe {
 public:
@@ -939,6 +960,8 @@ public:
 	std::unique_ptr<ClubKartCard> card;
 	std::unique_ptr<SanwaCard> sanwa;
 	std::unique_ptr<SwpHopper> hopper;
+	/* The games' board on the G2 bus; none else */
+	G2Board	*g2_board = NULL;
 	std::unique_ptr<DriveSimMeters> meters;
 	/* F355 Challenge's, on the I/O board's lines */
 	hl::DriveBoard *drive_board = NULL;
