@@ -1184,10 +1184,12 @@ Naomi::choose_screen ()
 		if (boards[screen]->holly->pending_draws ())
 			screen_idle = 0;
 		else if (++screen_idle > 30) {
-			for (i = 0; i < boards.size (); i++) {
-				if (boards[i]->holly->pending_draws ()) {
-					HL_PRINT ("naomi: the picture from board %u", i);
-					screen = i;
+			/* Those with a monitor only: another may well draw (F355
+			 * Challenge Deluxe's master, black frames); F8 still shows it */
+			for (unsigned b : screen_order) {
+				if (boards[b]->holly->pending_draws ()) {
+					HL_PRINT ("naomi: the picture from board %u", b);
+					screen = b;
 					screen_idle = 0;
 					((Renderer *) renderer)->update_titles ();
 					break;
