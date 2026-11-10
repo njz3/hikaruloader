@@ -76,9 +76,10 @@ enum List {
 struct Batch {
 	uint32_t isp, tsp, tcw;
 	uint32_t first, count;
-	/* The user's tile clip, in pixels: inside when clip_on */
+	/* The user's tile clip, in pixels: drawn only inside when clip_on,
+	 * only outside when clip_out */
 	uint16_t x0, y0, x1, y1;
-	bool clip_on;
+	bool clip_on, clip_out;
 	bool shadow;		/* a modifier volume changes it */
 	/* "With two volumes": inside a modifier volume, these words instead,
 	 * and the vertices from first1 of Scene::vertices1 */

@@ -579,7 +579,7 @@ Holly::ta_batch ()
 {
 	static const unsigned from[5] = { LIST_OPAQUE, LIST_OPAQUE, LIST_TRANSLUCENT, LIST_TRANSLUCENT, LIST_PUNCH };
 	std::vector<Batch> &list = building->batches[from[ta.list & 7]];
-	bool clip = (ta.clip_mode & 3) == 2;
+	bool clip = (ta.clip_mode & 3) == 2, clip_out = (ta.clip_mode & 3) == 3;
 
 	if (list.empty () || ta.new_batch) {
 		Batch b = {};
@@ -590,6 +590,7 @@ Holly::ta_batch ()
 		b.tcw = ta.tcw;
 		b.first = (uint32_t) building->vertices.size ();
 		b.clip_on = clip;
+		b.clip_out = clip_out;
 		b.x0 = ta.clip[0];
 		b.y0 = ta.clip[1];
 		b.x1 = ta.clip[2];
@@ -603,7 +604,7 @@ Holly::ta_batch ()
 		if (!list.empty ()) {
 			Batch &last = list.back ();
 			if (last.isp == b.isp && last.tsp == b.tsp && last.tcw == b.tcw && last.clip_on == clip &&
-			    last.x0 == b.x0 && last.y0 == b.y0 && last.x1 == b.x1 && last.y1 == b.y1 &&
+			    last.clip_out == clip_out && last.x0 == b.x0 && last.y0 == b.y0 && last.x1 == b.x1 && last.y1 == b.y1 &&
 			    last.shadow == b.shadow && last.first + last.count == b.first &&
 			    last.two_volume == b.two_volume &&
 			    (!b.two_volume || (last.tsp1 == b.tsp1 && last.tcw1 == b.tcw1 &&

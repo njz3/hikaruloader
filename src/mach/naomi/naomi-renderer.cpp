@@ -100,6 +100,7 @@ uniform float u_pt_ref;
 uniform float u_lod_bias;
 uniform float u_max_lod;
 uniform float u_shade_scale;
+uniform vec4 u_clip_out;
 #ifdef COLLECT
 layout (binding = 0, offset = 0) uniform atomic_uint u_count;
 layout (binding = 0, r32ui) uniform coherent uimage2D u_heads;
@@ -127,6 +128,10 @@ float fog_table (float z_)
 }
 void main ()
 {
+	/* The user clip, its "outside" mode: nothing inside its rectangle */
+	if ((u_flags & 16384) != 0 && gl_FragCoord.x >= u_clip_out.x && gl_FragCoord.x <= u_clip_out.z &&
+	    gl_FragCoord.y >= u_clip_out.y && gl_FragCoord.y <= u_clip_out.w)
+		discard;
 	vec4 color = v_base;
 	vec3 offset = v_offset.rgb;
 	float trilinear = 1.0;
@@ -743,6 +748,7 @@ locate (P &p)
 	p.u_target = glGetUniformLocation (p.id, "u_target");
 	p.u_pt_ref = glGetUniformLocation (p.id, "u_pt_ref");
 	p.u_shade_scale = glGetUniformLocation (p.id, "u_shade_scale");
+	p.u_clip_out = glGetUniformLocation (p.id, "u_clip_out");
 	p.u_lod_bias = glGetUniformLocation (p.id, "u_lod_bias");
 	p.u_max_lod = glGetUniformLocation (p.id, "u_max_lod");
 }
@@ -912,6 +918,7 @@ BoardRenderer::draw_piece (const Program &p, const Batch &b, uint32_t tsp, uint3
 	flags |= ((tsp >> 22) & 3) << 7;
 	flags |= ((tsp >> 21) & 1) ? 512 : 0;
 	flags |= shadowed ? 8192 : 0;
+	flags |= b.clip_out ? 16384 : 0;
 	{
 		/* Tri-linear filtering, the PowerVR's way, in two passes of a same
 		 * mipmapped polygon added together (FILTER 2 and 3 in the TSP
@@ -967,15 +974,23 @@ BoardRenderer::draw_piece (const Program &p, const Batch &b, uint32_t tsp, uint3
 void
 BoardRenderer::draw_batch (const Program &p, const Draw &d, const Batch &b, bool opaque, float sx, float sy)
 {
-	(void) d;
 	if (!b.count)
 		return;
-	if (b.clip_on) {
-		glEnable (GL_SCISSOR_TEST);
-		glScissor ((GLint) (b.x0 * sx), (GLint) (target->h - b.y1 * sy),
-		           (GLsizei) ((b.x1 - b.x0) * sx), (GLsizei) ((b.y1 - b.y0) * sy));
-	} else
-		glDisable (GL_SCISSOR_TEST);
+	{
+		/* In the target's pixels, its origin at the bottom; the tiles are
+		 * those before the X and Y scalers, the wide picture centred */
+		float ox = (!d.to_texture && width > 640) ? (width - 640) * 0.5f * sx : 0.0f;
+		float x0 = ox + b.x0 * d.scale_x * sx, x1 = ox + b.x1 * d.scale_x * sx;
+		float y0 = target->h - b.y1 * d.scale_y * sy, y1 = target->h - b.y0 * d.scale_y * sy;
+
+		if (b.clip_on) {
+			glEnable (GL_SCISSOR_TEST);
+			glScissor ((GLint) x0, (GLint) y0, (GLsizei) (x1 - x0), (GLsizei) (y1 - y0));
+		} else
+			glDisable (GL_SCISSOR_TEST);
+		if (b.clip_out)
+			glUniform4f (p.u_clip_out, x0, y0, x1, y1);
+	}
 
 	if (p.u_tag < 0) {
 		glDepthFunc (depth_func (b.isp >> 29));
