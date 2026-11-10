@@ -235,6 +235,7 @@ Emulator::unload_game ()
 	snapshots.clear ();
 	state_slot = 0;
 	notice_until = 0;
+	Pointers::capture (false);
 	Pointers::enable (false);
 	Window::set_paused (false);
 }
@@ -440,6 +441,18 @@ Emulator::process_events ()
 			HL_PRINT ("window: the keyboard's focus lost, the keys do nothing until it is back");
 		else if (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_FOCUS_GAINED)
 			HL_PRINT ("window: the keyboard's focus back");
+		/* CAPTURE_MOUSE: a click in the game takes the mouse; Tab, Alt,
+		 * the Windows key or another window lets it go */
+		if (event.type == SDL_MOUSEBUTTONDOWN && Config::get ()->capture_mouse &&
+		    !ui::Interface::settings_open ())
+			Pointers::capture (true);
+		else if (event.type == SDL_KEYDOWN &&
+		         (event.key.keysym.sym == SDLK_TAB || event.key.keysym.sym == SDLK_LALT ||
+		          event.key.keysym.sym == SDLK_RALT || event.key.keysym.sym == SDLK_LGUI ||
+		          event.key.keysym.sym == SDLK_RGUI))
+			Pointers::capture (false);
+		else if (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_FOCUS_LOST)
+			Pointers::capture (false);
 		/* Tab, and everything while the settings are open */
 		if (ui::Interface::process_event (&event))
 			continue;

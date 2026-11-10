@@ -995,7 +995,7 @@ public:
 	/* Those lines run, from line */
 	void	 run_lines (unsigned line, unsigned count);
 	/* The frame's end: its sound moved to the machine's when asked */
-	void	 end_frame (std::vector<int16_t> *audio);
+	void	 end_frame (std::vector<int32_t> *mix);
 	int	 load_state (hl::State *state);
 	int	 save_state (hl::State *state);
 	const char *debug_string ();
@@ -1079,6 +1079,7 @@ public:
 	unsigned screens () const override { return (unsigned) screen_order.size (); }
 
 	std::vector<std::unique_ptr<Board>> boards;
+	std::vector<int32_t> mix;	/* the frame's sound, all boards' */
 	std::unique_ptr<Multiboard> link;
 	/* The boards are complete systems on a ring of communication boards,
 	 * each with its cartridge (games.json "network_boards") */

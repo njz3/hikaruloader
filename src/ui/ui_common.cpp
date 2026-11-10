@@ -355,6 +355,9 @@ void drawDisplayTab()
     ImGui::Checkbox(tr("Show the frame rate (F12)"), &cfg->fps_overlay);
     ImGui::Checkbox(tr("Show the frame number in the title bar"), &cfg->title_frame);
     ImGui::Checkbox(tr("Hide the mouse pointer"), &cfg->hide_cursor);
+    ImGui::Checkbox(tr("Capture the mouse with a click"), &cfg->capture_mouse);
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("%s", tr("A click in the game's window keeps the mouse in it, hidden; Tab, Alt, the Windows key or another window let it go"));
 
     // Taken at the game's start (hikaru::Renderer)
     ImGui::Separator();

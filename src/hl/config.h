@@ -192,6 +192,9 @@ public:
 	bool		fps_overlay;
 	bool		title_frame;	/* the frame number in the title */
 	bool		hide_cursor;
+	/* A click in the game's window keeps the mouse in it, hidden, until
+	 * Tab, Alt, the Windows key or the focus lost */
+	bool		capture_mouse;
 	/* The frames drawn by a thread of their own, a frame later; taken at
 	 * the game's start */
 	bool		threaded_rendering;

@@ -5,6 +5,20 @@ What each version brings, for those who play. How the versions are numbered
 and released: [DEVELOPMENT.md](DEVELOPMENT.md), "Versions and releases".
 
 
+Next version
+------------
+
+- Planet Harriers with a controller: the stick goes where the controller's
+  stick is again (moved, the hero kept jumping from one edge to the other);
+  `PHARRIER_INVERT_Y` stays.
+- F8 on the Hikaru, one screen at a time: the picture of its second monitor,
+  once a game drives it (hikcheck's two-monitor test), and back.
+- A click in the game's window can capture the mouse (`CAPTURE_MOUSE`, the
+  Display tab); Tab, Alt, the Windows key or another window let it go.
+- NAOMI cabinets of several boards: every board's sound is heard, not only
+  the master's.
+
+
 0.7.1 (2026-11-10)
 ------------------
 

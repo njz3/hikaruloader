@@ -135,6 +135,7 @@ Config::set_defaults ()
 	cfg->fps_overlay = false;
 	cfg->title_frame = false;
 	cfg->hide_cursor = true;
+	cfg->capture_mouse = false;
 	cfg->threaded_rendering = true;
 	cfg->sort_translucent_pixels = true;
 	cfg->widescreen = false;
@@ -402,6 +403,8 @@ Config::set_value (const char *section, const char *key, const char *value)
 			cfg->title_frame = parse_bool (value);
 		else if (!strcasecmp (key, "HIDE_CURSOR"))
 			cfg->hide_cursor = parse_bool (value);
+		else if (!strcasecmp (key, "CAPTURE_MOUSE"))
+			cfg->capture_mouse = parse_bool (value);
 		else if (!strcasecmp (key, "THREADED_RENDERING"))
 			cfg->threaded_rendering = parse_bool (value);
 		else if (!strcasecmp (key, "SORT_TRANSLUCENT_PIXELS"))
@@ -785,6 +788,11 @@ Config::save () const
 	         "\n# The mouse pointer hidden over the window: true or false.\n"
 	         "# Default: %s\n", bool_name (def.hide_cursor));
 	fprintf (fp, "HIDE_CURSOR = %s\n", bool_name (cfg->hide_cursor));
+	fprintf (fp,
+	         "\n# A click in the game's window captures the mouse (kept in the window,\n"
+	         "# hidden); Tab, Alt, the Windows key or another window let it go: true\n"
+	         "# or false. Default: %s\n", bool_name (def.capture_mouse));
+	fprintf (fp, "CAPTURE_MOUSE = %s\n", bool_name (cfg->capture_mouse));
 	fprintf (fp,
 	         "\n# The frames drawn by a thread of their own while the next one is\n"
 	         "# emulated: faster when the drawing slows the game, but the picture\n"

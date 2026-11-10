@@ -183,6 +183,7 @@ public:
 	Gpu *gpu;
 
 	unsigned screens () const override { return second.seen ? 2 : 1; }
+	void next_screen () override;
 
 	/* What draw () reads of the GPU's: copied at the frame's end */
 	struct {
@@ -274,6 +275,9 @@ public:
 		bool seen = false;		/* the game drives that output */
 		/* SIDE_BY_SIDE: in the window's right half, once laid out */
 		bool side = false, laid_out = false;
+		/* One output at a time (neither WINDOWS nor SIDE_BY_SIDE): F8
+		 * shows the second in place of the first */
+		bool instead = false;
 		GLint right[4] = { 0, 0, 0, 0 };
 		GLuint fb = 0, color = 0, depth = 0, program = 0, vao = 0;
 		unsigned w = 0, h = 0;

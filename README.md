@@ -688,6 +688,10 @@ in the system; their inputs are `MOUSE0_X` and `MOUSE0_Y`, `MOUSE0_BUTTON_LEFT`,
 `_RIGHT`, `_MIDDLE`, `_X1` and `_X2`, and `MOUSE0_OFFSCREEN`, a gun aimed off
 the picture. While capturing a mouse's input, Escape cancels.
 
+With `CAPTURE_MOUSE = true` (`[Display]`, the settings' Display tab: "Capture
+the mouse with a click"), a click in the game's window keeps the mouse in it,
+hidden; Tab, Alt, the Windows key or another window let it go.
+
 | Game | By default |
 |---|---|
 | Brave Firefighters | `MOUSE0` for player 1, `MOUSE1` for player 2: left button water, right button fog |
@@ -695,9 +699,11 @@ the picture. While capturing a mouse's input, Escape cancels.
 
 A mouse moves its sight from where it was. A gun that sends absolute positions
 aims at the game's 4:3 picture in the middle of the window. A controller's
-stick moves the sight instead of placing it, faster the further it goes, and
-the sight stays where it is left (`Aim_DeadZone`, and `Aim_Speed` in percent,
-in the `[Config]` section of `controls.ini`). If the sight is off, use the
+stick moves Brave Firefighters' sights instead of placing them, faster the
+further it goes, and a sight stays where it is left (`Aim_DeadZone`, and
+`Aim_Speed` in percent, in the `[Config]` section of `controls.ini`); Planet
+Harriers' stick goes where the controller's stick is, as on the cabinet (the
+game makes its hero jump when the stick is pushed to an edge). If the sight is off, use the
 game's own calibration in its test menu.
 
 Each player can have a device of their own, whatever the kinds: a mouse for

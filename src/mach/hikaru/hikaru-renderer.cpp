@@ -2706,10 +2706,14 @@ Renderer::end_mesh (uint32_t addr)
 		if (hr->second.wanted) {
 			hr->meshes.current->second_monitor = true;
 			hr->second.has_meshes = true;
-		} else {
+		} else if (!hr->second.instead) {
 			hr->push.num_verts = 0;
 			hr->push.num_tris = 0;
 		}
+	} else if (!hr->second.wanted && hr->second.instead) {
+		/* The second output shown alone: the first one's left out */
+		hr->push.num_verts = 0;
+		hr->push.num_tris = 0;
 	}
 
 	/* Upload the pushed vertex data. */
@@ -4466,6 +4470,16 @@ void main ()
 	out_color = vec4 (texture (u_tex, v_uv).rgb, 1.0);
 }
 )";
+
+void
+Renderer::next_screen ()
+{
+	if (second.wanted || !second.seen)
+		return;
+	second.instead = !second.instead;
+	HL_PRINT ("hikaru: the picture of monitor %u", second.instead ? 2 : 1);
+	hl::Window::set_title_detail (second.instead ? " - monitor 2" : "");
+}
 
 /* The list for the board's second video output, in its own buffers and its
  * own window, after the first monitor's picture */

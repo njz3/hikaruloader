@@ -52,6 +52,8 @@ public:
 	static State	 get (unsigned index);
 	/* Their names, by number: the product's, as the device tells it */
 	static std::vector<std::string> names ();
+	/* The mouse kept in the window and hidden (CAPTURE_MOUSE), or let go */
+	static void	 capture (bool on);
 	/* Set by hand: the agent's, the tests' */
 	static void	 inject (unsigned index, const State &state);
 };

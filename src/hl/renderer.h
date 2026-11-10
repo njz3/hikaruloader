@@ -74,6 +74,8 @@ public:
 	virtual void	reset () {}
 	/* The video outputs the game has drawn for */
 	virtual unsigned screens () const { return 1; }
+	/* F8: the next output shown, where there are several */
+	virtual void	next_screen () {}
 
 	unsigned width;
 	unsigned height;

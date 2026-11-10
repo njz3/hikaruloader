@@ -763,7 +763,7 @@ Board::run_lines (unsigned line, unsigned count)
 }
 
 void
-Board::end_frame (std::vector<int16_t> *audio)
+Board::end_frame (std::vector<int32_t> *mix)
 {
 	std::vector<int32_t> &in = ((hikaru::Aica *) aica)->out;
 
@@ -781,14 +781,13 @@ Board::end_frame (std::vector<int16_t> *audio)
 		link_watch--;
 		watch_link_settings ();
 	}
-	if (audio) {
-		for (size_t i = 0; i + 1 < in.size (); i += 2) {
-			int32_t l = std::max (-32768, std::min (32767, in[i]));
-			int32_t r = std::max (-32768, std::min (32767, in[i + 1]));
-
-			audio->push_back ((int16_t) l);
-			audio->push_back ((int16_t) r);
-		}
+	/* Each board's amplifier output reaches the cabinet's speakers: the
+	 * sounds of all the boards heard together */
+	if (mix) {
+		if (mix->size () < in.size ())
+			mix->resize (in.size (), 0);
+		for (size_t i = 0; i < in.size (); i++)
+			(*mix)[i] += in[i];
 	}
 	in.clear ();
 }
@@ -1303,9 +1302,13 @@ Naomi::run_frame ()
 		}
 	}
 	choose_screen ();
-	master ()->end_frame (&audio);
-	for (i = 1; i < boards.size (); i++)
-		boards[i]->end_frame (NULL);
+	mix.clear ();
+	for (auto &b : boards)
+		b->end_frame (&mix);
+	for (size_t q = 0; q + 1 < mix.size (); q += 2) {
+		audio.push_back ((int16_t) std::max (-32768, std::min (32767, mix[q])));
+		audio.push_back ((int16_t) std::max (-32768, std::min (32767, mix[q + 1])));
+	}
 	keep_nvram ();
 	if (reset_due) {
 		reset_due = false;

@@ -450,6 +450,12 @@ msgstr "Afficher le numéro d'image dans la barre de titre"
 msgid "Hide the mouse pointer"
 msgstr "Masquer le pointeur de la souris"
 
+msgid "Capture the mouse with a click"
+msgstr "Capturer la souris d'un clic"
+
+msgid "A click in the game's window keeps the mouse in it, hidden; Tab, Alt, the Windows key or another window let it go"
+msgstr "Un clic dans la fenêtre du jeu y garde la souris, masquée ; Tab, Alt, la touche Windows ou une autre fenêtre la libèrent"
+
 #: src/ui/ui_common.cpp
 msgid "Draw on a thread of its own"
 msgstr "Dessiner dans un thread à part"

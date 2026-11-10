@@ -23,6 +23,7 @@
 
 #include <SDL.h>
 
+#include "hl/config.h"
 #include "hl/core.h"
 #include "hl/pointers.h"
 
@@ -38,6 +39,18 @@ static std::mutex lock;
 static Pointers::State states[Pointers::MOST];
 static bool injected[Pointers::MOST];
 static SDL_Window *the_window;
+static bool captured;
+
+void
+Pointers::capture (bool on)
+{
+	if (on == captured || !the_window)
+		return;
+	captured = on;
+	SDL_SetWindowGrab (the_window, on ? SDL_TRUE : SDL_FALSE);
+	SDL_ShowCursor (on || Config::get ()->hide_cursor ? SDL_DISABLE : SDL_ENABLE);
+	HL_PRINT ("pointer: the mouse %s", on ? "captured (Tab, Alt or the Windows key let it go)" : "let go");
+}
 
 void
 Pointers::inject (unsigned index, const State &state)

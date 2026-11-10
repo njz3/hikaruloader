@@ -145,6 +145,8 @@ void setOpen(bool open)
     g_open = open;
     // Read in the game only: see hl::Pointers::enable
     hl::Pointers::enable(!open);
+    if (open)
+        hl::Pointers::capture(false);
     // The settings need the pointer, the game may hide it
     SDL_ShowCursor(open || !hl::Config::get ()->hide_cursor ? SDL_ENABLE : SDL_DISABLE);
     // The inputs held when the settings opened would stay down in the game,
