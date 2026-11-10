@@ -80,7 +80,7 @@ void main ()
 /* u_flags: bits 0-1 the shading, 2 textured, 3 the base's alpha used, 4 the
  * texture's alpha ignored, 5 the offset added, 7-8 the fog, 9 the colour
  * clamped, 10 punch-through, 11 and 12 tri-linear's passes A and B, 13 inside
- * a modifier volume in Intensity Volume mode */
+ * a modifier volume in Intensity Volume mode, 14 the user clip's "outside" */
 static const char *fs_src = R"(#version 430
 in vec2 v_uv;
 in vec4 v_base;
@@ -209,7 +209,7 @@ void main ()
 	if (node < u_max_nodes) {
 		uint next = imageAtomicExchange (u_heads, pixel, node + 1u);
 		nodes[node] = uvec4 (packUnorm4x8 (clamp (color, 0.0, 1.0)), floatBitsToUint (depth),
-		                     next, u_tag + (uint (gl_PrimitiveID) << 6));
+		                     next, u_tag + (uint (gl_PrimitiveID) << 8));
 	}
 #else
 	out_color = color;
@@ -231,8 +231,8 @@ void main ()
  *  - collected: each fragment shaded as usual, kept when the opaque depth
  *    (a copy) does not hide it, in its pixel's list (a storage buffer of
  *    uvec4: colour, depth, next + 1, the blending's source and destination
- *    instructions and the triangle's place in the lists << 6; an r32ui image
- *    holds each pixel's last + 1);
+ *    instructions, the SRC and DST selects at bits 6-7, the triangle's place
+ *    in the lists << 8; an r32ui image holds each pixel's last + 1);
  *  - resolved: a pass over the picture blends each pixel's list over a copy
  *    of what is drawn, the farthest first, with the TSP word's two blending
  *    instructions as the chip has them (the other's colour, the source's or
@@ -286,7 +286,7 @@ void main ()
 	uint order[KEPT], index[KEPT], last_o = 0u, i;
 	int num, j;
 	bool more;
-	vec4 color;
+	vec4 color, secondary = vec4 (0.0);
 
 	if (head == 0u)
 		discard;
@@ -297,7 +297,7 @@ void main ()
 		more = false;
 		for (i = head; i != 0u; i = nodes[i - 1u].z) {
 			float d = uintBitsToFloat (nodes[i - 1u].y);
-			uint o = nodes[i - 1u].w >> 6;
+			uint o = nodes[i - 1u].w >> 8;
 
 			if (!before (last_d, last_o, d, o))
 				continue;
@@ -320,10 +320,18 @@ void main ()
 		}
 		for (j = 0; j < num; j++) {
 			uvec4 n = nodes[index[j] - 1u];
-			vec4 src = unpackUnorm4x8 (n.x);
-			vec4 c = src * factor (n.w & 7u, src, color, true) +
-			         color * factor ((n.w >> 3) & 7u, src, color, false);
-			color = floor (clamp (c, 0.0, 1.0) * 255.0 + 0.5) / 255.0;
+			bool src_sel = (n.w & 64u) != 0u, dst_sel = (n.w & 128u) != 0u;
+			/* SRC select: the secondary buffer in place of the polygon's
+			 * colour; DST select: the blending goes on with, and to, it */
+			vec4 src = src_sel ? secondary : unpackUnorm4x8 (n.x);
+			vec4 dst = dst_sel ? secondary : color;
+			vec4 c = src * factor (n.w & 7u, src, dst, true) +
+			         dst * factor ((n.w >> 3) & 7u, src, dst, false);
+			c = floor (clamp (c, 0.0, 1.0) * 255.0 + 0.5) / 255.0;
+			if (dst_sel)
+				secondary = c;
+			else
+				color = c;
 		}
 		if (!more)
 			break;
@@ -961,7 +969,8 @@ BoardRenderer::draw_piece (const Program &p, const Batch &b, uint32_t tsp, uint3
 	}
 
 	if (p.u_tag >= 0) {
-		glUniform1ui (p.u_tag, ((tsp >> 29) & 7) | (((tsp >> 26) & 7) << 3) | ((first / 3) << 6));
+		glUniform1ui (p.u_tag, ((tsp >> 29) & 7) | (((tsp >> 26) & 7) << 3) | (((tsp >> 25) & 1) << 6) |
+		              (((tsp >> 24) & 1) << 7) | ((first / 3) << 8));
 	} else if (opaque)
 		glDisable (GL_BLEND);
 	else {
