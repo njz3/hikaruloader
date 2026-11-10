@@ -79,7 +79,8 @@ void main ()
 
 /* u_flags: bits 0-1 the shading, 2 textured, 3 the base's alpha used, 4 the
  * texture's alpha ignored, 5 the offset added, 7-8 the fog, 9 the colour
- * clamped */
+ * clamped, 10 punch-through, 11 and 12 tri-linear's passes A and B, 13 inside
+ * a modifier volume in Intensity Volume mode, 14 the user clip's "outside" */
 static const char *fs_src = R"(#version 430
 in vec2 v_uv;
 in vec4 v_base;
@@ -96,7 +97,10 @@ uniform vec3 u_fog_color_vertex;
 uniform vec4 u_clamp_max;
 uniform vec4 u_clamp_min;
 uniform float u_pt_ref;
-uniform float u_trilinear;
+uniform float u_lod_bias;
+uniform float u_max_lod;
+uniform float u_shade_scale;
+uniform vec4 u_clip_out;
 #ifdef COLLECT
 layout (binding = 0, offset = 0) uniform atomic_uint u_count;
 layout (binding = 0, r32ui) uniform coherent uimage2D u_heads;
@@ -124,11 +128,36 @@ float fog_table (float z_)
 }
 void main ()
 {
+	/* The user clip, its "outside" mode: nothing inside its rectangle */
+	if ((u_flags & 16384) != 0 && gl_FragCoord.x >= u_clip_out.x && gl_FragCoord.x <= u_clip_out.z &&
+	    gl_FragCoord.y >= u_clip_out.y && gl_FragCoord.y <= u_clip_out.w)
+		discard;
 	vec4 color = v_base;
+	vec3 offset = v_offset.rgb;
+	float trilinear = 1.0;
+	/* Inside an Intensity Volume, before the texture is combined */
+	if ((u_flags & 8192) != 0) {
+		color.rgb *= u_shade_scale;
+		offset *= u_shade_scale;
+	}
 	if ((u_flags & 8) == 0)
 		color.a = 1.0;
 	if ((u_flags & 4) != 0) {
-		vec4 t = texture (u_tex, v_uv);
+		vec4 t;
+		if ((u_flags & 6144) != 0) {
+			/* Tri-linear: pass A takes the level of the D value, the other
+			 * the next smaller one, each by its share of D's decimals */
+			float lod = clamp (textureQueryLod (u_tex, v_uv).x + u_lod_bias, 0.0, u_max_lod);
+			float level = floor (lod);
+			if ((u_flags & 2048) != 0) {
+				t = textureLod (u_tex, v_uv, level);
+				trilinear = 1.0 - (lod - level);
+			} else {
+				t = textureLod (u_tex, v_uv, level + 1.0);
+				trilinear = lod - level;
+			}
+		} else
+			t = texture (u_tex, v_uv, u_lod_bias);
 		if ((u_flags & 16) != 0)
 			t.a = 1.0;
 		switch (u_flags & 3) {
@@ -146,7 +175,7 @@ void main ()
 			break;
 		}
 		if ((u_flags & 32) != 0)
-			color.rgb += v_offset.rgb;
+			color.rgb += offset;
 	}
 	/* Punch-through: under PT_ALPHA_REF, nothing */
 	if ((u_flags & 1024) != 0 && color.a < u_pt_ref)
@@ -168,7 +197,7 @@ void main ()
 	else if (fog == 3)
 		color = vec4 (u_fog_color, fog_table (v_z));
 	/* After the fog: the two passes add up to it once */
-	color *= u_trilinear;
+	color *= trilinear;
 	float depth = v_z * u_zscale;
 #ifdef COLLECT
 	/* Into its pixel's list, unless the opaque polygons hide it: always
@@ -180,7 +209,7 @@ void main ()
 	if (node < u_max_nodes) {
 		uint next = imageAtomicExchange (u_heads, pixel, node + 1u);
 		nodes[node] = uvec4 (packUnorm4x8 (clamp (color, 0.0, 1.0)), floatBitsToUint (depth),
-		                     next, u_tag + (uint (gl_PrimitiveID) << 6));
+		                     next, u_tag + (uint (gl_PrimitiveID) << 8));
 	}
 #else
 	out_color = color;
@@ -202,8 +231,8 @@ void main ()
  *  - collected: each fragment shaded as usual, kept when the opaque depth
  *    (a copy) does not hide it, in its pixel's list (a storage buffer of
  *    uvec4: colour, depth, next + 1, the blending's source and destination
- *    instructions and the triangle's place in the lists << 6; an r32ui image
- *    holds each pixel's last + 1);
+ *    instructions, the SRC and DST selects at bits 6-7, the triangle's place
+ *    in the lists << 8; an r32ui image holds each pixel's last + 1);
  *  - resolved: a pass over the picture blends each pixel's list over a copy
  *    of what is drawn, the farthest first, with the TSP word's two blending
  *    instructions as the chip has them (the other's colour, the source's or
@@ -257,7 +286,7 @@ void main ()
 	uint order[KEPT], index[KEPT], last_o = 0u, i;
 	int num, j;
 	bool more;
-	vec4 color;
+	vec4 color, secondary = vec4 (0.0);
 
 	if (head == 0u)
 		discard;
@@ -268,7 +297,7 @@ void main ()
 		more = false;
 		for (i = head; i != 0u; i = nodes[i - 1u].z) {
 			float d = uintBitsToFloat (nodes[i - 1u].y);
-			uint o = nodes[i - 1u].w >> 6;
+			uint o = nodes[i - 1u].w >> 8;
 
 			if (!before (last_d, last_o, d, o))
 				continue;
@@ -291,10 +320,18 @@ void main ()
 		}
 		for (j = 0; j < num; j++) {
 			uvec4 n = nodes[index[j] - 1u];
-			vec4 src = unpackUnorm4x8 (n.x);
-			vec4 c = src * factor (n.w & 7u, src, color, true) +
-			         color * factor ((n.w >> 3) & 7u, src, color, false);
-			color = floor (clamp (c, 0.0, 1.0) * 255.0 + 0.5) / 255.0;
+			bool src_sel = (n.w & 64u) != 0u, dst_sel = (n.w & 128u) != 0u;
+			/* SRC select: the secondary buffer in place of the polygon's
+			 * colour; DST select: the blending goes on with, and to, it */
+			vec4 src = src_sel ? secondary : unpackUnorm4x8 (n.x);
+			vec4 dst = dst_sel ? secondary : color;
+			vec4 c = src * factor (n.w & 7u, src, dst, true) +
+			         dst * factor ((n.w >> 3) & 7u, src, dst, false);
+			c = floor (clamp (c, 0.0, 1.0) * 255.0 + 0.5) / 255.0;
+			if (dst_sel)
+				secondary = c;
+			else
+				color = c;
 		}
 		if (!more)
 			break;
@@ -327,6 +364,21 @@ void main ()
 }
 )";
 
+
+static const char *filter_fs_src = R"(#version 430
+in vec2 v_uv;
+out vec4 out_color;
+uniform sampler2D u_tex;
+uniform float u_line;
+uniform vec2 u_coef;
+void main ()
+{
+	vec3 c = texture (u_tex, v_uv - vec2 (0.0, u_line)).rgb * u_coef.x +
+	         texture (u_tex, v_uv).rgb * u_coef.y +
+	         texture (u_tex, v_uv + vec2 (0.0, u_line)).rgb * u_coef.x;
+	out_color = vec4 (c, 1.0);
+}
+)";
 
 static const char *mod_vs_src = R"(#version 430
 layout (location = 0) in vec3 in_pos;
@@ -448,14 +500,29 @@ rgba_palette (const Draw &d, unsigned index)
 	}
 }
 
+/* Where the level of 2^i texels a side starts: in texels after the texture's
+ * start (three unused, 1x1, 2x2...), its VQ indices in bytes after the code book
+ * (the 1x1's byte, then the 2x2's...) */
 static inline uint32_t
-mip_texels (unsigned w)
+mip_texels (unsigned i)
 {
-	uint32_t n = 1, s;
+	return 3 + ((1u << (2 * i)) - 1) / 3;
+}
 
-	for (s = 2; s < w; s <<= 1)
-		n += s * s;
-	return n;
+static inline uint32_t
+mip_indices (unsigned i)
+{
+	return i ? 1 + ((1u << (2 * (i - 1))) - 1) / 3 : 0;
+}
+
+static inline unsigned
+log2_of (unsigned w)
+{
+	unsigned i = 0;
+
+	while ((2u << i) <= w)
+		i++;
+	return i;
 }
 
 static inline bool
@@ -480,15 +547,22 @@ is_scan (uint32_t tcw)
 	return !is_paletted (tcw) && ((tcw >> 26) & 1);
 }
 
+/* The lines in order have no levels; VQ's are always twiddled */
+static inline bool
+is_mipmapped (uint32_t tcw)
+{
+	return (tcw >> 31) && (((tcw >> 30) & 1) || !is_scan (tcw));
+}
+
 /* What comes before the largest level, in bytes */
 static inline uint32_t
 mip_bytes (uint32_t tcw, unsigned w)
 {
-	if (!(tcw >> 31))
+	if (!is_mipmapped (tcw))
 		return 0;
 	if ((tcw >> 30) & 1)
-		return mip_texels (w / 2) + 1;
-	return (3 + mip_texels (w)) * texel_bits (tcw) / 8;
+		return mip_indices (log2_of (w));
+	return mip_texels (log2_of (w)) * texel_bits (tcw) / 8;
 }
 
 static inline unsigned
@@ -507,24 +581,26 @@ texture_bytes (uint32_t tcw, unsigned w, unsigned h, unsigned stride)
 	return mip_bytes (tcw, w) + w * h * texel_bits (tcw) / 8;
 }
 
+/* One level of a texture at data: the largest, or the one of 2^mip texels a
+ * side when mipmapped */
 static void
-decode_texture (std::vector<uint32_t> &out, hl::Buffer *vram, const Draw &d, uint32_t tcw, unsigned w, unsigned h)
+decode_level (std::vector<uint32_t> &out, const uint8_t *data, const Draw &d, uint32_t tcw, unsigned w, unsigned h,
+              unsigned mip)
 {
-	uint32_t addr = (tcw & 0x1FFFFF) << 3;
-	bool vq = (tcw >> 30) & 1, scan = is_scan (tcw);
+	bool vq = (tcw >> 30) & 1, scan = is_scan (tcw), mipmapped = is_mipmapped (tcw);
 	unsigned format = (tcw >> 27) & 7, stride = (d.text_control & 31) * 32, x, y;
 	unsigned line = line_width (tcw, w, stride);
+	uint32_t skip = mipmapped ? mip_texels (mip) : 0;
 
 	out.resize (w * h);
-	if (addr + texture_bytes (tcw, w, h, stride) > vram->size ()) {
-		std::fill (out.begin (), out.end (), 0xFFFF00FFu);
-		return;
-	}
-	const uint8_t *data = (const uint8_t *) vram->ptr (addr);
+	if (vq && mipmapped && mip == 0) {
+		/* The 1x1 level, as a 2x2 block: the block's last texel */
+		const uint16_t *e = &((const uint16_t *) data)[data[2048] * 4];
 
-	if (vq) {
+		out[0] = rgba_16 (format, e[3]);
+	} else if (vq) {
 		const uint16_t *book = (const uint16_t *) data;
-		const uint8_t *index = data + 2048 + mip_bytes (tcw, w);
+		const uint8_t *index = data + 2048 + (mipmapped ? mip_indices (mip) : 0);
 
 		for (y = 0; y < h; y += 2) {
 			for (x = 0; x < w; x += 2) {
@@ -537,26 +613,29 @@ decode_texture (std::vector<uint32_t> &out, hl::Buffer *vram, const Draw &d, uin
 			}
 		}
 	} else if (format == 5) {
-		const uint8_t *t = data + mip_bytes (tcw, w);
 		unsigned selector = ((tcw >> 21) & 63) << 4;
 
+		/* In nibbles: the 1x1 level is the fourth one */
 		for (y = 0; y < h; y++) {
 			for (x = 0; x < w; x++) {
-				uint32_t i = twiddle (x, y, w, h);
-				unsigned value = (i & 1) ? t[i / 2] >> 4 : t[i / 2] & 15;
+				uint32_t i = skip + twiddle (x, y, w, h);
+				unsigned value = (i & 1) ? data[i / 2] >> 4 : data[i / 2] & 15;
 
 				out[y * w + x] = rgba_palette (d, selector + value);
 			}
 		}
 	} else if (format == 6) {
-		const uint8_t *t = data + mip_bytes (tcw, w);
+		const uint8_t *t = data + skip;
 		unsigned selector = ((tcw >> 25) & 3) << 8;
 
 		for (y = 0; y < h; y++)
 			for (x = 0; x < w; x++)
 				out[y * w + x] = rgba_palette (d, selector + t[twiddle (x, y, w, h)]);
+	} else if (format == 3 && mipmapped && mip == 0) {
+		/* A pair of YUV needs two texels: the 1x1 level is RGB565 */
+		out[0] = rgba_16 (1, ((const uint16_t *) data)[skip]);
 	} else if (format == 3) {
-		const uint16_t *t = (const uint16_t *) (data + mip_bytes (tcw, w));
+		const uint16_t *t = (const uint16_t *) data + skip;
 
 		for (y = 0; y < h; y++) {
 			for (x = 0; x + 1 < w; x += 2) {
@@ -574,7 +653,7 @@ decode_texture (std::vector<uint32_t> &out, hl::Buffer *vram, const Draw &d, uin
 			for (x = 0; x < w && x < line; x++)
 				out[y * w + x] = rgba_16 (format, t[y * line + x]);
 	} else {
-		const uint16_t *t = (const uint16_t *) (data + mip_bytes (tcw, w));
+		const uint16_t *t = (const uint16_t *) data + skip;
 
 		for (y = 0; y < h; y++)
 			for (x = 0; x < w; x++)
@@ -582,29 +661,37 @@ decode_texture (std::vector<uint32_t> &out, hl::Buffer *vram, const Draw &d, uin
 	}
 }
 
+uint32_t
+texture_size (uint32_t tcw, uint32_t tsp, uint32_t text_control)
+{
+	unsigned w = 8u << ((tsp >> 3) & 7), h = 8u << (tsp & 7);
+
+	/* The levels are square: the height is not looked at */
+	if (is_mipmapped (tcw))
+		h = w;
+	return texture_bytes (tcw, w, h, (text_control & 31) * 32);
+}
+
 GLuint
 BoardRenderer::texture (uint32_t tcw, uint32_t tsp)
 {
 	unsigned w = 8u << ((tsp >> 3) & 7), h = 8u << (tsp & 7);
-	uint64_t key = ((uint64_t) tcw << 32) | (tsp & 0x3F);
+	uint64_t key = texture_key (tcw, tsp);
+
+	if (is_mipmapped (tcw))
+		h = w;
 	Texture &t = textures[key];
 
 	if (t.id && t.seen == frame_count)
 		return t.id;
 	t.seen = frame_count;
 
-	hl::Buffer *vram = holly->vram;
-	uint32_t addr = (tcw & 0x1FFFFF) << 3;
-	unsigned stride = (draw->text_control & 31) * 32;
-	uint32_t bytes = texture_bytes (tcw, w, h, stride), i;
-	uint64_t hash = (0xCBF29CE484222325ull ^ stride) * 0x100000001B3ull;
+	/* As it was at the STARTRENDER */
+	auto found = draw->textures.find (key);
+	const TextureData *kept = found != draw->textures.end () ? found->second.get () : NULL;
+	uint64_t hash = kept ? kept->hash : 0x100000001B3ull;
+	unsigned i;
 
-	if (addr + bytes <= vram->size ()) {
-		const uint32_t *p = (const uint32_t *) vram->ptr (addr);
-
-		for (i = 0; i < bytes / 4; i++)
-			hash = (hash ^ p[i]) * 0x100000001B3ull;
-	}
 	if (is_paletted (tcw)) {
 		unsigned first = ((tcw >> 27) & 7) == 5 ? ((tcw >> 21) & 63) << 4 : ((tcw >> 25) & 3) << 8;
 		unsigned count = ((tcw >> 27) & 7) == 5 ? 16 : 256;
@@ -618,13 +705,32 @@ BoardRenderer::texture (uint32_t tcw, uint32_t tsp)
 	t.hash = hash;
 
 	std::vector<uint32_t> rgba;
+	const uint8_t *data = kept ? kept->bytes.data () : NULL;
 
-	decode_texture (rgba, vram, *draw, tcw, w, h);
 	if (!t.id)
 		glGenTextures (1, &t.id);
 	glBindTexture (GL_TEXTURE_2D, t.id);
-	glTexImage2D (GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, rgba.data ());
-	glGenerateMipmap (GL_TEXTURE_2D);
+	if (!data) {
+		rgba.assign (w * h, 0xFFFF00FFu);
+		glTexImage2D (GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, rgba.data ());
+		glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
+	} else if (is_mipmapped (tcw)) {
+		/* As they are in the VRAM: GL's level 0 is the largest */
+		unsigned top = log2_of (w), level;
+
+		for (level = 0; level <= top; level++) {
+			unsigned side = 1u << level;
+
+			decode_level (rgba, data, *draw, tcw, side, side, level);
+			glTexImage2D (GL_TEXTURE_2D, top - level, GL_RGBA8, side, side, 0, GL_RGBA, GL_UNSIGNED_BYTE,
+			              rgba.data ());
+		}
+		glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, top);
+	} else {
+		decode_level (rgba, data, *draw, tcw, w, h, 0);
+		glTexImage2D (GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, rgba.data ());
+		glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
+	}
 	return t.id;
 }
 
@@ -664,7 +770,10 @@ locate (P &p)
 	p.u_scale = glGetUniformLocation (p.id, "u_scale");
 	p.u_target = glGetUniformLocation (p.id, "u_target");
 	p.u_pt_ref = glGetUniformLocation (p.id, "u_pt_ref");
-	p.u_trilinear = glGetUniformLocation (p.id, "u_trilinear");
+	p.u_shade_scale = glGetUniformLocation (p.id, "u_shade_scale");
+	p.u_clip_out = glGetUniformLocation (p.id, "u_clip_out");
+	p.u_lod_bias = glGetUniformLocation (p.id, "u_lod_bias");
+	p.u_max_lod = glGetUniformLocation (p.id, "u_max_lod");
 }
 
 void
@@ -798,6 +907,7 @@ BoardRenderer::set_scene_uniforms (const Program &p)
 	glUniform2f (p.u_scale, d.scale_x, d.scale_y);
 	glUniform2f (p.u_target, pixel_x, pixel_y);
 	glUniform1f (p.u_pt_ref, d.pt_alpha_ref / 255.0f);
+	glUniform1f (p.u_shade_scale, (d.shad_scale & 255) / 256.0f);
 	glUniform3f (p.u_fog_color, ((d.fog_color >> 16) & 255) / 255.0f, ((d.fog_color >> 8) & 255) / 255.0f,
 	             (d.fog_color & 255) / 255.0f);
 	glUniform3f (p.u_fog_color_vertex, ((d.fog_color_vertex >> 16) & 255) / 255.0f,
@@ -814,97 +924,128 @@ BoardRenderer::set_scene_uniforms (const Program &p)
 	}
 }
 
+/* A batch, or its part in one of a modifier volume's two areas: its TSP and
+ * texture words, its vertices at first, shadowed or not */
 void
-BoardRenderer::draw_batch (const Program &p, const Draw &d, const Batch &b, bool opaque, float sx, float sy)
+BoardRenderer::draw_piece (const Program &p, const Batch &b, uint32_t tsp, uint32_t tcw, uint32_t first, bool shadowed,
+                           bool opaque)
 {
 	bool textured = (b.isp >> 25) & 1;
 	int flags = 0;
 
-	(void) d;
-	if (!b.count)
-		return;
-	flags |= (b.tsp >> 6) & 3;
+	flags |= (tsp >> 6) & 3;
 	flags |= textured ? 4 : 0;
-	flags |= ((b.tsp >> 20) & 1) ? 8 : 0;
-	flags |= ((b.tsp >> 19) & 1) ? 16 : 0;
+	flags |= ((tsp >> 20) & 1) ? 8 : 0;
+	flags |= ((tsp >> 19) & 1) ? 16 : 0;
 	flags |= ((b.isp >> 24) & 1) ? 32 : 0;
-	flags |= ((b.tsp >> 22) & 3) << 7;
-	flags |= ((b.tsp >> 21) & 1) ? 512 : 0;
-	glUniform1i (p.u_flags, flags | punch_flag);
+	flags |= ((tsp >> 22) & 3) << 7;
+	flags |= ((tsp >> 21) & 1) ? 512 : 0;
+	flags |= shadowed ? 8192 : 0;
+	flags |= b.clip_out ? 16384 : 0;
 	{
-		/* Trilinear filtering, the PowerVR's way, in two passes of a same
-		 * mipmapped polygon added together (FILTER 2 and 3 in the TSP word):
-		 * each is weighted by the two low bits of the mipmap D adjust, in
-		 * quarters, the first by what the second leaves */
-		unsigned filter = (b.tsp >> 13) & 3;
-		float weight = 1.0f;
+		/* Tri-linear filtering, the PowerVR's way, in two passes of a same
+		 * mipmapped polygon added together (FILTER 2 and 3 in the TSP
+		 * word); punch-through polygons have no such thing */
+		unsigned filter = (tsp >> 13) & 3;
 
-		if (textured && filter > 1 && !punch_flag && (b.tcw >> 31)) {
-			weight = 0.25f * ((b.tsp >> 8) & 3);
-			if (filter == 2)
-				weight = 1.0f - weight;
-		}
-		glUniform1f (p.u_trilinear, weight);
+		if (textured && filter > 1 && !punch_flag && is_mipmapped (tcw))
+			flags |= filter == 2 ? 2048 : 4096;
 	}
-
-	if (b.clip_on) {
-		glEnable (GL_SCISSOR_TEST);
-		glScissor ((GLint) (b.x0 * sx), (GLint) (target->h - b.y1 * sy),
-		           (GLsizei) ((b.x1 - b.x0) * sx), (GLsizei) ((b.y1 - b.y0) * sy));
-	} else
-		glDisable (GL_SCISSOR_TEST);
+	/* The depth pass needs the textures of the punch-through polygons alone */
+	if (depth_pass && !punch_flag) {
+		flags &= ~4;
+		textured = false;
+	}
+	glUniform1i (p.u_flags, flags | punch_flag);
 
 	if (textured) {
-		unsigned filter = (b.tsp >> 13) & 3;
-		bool mip = b.tcw >> 31;
-		bool clamp_u = (b.tsp >> 16) & 1, clamp_v = (b.tsp >> 15) & 1;
-		bool flip_u = (b.tsp >> 18) & 1, flip_v = (b.tsp >> 17) & 1;
+		unsigned filter = (tsp >> 13) & 3;
+		bool mip = is_mipmapped (tcw);
+		bool clamp_u = (tsp >> 16) & 1, clamp_v = (tsp >> 15) & 1;
+		bool flip_u = (tsp >> 18) & 1, flip_v = (tsp >> 17) & 1;
 
-		glBindTexture (GL_TEXTURE_2D, texture (b.tcw, b.tsp));
+		glBindTexture (GL_TEXTURE_2D, texture (tcw, tsp));
 		glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filter ? GL_LINEAR : GL_NEAREST);
+		/* One level at a time; tri-linear's two levels are its passes' */
 		glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,
-		                 mip ? (filter ? GL_LINEAR_MIPMAP_LINEAR : GL_NEAREST_MIPMAP_NEAREST) :
+		                 mip ? (filter ? GL_LINEAR_MIPMAP_NEAREST : GL_NEAREST_MIPMAP_NEAREST) :
 		                 (filter ? GL_LINEAR : GL_NEAREST));
 		glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_S,
 		                 clamp_u ? GL_CLAMP_TO_EDGE : flip_u ? GL_MIRRORED_REPEAT : GL_REPEAT);
 		glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_T,
 		                 clamp_v ? GL_CLAMP_TO_EDGE : flip_v ? GL_MIRRORED_REPEAT : GL_REPEAT);
 		{
-			unsigned bias = (b.tsp >> 8) & 15;
+			/* The "MIP-map D adjust", a factor on D of two fractional bits */
+			unsigned bias = (tsp >> 8) & 15;
 
-			glTexParameterf (GL_TEXTURE_2D, GL_TEXTURE_LOD_BIAS, bias ? log2f (bias / 4.0f) : 0.0f);
+			glUniform1f (p.u_lod_bias, bias ? log2f (bias / 4.0f) : 0.0f);
+			glUniform1f (p.u_max_lod, (float) log2_of (8u << ((tsp >> 3) & 7)));
 		}
 	}
 
 	if (p.u_tag >= 0) {
-		glUniform1ui (p.u_tag, ((b.tsp >> 29) & 7) | (((b.tsp >> 26) & 7) << 3) | ((b.first / 3) << 6));
-	} else {
-		if (opaque)
-			glDisable (GL_BLEND);
-		else {
-			glEnable (GL_BLEND);
-			glBlendFunc (blend_factor (b.tsp >> 29, true), blend_factor (b.tsp >> 26, false));
-		}
-		glDepthFunc (depth_func (b.isp >> 29));
-		glDepthMask ((!opaque || ((b.isp >> 26) & 1)) ? GL_FALSE : GL_TRUE);
-		glStencilFunc (GL_ALWAYS, b.shadow ? 0x80 : 0, 0x80);
+		glUniform1ui (p.u_tag, ((tsp >> 29) & 7) | (((tsp >> 26) & 7) << 3) | (((tsp >> 25) & 1) << 6) |
+		              (((tsp >> 24) & 1) << 7) | ((first / 3) << 8));
+	} else if (opaque)
+		glDisable (GL_BLEND);
+	else {
+		glEnable (GL_BLEND);
+		glBlendFunc (blend_factor (tsp >> 29, true), blend_factor (tsp >> 26, false));
 	}
-	glDrawArrays (GL_TRIANGLES, b.first, b.count);
+	glDrawArrays (GL_TRIANGLES, first, b.count);
 }
 
-/* The modifier volumes' shadows, on what the opaque and punch-through polygons
- * marked (bit 7 of the stencil): bit 1 counts the faces in front of the depth,
- * bit 0 is what the volume covers; those pixels then dimmed by FPU_SHAD_SCALE */
+void
+BoardRenderer::draw_batch (const Program &p, const Draw &d, const Batch &b, bool opaque, float sx, float sy)
+{
+	if (!b.count)
+		return;
+	{
+		/* In the target's pixels, its origin at the bottom; the tiles are
+		 * those before the X and Y scalers, the wide picture centred */
+		float ox = (!d.to_texture && width > 640) ? (width - 640) * 0.5f * sx : 0.0f;
+		float x0 = ox + b.x0 * d.scale_x * sx, x1 = ox + b.x1 * d.scale_x * sx;
+		float y0 = target->h - b.y1 * d.scale_y * sy, y1 = target->h - b.y0 * d.scale_y * sy;
+
+		if (b.clip_on) {
+			glEnable (GL_SCISSOR_TEST);
+			glScissor ((GLint) x0, (GLint) y0, (GLsizei) (x1 - x0), (GLsizei) (y1 - y0));
+		} else
+			glDisable (GL_SCISSOR_TEST);
+		if (b.clip_out)
+			glUniform4f (p.u_clip_out, x0, y0, x1, y1);
+	}
+
+	if (p.u_tag < 0) {
+		glDepthFunc (depth_func (b.isp >> 29));
+		glDepthMask ((!opaque || ((b.isp >> 26) & 1)) ? GL_FALSE : GL_TRUE);
+	}
+	if (opaque && volumes_ready && b.shadow) {
+		/* The two areas: outside, then inside the volumes */
+		glStencilFunc (GL_EQUAL, 0, 1);
+		draw_piece (p, b, b.tsp, b.tcw, b.first, false, opaque);
+		glStencilFunc (GL_EQUAL, 1, 1);
+		if (b.two_volume)
+			draw_piece (p, b, b.tsp1, b.tcw1, vertices1_at + b.first1, false, opaque);
+		else
+			draw_piece (p, b, b.tsp, b.tcw, b.first, (draw->shad_scale & 0x100) != 0, opaque);
+	} else {
+		if (p.u_tag < 0 && !depth_pass)
+			glStencilFunc (GL_ALWAYS, 0, 0);
+		draw_piece (p, b, b.tsp, b.tcw, b.first, false, opaque);
+	}
+}
+
+/* The modifier volumes against the depth the opaque and punch-through polygons
+ * left: bit 1 of the stencil counts the faces in front of the depth, bit 0 is
+ * what the volume covers, the polygons' "area 1" */
 void
 BoardRenderer::draw_modifiers (const Draw &d, float sx, float sy)
 {
 	const Scene &scene = *d.scene;
-	float scale = (d.shad_scale & 0x100) ? (d.shad_scale & 255) / 256.0f : 0.0f;
 
 	(void) sx;
 	(void) sy;
-	if (scene.mod_volumes.empty ())
-		return;
 	glUseProgram (mod_program);
 	glUniform1f (u_mod_zscale, 1.0f / std::max (scene.max_z, d.background_z));
 	glUniform2f (u_mod_scale, d.scale_x, d.scale_y);
@@ -954,27 +1095,92 @@ BoardRenderer::draw_modifiers (const Draw &d, float sx, float sy)
 			base = -1;
 		}
 	}
-	glColorMask (GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
 	glDisable (GL_DEPTH_TEST);
 	glStencilMask (0xFF);
-	glStencilFunc (GL_EQUAL, 0x81, 0x81);
-	glStencilOp (GL_KEEP, GL_KEEP, GL_KEEP);
-	glEnable (GL_BLEND);
-	glBlendFunc (GL_ZERO, GL_CONSTANT_ALPHA);
-	glBlendColor (0.0f, 0.0f, 0.0f, scale);
-	{
-		const float quad[18] = {
-			0.0f, 0.0f, 1.0f, 100000.0f, 0.0f, 1.0f, 0.0f, 100000.0f, 1.0f,
-		};
-
-		glUniform2f (u_mod_scale, 1.0f, 1.0f);
-		glUniform1f (u_mod_zscale, 0.0f);
-		glBufferData (GL_ARRAY_BUFFER, 9 * sizeof (float), quad, GL_STREAM_DRAW);
-		glDrawArrays (GL_TRIANGLES, 0, 3);
-	}
 	glDisable (GL_STENCIL_TEST);
-	glDisable (GL_BLEND);
-	glEnable (GL_DEPTH_TEST);
+}
+
+/* The background polygon: the plane of its three vertices, the depth and the
+ * coordinates and colours by 1/W, at the corners of the picture. When its
+ * three vertices do not make a plane, its first vertex's values everywhere */
+void
+BoardRenderer::background_vertices (const Draw &d, Vertex *quad) const
+{
+	Vertex v[3] = { d.background[0], d.background[1], d.background[2] };
+	float extra = (!d.to_texture && width > 640) ? (width - 640) * 0.5f : 0.0f;
+	float xs[2] = { -extra / d.scale_x, (pixel_x + extra) / d.scale_x }, ys[2] = { 0.0f, pixel_y / d.scale_y };
+	float area = (v[1].x - v[0].x) * (v[2].y - v[0].y) - (v[2].x - v[0].x) * (v[1].y - v[0].y);
+	bool plane = area != 0.0f && std::isfinite (area);
+	bool gouraud = (d.background_isp >> 23) & 1;
+	unsigned i, k;
+
+	for (i = 0; i < 3; i++)
+		if (!(v[i].z > 0.0f) || !std::isfinite (v[i].z))
+			v[0].z = v[1].z = v[2].z = std::max (d.background_z, 1e-11f);
+	if (!gouraud) {
+		v[0].base = v[1].base = v[2].base;
+		v[0].offset = v[1].offset = v[2].offset;
+	}
+
+	auto corner = [&] (float x, float y) {
+		Vertex out = v[0];
+		float l[3] = { 1.0f, 0.0f, 0.0f }, z = 0.0f, u = 0.0f, tv = 0.0f, a[4] = {}, b[4] = {};
+		unsigned c;
+
+		if (plane) {
+			l[1] = ((x - v[0].x) * (v[2].y - v[0].y) - (v[2].x - v[0].x) * (y - v[0].y)) / area;
+			l[2] = ((v[1].x - v[0].x) * (y - v[0].y) - (x - v[0].x) * (v[1].y - v[0].y)) / area;
+			l[0] = 1.0f - l[1] - l[2];
+		}
+		for (k = 0; k < 3; k++) {
+			z += l[k] * v[k].z;
+			u += l[k] * v[k].u * v[k].z;
+			tv += l[k] * v[k].v * v[k].z;
+			for (c = 0; c < 4; c++) {
+				a[c] += l[k] * ((v[k].base >> (c * 8)) & 255) * v[k].z;
+				b[c] += l[k] * ((v[k].offset >> (c * 8)) & 255) * v[k].z;
+			}
+		}
+		out.x = x;
+		out.y = y;
+		out.z = z > 0.0f ? z : v[0].z;
+		out.u = u / out.z;
+		out.v = tv / out.z;
+		out.base = out.offset = 0;
+		for (c = 0; c < 4; c++) {
+			out.base |= (uint32_t) std::max (0.0f, std::min (255.0f, a[c] / out.z)) << (c * 8);
+			out.offset |= (uint32_t) std::max (0.0f, std::min (255.0f, b[c] / out.z)) << (c * 8);
+		}
+		return out;
+	};
+	Vertex tl = corner (xs[0], ys[0]), tr = corner (xs[1], ys[0]), bl = corner (xs[0], ys[1]), br = corner (xs[1], ys[1]);
+
+	quad[0] = tl;
+	quad[1] = tr;
+	quad[2] = br;
+	quad[3] = tl;
+	quad[4] = br;
+	quad[5] = bl;
+}
+
+/* Whether the opaque or punch-through lists have shadowed polygons and volumes
+ * to shadow them */
+static bool
+has_shadows (const Scene &scene)
+{
+	bool volumes = false;
+
+	for (const ModVol &m : scene.mod_volumes)
+		volumes = volumes || m.count;
+	if (!volumes)
+		return false;
+	for (const Batch &b : scene.batches[LIST_OPAQUE])
+		if (b.shadow)
+			return true;
+	for (const Batch &b : scene.batches[LIST_PUNCH])
+		if (b.shadow)
+			return true;
+	return false;
 }
 
 void
@@ -986,6 +1192,7 @@ BoardRenderer::draw_scene (const Draw &d, Target &t, bool to_texture)
 
 	draw = &d;
 	target = &t;
+	frame_count++;
 	glBindFramebuffer (GL_FRAMEBUFFER, t.fb);
 	glViewport (0, 0, t.w, t.h);
 	glDisable (GL_SCISSOR_TEST);
@@ -1007,16 +1214,37 @@ BoardRenderer::draw_scene (const Draw &d, Target &t, bool to_texture)
 	if (!to_texture && width > 640)
 		sx = (float) t.w / 854.0f;
 
-	if (scene.vertices.empty ())
+	/* The background: its plane over the whole picture, after the others */
+	Batch background = {};
+
+	background.isp = d.background_isp;
+	background.tsp = d.background_tsp;
+	background.tcw = d.background_tcw;
+	background.shadow = d.background_shadow;
+	background.first = (uint32_t) (scene.vertices.size () + scene.vertices1.size ());
+	background.count = 6;
+
+	if (scene.vertices.empty () && !((d.background_isp >> 25) & 1))
 		return;
 
-	bool per_pixel = !to_texture && !d.presort && hl::Config::get ()->sort_translucent_pixels &&
+	bool per_pixel =!to_texture && !d.presort && hl::Config::get ()->sort_translucent_pixels &&
 	                 !oit.failed && oit_buffers (t.w, t.h);
 
 	glUseProgram (program.id);
 	glBindVertexArray (vao);
 	glBindBuffer (GL_ARRAY_BUFFER, vbo);
-	glBufferData (GL_ARRAY_BUFFER, scene.vertices.size () * sizeof (Vertex), scene.vertices.data (), GL_STREAM_DRAW);
+	vertices1_at = (uint32_t) scene.vertices.size ();
+	glBufferData (GL_ARRAY_BUFFER, (scene.vertices.size () + scene.vertices1.size () + 6) * sizeof (Vertex), NULL,
+	              GL_STREAM_DRAW);
+	glBufferSubData (GL_ARRAY_BUFFER, 0, scene.vertices.size () * sizeof (Vertex), scene.vertices.data ());
+	glBufferSubData (GL_ARRAY_BUFFER, scene.vertices.size () * sizeof (Vertex),
+	                 scene.vertices1.size () * sizeof (Vertex), scene.vertices1.data ());
+	{
+		Vertex quad[6];
+
+		background_vertices (d, quad);
+		glBufferSubData (GL_ARRAY_BUFFER, background.first * sizeof (Vertex), sizeof (quad), quad);
+	}
 	set_scene_uniforms (program);
 	glActiveTexture (GL_TEXTURE1);
 	glBindTexture (GL_TEXTURE_1D, fog_tex);
@@ -1025,9 +1253,43 @@ BoardRenderer::draw_scene (const Draw &d, Target &t, bool to_texture)
 
 	glEnable (GL_DEPTH_TEST);
 	glDisable (GL_CULL_FACE);
-	glEnable (GL_STENCIL_TEST);
-	glStencilMask (0x80);
-	glStencilOp (GL_KEEP, GL_KEEP, GL_REPLACE);
+	glStencilOp (GL_KEEP, GL_KEEP, GL_KEEP);
+
+	volumes_ready = false;
+	if (has_shadows (scene)) {
+		/* The volumes come after the lists' depth, and decide how these
+		 * polygons are shaded: a pass for the depth alone first (the core
+		 * has it per tile before it shades them) */
+		depth_pass = true;
+		glColorMask (GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
+		punch_flag = 0;
+		for (const Batch &b : scene.batches[LIST_OPAQUE])
+			draw_batch (program, d, b, true, sx, sy);
+		punch_flag = 1024;
+		for (const Batch &b : scene.batches[LIST_PUNCH])
+			draw_batch (program, d, b, true, sx, sy);
+		punch_flag = 0;
+		depth_pass = false;
+		glDisable (GL_SCISSOR_TEST);
+		draw_modifiers (d, sx, sy);
+		glColorMask (GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+		glUseProgram (program.id);
+		glBindVertexArray (vao);
+		glBindBuffer (GL_ARRAY_BUFFER, vbo);
+		glDepthMask (GL_TRUE);
+		glClearDepth (std::min (1.0, (double) d.background_z / std::max (scene.max_z, d.background_z)));
+		glClear (GL_DEPTH_BUFFER_BIT);
+		glClearDepth (1.0);
+		glEnable (GL_DEPTH_TEST);
+		glStencilMask (0);
+		glEnable (GL_STENCIL_TEST);
+		volumes_ready = true;
+	}
+
+	/* The background polygon goes under everything, at its own depth */
+	glDisable (GL_DEPTH_TEST);
+	draw_batch (program, d, background, true, sx, sy);
+	glEnable (GL_DEPTH_TEST);
 
 	punch_flag = 0;
 	for (const Batch &b : scene.batches[LIST_OPAQUE])
@@ -1037,14 +1299,11 @@ BoardRenderer::draw_scene (const Draw &d, Target &t, bool to_texture)
 		draw_batch (program, d, b, true, sx, sy);
 	punch_flag = 0;
 
+	volumes_ready = false;
 	glDisable (GL_STENCIL_TEST);
+	glStencilMask (0xFF);
 	glDisable (GL_SCISSOR_TEST);
-	draw_modifiers (d, sx, sy);
 
-	glUseProgram (program.id);
-	glBindVertexArray (vao);
-	glBindBuffer (GL_ARRAY_BUFFER, vbo);
-	glBufferData (GL_ARRAY_BUFFER, scene.vertices.size () * sizeof (Vertex), scene.vertices.data (), GL_STREAM_DRAW);
 	if (per_pixel)
 		draw_translucent_per_pixel ();
 	else {
@@ -1067,10 +1326,27 @@ BoardRenderer::draw_scene (const Draw &d, Target &t, bool to_texture)
 void
 BoardRenderer::write_back (const Draw &d, Target &t)
 {
+	/* A 4x4 ordered dither, added before the low bits go */
+	static const uint8_t dither_order[16] = {
+		5, 13, 7, 15,
+		9, 1, 11, 3,
+		6, 14, 4, 12,
+		10, 2, 8, 0,
+	};
 	std::vector<uint8_t> rgba (t.w * t.h * 4);
 	hl::Buffer *vram = holly->vram;
 	uint32_t base = d.fb_w_sof1 & 0x00FFFFFF, stride = (d.fb_w_linestride & 0x1FF) * 8;
 	unsigned pack = d.fb_w_ctrl & 7, x, y;
+	bool dither = (d.fb_w_ctrl >> 3) & 1;
+	uint32_t kval = (d.fb_w_ctrl >> 8) & 0xFF, alpha_threshold = (d.fb_w_ctrl >> 16) & 0xFF;
+	auto dithered = [&] (uint32_t c, unsigned bits, unsigned px, unsigned py) {
+		uint32_t level;
+
+		if (!dither)
+			return c;
+		level = dither_order[(py & 3) * 4 + (px & 3)] >> (4 - bits);
+		return std::min (255u, c + level);
+	};
 
 	glBindFramebuffer (GL_FRAMEBUFFER, t.fb);
 	glReadPixels (0, 0, t.w, t.h, GL_RGBA, GL_UNSIGNED_BYTE, rgba.data ());
@@ -1086,20 +1362,92 @@ BoardRenderer::write_back (const Draw &d, Target &t)
 			if (at + 4 > vram->size ())
 				return;
 			switch (pack) {
-			case 0: vram->put (2, at, (r >> 3) << 10 | (g >> 3) << 5 | (b >> 3)); at += 2; break;
-			case 1: vram->put (2, at, (r >> 3) << 11 | (g >> 2) << 5 | (b >> 3)); at += 2; break;
-			case 2: vram->put (2, at, (a >> 4) << 12 | (r >> 4) << 8 | (g >> 4) << 4 | (b >> 4)); at += 2; break;
-			case 3: vram->put (2, at, (a >> 7) << 15 | (r >> 3) << 10 | (g >> 3) << 5 | (b >> 3)); at += 2; break;
+			case 0:	/* K, the top of fb_kval */
+				r = dithered (r, 3, x, y);
+				g = dithered (g, 3, x, y);
+				b = dithered (b, 3, x, y);
+				vram->put (2, at, (kval >> 7) << 15 | (r >> 3) << 10 | (g >> 3) << 5 | (b >> 3));
+				at += 2;
+				break;
+			case 1:
+				r = dithered (r, 3, x, y);
+				g = dithered (g, 2, x, y);
+				b = dithered (b, 3, x, y);
+				vram->put (2, at, (r >> 3) << 11 | (g >> 2) << 5 | (b >> 3));
+				at += 2;
+				break;
+			case 2:
+				r = dithered (r, 4, x, y);
+				g = dithered (g, 4, x, y);
+				b = dithered (b, 4, x, y);
+				a = dithered (a, 4, x, y);
+				vram->put (2, at, (a >> 4) << 12 | (r >> 4) << 8 | (g >> 4) << 4 | (b >> 4));
+				at += 2;
+				break;
+			case 3:	/* A, the comparison with fb_alpha_threshold */
+				r = dithered (r, 3, x, y);
+				g = dithered (g, 3, x, y);
+				b = dithered (b, 3, x, y);
+				vram->put (2, at, (a >= alpha_threshold ? 1u : 0u) << 15 | (r >> 3) << 10 | (g >> 3) << 5 | (b >> 3));
+				at += 2;
+				break;
 			case 4:
 				vram->put (1, at, b);
 				vram->put (1, at + 1, g);
 				vram->put (1, at + 2, r);
 				at += 3;
 				break;
-			default: vram->put (4, at, a << 24 | r << 16 | g << 8 | b); at += 4; break;
+			case 5:	/* K, fb_kval */
+				vram->put (4, at, kval << 24 | r << 16 | g << 8 | b);
+				at += 4;
+				break;
+			default:
+				vram->put (4, at, a << 24 | r << 16 | g << 8 | b);
+				at += 4;
+				break;
 			}
 		}
 	}
+}
+
+/* The Y scaler's filter, three lines through Y_COEFF's coefficients, when the
+ * picture is scaled down: returns the texture to show */
+GLuint
+BoardRenderer::filter_lines (const Draw &d)
+{
+	float c0 = (d.y_coeff & 255) / 256.0f, c1 = ((d.y_coeff >> 8) & 255) / 256.0f;
+
+	if (d.scale_y >= 1.0f || (c0 == 0.0f && c1 == 0.0f))
+		return screen.color;
+	if (!filter_program) {
+		filter_program = hl::gl::compile_program (blit_vs_src, filter_fs_src);
+		u_filter_tex = glGetUniformLocation (filter_program, "u_tex");
+		u_filter_line = glGetUniformLocation (filter_program, "u_line");
+		u_filter_coef = glGetUniformLocation (filter_program, "u_coef");
+		glUseProgram (filter_program);
+		glUniform1i (glGetUniformLocation (filter_program, "u_flip"), 0);
+		glUseProgram (0);
+	}
+	make_target (filtered, screen.w, screen.h);
+	glBindFramebuffer (GL_FRAMEBUFFER, filtered.fb);
+	glViewport (0, 0, filtered.w, filtered.h);
+	glDisable (GL_DEPTH_TEST);
+	glDisable (GL_STENCIL_TEST);
+	glDisable (GL_BLEND);
+	glDisable (GL_SCISSOR_TEST);
+	glUseProgram (filter_program);
+	glBindVertexArray (blit_vao);
+	glActiveTexture (GL_TEXTURE0);
+	glBindTexture (GL_TEXTURE_2D, screen.color);
+	glUniform1i (u_filter_tex, 0);
+	/* A line of the accumulation buffer, of the picture's height */
+	glUniform1f (u_filter_line, d.scale_y / pixel_y);
+	glUniform2f (u_filter_coef, c0, c1);
+	glDrawArrays (GL_TRIANGLES, 0, 3);
+	glBindTexture (GL_TEXTURE_2D, 0);
+	glBindVertexArray (0);
+	glUseProgram (0);
+	return filtered.color;
 }
 
 /* No scene for the screen: the framebuffer the game shows, as it is */
@@ -1147,7 +1495,6 @@ BoardRenderer::draw_picture ()
 	const Draw *for_screen = NULL;
 	Picture picture;
 
-	frame_count++;
 	make_target (screen, width * scale, height * scale);
 	for (const Draw &d : draws) {
 		if (d.to_texture) {
@@ -1163,12 +1510,13 @@ BoardRenderer::draw_picture ()
 	}
 	if (for_screen) {
 		draw_scene (*for_screen, screen, false);
+		shown_color = filter_lines (*for_screen);
 		frames_without = 0;
 	} else if (frames_without < 1000)
 		frames_without++;
 
 	if (frames_without == 0 || frames_without < 4)
-		picture.texture = screen.color;
+		picture.texture = shown_color;
 	else if (show_vram ()) {
 		picture.texture = vram_tex;
 		picture.flip = true;

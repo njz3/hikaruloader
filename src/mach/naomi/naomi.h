@@ -32,6 +32,7 @@
 #include <mutex>
 #include <string>
 #include <thread>
+#include <unordered_map>
 #include <vector>
 
 #include "hl/mmap.h"
@@ -75,10 +76,16 @@ enum List {
 struct Batch {
 	uint32_t isp, tsp, tcw;
 	uint32_t first, count;
-	/* The user's tile clip, in pixels: inside when clip_on */
+	/* The user's tile clip, in pixels: drawn only inside when clip_on,
+	 * only outside when clip_out */
 	uint16_t x0, y0, x1, y1;
-	bool clip_on;
+	bool clip_on, clip_out;
 	bool shadow;		/* a modifier volume changes it */
+	/* "With two volumes": inside a modifier volume, these words instead,
+	 * and the vertices from first1 of Scene::vertices1 */
+	bool two_volume;
+	uint32_t tsp1, tcw1;
+	uint32_t first1;
 };
 
 /* A modifier volume's triangles: three xyz each */
@@ -90,15 +97,35 @@ struct ModVol {
 /* What the TA made of a list of parameters */
 struct Scene {
 	std::vector<Vertex> vertices;
+	std::vector<Vertex> vertices1;
 	std::vector<Batch> batches[NUM_LISTS];
 	std::vector<float> mod_vertices;
 	std::vector<ModVol> mod_volumes;
 	float max_z = 1e-6f;
 };
 
+/* A texture's bytes as the VRAM had them at a STARTRENDER: what the core draws
+ * then; the game may write the VRAM's next picture as soon as it starts */
+struct TextureData {
+	std::vector<uint8_t> bytes;
+	uint64_t hash;
+};
+
+typedef std::unordered_map<uint64_t, std::shared_ptr<const TextureData>> TextureMap;
+
+static inline uint64_t
+texture_key (uint32_t tcw, uint32_t tsp)
+{
+	return ((uint64_t) tcw << 32) | (tsp & 0x3F);
+}
+
+/* The bytes of a texture in the VRAM (naomi-renderer.cpp) */
+uint32_t texture_size (uint32_t tcw, uint32_t tsp, uint32_t text_control);
+
 /* Holly's registers as a drawing wants them, at its STARTRENDER */
 struct Draw {
 	std::shared_ptr<Scene> scene;
+	TextureMap textures;
 	uint32_t fb_w_sof1, fb_w_ctrl, fb_w_linestride;
 	uint32_t fb_x_clip, fb_y_clip;
 	uint32_t text_control, pal_ctrl;
@@ -109,6 +136,7 @@ struct Draw {
 	bool to_texture;	/* FB_W_SOF1 bit 24 */
 	float scale_x;		/* SCALER_CTL's */
 	float scale_y;
+	uint32_t y_coeff;	/* its filter's coefficients */
 	uint32_t fog_color, fog_color_vertex, fog_density;
 	uint32_t clamp_max, clamp_min;
 	uint16_t fog_table[128];
@@ -116,6 +144,7 @@ struct Draw {
 	/* The background polygon's: its colours, its corners */
 	Vertex background[3];
 	uint32_t background_isp, background_tsp, background_tcw;
+	bool background_shadow;
 };
 
 /* The cartridge board on the G1 bus: its registers at 005F7000; see
@@ -433,12 +462,13 @@ private:
 	void	 after (unsigned lines_, uint32_t ist);
 
 	void	 ta_reset_list ();
+	void	 keep_textures (Draw &d);
 	void	 ta_polygon_header (const uint32_t *w);
 	void	 ta_vertex (const uint32_t *w);
 	void	 ta_sprite (const uint32_t *w);
 	void	 ta_modifier (const uint32_t *w);
-	void	 ta_store (Vertex v, bool end);
-	void	 ta_triangle (Vertex a, Vertex b, Vertex c);
+	void	 ta_store (Vertex v, const Vertex &v1, bool end);
+	void	 ta_triangle (Vertex a, Vertex b, Vertex c, const Vertex *second = NULL);
 	Batch	&ta_batch ();
 	void	 yuv_data (const uint32_t *w, unsigned words);
 	void	 yuv_block ();
@@ -467,6 +497,9 @@ private:
 	std::vector<Context> contexts;
 	std::shared_ptr<Scene> building;
 	std::vector<Draw> draws;
+	/* The textures' copies, for those that did not change at the next
+	 * STARTRENDER */
+	TextureMap kept_textures;
 
 	/* Plain data, for the states */
 	struct {
@@ -477,13 +510,14 @@ private:
 		uint8_t	 mod;		/* a modifier volume's triangles */
 		uint8_t	 sprite;
 		uint32_t vertex_type;
-		uint32_t pcw, isp, tsp, tcw;
-		float	 face[4], face_offset[4];
+		uint32_t pcw, isp, tsp, tcw, tsp1, tcw1;
+		float	 face[4], face1[4], face_offset[4];
 		uint32_t sprite_base, sprite_offset;
 		uint8_t	 clip_mode;
 		uint16_t clip[4];
 		uint8_t	 new_batch;
-		Vertex	 strip[2];
+		uint8_t	 two_volume;
+		Vertex	 strip[2], strip1[2];
 		uint32_t strip_n;
 	} ta;
 	struct {

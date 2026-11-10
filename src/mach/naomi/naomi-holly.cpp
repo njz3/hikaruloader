@@ -144,6 +144,7 @@ enum {
 	PVR_SCALER_CTL	= 0x0F4 / 4,
 	PVR_PAL_CTRL	= 0x108 / 4,
 	PVR_SPG_STATUS	= 0x10C / 4,
+	PVR_Y_COEFF	= 0x118 / 4,
 	PVR_PT_ALPHA	= 0x11C / 4,
 	PVR_TA_OL_BASE	= 0x124 / 4,
 	PVR_TA_ISP_BASE	= 0x128 / 4,
@@ -581,7 +582,7 @@ Holly::ta_batch ()
 {
 	static const unsigned from[5] = { LIST_OPAQUE, LIST_OPAQUE, LIST_TRANSLUCENT, LIST_TRANSLUCENT, LIST_PUNCH };
 	std::vector<Batch> &list = building->batches[from[ta.list & 7]];
-	bool clip = (ta.clip_mode & 3) == 2;
+	bool clip = (ta.clip_mode & 3) == 2, clip_out = (ta.clip_mode & 3) == 3;
 
 	if (list.empty () || ta.new_batch) {
 		Batch b = {};
@@ -592,17 +593,25 @@ Holly::ta_batch ()
 		b.tcw = ta.tcw;
 		b.first = (uint32_t) building->vertices.size ();
 		b.clip_on = clip;
+		b.clip_out = clip_out;
 		b.x0 = ta.clip[0];
 		b.y0 = ta.clip[1];
 		b.x1 = ta.clip[2];
 		b.y1 = ta.clip[3];
 		b.shadow = (ta.pcw >> 7) & 1;
+		b.two_volume = ta.two_volume;
+		b.tsp1 = ta.tsp1;
+		b.tcw1 = ta.tcw1;
+		b.first1 = (uint32_t) building->vertices1.size ();
 		/* Glued to the last one if the same */
 		if (!list.empty ()) {
 			Batch &last = list.back ();
 			if (last.isp == b.isp && last.tsp == b.tsp && last.tcw == b.tcw && last.clip_on == clip &&
-			    last.x0 == b.x0 && last.y0 == b.y0 && last.x1 == b.x1 && last.y1 == b.y1 &&
-			    last.shadow == b.shadow && last.first + last.count == b.first)
+			    last.clip_out == clip_out && last.x0 == b.x0 && last.y0 == b.y0 && last.x1 == b.x1 && last.y1 == b.y1 &&
+			    last.shadow == b.shadow && last.first + last.count == b.first &&
+			    last.two_volume == b.two_volume &&
+			    (!b.two_volume || (last.tsp1 == b.tsp1 && last.tcw1 == b.tcw1 &&
+			                       last.first1 + last.count == b.first1)))
 				return last;
 		}
 		list.push_back (b);
@@ -611,14 +620,22 @@ Holly::ta_batch ()
 }
 
 void
-Holly::ta_triangle (Vertex a, Vertex b, Vertex c)
+Holly::ta_triangle (Vertex a, Vertex b, Vertex c, const Vertex *second)
 {
 	Scene *scene = building.get ();
 	unsigned cull = (ta.isp >> 27) & 3;
+	Vertex a1 = {}, b1 = {}, c1 = {};
 
+	if (second) {
+		a1 = second[0];
+		b1 = second[1];
+		c1 = second[2];
+	}
 	if (!((ta.isp >> 23) & 1)) {
 		a.base = b.base = c.base;
 		a.offset = b.offset = c.offset;
+		a1.base = b1.base = c1.base;
+		a1.offset = b1.offset = c1.offset;
 	}
 	if (a.z <= 0.0f || b.z <= 0.0f || c.z <= 0.0f)
 		return;
@@ -637,32 +654,51 @@ Holly::ta_triangle (Vertex a, Vertex b, Vertex c)
 	scene->vertices.push_back (a);
 	scene->vertices.push_back (b);
 	scene->vertices.push_back (c);
+	if (ta.two_volume) {
+		scene->vertices1.push_back (a1);
+		scene->vertices1.push_back (b1);
+		scene->vertices1.push_back (c1);
+	}
 	scene->max_z = std::max ({ scene->max_z, a.z, b.z, c.z });
 	batch.count += 3;
 }
 
 void
-Holly::ta_store (Vertex v, bool end)
+Holly::ta_store (Vertex v, const Vertex &v1, bool end)
 {
 	if (ta.strip_n >= 2) {
 		if ((ta.strip_n - 2) & 1) {
 			/* Flat shading: the colour of the triangle's last vertex
 			 * sent, which this order puts second */
-			Vertex last = ta.strip[1];
+			Vertex last = ta.strip[1], last1 = ta.strip1[1];
 
 			if (!((ta.isp >> 23) & 1)) {
 				last.base = v.base;
 				last.offset = v.offset;
+				last1.base = v1.base;
+				last1.offset = v1.offset;
 			}
-			ta_triangle (ta.strip[0], v, last);
-		} else
-			ta_triangle (ta.strip[0], ta.strip[1], v);
+			{
+				Vertex second[3] = { ta.strip1[0], v1, last1 };
+
+				ta_triangle (ta.strip[0], v, last, second);
+			}
+		} else {
+			Vertex second[3] = { ta.strip1[0], ta.strip1[1], v1 };
+
+			ta_triangle (ta.strip[0], ta.strip[1], v, second);
+		}
 	}
-	if (ta.strip_n >= 1)
+	if (ta.strip_n >= 1) {
 		ta.strip[0] = ta.strip[1];
+		ta.strip1[0] = ta.strip1[1];
+	}
 	ta.strip[ta.strip_n >= 1 ? 1 : 0] = v;
-	if (ta.strip_n == 0)
+	ta.strip1[ta.strip_n >= 1 ? 1 : 0] = v1;
+	if (ta.strip_n == 0) {
 		ta.strip[1] = v;
+		ta.strip1[1] = v1;
+	}
 	ta.strip_n++;
 	if (end)
 		ta.strip_n = 0;
@@ -685,6 +721,10 @@ Holly::ta_polygon_header (const uint32_t *w)
 	ta.sprite = 0;
 	ta.strip_n = 0;
 	ta.new_batch = 1;
+	/* "With two volumes": two more words, in place of the Sort-DMA's */
+	ta.two_volume = volume && ((pcw >> 7) & 1);
+	ta.tsp1 = ta.two_volume ? w[4] : 0;
+	ta.tcw1 = ta.two_volume ? w[5] : 0;
 	if (pcw & (1 << 23))
 		ta.clip_mode = (pcw >> 16) & 3;
 
@@ -710,6 +750,10 @@ Holly::ta_polygon_header (const uint32_t *w)
 		ta.face[1] = to_float (w[9]);
 		ta.face[2] = to_float (w[10]);
 		ta.face[3] = to_float (w[11]);
+		ta.face1[0] = to_float (w[12]);
+		ta.face1[1] = to_float (w[13]);
+		ta.face1[2] = to_float (w[14]);
+		ta.face1[3] = to_float (w[15]);
 	}
 
 	if (!textured) {
@@ -734,8 +778,12 @@ Holly::ta_vertex (const uint32_t *w)
 	bool end = (w[0] >> 28) & 1;
 	bool uv16 = ta.vertex_type == 4 || ta.vertex_type == 6 || ta.vertex_type == 8 ||
 	            ta.vertex_type == 12 || ta.vertex_type == 14;
-	Vertex v = {};
+	Vertex v = {}, v1 = {};
 	float intensity, offs;
+	/* An intensity's colour from a face colour, base or offset */
+	auto face_color = [] (const float *face, float i) {
+		return argb_float (face[0], face[1] * i, face[2] * i, face[3] * i);
+	};
 
 	v.x = to_float (w[1]);
 	v.y = to_float (w[2]);
@@ -779,25 +827,42 @@ Holly::ta_vertex (const uint32_t *w)
 		break;
 	case 9:
 		v.base = w[4];
+		v1.base = w[5];
 		break;
 	case 10:
-		intensity = to_float (w[4]);
-		v.base = argb_float (ta.face[0], ta.face[1] * intensity, ta.face[2] * intensity, ta.face[3] * intensity);
+		v.base = face_color (ta.face, to_float (w[4]));
+		v1.base = face_color (ta.face1, to_float (w[5]));
 		break;
 	case 11:
 	case 12:
 		v.base = w[6];
 		v.offset = w[7];
+		v1.base = w[10];
+		v1.offset = w[11];
 		break;
 	case 13:
 	case 14:
-		intensity = to_float (w[6]);
-		v.base = argb_float (ta.face[0], ta.face[1] * intensity, ta.face[2] * intensity, ta.face[3] * intensity);
+		/* The face colour is for both the base and the offset */
+		v.base = face_color (ta.face, to_float (w[6]));
+		v.offset = face_color (ta.face, to_float (w[7]));
+		v1.base = face_color (ta.face1, to_float (w[10]));
+		v1.offset = face_color (ta.face1, to_float (w[11]));
 		break;
 	default:
 		break;
 	}
-	ta_store (v, end);
+	/* The second volume's coordinates; its position is the same */
+	v1.x = v.x;
+	v1.y = v.y;
+	v1.z = v.z;
+	if (ta.vertex_type >= 11 && uv16) {
+		v1.u = to_float (w[8] & 0xFFFF0000);
+		v1.v = to_float (w[8] << 16);
+	} else if (ta.vertex_type >= 11) {
+		v1.u = to_float (w[8]);
+		v1.v = to_float (w[9]);
+	}
+	ta_store (v, v1, end);
 }
 
 void
@@ -833,6 +898,7 @@ Holly::ta_sprite (const uint32_t *w)
 		/* No culling, nor flat shading to change: the same colours */
 		uint32_t isp = ta.isp;
 
+		ta.two_volume = 0;
 		ta.isp |= 1 << 23;
 		ta.isp &= ~(3u << 27);
 		ta_triangle (a, b, c);
@@ -990,6 +1056,7 @@ Holly::elan_polygon (unsigned list, uint32_t isp, uint32_t tsp, uint32_t tcw, bo
 	ta.isp = isp;
 	ta.tsp = tsp;
 	ta.tcw = tcw;
+	ta.two_volume = 0;
 	ta.mod = 0;
 	ta.sprite = 0;
 	ta.strip_n = 0;
@@ -1162,6 +1229,7 @@ Holly::start_render ()
 	d.shad_scale = pvr[PVR_SHAD_SCALE];
 	d.background_z = to_float (pvr[PVR_BACKGND_D]);
 	d.to_texture = (pvr[PVR_FB_W_SOF1] & 0x01000000) != 0;
+	d.y_coeff = pvr[PVR_Y_COEFF] & 0xFFFF;
 	d.scale_x = (pvr[PVR_SCALER_CTL] & 0x10000) ? 0.5f : 1.0f;
 	{
 		uint32_t vscale = pvr[PVR_SCALER_CTL] & 0xFFFF;
@@ -1220,11 +1288,61 @@ Holly::start_render ()
 				}
 			}
 			v.base = word (p);
-			v.offset = 0;
+			v.offset = ((d.background_isp >> 24) & 1) ? word (p + 4) : 0;
 			at += (skip * (shadow ? 2 : 1) + 3) * 4;
 		}
+		d.background_shadow = (tag >> 27) & 1;
 	}
+	keep_textures (d);
 	draws.push_back (std::move (d));
+}
+
+/* The textures of a drawing as they are now (renders end before the games go
+ * on writing the next picture to the VRAM; the frame is drawn much later) */
+void
+Holly::keep_textures (Draw &d)
+{
+	uint32_t stride = (d.text_control & 31) * 32;
+	auto take = [&] (uint32_t tcw, uint32_t tsp) {
+		uint64_t key = texture_key (tcw, tsp);
+
+		if (d.textures.count (key))
+			return;
+		uint32_t bytes = texture_size (tcw, tsp, d.text_control);
+		uint32_t addr = (tcw & 0x1FFFFF) << 3, i;
+
+		if (addr + bytes > vram->size ())
+			return;
+		const uint32_t *p = (const uint32_t *) vram->ptr (addr);
+		uint64_t hash = (0xCBF29CE484222325ull ^ stride) * 0x100000001B3ull;
+
+		for (i = 0; i < bytes / 4; i++)
+			hash = (hash ^ p[i]) * 0x100000001B3ull;
+
+		std::shared_ptr<const TextureData> &kept = kept_textures[key];
+
+		if (!kept || kept->hash != hash) {
+			std::shared_ptr<TextureData> copy = std::make_shared<TextureData> ();
+
+			copy->bytes.assign ((const uint8_t *) p, (const uint8_t *) p + bytes);
+			copy->hash = hash;
+			kept = copy;
+		}
+		d.textures[key] = kept;
+	};
+	unsigned l;
+
+	for (l = 0; l < NUM_LISTS; l++)
+		for (const Batch &b : d.scene->batches[l])
+			if ((b.isp >> 25) & 1) {
+				take (b.tcw, b.tsp);
+				if (b.two_volume)
+					take (b.tcw1, b.tsp1);
+			}
+	if ((d.background_isp >> 25) & 1)
+		take (d.background_tcw, d.background_tsp);
+	if (kept_textures.size () > 8192)
+		kept_textures.clear ();
 }
 
 void

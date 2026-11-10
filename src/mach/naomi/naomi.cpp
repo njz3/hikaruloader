@@ -680,7 +680,7 @@ unsigned
 Board::begin_frame ()
 {
 	frame_lines = holly->lines ();
-	cycles_per_line = (unsigned) ((uint64_t) hl::Config::sh4_clock_mhz () * MHZ / (60 * frame_lines));
+	cycles_per_line = (unsigned) ((uint64_t) hl::Config::naomi_sh4_clock_mhz () * MHZ / (60 * frame_lines));
 	mie_t_states = (int) (16000000 / (60 * frame_lines));
 	uint32_t hz = (uint32_t) ((uint64_t) cycles_per_line * frame_lines * 60);
 	((hikaru::Aica *) aica)->cpu_hz = hz;
