@@ -21,9 +21,13 @@
  */
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
+#include <condition_variable>
 #include <cstddef>
+#include <mutex>
 #include <string>
+#include <thread>
 
 #include "hl/config.h"
 #include "hl/core.h"
@@ -1584,9 +1588,10 @@ BoardRenderer::filter_lines (const Draw &d)
 	return filtered.color;
 }
 
-/* No scene for the screen: the framebuffer the game shows, as it is */
+/* No scene for the screen: the framebuffer the game shows, as it is, read
+ * on the machine's thread */
 bool
-BoardRenderer::show_vram ()
+BoardRenderer::read_vram (Holly *holly, Frame &f)
 {
 	uint32_t ctrl = holly->fb_r_ctrl (), size = holly->fb_r_size ();
 	unsigned depth = (ctrl >> 2) & 3;
@@ -1594,8 +1599,9 @@ BoardRenderer::show_vram ()
 	unsigned line = (size & 0x3FF) + 1, lines = ((size >> 10) & 0x3FF) + 1, modulus = (size >> 20) & 0x3FF;
 	unsigned w = line * 4 / bytes, x, y;
 	uint32_t at = holly->fb_r_sof1 () & 0x00FFFFFC;
-	std::vector<uint32_t> rgba;
+	std::vector<uint32_t> &rgba = f.vram_rgba;
 
+	f.vram = false;
 	if (!(ctrl & 1) || w > 1024 || lines > 1024)
 		return false;
 	rgba.resize (w * lines);
@@ -1615,16 +1621,58 @@ BoardRenderer::show_vram ()
 		}
 		at += line * 4 + (modulus ? (modulus - 1) * 4 : 0);
 	}
+	f.vram = true;
+	f.vram_w = w;
+	f.vram_h = lines;
+	return true;
+}
+
+bool
+BoardRenderer::show_vram (const Frame &f)
+{
+	if (!f.vram)
+		return false;
 	glBindTexture (GL_TEXTURE_2D, vram_tex);
-	glTexImage2D (GL_TEXTURE_2D, 0, GL_RGBA8, w, lines, 0, GL_RGBA, GL_UNSIGNED_BYTE, rgba.data ());
+	glTexImage2D (GL_TEXTURE_2D, 0, GL_RGBA8, f.vram_w, f.vram_h, 0, GL_RGBA, GL_UNSIGNED_BYTE, f.vram_rgba.data ());
 	glBindTexture (GL_TEXTURE_2D, 0);
 	return true;
+}
+
+BoardRenderer::Frame
+BoardRenderer::take (Holly *holly, unsigned &quiet)
+{
+	Frame f;
+
+	f.draws = holly->take_draws ();
+	for (const Draw &d : f.draws) {
+		if (d.to_texture)
+			f.to_texture = true;
+		else
+			f.has_screen = true;
+	}
+	/* As draw_frame () counts: the framebuffer shown from the fourth */
+	if (f.has_screen)
+		quiet = 0;
+	else if (quiet < 1000)
+		quiet++;
+	if (!f.has_screen && quiet >= 4)
+		read_vram (holly, f);
+	return f;
 }
 
 Picture
 BoardRenderer::draw_picture ()
 {
-	std::vector<Draw> draws = holly->take_draws ();
+	unsigned q = frames_without;
+	Frame f = take (holly, q);
+
+	return draw_frame (f);
+}
+
+Picture
+BoardRenderer::draw_frame (Frame &f)
+{
+	std::vector<Draw> &draws = f.draws;
 	unsigned scale = (unsigned) std::max (1, hl::Config::get ()->render_scale);
 	const Draw *for_screen = NULL;
 	Picture picture;
@@ -1651,7 +1699,7 @@ BoardRenderer::draw_picture ()
 
 	if (frames_without == 0 || frames_without < 4)
 		picture.texture = shown_color;
-	else if (show_vram ()) {
+	else if (show_vram (f)) {
 		picture.texture = vram_tex;
 		picture.flip = true;
 	}
@@ -1698,6 +1746,9 @@ Renderer::Renderer (Naomi *naomi_) :
 	if (naomi->multi_screen == hl::MULTI_WINDOWS)
 		open_windows ();
 	update_titles ();
+	quiet.assign (naomi->boards.size (), 1000);
+	if (hl::Config::get ()->threaded_rendering)
+		start_thread ();
 }
 
 static std::string
@@ -1735,6 +1786,8 @@ Renderer::apply_multi_screen ()
 
 Renderer::~Renderer ()
 {
+	stop_thread ();
+	blitter.reset ();
 	outputs.clear ();
 	drawers.clear ();
 	if (wide_fb)
@@ -1828,7 +1881,8 @@ Renderer::update_titles ()
 
 /* The boards' pictures in a row, left to right, in one texture */
 Picture
-Renderer::side_by_side (const std::vector<unsigned> &shown, const std::vector<Picture> &pictures)
+Renderer::side_by_side (const std::vector<unsigned> &shown, const std::vector<Picture> &pictures,
+                        BoardRenderer *with)
 {
 	unsigned scale = (unsigned) std::max (1, hl::Config::get ()->render_scale);
 	unsigned one = width * scale, h = height * scale, w = one * (unsigned) shown.size (), i;
@@ -1857,7 +1911,7 @@ Renderer::side_by_side (const std::vector<unsigned> &shown, const std::vector<Pi
 	glClear (GL_COLOR_BUFFER_BIT);
 	for (i = 0; i < shown.size (); i++) {
 		glViewport ((GLint) (i * one), 0, one, h);
-		drawer (shown[i])->blit (pictures[i]);
+		(with ? with : drawer (shown[i]))->blit (pictures[i]);
 	}
 	glBindFramebuffer (GL_FRAMEBUFFER, 0);
 	wide.texture = wide_color;
@@ -1895,24 +1949,363 @@ Renderer::show (Output &out, const Picture &p, BoardRenderer *blitter, unsigned 
 }
 
 void
+Renderer::present_pictures (const std::vector<unsigned> &shown, const std::vector<Picture> &pictures,
+                            BoardRenderer *with)
+{
+	size_t i;
+
+	if (shown.empty ())
+		return;
+	if (naomi->multi_screen == hl::MULTI_SIDE_BY_SIDE && shown.size () > 1) {
+		Picture wide = side_by_side (shown, pictures, with);
+
+		show (outputs[0], wide, with ? with : drawer (shown[0]), width * (unsigned) shown.size (), height);
+		return;
+	}
+	/* The main one last: its swap, after this, waits for the screen */
+	for (i = outputs.size (); i-- > 0;)
+		if (i < shown.size () && i < pictures.size ())
+			show (outputs[i], pictures[i], with ? with : drawer (shown[i]), width, height);
+}
+
+void
 Renderer::on_end_frame ()
 {
 	std::vector<unsigned> shown = naomi->shown_boards ();
 	std::vector<Picture> pictures;
 	size_t i;
 
-	for (i = 0; i < shown.size (); i++)
-		pictures.push_back (drawer (shown[i])->draw_picture ());
-	if (naomi->multi_screen == hl::MULTI_SIDE_BY_SIDE && shown.size () > 1) {
-		Picture wide = side_by_side (shown, pictures);
-
-		show (outputs[0], wide, drawer (shown[0]), width * (unsigned) shown.size (), height);
+	if (thread) {
+		threaded_end_frame (shown);
 		return;
 	}
-	/* The main one last: its swap, after this, waits for the screen */
-	for (i = outputs.size (); i-- > 0;)
-		if (i < shown.size ())
-			show (outputs[i], pictures[i], drawer (shown[i]), width, height);
+	for (i = 0; i < shown.size (); i++)
+		pictures.push_back (drawer (shown[i])->draw_picture ());
+	present_pictures (shown, pictures, NULL);
+}
+
+/*
+ * The drawing thread
+ *
+ * THREADED_RENDERING: the boards' pictures drawn by a thread of their own, in
+ * a GL context sharing the window's, while the machine runs the next frame.
+ * At a frame's end the machine's thread takes each shown board's scenes (the
+ * copies a STARTRENDER made of what they read) and, after a while without
+ * one, the framebuffer the game shows; it waits for the thread to be done
+ * with the frame before, hands this one over and shows that one, a frame
+ * later than without the thread. The pictures go to two sets of textures in
+ * turn. A frame with a scene drawn to a texture is waited for and shown at
+ * once: its pixels go back into the VRAM, which the game reads next. The
+ * screenshots, the agent's "shot" and the pause take the last frame (flush).
+ */
+struct Renderer::Thread {
+	std::thread		 thread;
+	std::mutex		 lock;
+	std::condition_variable	 wake, idle;
+	/* busy: not waiting for a job (starting, drawing) */
+	bool			 busy = true, job = false, quit = false, ready = false;
+	/* An HL_ABORT there, thrown again by the machine's frame */
+	std::string		 error;
+	SDL_GLContext		 context = NULL;
+
+	/* A board's picture, copied: the thread's texture and framebuffer */
+	struct Out {
+		GLuint		 texture = 0, fb = 0;
+		int		 w = 0, h = 0;
+		bool		 flip = false, valid = false;
+	};
+	struct Set {
+		std::vector<unsigned> shown;
+		std::vector<Out> outs;
+		/* The thread done with it; the window done showing it */
+		GLsync		 drawn = 0, shown_sync = 0;
+	} sets[2];
+	/* The job: the boards shown, their frames, the set drawn into */
+	std::vector<unsigned>	 job_shown;
+	std::vector<BoardRenderer::Frame> job_frames;
+	unsigned		 job_set = 0;
+	GLuint			 read_fb = 0;
+	/* The set of the next frame, of the last one; the frames handed over,
+	 * the last one shown */
+	unsigned		 next = 0, last = 0;
+	uint64_t		 jobs = 0, shown_job = 0;
+};
+
+/* A sync of the other context's: its work done on the GPU, then deleted */
+static void
+client_wait (GLsync sync)
+{
+	while (glClientWaitSync (sync, GL_SYNC_FLUSH_COMMANDS_BIT, 100000000) == GL_TIMEOUT_EXPIRED)
+		;
+	glDeleteSync (sync);
+}
+
+bool
+Renderer::start_thread ()
+{
+	Thread *t;
+
+	if (!GLEW_ARB_sync) {
+		HL_ERROR ("THREADED_RENDERING: no GL_ARB_sync here, the frames drawn without a thread");
+		return false;
+	}
+	t = new Thread ();
+	t->context = hl::Window::create_shared_context ();
+	if (!t->context) {
+		delete t;
+		return false;
+	}
+	thread = t;
+	t->thread = std::thread (thread_main, this);
+	wait_thread (false);
+	if (!t->ready) {
+		HL_ERROR ("THREADED_RENDERING: the drawing thread did not start (%s), the frames drawn without it",
+		          t->error.c_str ());
+		stop_thread ();
+		return false;
+	}
+	hl::Window::set_flush (flush, this);
+	HL_PRINT ("naomi: the frames drawn by a thread of their own (THREADED_RENDERING)");
+	return true;
+}
+
+void
+Renderer::stop_thread ()
+{
+	Thread *t = thread;
+
+	if (!t)
+		return;
+	hl::Window::set_flush (NULL, NULL);
+	if (t->thread.joinable ()) {
+		{
+			std::lock_guard<std::mutex> lock (t->lock);
+			t->quit = true;
+		}
+		t->wake.notify_one ();
+		t->thread.join ();
+	}
+	hl::Window::delete_context (t->context);
+	delete t;
+	thread = nullptr;
+}
+
+/* The thread waiting for a job; its error, thrown again */
+void
+Renderer::wait_thread (bool rethrow)
+{
+	Thread *t = thread;
+	std::unique_lock<std::mutex> lock (t->lock);
+
+	t->idle.wait (lock, [t] { return !t->busy; });
+	if (rethrow && !t->error.empty ()) {
+		std::string error = t->error;
+		t->error.clear ();
+		throw hl::Abort (error);
+	}
+}
+
+void
+Renderer::thread_main (Renderer *owner)
+{
+	Thread *t = owner->thread;
+
+	HL_PRINT ("naomi: the drawing thread is thread %lu", hl::Log::thread_id ());
+	if (hl::Window::make_current (t->context))
+		t->ready = true;
+	else
+		t->error = "no GL context";
+
+	for (;;) {
+		{
+			std::unique_lock<std::mutex> lock (t->lock);
+			t->busy = false;
+			t->idle.notify_all ();
+			t->wake.wait (lock, [t] { return t->job || t->quit; });
+			if (t->quit)
+				break;
+			t->job = false;
+		}
+		try {
+			if (t->ready)
+				owner->draw_job ();
+		} catch (const hl::Abort &e) {
+			t->error = e.what ();
+		}
+	}
+
+	/* Its GL objects, in its context */
+	for (auto &d : owner->drawers)
+		d.reset ();
+	for (auto &s : t->sets) {
+		for (auto &o : s.outs) {
+			if (o.fb)
+				glDeleteFramebuffers (1, &o.fb);
+			if (o.texture)
+				glDeleteTextures (1, &o.texture);
+		}
+		if (s.drawn)
+			glDeleteSync (s.drawn);
+		if (s.shown_sync)
+			glDeleteSync (s.shown_sync);
+	}
+	if (t->read_fb)
+		glDeleteFramebuffers (1, &t->read_fb);
+	glFinish ();
+	hl::Window::make_current (NULL);
+}
+
+/* On the thread: the frame handed over, each board's picture copied into the
+ * set's textures */
+void
+Renderer::draw_job ()
+{
+	Thread *t = thread;
+	auto &s = t->sets[t->job_set];
+	size_t i;
+
+	/* The window done showing what the set held */
+	if (s.shown_sync) {
+		client_wait (s.shown_sync);
+		s.shown_sync = 0;
+	}
+	s.shown = t->job_shown;
+	s.outs.resize (s.shown.size ());
+	for (i = 0; i < s.shown.size () && i < t->job_frames.size (); i++) {
+		Picture p = drawer (s.shown[i])->draw_frame (t->job_frames[i]);
+		auto &o = s.outs[i];
+		GLint w = 0, h = 0;
+
+		o.valid = p.texture != 0;
+		o.flip = p.flip;
+		if (!o.valid)
+			continue;
+		glBindTexture (GL_TEXTURE_2D, p.texture);
+		glGetTexLevelParameteriv (GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &w);
+		glGetTexLevelParameteriv (GL_TEXTURE_2D, 0, GL_TEXTURE_HEIGHT, &h);
+		if (!o.texture || o.w != w || o.h != h) {
+			if (!o.texture)
+				glGenTextures (1, &o.texture);
+			glBindTexture (GL_TEXTURE_2D, o.texture);
+			glTexImage2D (GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+			glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+			glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+			glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+			glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+			glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
+			if (!o.fb)
+				glGenFramebuffers (1, &o.fb);
+			glBindFramebuffer (GL_FRAMEBUFFER, o.fb);
+			glFramebufferTexture2D (GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, o.texture, 0);
+			o.w = w;
+			o.h = h;
+		}
+		glBindTexture (GL_TEXTURE_2D, 0);
+		if (!t->read_fb)
+			glGenFramebuffers (1, &t->read_fb);
+		glBindFramebuffer (GL_READ_FRAMEBUFFER, t->read_fb);
+		glFramebufferTexture2D (GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, p.texture, 0);
+		glBindFramebuffer (GL_DRAW_FRAMEBUFFER, o.fb);
+		glDisable (GL_SCISSOR_TEST);
+		glBlitFramebuffer (0, 0, w, h, 0, 0, w, h, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+		glBindFramebuffer (GL_FRAMEBUFFER, 0);
+	}
+	t->job_frames.clear ();
+	if (s.drawn)
+		glDeleteSync (s.drawn);
+	s.drawn = glFenceSync (GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+	/* The fence on its way, for the window's context to wait on */
+	glFlush ();
+}
+
+/* In the window's context: a set's pictures where MULTI_SCREEN wants them */
+void
+Renderer::present (unsigned set)
+{
+	auto &s = thread->sets[set];
+	std::vector<Picture> pictures;
+
+	if (s.drawn) {
+		client_wait (s.drawn);
+		s.drawn = 0;
+	}
+	for (const auto &o : s.outs) {
+		Picture p;
+
+		p.texture = o.valid ? o.texture : 0;
+		p.flip = o.flip;
+		pictures.push_back (p);
+	}
+	if (!blitter)
+		blitter.reset (new BoardRenderer (naomi->boards[0]->holly, width, height));
+	present_pictures (s.shown, pictures, blitter.get ());
+	/* Shown twice (flush ()): the first one's sync, done with */
+	if (s.shown_sync)
+		client_wait (s.shown_sync);
+	s.shown_sync = glFenceSync (GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+	glFlush ();
+}
+
+void
+Renderer::threaded_end_frame (const std::vector<unsigned> &shown)
+{
+	Thread *t = thread;
+	std::vector<BoardRenderer::Frame> frames;
+	bool at_once = false;
+	uint64_t before;
+	unsigned set, prev;
+
+	for (unsigned b : shown) {
+		frames.push_back (BoardRenderer::take (naomi->boards[b]->holly, quiet[b]));
+		at_once |= frames.back ().to_texture;
+	}
+	/* The frame before drawn: this one to the thread, that one to the
+	 * window */
+	wait_thread (true);
+	set = t->next;
+	prev = t->last;
+	before = t->jobs;
+	t->job_frames.swap (frames);
+	t->job_shown = shown;
+	t->job_set = set;
+	t->last = set;
+	t->next ^= 1;
+	t->jobs++;
+	{
+		std::lock_guard<std::mutex> lock (t->lock);
+		t->busy = true;
+		t->job = true;
+	}
+	t->wake.notify_one ();
+	if (at_once) {
+		wait_thread (true);
+		present (set);
+		t->shown_job = t->jobs;
+	} else if (before) {
+		present (prev);
+		t->shown_job = before;
+	} else {
+		glBindFramebuffer (GL_FRAMEBUFFER, 0);
+		glDisable (GL_SCISSOR_TEST);
+		glClearColor (0.0f, 0.0f, 0.0f, 1.0f);
+		glClear (GL_COLOR_BUFFER_BIT);
+	}
+}
+
+/* Window::set_flush ()'s: the last frame drawn, to the window if it is not
+ * there yet */
+bool
+Renderer::flush (void *data)
+{
+	Renderer *r = (Renderer *) data;
+	Thread *t = r->thread;
+
+	r->wait_thread (false);
+	if (!t->jobs || t->shown_job == t->jobs)
+		return false;
+	r->present (t->last);
+	t->shown_job = t->jobs;
+	return true;
 }
 
 void

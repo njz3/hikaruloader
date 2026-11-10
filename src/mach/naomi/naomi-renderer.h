@@ -57,6 +57,21 @@ public:
 	}
 	static void operator delete (void *ptr) { ::operator delete (ptr); }
 
+	/* What a frame's drawing takes of the board, on the machine's thread:
+	 * its scenes (copies of what they read), and the framebuffer the game
+	 * shows when it has had no scene for the screen for a while */
+	struct Frame {
+		std::vector<Draw> draws;
+		bool to_texture = false, has_screen = false;
+		bool vram = false;
+		unsigned vram_w = 0, vram_h = 0;
+		std::vector<uint32_t> vram_rgba;
+	};
+	/* quiet: the frames without a scene for the screen, this one counted */
+	static Frame take (Holly *holly, unsigned &quiet);
+	/* The frame drawn: its picture (a scene to a texture back into the
+	 * VRAM, the machine waiting) */
+	Picture	 draw_frame (Frame &f);
 	/* This frame's scenes */
 	Picture	 draw_picture ();
 	/* A picture over the bound framebuffer's viewport */
@@ -99,7 +114,8 @@ private:
 	void draw_translucent_per_pixel ();
 	void draw_translucent_volumes ();
 	void write_back (const Draw &d, Target &t);
-	bool show_vram ();
+	static bool read_vram (Holly *holly, Frame &f);
+	bool show_vram (const Frame &f);
 	GLuint filter_lines (const Draw &d);
 	GLuint texture (uint32_t tcw, uint32_t tsp);
 
@@ -161,6 +177,9 @@ public:
 	void	 update_titles ();
 	void	 apply_multi_screen () override;
 
+	/* THREADED_RENDERING: the pictures drawn by a thread of their own */
+	struct Thread;
+
 protected:
 	void	 on_end_frame () override;
 
@@ -173,7 +192,21 @@ private:
 	BoardRenderer *drawer (unsigned board);
 	void	 open_windows ();
 	void	 show (Output &out, const Picture &p, BoardRenderer *blitter, unsigned w, unsigned h);
-	Picture	 side_by_side (const std::vector<unsigned> &shown, const std::vector<Picture> &pictures);
+	Picture	 side_by_side (const std::vector<unsigned> &shown, const std::vector<Picture> &pictures,
+		               BoardRenderer *with);
+	/* The pictures where MULTI_SCREEN wants them; with: the blitter
+	 * (NULL: each board's) */
+	void	 present_pictures (const std::vector<unsigned> &shown, const std::vector<Picture> &pictures,
+		                   BoardRenderer *with);
+
+	bool	 start_thread ();
+	void	 stop_thread ();
+	void	 wait_thread (bool rethrow);
+	static void thread_main (Renderer *owner);
+	void	 draw_job ();
+	void	 threaded_end_frame (const std::vector<unsigned> &shown);
+	void	 present (unsigned set);
+	static bool flush (void *data);
 
 	Naomi	*naomi;
 	std::vector<std::unique_ptr<BoardRenderer>> drawers;
@@ -182,6 +215,12 @@ private:
 	unsigned wide_w = 0, wide_h = 0;
 	/* The monitors the windows were opened on (SCREEN_<n>_DISPLAY) */
 	std::string displays;
+
+	Thread	*thread = nullptr;
+	/* The window's context's, for the thread's pictures */
+	std::unique_ptr<BoardRenderer> blitter;
+	/* Each board's frames without a scene for the screen (Frame) */
+	std::vector<unsigned> quiet;
 };
 
 } /* namespace naomi */

@@ -21,6 +21,8 @@ Next version
   monitors) apply when the settings close, without a restart.
 - Fixed: Air Trix's copyright and trademark on its title were unreadable (the
   GPU's copies within the framebuffer kept the pixels' order in their words).
+- NAOMI: the pictures drawn by a thread of their own with `THREADED_RENDERING`
+  (on by default, as for the Hikaru), the boards' emulation going on meanwhile.
 
 
 0.7.1 (2026-11-10)
