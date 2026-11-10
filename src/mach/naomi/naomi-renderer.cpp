@@ -79,7 +79,7 @@ void main ()
 
 /* u_flags: bits 0-1 the shading, 2 textured, 3 the base's alpha used, 4 the
  * texture's alpha ignored, 5 the offset added, 7-8 the fog, 9 the colour
- * clamped */
+ * clamped, 10 punch-through, 11 and 12 tri-linear's passes A and B */
 static const char *fs_src = R"(#version 430
 in vec2 v_uv;
 in vec4 v_base;
@@ -96,7 +96,8 @@ uniform vec3 u_fog_color_vertex;
 uniform vec4 u_clamp_max;
 uniform vec4 u_clamp_min;
 uniform float u_pt_ref;
-uniform float u_trilinear;
+uniform float u_lod_bias;
+uniform float u_max_lod;
 #ifdef COLLECT
 layout (binding = 0, offset = 0) uniform atomic_uint u_count;
 layout (binding = 0, r32ui) uniform coherent uimage2D u_heads;
@@ -125,10 +126,25 @@ float fog_table (float z_)
 void main ()
 {
 	vec4 color = v_base;
+	float trilinear = 1.0;
 	if ((u_flags & 8) == 0)
 		color.a = 1.0;
 	if ((u_flags & 4) != 0) {
-		vec4 t = texture (u_tex, v_uv);
+		vec4 t;
+		if ((u_flags & 6144) != 0) {
+			/* Tri-linear: pass A takes the level of the D value, the other
+			 * the next smaller one, each by its share of D's decimals */
+			float lod = clamp (textureQueryLod (u_tex, v_uv).x + u_lod_bias, 0.0, u_max_lod);
+			float level = floor (lod);
+			if ((u_flags & 2048) != 0) {
+				t = textureLod (u_tex, v_uv, level);
+				trilinear = 1.0 - (lod - level);
+			} else {
+				t = textureLod (u_tex, v_uv, level + 1.0);
+				trilinear = lod - level;
+			}
+		} else
+			t = texture (u_tex, v_uv, u_lod_bias);
 		if ((u_flags & 16) != 0)
 			t.a = 1.0;
 		switch (u_flags & 3) {
@@ -168,7 +184,7 @@ void main ()
 	else if (fog == 3)
 		color = vec4 (u_fog_color, fog_table (v_z));
 	/* After the fog: the two passes add up to it once */
-	color *= u_trilinear;
+	color *= trilinear;
 	float depth = v_z * u_zscale;
 #ifdef COLLECT
 	/* Into its pixel's list, unless the opaque polygons hide it: always
@@ -448,14 +464,29 @@ rgba_palette (const Draw &d, unsigned index)
 	}
 }
 
+/* Where the level of 2^i texels a side starts: in texels after the texture's
+ * start (three unused, 1x1, 2x2...), its VQ indices in bytes after the code book
+ * (the 1x1's byte, then the 2x2's...) */
 static inline uint32_t
-mip_texels (unsigned w)
+mip_texels (unsigned i)
 {
-	uint32_t n = 1, s;
+	return 3 + ((1u << (2 * i)) - 1) / 3;
+}
 
-	for (s = 2; s < w; s <<= 1)
-		n += s * s;
-	return n;
+static inline uint32_t
+mip_indices (unsigned i)
+{
+	return i ? 1 + ((1u << (2 * (i - 1))) - 1) / 3 : 0;
+}
+
+static inline unsigned
+log2_of (unsigned w)
+{
+	unsigned i = 0;
+
+	while ((2u << i) <= w)
+		i++;
+	return i;
 }
 
 static inline bool
@@ -480,15 +511,22 @@ is_scan (uint32_t tcw)
 	return !is_paletted (tcw) && ((tcw >> 26) & 1);
 }
 
+/* The lines in order have no levels; VQ's are always twiddled */
+static inline bool
+is_mipmapped (uint32_t tcw)
+{
+	return (tcw >> 31) && (((tcw >> 30) & 1) || !is_scan (tcw));
+}
+
 /* What comes before the largest level, in bytes */
 static inline uint32_t
 mip_bytes (uint32_t tcw, unsigned w)
 {
-	if (!(tcw >> 31))
+	if (!is_mipmapped (tcw))
 		return 0;
 	if ((tcw >> 30) & 1)
-		return mip_texels (w / 2) + 1;
-	return (3 + mip_texels (w)) * texel_bits (tcw) / 8;
+		return mip_indices (log2_of (w));
+	return mip_texels (log2_of (w)) * texel_bits (tcw) / 8;
 }
 
 static inline unsigned
@@ -507,24 +545,26 @@ texture_bytes (uint32_t tcw, unsigned w, unsigned h, unsigned stride)
 	return mip_bytes (tcw, w) + w * h * texel_bits (tcw) / 8;
 }
 
+/* One level of a texture at data: the largest, or the one of 2^mip texels a
+ * side when mipmapped */
 static void
-decode_texture (std::vector<uint32_t> &out, hl::Buffer *vram, const Draw &d, uint32_t tcw, unsigned w, unsigned h)
+decode_level (std::vector<uint32_t> &out, const uint8_t *data, const Draw &d, uint32_t tcw, unsigned w, unsigned h,
+              unsigned mip)
 {
-	uint32_t addr = (tcw & 0x1FFFFF) << 3;
-	bool vq = (tcw >> 30) & 1, scan = is_scan (tcw);
+	bool vq = (tcw >> 30) & 1, scan = is_scan (tcw), mipmapped = is_mipmapped (tcw);
 	unsigned format = (tcw >> 27) & 7, stride = (d.text_control & 31) * 32, x, y;
 	unsigned line = line_width (tcw, w, stride);
+	uint32_t skip = mipmapped ? mip_texels (mip) : 0;
 
 	out.resize (w * h);
-	if (addr + texture_bytes (tcw, w, h, stride) > vram->size ()) {
-		std::fill (out.begin (), out.end (), 0xFFFF00FFu);
-		return;
-	}
-	const uint8_t *data = (const uint8_t *) vram->ptr (addr);
+	if (vq && mipmapped && mip == 0) {
+		/* The 1x1 level, as a 2x2 block: the block's last texel */
+		const uint16_t *e = &((const uint16_t *) data)[data[2048] * 4];
 
-	if (vq) {
+		out[0] = rgba_16 (format, e[3]);
+	} else if (vq) {
 		const uint16_t *book = (const uint16_t *) data;
-		const uint8_t *index = data + 2048 + mip_bytes (tcw, w);
+		const uint8_t *index = data + 2048 + (mipmapped ? mip_indices (mip) : 0);
 
 		for (y = 0; y < h; y += 2) {
 			for (x = 0; x < w; x += 2) {
@@ -537,26 +577,29 @@ decode_texture (std::vector<uint32_t> &out, hl::Buffer *vram, const Draw &d, uin
 			}
 		}
 	} else if (format == 5) {
-		const uint8_t *t = data + mip_bytes (tcw, w);
 		unsigned selector = ((tcw >> 21) & 63) << 4;
 
+		/* In nibbles: the 1x1 level is the fourth one */
 		for (y = 0; y < h; y++) {
 			for (x = 0; x < w; x++) {
-				uint32_t i = twiddle (x, y, w, h);
-				unsigned value = (i & 1) ? t[i / 2] >> 4 : t[i / 2] & 15;
+				uint32_t i = skip + twiddle (x, y, w, h);
+				unsigned value = (i & 1) ? data[i / 2] >> 4 : data[i / 2] & 15;
 
 				out[y * w + x] = rgba_palette (d, selector + value);
 			}
 		}
 	} else if (format == 6) {
-		const uint8_t *t = data + mip_bytes (tcw, w);
+		const uint8_t *t = data + skip;
 		unsigned selector = ((tcw >> 25) & 3) << 8;
 
 		for (y = 0; y < h; y++)
 			for (x = 0; x < w; x++)
 				out[y * w + x] = rgba_palette (d, selector + t[twiddle (x, y, w, h)]);
+	} else if (format == 3 && mipmapped && mip == 0) {
+		/* A pair of YUV needs two texels: the 1x1 level is RGB565 */
+		out[0] = rgba_16 (1, ((const uint16_t *) data)[skip]);
 	} else if (format == 3) {
-		const uint16_t *t = (const uint16_t *) (data + mip_bytes (tcw, w));
+		const uint16_t *t = (const uint16_t *) data + skip;
 
 		for (y = 0; y < h; y++) {
 			for (x = 0; x + 1 < w; x += 2) {
@@ -574,7 +617,7 @@ decode_texture (std::vector<uint32_t> &out, hl::Buffer *vram, const Draw &d, uin
 			for (x = 0; x < w && x < line; x++)
 				out[y * w + x] = rgba_16 (format, t[y * line + x]);
 	} else {
-		const uint16_t *t = (const uint16_t *) (data + mip_bytes (tcw, w));
+		const uint16_t *t = (const uint16_t *) data + skip;
 
 		for (y = 0; y < h; y++)
 			for (x = 0; x < w; x++)
@@ -587,6 +630,10 @@ BoardRenderer::texture (uint32_t tcw, uint32_t tsp)
 {
 	unsigned w = 8u << ((tsp >> 3) & 7), h = 8u << (tsp & 7);
 	uint64_t key = ((uint64_t) tcw << 32) | (tsp & 0x3F);
+
+	/* The levels are square: the height is not looked at */
+	if (is_mipmapped (tcw))
+		h = w;
 	Texture &t = textures[key];
 
 	if (t.id && t.seen == frame_count)
@@ -618,13 +665,32 @@ BoardRenderer::texture (uint32_t tcw, uint32_t tsp)
 	t.hash = hash;
 
 	std::vector<uint32_t> rgba;
+	const uint8_t *data = (const uint8_t *) (addr + bytes <= vram->size () ? vram->ptr (addr) : NULL);
 
-	decode_texture (rgba, vram, *draw, tcw, w, h);
 	if (!t.id)
 		glGenTextures (1, &t.id);
 	glBindTexture (GL_TEXTURE_2D, t.id);
-	glTexImage2D (GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, rgba.data ());
-	glGenerateMipmap (GL_TEXTURE_2D);
+	if (!data) {
+		rgba.assign (w * h, 0xFFFF00FFu);
+		glTexImage2D (GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, rgba.data ());
+		glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
+	} else if (is_mipmapped (tcw)) {
+		/* As they are in the VRAM: GL's level 0 is the largest */
+		unsigned top = log2_of (w), level;
+
+		for (level = 0; level <= top; level++) {
+			unsigned side = 1u << level;
+
+			decode_level (rgba, data, *draw, tcw, side, side, level);
+			glTexImage2D (GL_TEXTURE_2D, top - level, GL_RGBA8, side, side, 0, GL_RGBA, GL_UNSIGNED_BYTE,
+			              rgba.data ());
+		}
+		glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, top);
+	} else {
+		decode_level (rgba, data, *draw, tcw, w, h, 0);
+		glTexImage2D (GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, rgba.data ());
+		glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
+	}
 	return t.id;
 }
 
@@ -664,7 +730,8 @@ locate (P &p)
 	p.u_scale = glGetUniformLocation (p.id, "u_scale");
 	p.u_target = glGetUniformLocation (p.id, "u_target");
 	p.u_pt_ref = glGetUniformLocation (p.id, "u_pt_ref");
-	p.u_trilinear = glGetUniformLocation (p.id, "u_trilinear");
+	p.u_lod_bias = glGetUniformLocation (p.id, "u_lod_bias");
+	p.u_max_lod = glGetUniformLocation (p.id, "u_max_lod");
 }
 
 void
@@ -830,22 +897,16 @@ BoardRenderer::draw_batch (const Program &p, const Draw &d, const Batch &b, bool
 	flags |= ((b.isp >> 24) & 1) ? 32 : 0;
 	flags |= ((b.tsp >> 22) & 3) << 7;
 	flags |= ((b.tsp >> 21) & 1) ? 512 : 0;
-	glUniform1i (p.u_flags, flags | punch_flag);
 	{
-		/* Trilinear filtering, the PowerVR's way, in two passes of a same
-		 * mipmapped polygon added together (FILTER 2 and 3 in the TSP word):
-		 * each is weighted by the two low bits of the mipmap D adjust, in
-		 * quarters, the first by what the second leaves */
+		/* Tri-linear filtering, the PowerVR's way, in two passes of a same
+		 * mipmapped polygon added together (FILTER 2 and 3 in the TSP
+		 * word); punch-through polygons have no such thing */
 		unsigned filter = (b.tsp >> 13) & 3;
-		float weight = 1.0f;
 
-		if (textured && filter > 1 && !punch_flag && (b.tcw >> 31)) {
-			weight = 0.25f * ((b.tsp >> 8) & 3);
-			if (filter == 2)
-				weight = 1.0f - weight;
-		}
-		glUniform1f (p.u_trilinear, weight);
+		if (textured && filter > 1 && !punch_flag && is_mipmapped (b.tcw))
+			flags |= filter == 2 ? 2048 : 4096;
 	}
+	glUniform1i (p.u_flags, flags | punch_flag);
 
 	if (b.clip_on) {
 		glEnable (GL_SCISSOR_TEST);
@@ -856,23 +917,26 @@ BoardRenderer::draw_batch (const Program &p, const Draw &d, const Batch &b, bool
 
 	if (textured) {
 		unsigned filter = (b.tsp >> 13) & 3;
-		bool mip = b.tcw >> 31;
+		bool mip = is_mipmapped (b.tcw);
 		bool clamp_u = (b.tsp >> 16) & 1, clamp_v = (b.tsp >> 15) & 1;
 		bool flip_u = (b.tsp >> 18) & 1, flip_v = (b.tsp >> 17) & 1;
 
 		glBindTexture (GL_TEXTURE_2D, texture (b.tcw, b.tsp));
 		glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filter ? GL_LINEAR : GL_NEAREST);
+		/* One level at a time; tri-linear's two levels are its passes' */
 		glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,
-		                 mip ? (filter ? GL_LINEAR_MIPMAP_LINEAR : GL_NEAREST_MIPMAP_NEAREST) :
+		                 mip ? (filter ? GL_LINEAR_MIPMAP_NEAREST : GL_NEAREST_MIPMAP_NEAREST) :
 		                 (filter ? GL_LINEAR : GL_NEAREST));
 		glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_S,
 		                 clamp_u ? GL_CLAMP_TO_EDGE : flip_u ? GL_MIRRORED_REPEAT : GL_REPEAT);
 		glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_T,
 		                 clamp_v ? GL_CLAMP_TO_EDGE : flip_v ? GL_MIRRORED_REPEAT : GL_REPEAT);
 		{
+			/* The "MIP-map D adjust", a factor on D of two fractional bits */
 			unsigned bias = (b.tsp >> 8) & 15;
 
-			glTexParameterf (GL_TEXTURE_2D, GL_TEXTURE_LOD_BIAS, bias ? log2f (bias / 4.0f) : 0.0f);
+			glUniform1f (p.u_lod_bias, bias ? log2f (bias / 4.0f) : 0.0f);
+			glUniform1f (p.u_max_lod, (float) log2_of (8u << ((b.tsp >> 3) & 7)));
 		}
 	}
 
