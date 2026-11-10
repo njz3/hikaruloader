@@ -254,12 +254,19 @@ private:
 };
 
 /* A GD-ROM's game on its DIMM board, shown as a cartridge; see naomi-gd.cpp */
-class GdCart : public Cart {
+class GdCart : public Cart, public DimmNet::Host {
 public:
-	GdCart (Board *board, hl::Buffer *dimm);
+	/* The game's file on the disc */
+	struct File {
+		uint32_t size, crc;
+	};
+
+	GdCart (Board *board, hl::Buffer *dimm, const File &file);
 
 	/* The disc's file read and decrypted: the board's memory; NULL else */
-	static hl::Buffer *load (hl::Machine *machine, hl::Game *game, const uint8_t *pic, uint32_t pic_size);
+	static hl::Buffer *load (hl::Machine *machine, hl::Game *game, const uint8_t *pic, uint32_t pic_size, File &file);
+
+	uint32_t bus_read (uint32_t addr, unsigned bytes) override;
 
 	void	 reset () override;
 	uint32_t get (unsigned reg) override;

@@ -360,6 +360,7 @@ Game::create (GameList *game_list, const char *path, const char *name, const cha
 		game->boards = (unsigned) json_integer_value (json_object_get (entry->root, "boards"));
 		game->network_boards = (unsigned) json_integer_value (json_object_get (entry->root, "network_boards"));
 		game->net_dimm = json_is_true (json_object_get (entry->root, "net_dimm"));
+		game->motion_pc = json_is_true (json_object_get (entry->root, "motion_pc"));
 		{
 			json_t *screens = json_object_get (entry->root, "screens");
 

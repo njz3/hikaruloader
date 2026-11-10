@@ -293,12 +293,13 @@ public:
 	unsigned	port_out;
 	/* The Net DIMM boards' network (naomi::DimmNet), at the game's start:
 	 * the board's address, where the addresses the game uses are, what
-	 * its bound ports are moved by, and whether other machines can reach
-	 * it (else 127.0.0.1 alone) */
+	 * its bound ports are moved by, whether other machines can reach
+	 * it (else 127.0.0.1 alone), the address of the board's TCP service */
 	char		dimm_ip[32];
 	char		dimm_map[512];
 	int		dimm_port_offset;
 	bool		dimm_listen;
+	char		dimm_service_ip[32];
 
 	/* [Outputs]: the lamps and the drive board's commands, for the tools
 	 * that drive real ones (hl::Outputs); at once */

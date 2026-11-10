@@ -535,7 +535,16 @@ TCP sockets, on the addresses the game believes it has. The settings of
 - `DIMM_PORT_OFFSET`: added to the ports this board binds, for two instances
   on one PC. Default `0`.
 - `DIMM_LISTEN`: the board's bound ports on the PC's network too; else on
-  `127.0.0.1` alone. `false` by default: two PCs want it `true`.
+  `127.0.0.1` alone. `false` by default: two PCs want it `true`. It also opens
+  the board's own TCP service (port 10703 plus `DIMM_PORT_OFFSET`), used by
+  the machines that put a game on the DIMM or read it.
+- `DIMM_SERVICE_IP`: the address of that service, `127.0.0.1` by default;
+  `0.0.0.0` for every interface.
+
+Club Kart for Cycraft and Initial D Ver. 3 Cycraft Edition expect the motion PC
+of their moving cabinet on the network, at `192.168.1.1`, port 2000. Hikaruloader
+answers in its place so that the game starts, with nothing to set (the seat
+does not move). A real motion PC: `DIMM_MAP = 192.168.1.1=<its address>`.
 
 Two instances on one PC, each with its own write directory, the second with
 `DIMM_IP = 192.168.1.31`, `DIMM_PORT_OFFSET = 100` and
