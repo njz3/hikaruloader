@@ -129,6 +129,7 @@
 #include "hl/state.h"
 
 #include "cpu/sh/sh4.h"
+#include "cpu/sh/sh4-wide-view.h"
 
 #include "mach/gaelco/gaelco.h"
 #include "mach/gaelco/gaelco-gpu.h"
@@ -1340,33 +1341,6 @@ build_smashdrv_rom (hl::Buffer *ab, hl::Buffer *c)
 	return rom;
 }
 
-/* WIDESCREEN: ATV Track's slave drops what is wholly beyond the view's sides
- * (x > z * k, its vertex loop at 0C00197C), which left black wedges of ground
- * in the picture's bands. k is width / 2f, computed each frame at 0C006C8E:
- * the width of 854 for it, the fmov.s storing it about to run */
-static uint32_t
-patch_atvtrack_slave (hl::Cpu *cpu, uint32_t pc, uint32_t inst)
-{
-	Sh4 *ctx = (Sh4 *) cpu;
-
-	if (pc == 0x0C006CB6 && inst == 0xF427 && hl::Config::get ()->widescreen)
-		ctx->regs.f.f[2 ^ 1].f *= 854.0f / 640.0f;
-	return inst;
-}
-
-/* The same on Smashing Drive's slave: its view cone's k (table 8C012E14 + 14),
- * width / 2f, computed at 0C003470 and then read back for the normalised
- * planes; the fmov.s storing it about to run */
-static uint32_t
-patch_smashdrv_slave (hl::Cpu *cpu, uint32_t pc, uint32_t inst)
-{
-	Sh4 *ctx = (Sh4 *) cpu;
-
-	if ((pc & 0x1FFFFFFF) == 0x0C00348C && inst == 0xF52A && hl::Config::get ()->widescreen)
-		ctx->regs.f.f[2 ^ 1].f *= 854.0f / 640.0f;
-	return inst;
-}
-
 static int
 gaelco_init (Gaelco *gaelco)
 {
@@ -1475,10 +1449,9 @@ gaelco_init (Gaelco *gaelco)
 	((Sh4 *) gaelco->sh_s)->pclk_hz = 33000000;
 	sh4_set_porta_handlers (gaelco->sh_m, porta_get_m, porta_put_m);
 	sh4_set_porta_handlers (gaelco->sh_s, porta_get_s, porta_put_s);
-	if (!strncmp (game->name, "atvtrack", 8))
-		gaelco->sh_s->install_patch (patch_atvtrack_slave, { 0x0C006CB6 });
-	if (!strncmp (game->name, "smashdrv", 8))
-		gaelco->sh_s->install_patch (patch_smashdrv_slave, { 0x0C00348C, 0x8C00348C });
+	/* The view's sides, for the widescreen: the code decides, not the game */
+	sh4_wide_view_install (gaelco->sh_m);
+	sh4_wide_view_install (gaelco->sh_s);
 
 	/* The names the Lua shell knows them by */
 	gaelco->sh_m->name	= "master";

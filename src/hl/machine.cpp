@@ -64,6 +64,7 @@ Cpu::Cpu (Machine *mach, Mmap *mmap) :
 	break_hit (false),
 	break_pc (0),
 	patch_fn (NULL),
+	patch_match (NULL),
 	break_skip (false),
 	skip_pc (0)
 {

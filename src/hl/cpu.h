@@ -50,6 +50,7 @@ class Cpu;
 
 /* Changes the instruction fetched at pc */
 typedef uint32_t (* CpuPatch) (Cpu *cpu, uint32_t pc, uint32_t inst);
+typedef bool (* CpuPatchMatch) (Cpu *cpu, uint32_t pc, uint32_t inst);
 
 /* A processor: a device that runs code, reading and writing memory through
  * its own memory map. */
@@ -79,28 +80,22 @@ public:
 		return mmap->put (size, addr, val);
 	}
 
-	/* pcs, the addresses the patch looks at: the others need not call it
-	 * (the SH-4's blocks); none given, it may look at any */
-	void install_patch (CpuPatch patch, std::initializer_list<uint32_t> pcs = {})
+	/* match says which instructions the patch looks at, from their code:
+	 * the others need not call it (the SH-4's blocks, as they are decoded;
+	 * the interpreter calls it for all) */
+	void install_patch (CpuPatch patch, CpuPatchMatch match)
 	{
-		HL_ASSERT (patch != NULL);
+		HL_ASSERT (patch != NULL && match != NULL);
 		patch_fn = patch;
-		patch_pcs = pcs;
+		patch_match = match;
 	}
 	uint32_t patch (uint32_t pc, uint32_t inst)
 	{
 		return patch_fn ? patch_fn (this, pc, inst) : inst;
 	}
-	bool patches (uint32_t pc) const
+	bool patches (uint32_t pc, uint32_t inst)
 	{
-		if (!patch_fn)
-			return false;
-		if (patch_pcs.empty ())
-			return true;
-		for (uint32_t p : patch_pcs)
-			if (p == pc)
-				return true;
-		return false;
+		return patch_fn && patch_match (this, pc, inst);
 	}
 
 	/* The debugger's view of the registers: their names, in the order the
@@ -179,7 +174,7 @@ public:
 
 private:
 	CpuPatch	 patch_fn;
-	std::vector<uint32_t> patch_pcs;
+	CpuPatchMatch	 patch_match;
 	bool		 break_skip;
 	uint32_t	 skip_pc;
 };

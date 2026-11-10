@@ -143,6 +143,7 @@
 #include "hl/profile.h"
 
 #include "cpu/sh/sh4.h"
+#include "cpu/sh/sh4-wide-view.h"
 
 #include "mach/hikaru/hikaru.h"
 #include "mach/hikaru/hikaru-memctl.h"
@@ -1217,27 +1218,6 @@ hikaru_set_rombd_config (Hikaru *hikaru)
 	return 0;
 }
 
-/* XXX actually make Sh4 opaque and add accessors for the registers; that's
- * going to be needed for any possible future debugger anyway. */
-#define R(n_)	ctx->regs.r[n_]
-#define PR	ctx->regs.pr
-#define T	ctx->regs.sr.bit.t
-
-/* WIDESCREEN: what a game leaves out of view is never sent to the GPU, so it
- * must see the 854 pixels' width itself. The view's planes come from each
- * side's distance to the centre, loaded in FPUL by an "lds Rn,fpul" (0x4n5A):
- * 107 pixels more there, for a view as wide as the screen, as in the renderer.
- * NASCAR, AIRTRIX, PHARRIER and VON4 share a routine for it (the library's,
- * 0C0742A0 in NASCAR): the pictures looked at do not depend on its planes,
- * brought in to 40 pixels, but others might: widened all the same */
-static void
-widen_view (uint32_t inst, unsigned n, uint32_t &distance)
-{
-	if (inst == (0x405Au | (n << 8)) && distance == 320 &&
-	    hl::Config::get ()->widescreen)
-		distance += (854 - 640) / 2;
-}
-
 /* PHARRIER's debug switches, once a patch's (none needed now: its ROM
  * board's self-test at 0C103460 passes with the 315-5881):
  *
@@ -1252,96 +1232,6 @@ widen_view (uint32_t inst, unsigned n, uint32_t &distance)
  * 0C21D4A8 F0000000 Mod light?
  *
  * (and 0C21D4AC, written FFFFFFFF with it) */
-
-static uint32_t
-patch_sgnascar (hl::Cpu *cpu, uint32_t pc, uint32_t inst)
-{
-	Sh4 *ctx = (Sh4 *) cpu;
-
-	switch (pc) {
-	case 0x0C0742B4:
-		/* The view's planes, for the widescreen (see widen_view) */
-		widen_view (inst, 3, R(3));
-		break;
-	case 0x0C0742BC:
-		widen_view (inst, 0, R(0));
-		break;
-	}
-	return inst;
-}
-
-/* SWRACER builds its view's planes at 0C14E980 (r4 the planes, 0C401C74 in a
- * race; r14 the viewport: the centre's X and Y, the left, right, top and
- * bottom sides as words, the focal length at +C). The pods at the sides came
- * whole or in pieces only inside the 4:3 */
-static uint32_t
-patch_swracer (hl::Cpu *cpu, uint32_t pc, uint32_t inst)
-{
-	Sh4 *ctx = (Sh4 *) cpu;
-
-	if (pc == 0x0C14E9AE)
-		widen_view (inst, 3, R(3));
-	else if (pc == 0x0C14E9EA)
-		widen_view (inst, 0, R(0));
-	return inst;
-}
-
-/* The library's view planes (see widen_view), at 0C01762E in PHARRIER,
- * 0C69AE60 in AIRTRIX and 0C716A20 in VON4 */
-static uint32_t
-patch_library_view (hl::Cpu *cpu, uint32_t pc, uint32_t inst)
-{
-	Sh4 *ctx = (Sh4 *) cpu;
-
-	switch (pc) {
-	case 0x0C017642:
-	case 0x0C69AE74:
-	case 0x0C716A34:
-		widen_view (inst, 3, R(3));
-		break;
-	case 0x0C01764A:
-	case 0x0C69AE7C:
-	case 0x0C716A3C:
-		widen_view (inst, 0, R(0));
-		break;
-	}
-	return inst;
-}
-
-/* Install game-specific patches into the master SH-4 */
-static void
-hikaru_install_game_patches (Hikaru *hikaru)
-{
-	hl::Cpu *cpu = hikaru->sh_m;
-	hl::Game *game = hikaru->game;
-	bool patched = true;
-
-	if (!game)
-		return;
-
-	/* With the addresses each patch looks at (the SH-4's blocks call
-	 * it there only) */
-	/* AIRTRIX's warning screen was shortened by 656 frames here
-	 * (0C010F9A): no longer, the screen is the game's. Gone too, now
-	 * that the hardware is: BRAVEFF's sound hangs (0C05B53E,
-	 * 0C05B4F6: the AICA's ARM) and 0C0D522A (T was 1 already);
-	 * SGNASCAR's 0C00BC9A (the EEPROM's data, now emulated, pass) */
-	if (!strcmp (game->name, "sgnascar"))
-		cpu->install_patch (patch_sgnascar, { 0x0C0742B4, 0x0C0742BC });
-	else if (!strcmp (game->name, "swracer"))
-		cpu->install_patch (patch_swracer, { 0x0C14E9AE, 0x0C14E9EA });
-	else if (!strcmp (game->name, "pharrier"))
-		cpu->install_patch (patch_library_view, { 0x0C017642, 0x0C01764A });
-	else if (!strcmp (game->name, "airtrix"))
-		cpu->install_patch (patch_library_view, { 0x0C69AE74, 0x0C69AE7C });
-	else if (!strcmp (game->name, "von4"))
-		cpu->install_patch (patch_library_view, { 0x0C716A34, 0x0C716A3C });
-	else
-		patched = false;
-
-	if (patched)
-		HL_PRINT ("Installed patches for '%s'", game->name);
-}
 
 Hikaru::~Hikaru ()
 {
@@ -1649,7 +1539,9 @@ hikaru_init (Hikaru *hikaru)
 	sh4_set_porta_handlers (hikaru->sh_m, porta_get_m, porta_put_m);
 	sh4_set_porta_handlers (hikaru->sh_s, porta_get_s, porta_put_s);
 
-	hikaru_install_game_patches (hikaru);
+	/* The view's sides, for the widescreen: the code decides, not the game */
+	sh4_wide_view_install (hikaru->sh_m);
+	sh4_wide_view_install (hikaru->sh_s);
 
 	/* The names the Lua shell knows them by */
 	hikaru->sh_m->name	= "master";

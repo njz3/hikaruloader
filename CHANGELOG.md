@@ -25,6 +25,9 @@ Next version
 - The picker has the Hikaru and Gaelco games only for now. The others start
   from the command line, `-r <set>`, with `-z <zip or 7z>` for an archive of
   any name.
+- `WIDESCREEN`: the games' own view limits are widened by recognising their
+  code on the SH-4, without a patch at a fixed address for each game: clones
+  are covered too.
 - NAOMI games link over `[Network]`: F355 Challenge Twin and the others with a
   communication board, two Hikaruloaders on a TCP ring. `LINK_NODE`: a slave's
   car or seat.

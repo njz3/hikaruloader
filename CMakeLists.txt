@@ -70,6 +70,7 @@ set (HL_SRC
 set (HIKARU_SRC
 	src/cpu/sh/sh4.cpp
 	src/cpu/sh/sh4-blocks.cpp
+	src/cpu/sh/sh4-wide-view.cpp
 	src/cpu/sh/sh4-x64.cpp
 	src/cpu/x64/x64-emitter.cpp
 	src/cpu/z80/z80.cpp

@@ -139,7 +139,7 @@ Sh4BlockCache::decode (Sh4 *ctx, uint32_t pc, Sh4Block *block)
 	};
 	for (a = pc; a + 1 <= end && block->ops.size () < MAX_OPS; a += 2) {
 		uint16_t inst = word (a);
-		Sh4Op op = { sh4_handler (inst), inst, ctx->patches (a) };
+		Sh4Op op = { sh4_handler (inst), inst, ctx->patches (a, inst) };
 
 		block->words[block->num_words++] = inst;
 		block->ops.push_back (op);
@@ -148,7 +148,7 @@ Sh4BlockCache::decode (Sh4 *ctx, uint32_t pc, Sh4Block *block)
 			/* A jump's delay slot, after it in the page; not sleep's
 			 * or trapa's (none) */
 			if (inst != 0x001B && (inst & 0xFF00) != 0xC300 && a + 3 <= end &&
-			    !ctx->patches (a + 2)) {
+			    !ctx->patches (a + 2, word (a + 2))) {
 				block->words[block->num_words++] = word (a + 2);
 				block->slot_kept = true;
 			}

@@ -16,7 +16,6 @@ GENERAL
   hikcheck's text, behind its road, and "31KHzMode" not shown.
 - GD-ROM: the Net DIMM's network commands answer "failed": no link between
   cabinets on the DIMM board.
-- Widescreen: per-game view planes (a patch at a fixed address each).
 
 - An event-driven scheduler. The machine runs a line at a time (544 a
   frame): each SH-4 a line's cycles, then the MEMCTL's DMA, the GPU, the
@@ -191,11 +190,10 @@ GPU / RENDERING
 - Model caching in VBOs: the frame's vertices go to one buffer, uploaded
   once a frame.
 - Widescreen: backgrounds or fades made for 4:3 leave bands at the sides, to
-  see game by game. The games' own culling (on the SH-4): SWRACER's and the
-  library's (NASCAR, AIRTRIX, PHARRIER, VON4) widened, widen_view in
-  hikaru.cpp, on the parent sets only (not airtrixo, sgnascaro). The
-  library's made no visible difference in the scenes looked at; BRAVEFF
-  has no such routine. DRAW_DISTANCE: what each game gains, to see.
+  see game by game. The games' own culling on the SH-4 is widened where its
+  code is recognised (src/cpu/sh/sh4-wide-view.cpp); BRAVEFF and Gaelco
+  Football have no such routine; NAOMI is not covered. DRAW_DISTANCE: what
+  each game gains, to see.
 - CRT presets and bezels: the presets' tube stays 4:3 (their LR_FIT_43), a
   widescreen picture squeezed in it; CROP_BARREL's bent edges are not drawn
   with a preset; the window's context is GL 3.1 and the passes GLSL 1.50,
