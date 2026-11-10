@@ -416,9 +416,10 @@ ServoBoard::tick ()
 		hl::SegaIoBoard *io = (hl::SegaIoBoard *) board->io_board;
 
 		if (s.active) {
-			/* The wheel's friction: the games' last small pulses,
-			 * to settle it on the centre, hardly move it */
-			const float friction = 12.0f;
+			/* The wheel's friction near its centre: the games' last
+			 * small pulses, to settle it there, hardly move it; away
+			 * from it they must still bring it back */
+			const float friction = std::abs (s.position - 8192.0f) < 256.0f ? 12.0f : 0.0f;
 			const float moving = std::abs ((float) s.torque) <= friction ? 0.0f :
 			                     s.torque - std::copysign (friction, (float) s.torque);
 
