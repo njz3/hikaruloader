@@ -10,6 +10,14 @@ this file's history (git).
 GENERAL
 -------
 
+- Hikaru's second monitor (781 buffers 2 and 3): its scene is dropped, one output
+  shown; hikcheck's 2MONITOR test.
+- Hikaru's 24 kHz mode (496x384): the 3D drawn in a corner of the 640x480 picture;
+  hikcheck's text, behind its road, and "31KHzMode" not shown.
+- GD-ROM: the Net DIMM's network commands answer "failed": no link between
+  cabinets on the DIMM board.
+- Widescreen: per-game view planes (a patch at a fixed address each).
+
 - An event-driven scheduler. The machine runs a line at a time (544 a
   frame): each SH-4 a line's cycles, then the MEMCTL's DMA, the GPU, the
   MIE and the AICAs.

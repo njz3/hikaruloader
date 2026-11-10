@@ -265,6 +265,10 @@ effect at once.
   middle undistorted (`BARREL_CENTER`, `BARREL_RADIUS`).
 - F355 Challenge's drive board (EPR-21867) is emulated on the force feedback wheel; its commands go out as `m3ffb` and a client's `m3ffb_rx` answers replace the emulated ones, as on NASCAR Arcade.
 - The servo board 838-14174 of the NAOMI wheels (Club Kart, The King of Route 66, Driving Simulator) is emulated on the force feedback wheel; its frames also go out on the network outputs as `midiffb = HH HH HH`. A client that answers `midiffb_rx = HH..` (BackForceFeeder, in front of a real board) takes over: the game reads its answers and the wheel plays nothing, until it leaves.
+- NAOMI GD-ROM games need the game's zip (with its DIMM board's PIC) and its
+  CHD in a folder named as the game, as MAME keeps them: `roms/initdv3e.zip`
+  and `roms/initdv3e/gds-0033.chd`. Atomiswave games need `awbios.zip`. Initial
+  D's magnetic card is inserted with F7.
 - *Several boards* (`MULTI_SCREEN`), for the NAOMI cabinets of several boards, read when a game
   starts: `ONE` shows one board (F8 the next), `SIDE_BY_SIDE` puts the screens in a row in the
   window, for a very wide monitor, `WINDOWS` gives each a window. `SCREEN_ORDER` gives the boards
