@@ -306,6 +306,7 @@ Board::init ()
 {
 	hl::Buffer *bios_rom = game->section_data ("bios");
 	hl::Buffer *rom_board = game->section_data ("rom_board");
+	hl::Buffer *gd_pic = game->section_data ("pic");
 	hl::Buffer *mie_rom = game->section_data ("mie");
 	hl::Buffer *main_rom = game->section_data ("main_x76f100");
 	hl::Buffer *mie_default = game->section_data ("main_eeprom");
@@ -314,6 +315,10 @@ Board::init ()
 	unsigned i;
 
 	has_cart = index == 0;
+	if (game->gdrom[0] && !rom_board && index == 0)
+		rom_board = GdCart::load (machine, game, gd_pic ? (const uint8_t *) gd_pic->ptr (0) : NULL,
+		                          gd_pic ? gd_pic->size () : 0);
+	rom_image = rom_board;
 	if (!bios_rom || !rom_board || (!mie_rom && !is_atomiswave)) {
 		HL_ERROR ("naomi: %s: its BIOS, its cartridge or the MIE's ROM (mie.zip) is missing", game->name);
 		return false;
@@ -346,6 +351,8 @@ Board::init ()
 			key = (uint32_t) key_rom->get (4, 0);
 		if (is_atomiswave)
 			cart.reset (new AwCart (rom_board, (uint8_t) key));
+		else if (game->gdrom[0])
+			cart.reset (gd = new GdCart (this, rom_board));
 		else if (has_cart)
 			cart.reset (new Cart (rom_board, type, key, game->id, pic ? (const uint8_t *) pic->ptr (0) : NULL));
 		else {
@@ -485,11 +492,10 @@ eeprom_put (uint8_t *mem, unsigned offs, uint8_t val)
 void
 Board::configure_eeprom ()
 {
-	hl::Buffer *rom = game->section_data ("rom_board");
 	if (!mie)
 		return;
 	uint8_t *mem = mie->eeprom.mem;
-	const uint8_t *h = (const uint8_t *) rom->ptr (0);
+	const uint8_t *h = (const uint8_t *) rom_image->ptr (0);
 	const uint8_t *coin = h + 0x1E0;
 	uint8_t cabinet = h[0x429], vertical = h[0x42B];
 	unsigned i;
@@ -566,10 +572,10 @@ Board::setup_servo ()
 {
 	if (is_atomiswave)
 		return;
-	hl::Buffer *rom = game->section_data ("rom_board");
-	const char *title = (const char *) rom->ptr (0x30);
+	const char *title = (const char *) rom_image->ptr (0x30);
 
 	if (strncmp (title, "CLUB KART IN JAPAN", 18) && strncmp (title, "THE KING OF ROUTE66", 19) &&
+	    strncmp (title, "INITIAL D", 9) &&
 	    strcmp (game->name, "sgdrvsim"))
 		return;
 	servo.reset (new ServoBoard (this));
@@ -626,6 +632,8 @@ Board::end_frame (std::vector<int16_t> *audio)
 
 	if (card)
 		card->frame ();
+	if (gd)
+		gd->frame ();
 	if (audio) {
 		for (size_t i = 0; i + 1 < in.size (); i += 2) {
 			int32_t l = std::max (-32768, std::min (32767, in[i]));

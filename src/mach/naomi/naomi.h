@@ -215,6 +215,38 @@ private:
 	} r;
 };
 
+/* A GD-ROM's game on its DIMM board, shown as a cartridge; see naomi-gd.cpp */
+class GdCart : public Cart {
+public:
+	GdCart (Board *board, hl::Buffer *dimm);
+
+	/* The disc's file read and decrypted: the board's memory; NULL else */
+	static hl::Buffer *load (hl::Machine *machine, hl::Game *game, const uint8_t *pic, uint32_t pic_size);
+
+	void	 reset () override;
+	uint32_t get (unsigned reg) override;
+	void	 put (unsigned reg, uint32_t val) override;
+	int	 save_state (hl::State *state) override;
+	int	 load_state (hl::State *state) override;
+	/* As each frame ends */
+	void	 frame ();
+
+private:
+	void	 poke (uint32_t addr, uint32_t val);
+	uint32_t peek (uint32_t addr);
+	void	 interrupt (bool on);
+	void	 reply (uint16_t command, bool failed, uint16_t offset, uint32_t parameter);
+	void	 command ();
+
+	Board	*board;
+	uint32_t bytes;
+	struct {
+		uint16_t command, offset, parameterl, parameterh;
+		uint32_t frames;
+		uint8_t	 irq, started;
+	} d;
+};
+
 /* The Atomiswave's BIOS flash: the writes (read as a ROM in the map) */
 class AwFlash : public hl::Device {
 public:
@@ -736,6 +768,10 @@ public:
 	bool	 is_naomi2;
 	/* A NAOMI's sister: no MIE, its controllers on the Maple bus; naomi-aw.cpp */
 	bool	 is_atomiswave;
+	/* A game on a GD-ROM: its cartridge the DIMM board */
+	GdCart	*gd = NULL;
+	/* The cartridge's bytes: its header */
+	hl::Buffer *rom_image = NULL;
 	bool	 aw_wheel = false;
 	AwControllers controllers;
 	AwModem	*modem = NULL;

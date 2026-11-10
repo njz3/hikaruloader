@@ -103,6 +103,8 @@ public:
 	uint32_t key = 0;
 	uint32_t id = 0;
 	bool naomi2 = false;
+	/* A NAOMI game's GD-ROM: its CHD's name */
+	char gdrom[32] = "";
 	/* The boards of its cabinet, linked (multiboard); 0: one */
 	unsigned boards = 0;
 	/* Those with a monitor, numbered from 1, left to right (F355 Twin: its

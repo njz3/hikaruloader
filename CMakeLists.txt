@@ -101,6 +101,7 @@ set (HIKARU_SRC
 	src/mach/naomi/naomi-servo.cpp
 	src/mach/naomi/naomi-card.cpp
 	src/mach/naomi/naomi-aw.cpp
+	src/mach/naomi/naomi-gd.cpp
 	src/hl/driveboard-f355.cpp
 	src/hl/driveboard-z80.cpp
 	src/hl/tmp90ph44.cpp
@@ -164,6 +165,11 @@ if (MSVC)
 	target_compile_definitions (lzma PRIVATE _CRT_SECURE_NO_WARNINGS)
 endif ()
 
+# libchdr, the GD-ROM images (BSD-3-Clause, Romain Tisserand; with its LZMA,
+# zlib and zstd, 3rdparty/libchdr/deps)
+set (BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+add_subdirectory (3rdparty/libchdr EXCLUDE_FROM_ALL)
+
 # hl_version.h: the version from git's tags, refreshed at each build
 set (HL_GENERATED ${CMAKE_BINARY_DIR}/generated)
 set (HL_VERSION_ARGS -DSRC=${CMAKE_SOURCE_DIR} -DOUT=${HL_GENERATED}/hl_version.h
@@ -181,7 +187,7 @@ target_include_directories (hl PUBLIC src ${HL_GENERATED})
 target_include_directories (hl PRIVATE ${STB_INCLUDE_DIRS})
 target_compile_definitions (hl PUBLIC HL_HAVE_HIKARU)
 target_link_libraries (hl PUBLIC
-	OpenGL::GL GLEW::GLEW SDL2::SDL2 jansson::jansson miniz::miniz lzma)
+	OpenGL::GL GLEW::GLEW SDL2::SDL2 jansson::jansson miniz::miniz lzma chdr-static)
 if (WIN32)
 	# The outputs' server (src/hl/outputs.cpp); HR_SAMPLE's names
 	# (src/hl/profile.cpp)

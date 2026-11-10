@@ -352,6 +352,8 @@ Game::create (GameList *game_list, const char *path, const char *name)
 			game->key = (uint32_t) strtoul (text, NULL, 16);
 		if ((text = json_string_value (json_object_get (entry->root, "id"))))
 			game->id = (uint32_t) strtoul (text, NULL, 16);
+		if ((text = json_string_value (json_object_get (entry->root, "gdrom"))))
+			snprintf (game->gdrom, sizeof (game->gdrom), "%s", text);
 		game->naomi2 = json_is_true (json_object_get (entry->root, "naomi2"));
 		game->boards = (unsigned) json_integer_value (json_object_get (entry->root, "boards"));
 		{
