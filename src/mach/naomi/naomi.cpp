@@ -322,6 +322,14 @@ Board::init ()
 		rom_board = GdCart::load (machine, game, gd_pic ? (const uint8_t *) gd_pic->ptr (0) : NULL,
 		                          gd_pic ? gd_pic->size () : 0);
 	rom_image = rom_board;
+	/* The BIOS refuses a game not for its region: one the game's header
+	 * lists (byte 428; M1 and M4 headers are encrypted) */
+	if (rom_board && !is_atomiswave && rom_board->size () > 0x428 &&
+	    strcmp (game->board, "m1") && strcmp (game->board, "m4") &&
+	    game->use_region ("bios", *(uint8_t *) rom_board->ptr (0x428) & 0x1F)) {
+		bios_rom = game->section_data ("bios");
+		HL_PRINT ("naomi: the BIOS of the region of the game (%02X)", *(uint8_t *) rom_board->ptr (0x428));
+	}
 	if (!bios_rom || !rom_board || (!mie_rom && !is_atomiswave)) {
 		HL_ERROR ("naomi: %s: its BIOS, its cartridge or the MIE's ROM (mie.zip) is missing", game->name);
 		return false;

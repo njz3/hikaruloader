@@ -32,6 +32,8 @@ Next version
   own window with `MULTI_SCREEN = WINDOWS`: the check ROM's two-monitor test.
 - Initial D links two cabinets over `[Network]`, from the second start of a new
   save.
+- NAOMI: the BIOS of a region the game's header accepts, its latest revision:
+  the Japanese games no longer stop on an Export BIOS.
 - NAOMI games link over `[Network]`: F355 Challenge Twin and the others with a
   communication board, two Hikaruloaders on a TCP ring. `LINK_NODE`: a slave's
   car or seat.

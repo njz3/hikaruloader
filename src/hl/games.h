@@ -80,6 +80,8 @@ public:
 struct GameSection {
 	char name[32];
 	Buffer *buffer;
+	/* Of an "alternative" section: the file it holds, in the list */
+	int chosen = -1;
 };
 
 /* A game, loaded from its ROM set */
@@ -92,6 +94,10 @@ public:
 	~Game ();
 
 	Buffer		*section_data (const char *name);
+	/* An "alternative" section of files with a "region" (J, U, E, K, A: bits
+	 * 0 to 4 of mask): the first present of a region of mask, in place of
+	 * one of another region. True when it changed */
+	bool		 use_region (const char *section, unsigned mask);
 
 	char name[32];
 	char mach[32];
@@ -116,6 +122,10 @@ public:
 	unsigned screens[4] = { 0, 0, 0, 0 };
 	unsigned num_screens = 0;
 	std::vector<GameSection> sections;
+
+private:
+	GameEntry	*entry = NULL;
+	std::string	 path, archive;
 };
 
 } /* namespace hl */

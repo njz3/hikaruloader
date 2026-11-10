@@ -503,7 +503,7 @@ GdCart::load (hl::Machine *machine, hl::Game *game, const uint8_t *pic, uint32_t
 	uint64_t key = 0;
 	uint8_t netpic = 0;
 	uint8_t buffer[2048], dir[2048];
-	uint32_t file_start = 0, file_size = 0, i;
+	uint32_t file_start = 0, file_size = 0, i, dir_sector = 0;
 	GdDisc disc;
 	std::string path = find_chd (game, game->gdrom);
 
@@ -539,6 +539,7 @@ GdCart::load (hl::Machine *machine, hl::Game *game, const uint8_t *pic, uint32_t
 	if (!netpic) {
 		uint32_t d = buffer[2] | (buffer[3] << 8) | (buffer[4] << 16) | ((uint32_t) buffer[5] << 24);
 
+		dir_sector = d;
 		if (!sector (d, dir))
 			return NULL;
 		find_file (name, dir, file_start, file_size);
@@ -569,9 +570,19 @@ GdCart::load (hl::Machine *machine, hl::Game *game, const uint8_t *pic, uint32_t
 				return NULL;
 		}
 	}
-	find_file (name, dir, file_start, file_size);
-	if (!file_start)
-		find_file ("*.BIN", dir, file_start, file_size);
+	/* The directory: as many sectors as its own first record says */
+	{
+		uint32_t where = dir_sector, sectors = (dir[10] | (dir[11] << 8) | (dir[12] << 16) | ((uint32_t) dir[13] << 24)) / 2048;
+
+		file_start = file_size = 0;
+		for (i = 0; i < MAX2 (1u, MIN2 (sectors, 256u)) && !file_start; i++) {
+			if (i && !sector (where + i, dir))
+				return NULL;
+			find_file (name, dir, file_start, file_size);
+		}
+		if (!file_start)
+			find_file ("*.BIN", dir, file_start, file_size);
+	}
 	if (!file_start) {
 		HL_ERROR ("naomi: %s: the game's file '%s' is not on the disc", game->name, name);
 		return NULL;

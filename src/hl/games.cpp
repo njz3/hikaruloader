@@ -165,8 +165,10 @@ load_section (json_t *root, GameSection *section, RomSet *set)
 		for (i = 0; i < ndata; i++) {
 			json_t *datum = json_array_get (data, i);
 			section->buffer = load_datum (datum, set);
-			if (section->buffer)
+			if (section->buffer) {
+				section->chosen = (int) i;
 				break;
+			}
 		}
 		if (!section->buffer)
 			return -1;
@@ -365,12 +367,75 @@ Game::create (GameList *game_list, const char *path, const char *name, const cha
 		}
 	}
 
+	game->entry = entry;
+	game->path = path;
+	game->archive = archive ? archive : "";
 	set = open_romset (entry, path, archive);
 	ret = load_sections (entry->root, game, set, path);
 	destroy (set);
 	if (ret)
 		destroy (game);
 	return game;
+}
+
+/* A file's "region", as the bit of a game's header */
+static unsigned
+region_bit (json_t *datum)
+{
+	static const char letters[] = "JUEKA";
+	const char *text = json_string_value (json_object_get (datum, "region"));
+	const char *at = text && text[0] ? strchr (letters, text[0]) : NULL;
+
+	return at ? 1u << (at - letters) : 0;
+}
+
+bool
+Game::use_region (const char *section_name, unsigned mask)
+{
+	json_t *list = json_object_get (entry->root, "sections");
+	bool changed = false;
+	size_t s;
+
+	for (s = 0; s < json_array_size (list) && s < sections.size (); s++) {
+		json_t *section = json_array_get (list, s);
+		json_t *data = json_object_get (section, "data");
+		GameSection &own = sections[s];
+		unsigned have;
+
+		if (strcmp (own.name, section_name) || own.chosen < 0 || !own.buffer)
+			continue;
+		have = region_bit (json_array_get (data, own.chosen));
+		if (!have || (have & mask) || !mask)
+			return false;
+
+		RomSet *set = open_romset (entry, path.c_str (), archive.c_str ());
+		int best = -1;
+		const char *best_name = "";
+
+		/* The latest revision there: their letters follow the part number */
+		for (size_t i = 0; i < json_array_size (data); i++) {
+			json_t *datum = json_array_get (data, i);
+			const char *name = json_string_value (json_object_get (datum, "name"));
+
+			if ((region_bit (datum) & mask) && has_datum (datum, set) && strcmp (name, best_name) > 0) {
+				best = (int) i;
+				best_name = name;
+			}
+		}
+		if (best >= 0) {
+			Buffer *buffer = load_datum (json_array_get (data, best), set);
+
+			if (buffer) {
+				destroy (own.buffer);
+				own.buffer = buffer;
+				own.chosen = best;
+				changed = true;
+			}
+		}
+		destroy (set);
+		break;
+	}
+	return changed;
 }
 
 GameEntry *
