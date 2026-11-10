@@ -415,8 +415,15 @@ ServoBoard::tick ()
 	if (s.calibrating) {
 		hl::SegaIoBoard *io = (hl::SegaIoBoard *) board->io_board;
 
-		if (s.active)
-			s.position = std::clamp (s.position + s.torque * 0.25f, 0.0f, 16383.0f);
+		if (s.active) {
+			/* The wheel's friction: the games' last small pulses,
+			 * to settle it on the centre, hardly move it */
+			const float friction = 12.0f;
+			const float moving = std::abs ((float) s.torque) <= friction ? 0.0f :
+			                     s.torque - std::copysign (friction, (float) s.torque);
+
+			s.position = std::clamp (s.position + moving * 0.25f, 0.0f, 16383.0f);
+		}
 		io->analog[0] = (uint16_t) std::clamp (0x8000 - (int) ((s.position - 8192.0f) * 4.0f), 0, 0xFFFF);
 		io->analog_set[0] = true;
 	}

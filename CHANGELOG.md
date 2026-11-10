@@ -20,6 +20,11 @@ Next version
   its car on the road.
 - `SECURITY_CHIPS` is on by default: the BIOS is no longer patched when the
   chips' images are in the set.
+- NAOMI games link over `[Network]`: F355 Challenge Twin and the others with a
+  communication board, two Hikaruloaders on a TCP ring. `LINK_NODE`: a slave's
+  car or seat.
+- Driving Simulator: its three whole systems, on their ring, in one
+  Hikaruloader (F8 or `MULTI_SCREEN` for its three screens).
 
 
 0.6.2 (2026-11-09)

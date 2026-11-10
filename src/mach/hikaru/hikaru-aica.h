@@ -54,7 +54,8 @@ public:
 	const char *debug_string () override;
 	/* A machine of its own wiring (the NAOMI's): told when the SH-4's
 	 * interrupt line changes, instead of the Hikaru's */
-	void	(*main_irq_hook) (hl::Machine *mach, bool raised) = NULL;
+	void	(*main_irq_hook) (void *user, bool raised) = NULL;
+	void	*main_irq_user = NULL;
 	/* The SH-4's interrupt line: MCIPD & MCIEB */
 	bool	 main_irq_level () const;
 	/* The MIDI port, for a machine wired to it (the NAOMI's servo board):

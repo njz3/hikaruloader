@@ -230,7 +230,7 @@ Mie::in (uint16_t port)
 		if (!(s.gpio_dir & (1 << p)))
 			return s.gpio[p];
 		if (p == 5)
-			return (monitor_15khz ? 0x0E : 0x0F) |
+			return (switches & (monitor_15khz ? 0x0E : 0x0F)) |
 			       (hl::Input::action (hl::ACTION_TEST) ? 0 : 0x10) |
 			       (hl::Input::action (hl::ACTION_SERVICE) ? 0 : 0x20) | 0x40 |
 			       (eeprom.data_out () ? 0x80 : 0);

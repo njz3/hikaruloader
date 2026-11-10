@@ -242,12 +242,11 @@ Board::add_buffer (hl::Buffer *&buf, unsigned size, bool battery)
 		machine->register_buffer (buf, battery);
 }
 
+/* Each board's AICA, its own SH-4's line */
 static void
-aica_irq (hl::Machine *mach, bool raised)
+aica_irq (void *user, bool raised)
 {
-	/* The AICAs of a machine of several boards are told apart by asking
-	 * each whose line it is: see Naomi::aica_line */
-	((Naomi *) mach)->aica_line (raised);
+	((Board *) user)->holly->set_external (2, raised);
 }
 
 hl::Mmap *
@@ -314,8 +313,10 @@ Board::init ()
 	hl::Buffer *pic = game->section_data ("pic_readout");
 	unsigned i;
 
-	has_cart = index == 0;
-	if (game->gdrom[0] && !rom_board && index == 0)
+	/* The boards of a machine of several whole systems have each its own */
+	has_cart = index == 0 || machine->networked;
+	has_comm = !is_atomiswave && (index == 0 || machine->networked);
+	if (game->gdrom[0] && !rom_board && has_cart)
 		rom_board = GdCart::load (machine, game, gd_pic ? (const uint8_t *) gd_pic->ptr (0) : NULL,
 		                          gd_pic ? gd_pic->size () : 0);
 	rom_image = rom_board;
@@ -389,11 +390,15 @@ Board::init ()
 			controllers.count = 4;
 	} else {
 		mie = new Mie (this, mie_rom);
-		if (index)
+		if (index && !machine->networked)
 			memset (mie->eeprom.mem, 0, sizeof (mie->eeprom.mem));
 		else if (mie_default && mie_default->size () >= 128)
 			for (i = 0; i < 128; i++)
 				mie->eeprom.mem[i] = *(uint8_t *) mie_default->ptr (i ^ 1);
+		/* The cabinet's place of a whole system, on its switches: the
+		 * games read them at the start */
+		if (machine->networked)
+			mie->switches = (uint8_t) (0x09 | (index == 1 ? 2 : index == 2 ? 4 : 0));
 	}
 	/* The board's switch SW1-1 as the cabinet's monitor, from the game's
 	 * header. The BIOS's table: 1 = 31 kHz, 2 = 15 kHz, others are not checked */
@@ -406,11 +411,13 @@ Board::init ()
 			drive_board = new hl::DriveBoard (machine, new hl::DriveBoardF355 (machine, game->name[0] == '1'));
 		io_board = new hl::SegaIoBoard13844 (machine, jvs, drive_board);
 	}
-	else
+	/* The other boards of a machine of whole systems have no I/O board */
+	else if (!index || !machine->networked)
 		io_board = new hl::SegaIoBoard (machine, jvs);
 
 	hikaru::Aica *sound = new hikaru::Aica (machine, aica_ram, true);
 	sound->main_irq_hook = aica_irq;
+	sound->main_irq_user = this;
 	aica = sound;
 
 	mmap = setup_mmap ();
@@ -429,6 +436,7 @@ Board::init ()
 
 	/* The Lua shell's names */
 	sh->name = index == 0 ? "master" : index == 1 ? "slave1" : "slave2";
+	comm.name = index == 0 ? "comm" : index == 1 ? "comm1" : "comm2";
 	if (index == 0) {
 		holly->name = "holly";
 		if (mie)
@@ -487,6 +495,61 @@ eeprom_put (uint8_t *mem, unsigned offs, uint8_t val)
 	crc = eeprom_crc (mem + 2, 16);
 	memcpy (mem, &crc, 2);
 	memcpy (mem + 18, &crc, 2);
+}
+
+/*
+ * The record of the games' own settings, in the EEPROM: at 36 its CRC and its
+ * size, at 40 the same, at 44 its bytes, twice. In the backup memory: at 200 its
+ * size, at 218 its bytes, then the same again, its CRC at 1F8 and 208.
+ */
+uint8_t
+Board::eeprom_read (unsigned offs) const
+{
+	return mie ? mie->eeprom.mem[offs & 127] : 0;
+}
+
+bool
+Board::eeprom_write (unsigned offs, uint8_t val)
+{
+	uint8_t *mem;
+	unsigned padded;
+	uint16_t crc;
+
+	if (!mie)
+		return false;
+	mem = mie->eeprom.mem;
+	if (offs >= 2 && offs < 18) {
+		eeprom_put (mem, offs, val);
+		return true;
+	}
+	padded = mem[39];
+	/* No record: 0, or the bytes of a blank EEPROM */
+	if (offs < 44 || offs - 44 >= padded || padded >= 0x7F || offs + padded >= sizeof (mie->eeprom.mem))
+		return false;
+	mem[offs] = val;
+	mem[offs + padded] = val;
+	crc = eeprom_crc (mem + 44, (int) padded);
+	memcpy (mem + 36, &crc, 2);
+	memcpy (mem + 40, &crc, 2);
+	return true;
+}
+
+bool
+Board::flash_write (unsigned offs, uint8_t val)
+{
+	uint8_t *mem = (uint8_t *) sram->ptr (0);
+	uint32_t block = 0;
+	uint16_t crc;
+
+	memcpy (&block, mem + 0x200, 4);
+	if (offs < 0x218 || block == 0xFFFFFFFF || offs >= 0x218 + block || 0x218 + block * 2 > sram->size ())
+		return false;
+	mem[offs] = val;
+	mem[offs + block] = val;
+	crc = eeprom_crc (mem + 0x218, (int) block);
+	memcpy (mem + 0x1F8, &crc, 2);
+	memcpy (mem + 0x208, &crc, 2);
+	return true;
 }
 
 void
@@ -574,6 +637,11 @@ Board::setup_servo ()
 		return;
 	const char *title = (const char *) rom_image->ptr (0x30);
 
+	if (machine->networked) {
+		/* Its dashboard, on the SCIF (nothing answers) */
+		meters.reset (new DriveSimMeters ());
+		((Sh4 *) sh)->scif_pipe = meters.get ();
+	}
 	if (strncmp (title, "CLUB KART IN JAPAN", 18) && strncmp (title, "THE KING OF ROUTE66", 19) &&
 	    strncmp (title, "INITIAL D", 9) &&
 	    strcmp (game->name, "sgdrvsim"))
@@ -643,6 +711,8 @@ Board::end_frame (std::vector<int16_t> *audio)
 		gd->frame ();
 	if (sanwa)
 		sanwa->reader.frame ();
+	if (link_settings_due && !(machine->frame % 60))
+		link_settings ();
 	if (audio) {
 		for (size_t i = 0; i + 1 < in.size (); i += 2) {
 			int32_t l = std::max (-32768, std::min (32767, in[i]));
@@ -767,6 +837,28 @@ Board::default_backup ()
 	}
 }
 
+/* A new EEPROM's settings where the game needs them: the record of a machine of
+ * whole systems (data/naomi, from Flycast), each board's */
+void
+Board::default_eeprom ()
+{
+	const std::string name = std::string ("data/naomi/") + game->name + ".eeprom";
+
+	if (!mie)
+		return;
+	for (const std::string &path : { hl::Paths::config_read (name.c_str ()), "./" + name }) {
+		FILE *fp = fopen (path.c_str (), "rb");
+
+		if (!fp)
+			continue;
+		size_t got = fread (mie->eeprom.mem, 1, sizeof (mie->eeprom.mem), fp);
+
+		fclose (fp);
+		HL_PRINT ("naomi: board %u's EEPROM from '%s' (%u bytes)", index, path.c_str (), (unsigned) got);
+		return;
+	}
+}
+
 void
 Board::nvram_write (hl::Nvram &nvram)
 {
@@ -824,13 +916,6 @@ Naomi::~Naomi ()
 }
 
 void
-Naomi::aica_line (bool raised)
-{
-	/* The master's, while the others' sound is not wired to anything */
-	master ()->holly->set_external (2, raised);
-}
-
-void
 Naomi::load_nvram ()
 {
 	std::string file = std::string ("nvram/") + game->name + ".nvram";
@@ -847,12 +932,16 @@ Naomi::load_nvram ()
 		break;
 	case hl::Nvram::MISSING:
 		master ()->default_backup ();
+		master ()->default_eeprom ();
 		break;
 	default:
 		HL_ERROR ("naomi: '%s' is no nvram file of this version: kept, and nothing saved", read.c_str ());
 		nvram_path.clear ();
 		break;
 	}
+	/* The other boards of a machine of whole systems keep nothing */
+	for (size_t i = 1; networked && i < boards.size (); i++)
+		boards[i]->default_eeprom ();
 	for (auto &b : boards)
 		b->nvram_changed ();
 }
@@ -1073,9 +1162,18 @@ Naomi::run_frame ()
 			done.wait (hold, [&] { return running == 0; });
 			hold.unlock ();
 			for (auto &b : boards)
-				b->link->sync ();
+				if (b->link)
+					b->link->sync ();
 		} else
 			run_slice (master ());
+		/* All stopped: the rings' work of the boards past their blank */
+		for (auto &b : boards) {
+			if (b->vblank_due) {
+				b->vblank_due = false;
+				if (b->has_comm)
+					b->comm.vblank ();
+			}
+		}
 	}
 	choose_screen ();
 	master ()->end_frame (&audio);
@@ -1125,9 +1223,14 @@ Naomi::create (hl::Game *game)
 	unsigned count = game->boards ? game->boards : 1, i;
 	const char *forced = getenv ("HR_NAOMI_BOARDS");
 
-	if (forced)
+	if (game->network_boards > 1) {
+		count = game->network_boards;
+		naomi->networked = true;
+		naomi->comm_boxes.reset (new CommBoxes (count));
+		HL_PRINT ("naomi: %u whole systems on a ring", count);
+	} else if (forced)
 		count = (unsigned) MAX2 (1, MIN2 (4, atoi (forced)));
-	if (count > 1) {
+	if (count > 1 && !naomi->networked) {
 		naomi->link.reset (new Multiboard (count));
 		HL_PRINT ("naomi: %u boards linked", count);
 	}
@@ -1137,6 +1240,18 @@ Naomi::create (hl::Game *game)
 			delete naomi;
 			return NULL;
 		}
+		if (naomi->networked)
+			naomi->boards.back ()->comm.attach (comm_local_ring (naomi->comm_boxes.get (), i));
+	}
+	/* The ring over TCP: not a cabinet alone (no socket then, nor the
+	 * firewall's question); opened when the game starts its board */
+	{
+		const hl::Config *cfg = hl::Config::get ();
+		bool loop = cfg->port_in == cfg->port_out &&
+		            (!strcmp (cfg->address_out, "127.0.0.1") || !strcmp (cfg->address_out, "localhost"));
+
+		if (!naomi->networked && naomi->master ()->has_comm && cfg->link != 0 && !loop)
+			naomi->master ()->comm.attach (comm_network_ring (naomi));
 	}
 	naomi->audio_channels = 2;
 	/* The slaves' I/O boards were declared after it */
@@ -1146,7 +1261,12 @@ Naomi::create (hl::Game *game)
 	naomi->setup_screens ();
 	naomi->renderer = new Renderer (naomi);
 	naomi->load_nvram ();
-	naomi->master ()->configure_eeprom ();
+	if (naomi->networked)
+		for (auto &b : naomi->boards)
+			b->configure_eeprom ();
+	else
+		naomi->master ()->configure_eeprom ();
+	naomi->master ()->link_settings ();
 	naomi->start_threads ();
 	return naomi;
 }

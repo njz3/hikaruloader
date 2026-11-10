@@ -411,7 +411,7 @@ Aica::update_main_irq ()
 
 	if (main_irq_hook) {
 		if (raised != st.main_irq)
-			main_irq_hook (mach, raised);
+			main_irq_hook (main_irq_user, raised);
 		st.main_irq = raised;
 		return;
 	}

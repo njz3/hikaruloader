@@ -107,6 +107,9 @@ public:
 	char gdrom[32] = "";
 	/* The boards of its cabinet, linked (multiboard); 0: one */
 	unsigned boards = 0;
+	/* Complete systems on a ring of communication boards in one cabinet
+	 * (Driving Simulator: three), each with its cartridge; 0: none */
+	unsigned network_boards = 0;
 	/* Those with a monitor, numbered from 1, left to right (F355 Twin: its
 	 * slave alone); none listed: all */
 	unsigned screens[4] = { 0, 0, 0, 0 };

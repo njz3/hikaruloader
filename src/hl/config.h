@@ -30,8 +30,8 @@ enum DisplayMode {
 	DISPLAY_BORDERLESS,
 
 	NUM_DISPLAY_MODES
-};
-
+};
+
 /* [Display] MULTI_SCREEN: the cabinets of several boards */
 enum {
 	MULTI_ONE,		/* one board's picture, the key changing it */
@@ -280,6 +280,8 @@ public:
 					 * EEPROM's own, else 0 no link, 1
 					 * master, 2 slave, 3 relay; at the
 					 * game's start */
+	unsigned	link_node;	/* a NAOMI slave's number on the ring (1 to 7:
+					 * its car, its seat), at the game's start */
 	int		comm_board;	/* CommBoard, at the game's start */
 	unsigned	port_in;	/* the previous cabinet comes in there */
 	char		address_out[64];/* the next cabinet, and its port */

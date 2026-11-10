@@ -503,6 +503,14 @@ With `SIMULATED`, the linked instances run frame by frame together: when one
 pauses, the others wait, and they drop the link after 5 seconds; when one
 enters its test menu or quits, at once.
 
+NAOMI games link the same way: F355 Challenge Twin, and the others with a
+communication board (Club Kart, Initial D, Virtual-On Oratorio Tangram and
+more). `LINK = MASTER`, `SLAVE` or `NO_LINK` writes the game's own setting at
+its start (a game not known has it set in its test menu); `LINK_NODE`, 1 to
+7, is a slave's number on the ring, its car or its seat. `AUTO` leaves the
+game's backup as it is: F355 Twin then starts alone, unlinked. Driving
+Simulator's three systems are all in one Hikaruloader, no `[Network]` needed.
+
 ### Three or four cabinets
 
 Set `COMM_BOARD = PROGRAM` on every instance, and chain their ports in a
