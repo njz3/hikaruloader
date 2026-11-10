@@ -725,7 +725,7 @@ Board::end_frame (std::vector<int16_t> *audio)
 	if (gd)
 		gd->frame ();
 	if (sanwa)
-		sanwa->reader.frame ();
+		sanwa->reader->frame ();
 	if (link_settings_due && !(machine->frame % 60))
 		link_settings ();
 	if (audio) {

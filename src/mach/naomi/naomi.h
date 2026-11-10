@@ -847,12 +847,13 @@ private:
 /* A Sanwa CRP-1231 card reader on the SCIF (Initial D's) */
 class SanwaCard : public SerialPipe {
 public:
-	SanwaCard (hl::Machine *machine, const std::string &path) : reader (machine, path) {}
+	SanwaCard (hl::Machine *machine, const std::string &path) : reader (new hl::CardReader (machine, path)) {}
 
-	void	 write (uint8_t value) override { reader.receive (value); }
-	int	 available () override { return reader.has_byte () ? 1 : 0; }
-	uint8_t	 read () override { return reader.has_byte () ? reader.send () : 0; }
-	hl::CardReader reader;
+	void	 write (uint8_t value) override { reader->receive (value); }
+	int	 available () override { return reader->has_byte () ? 1 : 0; }
+	uint8_t	 read () override { return reader->has_byte () ? reader->send () : 0; }
+	/* A device: the machine's to delete */
+	hl::CardReader *reader;
 };
 
 /* The servo board 838-14174 of the wheels on the MIDI port; see naomi-servo.cpp */
