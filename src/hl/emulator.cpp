@@ -158,6 +158,12 @@ Emulator::game_screens ()
 }
 
 bool
+Emulator::game_has_stick ()
+{
+	return running_machine && running_machine->has_invertible_stick ();
+}
+
+bool
 Emulator::load_game (const char *name, const char *log_path)
 {
 	char message[512] = "", folders[2048];

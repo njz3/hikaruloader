@@ -84,6 +84,8 @@ public:
 	virtual void	 next_screen () {}
 	/* The screens of its cabinet */
 	virtual unsigned screens () const { return renderer ? renderer->screens () : 1; }
+	/* A flight stick whose up and down can be inverted */
+	virtual bool	 has_invertible_stick () const { return false; }
 
 	/* Clears the buffers (the batteries' aside), resets the devices, the
 	 * machine, the renderer */

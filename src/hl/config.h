@@ -251,6 +251,7 @@ public:
 	/* The one in use, in its range */
 	static unsigned	 sh4_clock_mhz ();
 	unsigned	naomi_sh4_clock; /* the NAOMI's and Atomiswave's, as it */
+	bool		pharrier_invert_y; /* Planet Harriers' stick, up and down */
 	static unsigned	 naomi_sh4_clock_mhz ();
 	int		region;		/* the board's country: -1 the EEPROM's
 					 * own, else 0 Japan, 1 USA, 2 Export,

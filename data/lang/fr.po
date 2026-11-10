@@ -770,6 +770,12 @@ msgstr "Pièces"
 msgid "Full screen or window"
 msgstr "Plein écran ou fenêtre"
 
+msgid "Invert the stick's up and down"
+msgstr "Inverser le haut et le bas du manche"
+
+msgid "A controller moves the stick, and it stays where it is left; a mouse places it."
+msgstr "Une manette déplace le manche, qui reste là où on le laisse ; une souris le place directement."
+
 msgid "Game"
 msgstr "Jeu"
 

@@ -162,6 +162,7 @@ Config::set_defaults ()
 	 * poses the skater before the GPU draws him (57 before November 2026) */
 	cfg->sh4_clock = 150;
 	cfg->naomi_sh4_clock = 200;
+	cfg->pharrier_invert_y = false;
 	/* The country the board's EEPROM holds */
 	cfg->region = 2;	/* Export */
 	/* The simulations, which every game plays with */
@@ -457,6 +458,8 @@ Config::set_value (const char *section, const char *key, const char *value)
 			cfg->sh4_clock = (unsigned) MAX2 (20, MIN2 (200, atoi (value)));
 		else if (!strcasecmp (key, "NAOMI_SH4_CLOCK"))
 			cfg->naomi_sh4_clock = (unsigned) MAX2 (20, MIN2 (200, atoi (value)));
+		else if (!strcasecmp (key, "PHARRIER_INVERT_Y"))
+			cfg->pharrier_invert_y = parse_bool (value);
 		else if (!strcasecmp (key, "REGION"))
 			cfg->region = parse_name (value, region_names, (int) NUMELEM (region_names), cfg->region + 1) - 1;
 		else if (!strcasecmp (key, "IO_BOARD_PROGRAM"))
@@ -927,6 +930,9 @@ Config::save () const
 	         "# leaves: slower, pictures show before they are complete. From the game's\n"
 	         "# start. Default: %u\n", def.naomi_sh4_clock);
 	fprintf (fp, "NAOMI_SH4_CLOCK = %u\n", cfg->naomi_sh4_clock);
+	fprintf (fp, "\n# Planet Harriers: the stick's up and down inverted. Default: %s\n",
+	         bool_name (def.pharrier_invert_y));
+	fprintf (fp, "PHARRIER_INVERT_Y = %s\n", bool_name (cfg->pharrier_invert_y));
 	fprintf (fp,
 	         "\n# The board's country, which the games read for their language and\n"
 	         "# texts: AUTO, the one its EEPROM holds (the BIOS's COUNTRY SETTING);\n"

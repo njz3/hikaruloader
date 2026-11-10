@@ -180,11 +180,18 @@ void restartNote(bool inGame)
 void wrappedNote(const char *text);
 
 // The options of the game running: its screens, for a cabinet of several
-void drawGameTab(int screens)
+void drawGameTab(int screens, bool stick)
 {
     hl::Config *cfg = hl::Config::get ();
     bool saved = false;
 
+    if (stick)
+    {
+        ImGui::Checkbox(tr("Invert the stick's up and down"), &cfg->pharrier_invert_y);
+        wrappedNote(tr("A controller moves the stick, and it stays where it is left; a mouse places it."));
+    }
+    if (screens < 2)
+        return;
     // MULTI_SCREEN, SCREEN_<n>_DISPLAY: the NAOMI cabinets of several boards
     const char *multiLabels[] = {tr("One board at a time"), tr("Side by side in one window"),
                                  tr("One window per board")};
@@ -1003,10 +1010,10 @@ void drawSettings(bool *open, bool inGame)
             drawDisplayTab();
             ImGui::EndTabItem();
         }
-        // Only when a game with several screens runs: nothing else is its own yet
-        if (inGame && hl::Emulator::game_screens() > 1 && ImGui::BeginTabItem(tr("Game")))
+        // Only when the game running has options of its own
+        if (inGame && (hl::Emulator::game_screens() > 1 || hl::Emulator::game_has_stick()) && ImGui::BeginTabItem(tr("Game")))
         {
-            drawGameTab(hl::Emulator::game_screens());
+            drawGameTab(hl::Emulator::game_screens(), hl::Emulator::game_has_stick());
             ImGui::EndTabItem();
         }
         if (ImGui::BeginTabItem(tr("Enhancements")))

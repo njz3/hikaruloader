@@ -8,6 +8,11 @@ and released: [DEVELOPMENT.md](DEVELOPMENT.md), "Versions and releases".
 Next version
 ------------
 
+- The settings' Game tab: the options of the game running, during a game
+  (the screens of a cabinet of several, Planet Harriers' stick).
+- Planet Harriers with a controller: the stick moves as Brave Firefighters'
+  sights do, and its up and down can be inverted (`PHARRIER_INVERT_Y`).
+- Alt+Enter: full screen or a window. The main keys in the About tab.
 - Club Kart for Cycraft and Initial D Ver. 3 Cycraft Edition start: their boards
   are Net DIMMs and the cabinet's motion PC is answered by Hikaruloader.
 - The Net DIMM's TCP service (port 10703), on `DIMM_LISTEN`: reading and

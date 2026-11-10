@@ -68,6 +68,8 @@ public:
 	bool	 load_game (const char *name, const char *log_path);
 	/* The screens of the game running, 0 without one */
 	static int game_screens ();
+	/* The game running has a stick whose up and down can be inverted */
+	static bool game_has_stick ();
 	/* Frees the machine and its game, for the picker's next one */
 	void	 unload_game ();
 

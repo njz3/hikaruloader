@@ -842,11 +842,16 @@ SegaIoBoard::read_controls ()
 		const auto *map = pointer_game == POINTER_BRAVEFF ? braveff : pharrier;
 		unsigned n = pointer_game == POINTER_BRAVEFF ? 4 : 2;
 
-		for (unsigned i = 0; i < n; i++)
+		/* A controller moves the sight or the stick (Controls::aim), a
+		 * mouse places it */
+		for (unsigned i = 0; i < n; i++) {
+			int sign = map[i].sign;
+
+			if (pointer_game == POINTER_PHARRIER && i == 0 && Config::get ()->pharrier_invert_y)
+				sign = -sign;
 			if (!analog_set[i])
-				analog[i] = (uint16_t) lround (0x8000 + (pointer_game == POINTER_BRAVEFF ?
-				                                         c.aim ("Pointer", map[i].key) :
-				                                         c.axis ("Pointer", map[i].key)) * map[i].sign * 0x7FFF);
+				analog[i] = (uint16_t) lround (0x8000 + c.aim ("Pointer", map[i].key) * sign * 0x7FFF);
+		}
 		return;
 	}
 	/* The wheel from 0 (left) to FFFF, its middle 8000; the pedals from 0

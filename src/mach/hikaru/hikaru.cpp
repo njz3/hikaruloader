@@ -791,6 +791,12 @@ hikaru_keep_nvram (Hikaru *hikaru)
 		hikaru->save_nvram ();
 }
 
+bool
+Hikaru::has_invertible_stick () const
+{
+	return io_board && ((hl::SegaIoBoard *) io_board)->pointer_game == hl::SegaIoBoard::POINTER_PHARRIER;
+}
+
 int
 Hikaru::run_frame ()
 {
