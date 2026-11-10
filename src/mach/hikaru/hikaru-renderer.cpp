@@ -35,6 +35,7 @@
 #include "hl/profile.h"
 
 #include "mach/hikaru/hikaru-renderer.h"
+#include "hl/aspect.h"
 #include "mach/hikaru/hikaru-renderer-private.h"
 
 namespace hikaru {
@@ -4501,6 +4502,33 @@ draw_second_monitor (Renderer *hr)
 	draw_scene (hr);
 	s.drawing = false;
 
+	/* Beside the first one, in the window */
+	if (s.side) {
+		if (s.right[2] > 0) {
+			glDisable (GL_DEPTH_TEST);
+			glDisable (GL_BLEND);
+			glDisable (GL_SCISSOR_TEST);
+			glDisable (GL_CULL_FACE);
+			glBindFramebuffer (GL_FRAMEBUFFER, hr->target_fb);
+			glViewport (s.right[0], s.right[1], s.right[2], s.right[3]);
+			glUseProgram (s.program);
+			glBindVertexArray (s.vao);
+			glActiveTexture (GL_TEXTURE0);
+			glBindTexture (GL_TEXTURE_2D, s.color);
+			glUniform1i (glGetUniformLocation (s.program, "u_tex"), 0);
+			{
+				float pw = hr->frame_gpu.active_w / 640.0f, ph = hr->frame_gpu.active_h / 480.0f;
+
+				glUniform4f (glGetUniformLocation (s.program, "u_part"), 0.0f, 1.0f - ph, pw, ph);
+			}
+			glDrawArrays (GL_TRIANGLES, 0, 3);
+			glBindVertexArray (0);
+			glUseProgram (0);
+		}
+		HL_ASSERT_NO_GL_ERROR ();
+		return;
+	}
+
 	if (!s.window) {
 		hl::Config *cfg = hl::Config::get ();
 		int count = MAX2 (SDL_GetNumVideoDisplays (), 1);
@@ -4707,6 +4735,27 @@ draw (Renderer *hr)
 		out[0] = out[1] = 0;
 		out[2] = hr->scene_w;
 		out[3] = 480;
+	}
+
+	/* SIDE_BY_SIDE: the window twice as wide once the game drives its
+	 * second output, the first one in its left half (not with a CRT
+	 * preset's passes) */
+	hr->second.right[2] = 0;
+	if (hr->second.side && hr->second.seen) {
+		if (!hr->second.laid_out) {
+			hr->second.laid_out = true;
+			hl::set_layout_screens (2);
+			hl::Window::set_native_size ((int) hr->scene_w * 2, 480);
+		} else if (!crt_fb) {
+			GLint v[4];
+
+			glGetIntegerv (GL_VIEWPORT, v);
+			hr->second.right[0] = v[0] + v[2] / 2;
+			hr->second.right[1] = v[1];
+			hr->second.right[2] = v[2] - v[2] / 2;
+			hr->second.right[3] = v[3];
+			glViewport (v[0], v[1], v[2] / 2, v[3]);
+		}
 	}
 
 	/* A 24 kHz mode (496x384, 496x377): the buffers are still 640x480, its
@@ -5445,6 +5494,8 @@ Renderer::~Renderer ()
 		hl::gl::destroy_program (second.program);
 	}
 	delete second.window;
+	if (second.laid_out)
+		hl::set_layout_screens (1);
 
 	invalidate_texcache (NULL);
 }
@@ -5485,7 +5536,9 @@ Renderer::Renderer (hl::Buffer *fb, hl::Buffer *texram[2]) :
 		HL_ABORT ("could not build the 3D state");
 	HL_ASSERT_NO_GL_ERROR ();
 
-	second.wanted = hl::Config::get ()->multi_screen == hl::MULTI_WINDOWS;
+	second.wanted = hl::Config::get ()->multi_screen == hl::MULTI_WINDOWS ||
+	                hl::Config::get ()->multi_screen == hl::MULTI_SIDE_BY_SIDE;
+	second.side = hl::Config::get ()->multi_screen == hl::MULTI_SIDE_BY_SIDE;
 
 	/* The thread's renderer has the GL objects; the second monitor's
 	 * window is the main context's */

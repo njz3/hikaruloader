@@ -272,6 +272,9 @@ public:
 		bool keep_verts = false;	/* for draw_scene () to come */
 		bool has_meshes = false;	/* in this frame */
 		bool seen = false;		/* the game drives that output */
+		/* SIDE_BY_SIDE: in the window's right half, once laid out */
+		bool side = false, laid_out = false;
+		GLint right[4] = { 0, 0, 0, 0 };
 		GLuint fb = 0, color = 0, depth = 0, program = 0, vao = 0;
 		unsigned w = 0, h = 0;
 		hl::ExtraWindow *window = NULL;
