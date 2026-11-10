@@ -17,6 +17,8 @@ Next version
   Display tab); Tab, Alt, the Windows key or another window let it go.
 - NAOMI cabinets of several boards: every board's sound is heard, not only
   the master's.
+- The Game tab's screens (one board, side by side, a window each, their
+  monitors) apply when the settings close, without a restart.
 
 
 0.7.1 (2026-11-10)

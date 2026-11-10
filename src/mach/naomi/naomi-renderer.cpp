@@ -1700,6 +1700,39 @@ Renderer::Renderer (Naomi *naomi_) :
 	update_titles ();
 }
 
+static std::string
+display_names ()
+{
+	std::string s;
+
+	for (unsigned i = 0; i < hl::MAX_SCREENS; i++)
+		s += std::string (hl::Config::get ()->screen_display[i]) + ";";
+	return s;
+}
+
+/* The settings closed: the windows as MULTI_SCREEN and SCREEN_<n>_DISPLAY now
+ * say, without a restart */
+void
+Renderer::apply_multi_screen ()
+{
+	int want = naomi->boards.size () > 1 && naomi->screen_order.size () > 1 ?
+	           hl::Config::get ()->multi_screen : (int) hl::MULTI_ONE;
+	unsigned across;
+
+	if (want == naomi->multi_screen && (want != hl::MULTI_WINDOWS || displays == display_names ()))
+		return;
+	naomi->multi_screen = want;
+	outputs.resize (1);
+	hl::Window::place (-1, 0, 0);
+	across = want == hl::MULTI_SIDE_BY_SIDE ? (unsigned) naomi->screen_order.size () : 1;
+	hl::set_layout_screens ((int) across);
+	hl::Window::set_native_size ((int) (width * across), (int) height);
+	if (want == hl::MULTI_WINDOWS)
+		open_windows ();
+	HL_PRINT ("naomi: MULTI_SCREEN %d from now on", want);
+	update_titles ();
+}
+
 Renderer::~Renderer ()
 {
 	outputs.clear ();
@@ -1733,6 +1766,8 @@ Renderer::open_windows ()
 	int count = MAX2 (SDL_GetNumVideoDisplays (), 1);
 	int w = (int) width * cfg->window_scale, h = (int) height * cfg->window_scale;
 	std::vector<int> on (n);
+
+	displays = display_names ();
 
 	for (i = 0; i < n; i++) {
 		const char *spec = i < hl::MAX_SCREENS ? cfg->screen_display[i] : "";

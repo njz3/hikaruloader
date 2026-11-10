@@ -225,8 +225,7 @@ void drawGameTab(int screens, bool stick)
         }
     }
     ImGui::EndDisabled();
-    wrappedNote(tr("Read when a game starts. F8 shows the next board."));
-    restartNote(true);
+    wrappedNote(tr("Applied when the settings close. F8 shows the next board."));
     (void) saved;
 }
 

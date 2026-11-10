@@ -806,8 +806,8 @@ msgstr "AUTO (le suivant)"
 msgid "not connected"
 msgstr "non connecté"
 
-msgid "Read when a game starts. F8 shows the next board."
-msgstr "Lu au lancement d'un jeu. F8 montre la carte suivante."
+msgid "Applied when the settings close. F8 shows the next board."
+msgstr "Appliqué à la fermeture des réglages. F8 montre la carte suivante."
 
 msgid "NAOMI SH-4 clock"
 msgstr "Horloge du SH-4 NAOMI"

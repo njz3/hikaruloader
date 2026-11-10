@@ -40,6 +40,7 @@ namespace
 {
 bool g_ready = false;
 bool g_open = false;
+bool g_closed = false;
 
 // The write directory's notice, as Flycast's and Supermodel's: 20 s from the
 // game's first frame, when it could not be written to (hl::Paths)
@@ -147,6 +148,8 @@ void setOpen(bool open)
     hl::Pointers::enable(!open);
     if (open)
         hl::Pointers::capture(false);
+    else
+        g_closed = true;
     // The settings need the pointer, the game may hide it
     SDL_ShowCursor(open || !hl::Config::get ()->hide_cursor ? SDL_ENABLE : SDL_DISABLE);
     // The inputs held when the settings opened would stay down in the game,
@@ -174,6 +177,13 @@ void ui::Interface::shutdown ()
 bool ui::Interface::settings_open ()
 {
     return g_open;
+}
+
+bool ui::Interface::take_closed ()
+{
+    const bool was = g_closed;
+    g_closed = false;
+    return was;
 }
 
 const char *ui::Interface::tr (const char *text)

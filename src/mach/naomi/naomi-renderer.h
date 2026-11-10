@@ -20,6 +20,7 @@
 #define __HL_NAOMI_RENDERER_H__
 
 #include <memory>
+#include <string>
 #include <unordered_map>
 #include <vector>
 
@@ -158,6 +159,7 @@ public:
 
 	/* The windows' titles: which board each shows */
 	void	 update_titles ();
+	void	 apply_multi_screen () override;
 
 protected:
 	void	 on_end_frame () override;
@@ -178,6 +180,8 @@ private:
 	std::vector<Output> outputs;
 	GLuint	 wide_fb = 0, wide_color = 0;
 	unsigned wide_w = 0, wide_h = 0;
+	/* The monitors the windows were opened on (SCREEN_<n>_DISPLAY) */
+	std::string displays;
 };
 
 } /* namespace naomi */

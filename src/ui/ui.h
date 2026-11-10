@@ -47,6 +47,9 @@ public:
 	 * interface's (Tab, or anything while the settings are open). */
 	static bool	 process_event (const SDL_Event *event);
 	static bool	 settings_open ();
+	/* Once after the settings closed: what they changed, applied between
+	 * two frames */
+	static bool	 take_closed ();
 	/* The window's overlay hook: the settings and the frame rate */
 	static void	 draw_overlay (int width, int height);
 	/* It has something to draw over the frames (the settings, a notice,

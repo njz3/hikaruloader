@@ -754,6 +754,8 @@ Emulator::run (int num_frames)
 			shell->poll ();
 		if (quit)
 			break;
+		if (ui::Interface::take_closed () && mach)
+			mach->settings_closed ();
 		/* The outputs' clients; paused, the settings open too (not for
 		 * the agent, whose frames run on its steps) */
 		Outputs::get ()->set_paused (!agent && (paused || ui::Interface::settings_open ()));

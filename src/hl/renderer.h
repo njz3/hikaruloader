@@ -76,6 +76,9 @@ public:
 	virtual unsigned screens () const { return 1; }
 	/* F8: the next output shown, where there are several */
 	virtual void	next_screen () {}
+	/* The settings closed: MULTI_SCREEN and the windows' monitors as
+	 * they now say */
+	virtual void	apply_multi_screen () {}
 
 	unsigned width;
 	unsigned height;

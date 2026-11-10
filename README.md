@@ -273,8 +273,8 @@ effect at once.
   CHD in a folder named as the game, as MAME keeps them: `roms/initdv3e.zip`
   and `roms/initdv3e/gds-0033.chd`. Atomiswave games need `awbios.zip`. Initial
   D's magnetic card is inserted with F7.
-- *Several boards* (`MULTI_SCREEN`), in the *Game* tab while a game of several screens runs, for the NAOMI cabinets of several boards; also for the Hikaru's second video output once a game drives it (`WINDOWS`: a window of its own; `SIDE_BY_SIDE`: the right half of a window twice as wide), read when a game
-  starts: `ONE` shows one board (F8 the next), `SIDE_BY_SIDE` puts the screens in a row in the
+- *Several boards* (`MULTI_SCREEN`), in the *Game* tab while a game of several screens runs, for the NAOMI cabinets of several boards; also for the Hikaru's second video output once a game drives it (`WINDOWS`: a window of its own; `SIDE_BY_SIDE`: the right half of a window twice as wide), applied when the
+  settings close: `ONE` shows one board (F8 the next), `SIDE_BY_SIDE` puts the screens in a row in the
   window, for a very wide monitor, `WINDOWS` gives each a window. `SCREEN_ORDER` gives the boards
   with a monitor, left to right (`2,1,3`). With `WINDOWS`, a list gives each window's monitor, by its name, its device,
   its mode and its place on the desktop, or AUTO. In the file, `SCREEN_1_DISPLAY` to `SCREEN_3_DISPLAY`:

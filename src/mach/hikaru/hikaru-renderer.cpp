@@ -4481,6 +4481,50 @@ Renderer::next_screen ()
 	hl::Window::set_title_detail (second.instead ? " - monitor 2" : "");
 }
 
+/* The settings closed: the second output as MULTI_SCREEN now says, without a
+ * restart. Its own window or the right half wants the frames drawn here: a
+ * drawing thread stops (THREADED_RENDERING comes back at the next start) */
+void
+Renderer::apply_multi_screen ()
+{
+	int multi = hl::Config::get ()->multi_screen;
+	bool wanted = multi == hl::MULTI_WINDOWS || multi == hl::MULTI_SIDE_BY_SIDE;
+	bool side = multi == hl::MULTI_SIDE_BY_SIDE;
+
+	if (is_drawer || (wanted == second.wanted && side == second.side))
+		return;
+	if (wanted && thread) {
+		stop_thread ();
+		/* Its programs went with its state: made again here */
+		memset ((void *) program_cache, 0, sizeof (program_cache));
+		programs_warmed = false;
+		num_programs = 0;
+		meshes.program = 0;
+		meshes.variant.full = 0;
+		if (build_fb_state (this))
+			HL_ABORT ("could not build the framebuffer state");
+		invalidate_texram ();
+		HL_PRINT ("renderer: the frames drawn here from now on, for the second monitor");
+	}
+	if (second.laid_out && !side) {
+		second.laid_out = false;
+		hl::set_layout_screens (1);
+		hl::Window::set_native_size ((int) scene_w, 480);
+	}
+	if (side || !wanted) {
+		delete second.window;
+		second.window = NULL;
+	}
+	second.wanted = wanted;
+	second.side = side;
+	second.has_meshes = false;
+	if (wanted && second.instead) {
+		second.instead = false;
+		hl::Window::set_title_detail ("");
+	}
+	HL_PRINT ("hikaru: MULTI_SCREEN %d from now on", multi);
+}
+
 /* The list for the board's second video output, in its own buffers and its
  * own window, after the first monitor's picture */
 static void
