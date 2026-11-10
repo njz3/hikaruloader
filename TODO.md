@@ -25,8 +25,9 @@ GENERAL
 - Net DIMM games: their network commands answer, Virtua Fighter 4 reaches
   its network check. Not yet playing: Dragon Treasure stops on `G2 I/O
   TROUBLE` (13), Mahjong MJ on its I/O board, World Club Champion Football
-  waits for its server (192.168.102.1, the terminal's); the DIMM firmware
-  update discs read no firmware version.
+  waits for its server (192.168.102.1 port 59200, its "control process",
+  which speaks first and is not in any set: what it sends is not known); the
+  DIMM firmware update discs read no firmware version.
 - Cycraft cabinets: the motion PC is answered, its motion data ignored (nothing
   moves); no game played to the end with it yet.
 - An event-driven scheduler. The machine runs a line at a time (544 a
