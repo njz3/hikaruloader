@@ -160,6 +160,8 @@ public:
 	virtual ~Cart () {}
 
 	virtual void	 reset ();
+	/* A byte of the ROM through the board's decryption (an M4's header) */
+	uint8_t	 decrypted_byte (uint32_t offs);
 	virtual uint32_t get (unsigned reg);
 	virtual void	 put (unsigned reg, uint32_t val);
 	/* The G1's DMA: size bytes from where DMA_OFFSET points */

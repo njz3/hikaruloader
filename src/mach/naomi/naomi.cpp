@@ -377,6 +377,12 @@ Board::init ()
 			cart.reset (new Cart (none, Cart::TYPE_ROM, 0, 0, NULL));
 		}
 	}
+	/* An M4's header is encrypted: its regions, as above */
+	if (type == Cart::TYPE_M4 && has_cart && game->use_region ("bios", cart->decrypted_byte (0x428) & 0x1F)) {
+		bios_rom = game->section_data ("bios");
+		memcpy (bios->ptr (0), bios_rom->ptr (0), std::min (bios_rom->size (), 2u * MB));
+		HL_PRINT ("naomi: the BIOS of the region of the game (M4)");
+	}
 	if (x76f100)
 		cart->eeprom.load ((const uint8_t *) x76f100->ptr (0), x76f100->size ());
 	/* The BIOS's password, whatever a dump holds (its own passwords not known) */
@@ -572,11 +578,19 @@ Board::configure_eeprom ()
 		return;
 	uint8_t *mem = mie->eeprom.mem;
 	const uint8_t *h = (const uint8_t *) rom_image->ptr (0);
-	const uint8_t *coin = h + 0x1E0;
-	uint8_t cabinet = h[0x429], vertical = h[0x42B];
+	uint8_t decrypted[0x430];
 	unsigned i;
 
-	/* An M4's header is encrypted: nothing can be told from it */
+	/* An M4's header is encrypted after its first 16 bytes */
+	if (!strcmp (game->board, "m4") && cart) {
+		memcpy (decrypted, h, 16);
+		for (i = 16; i < sizeof (decrypted); i++)
+			decrypted[i] = cart->decrypted_byte (i);
+		h = decrypted;
+	}
+	const uint8_t *coin = h + 0x1E0;
+	uint8_t cabinet = h[0x429], vertical = h[0x42B];
+
 	if (memcmp (h, "NAOMI", 5) && memcmp (h, "Naomi2", 6))
 		return;
 	if (memcmp (h + 0x134, mem + 3, 4)) {

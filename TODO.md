@@ -10,6 +10,15 @@ this file's history (git).
 GENERAL
 -------
 
+- NAOMI, seen in a pass over the 259 sets (3000 frames, attract only):
+  - a jump to code never loaded: capsnk, pjustic, pstone2, gundmct, sgtetris;
+  - the I/O board refused ("does not fulfill the game specs" or "I/O board bad"):
+    dygolf, vathlete, wwfroyal, shootopl, mj1, hopper, shorse*;
+  - M4: CAUTION 51 (illvelo, mamonoro), ERROR 02 still (mushi2k61, mushi2k62, sl2007);
+  - Dragon Treasure: its own ERROR 13, G2 I/O trouble;
+  - Cycraft cabinets (clubkcyc*, inidv3c*): they wait for the motion cabinet on the
+    network; black at frame 3000 and not examined: azumanga, quizqgd, samsptk, vtennis,
+    vtennisg, deathcox, ggram2, spawn, mvsc2, hmgeo.
 - NAOMI: the translucent modifier volumes change no picture in the attracts
   of Virtua Striker 3, Club Kart, The King of Route 66 and Airline Pilots:
   to see in play; per-pixel translucency only. The Elan's vertex lists take

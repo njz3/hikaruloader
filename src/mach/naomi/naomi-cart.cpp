@@ -239,6 +239,20 @@ Cart::read (uint8_t *out, uint32_t size)
 	}
 }
 
+uint8_t
+Cart::decrypted_byte (uint32_t offs)
+{
+	const auto saved = s;
+	uint8_t block[32];
+
+	/* A block of the cipher, from its start */
+	s.rom_offset = 0x40000000 | (offs & ~31u);
+	setup (s.rom_offset, false);
+	read (block, sizeof (block));
+	s = saved;
+	return block[offs & 31];
+}
+
 uint32_t
 Cart::get (unsigned reg)
 {
