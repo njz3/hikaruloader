@@ -75,7 +75,7 @@ private:
 		GLint u_width, u_stretch_2d, u_clamp_max, u_clamp_min;
 		GLint u_scale, u_target, u_pt_ref, u_lod_bias, u_max_lod, u_shade_scale, u_clip_out;
 		/* The collecting one's (else -1) */
-		GLint u_tag, u_max_nodes, u_opaque_depth;
+		GLint u_tag, u_max_nodes, u_opaque_depth, u_node_flags;
 	};
 
 	/* A framebuffer with a depth and a stencil */
@@ -96,6 +96,7 @@ private:
 	bool oit_buffers (unsigned w, unsigned h);
 	void destroy_oit ();
 	void draw_translucent_per_pixel ();
+	void draw_translucent_volumes ();
 	void write_back (const Draw &d, Target &t);
 	bool show_vram ();
 	GLuint filter_lines (const Draw &d);
@@ -111,6 +112,8 @@ private:
 	bool depth_pass = false;
 	/* The stencil has the modifier volumes' area 1 in bit 0 */
 	bool volumes_ready = false;
+	/* The translucent volumes will choose between the two areas' fragments */
+	bool collect_areas = false;
 	/* Where Scene::vertices1 starts in the vertex buffer */
 	uint32_t vertices1_at = 0;
 	float pixel_scale_x () const { return (float) target->w / pixel_x; }
@@ -120,7 +123,7 @@ private:
 
 	Program program = {}, collect = {};
 	GLuint blit_program, mod_program;
-	GLint u_blit_tex, u_mod_zscale, u_mod_scale, u_mod_target;
+	GLint u_blit_tex, u_mod_zscale, u_mod_width, u_mod_scale, u_mod_target;
 	GLuint vao, vbo, mod_vao, mod_vbo, blit_vao, fog_tex, vram_tex;
 
 	Target screen, offscreen, filtered;
@@ -135,6 +138,9 @@ private:
 		GLuint heads = 0, nodes = 0, counter = 0;
 		GLuint depth_tex = 0, depth_fb = 0, color_tex = 0, color_fb = 0;
 		GLuint resolve = 0, vao = 0;
+		/* The translucent modifier volumes' program */
+		GLuint volumes = 0;
+		GLint u_mode = -1, u_zscale = -1, u_width = -1, u_scale = -1, u_target = -1;
 		unsigned w = 0, h = 0;
 		uint32_t max_nodes = 0;
 		unsigned frames = 0;

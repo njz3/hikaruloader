@@ -907,6 +907,13 @@ Holly::ta_sprite (const uint32_t *w)
 	}
 }
 
+/* A list's modifier volumes: 1 the opaque, 3 the translucent; else none */
+static std::vector<ModVol> *
+volumes_of (Scene &scene, int list)
+{
+	return list == 1 ? &scene.mod_volumes : list == 3 ? &scene.mod_volumes_tr : NULL;
+}
+
 void
 Holly::ta_modifier (const uint32_t *w)
 {
@@ -915,9 +922,9 @@ Holly::ta_modifier (const uint32_t *w)
 
 	for (i = 1; i <= 9; i++)
 		scene->mod_vertices.push_back (to_float (w[i]));
-	/* The translucent lists' volumes are not drawn */
-	if (ta.list == 1 && !scene->mod_volumes.empty ())
-		scene->mod_volumes.back ().count += 3;
+	if (std::vector<ModVol> *list = volumes_of (*scene, ta.list))
+		if (!list->empty ())
+			list->back ().count += 3;
 }
 
 void
@@ -986,8 +993,8 @@ Holly::ta_packet (const uint32_t *w)
 			mv.isp = (w[1] & ~(1u << 26)) | (((pcw >> 6) & 1) << 26);
 			mv.first = (uint32_t) building->mod_vertices.size () / 3;
 			mv.count = 0;
-			if (list == 1)
-				building->mod_volumes.push_back (mv);
+			if (std::vector<ModVol> *volumes = volumes_of (*building, list))
+				volumes->push_back (mv);
 			break;
 		}
 		if ((((pcw >> 4) & 3) == 2 && (((pcw >> 6) & 1) || ((pcw >> 3) & 1 && (pcw >> 2) & 1)))) {
@@ -1076,24 +1083,25 @@ Holly::elan_modifier (unsigned list, uint32_t isp)
 		ta.list = list < 5 ? (int8_t) list : 0;
 	ta.mod = 0;
 	ta.sprite = 0;
-	if (ta.list == 1) {
+	if (std::vector<ModVol> *volumes = volumes_of (*building, ta.list)) {
 		ModVol mv;
 
 		mv.isp = isp;
 		mv.first = (uint32_t) building->mod_vertices.size () / 3;
 		mv.count = 0;
-		building->mod_volumes.push_back (mv);
+		volumes->push_back (mv);
 	}
 }
 
 void
 Holly::elan_mod_triangle (const float *xyz)
 {
-	/* The translucent lists' volumes are not drawn, as the TA's */
-	if (ta.list != 1 || building->mod_volumes.empty ())
+	std::vector<ModVol> *volumes = volumes_of (*building, ta.list);
+
+	if (!volumes || volumes->empty ())
 		return;
 	building->mod_vertices.insert (building->mod_vertices.end (), xyz, xyz + 9);
-	building->mod_volumes.back ().count += 3;
+	volumes->back ().count += 3;
 }
 
 void

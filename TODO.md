@@ -10,6 +10,10 @@ this file's history (git).
 GENERAL
 -------
 
+- NAOMI: the translucent modifier volumes change no picture in the attracts
+  of Virtua Striker 3, Club Kart, The King of Route 66 and Airline Pilots:
+  to see in play; per-pixel translucency only. The Elan's vertex lists take
+  no time and its interrupt output is not wired: neither is documented.
 - GD-ROM: the Net DIMM's network commands answer "failed": no link between
   cabinets on the DIMM board.
 

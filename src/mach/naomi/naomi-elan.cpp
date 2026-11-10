@@ -106,6 +106,8 @@ static const uint32_t SIZE_GMP = 64;
 static const uint32_t SIZE_MATRIX = 160;
 static const uint32_t SIZE_LIGHT = 32;
 
+static const uint64_t DMA_BYTES_PER_SECOND = 800000000;	/* 64 bits, 100 MHz */
+
 /* Against a list that links to itself, or garbage */
 static const unsigned MAX_DEPTH = 128;
 static const uint64_t MAX_COMMANDS = 8000000;
@@ -224,9 +226,10 @@ Elan::clear_state ()
 void
 Elan::reset (hl::ResetType type)
 {
-	s.reg10 = s.reg74 = 0;
+	s.reg10 = s.reg74 = s.reg78 = 0;
 	s.reg30 = 0x31;
 	s.dma_lines = 0;
+	s.dma_end = NONE;
 	memset (s.cmd, 0, sizeof (s.cmd));
 	culling_reversed = open_volume = shadowed_volume = false;
 	model_tsp = 0;
@@ -237,11 +240,34 @@ Elan::reset (hl::ResetType type)
 	clear_state ();
 }
 
+/*
+ * The Time It Takes
+ *
+ * Of the chip's timings only the texture DMA's is known at all: its bus is 64
+ * bits at 100 MHz (noted by MAME's 315-6289, the SH-4's channel 2 feeding it),
+ * whose bytes are counted here, in the lines the machine advances by. How long
+ * the lists of vertices take (and thus when a list's end comes, or the
+ * "geometry timeout" bits 2-3 of register 74) is documented nowhere: these run
+ * at once, at the write that starts them. Where the output of its interrupt
+ * registers (74 status, 78 mask) goes is not known either: it is not wired.
+ */
+
+unsigned
+Elan::dma_duration (uint32_t bytes) const
+{
+	uint64_t per_line = DMA_BYTES_PER_SECOND / (60 * std::max (board->frame_lines, 1u));
+
+	return (unsigned) (1 + (bytes ? (bytes - 1) / per_line : 0));
+}
+
 void
 Elan::line ()
 {
-	if (s.dma_lines && !--s.dma_lines)
+	if (s.dma_lines && !--s.dma_lines) {
 		s.reg74 |= 1;
+		if (s.dma_end != NONE)
+			((Sh4 *) board->sh)->ddt_done (2, s.dma_end);
+	}
 }
 
 /*
@@ -266,6 +292,7 @@ Elan::get (unsigned size, uint32_t addr, void *val)
 	case 0x1C: data = 0x87320961; break;	/* the SDRAM's configuration */
 	case 0x30: data = s.reg30; break;	/* the macro tiler */
 	case 0x74: data = s.reg74; break;	/* 0 DMA done, 1 commands done, 4-6 errors */
+	case 0x78: data = s.reg78; break;	/* its interrupts' mask */
 	default: break;
 	}
 	set_ptr (val, size, data);
@@ -296,6 +323,9 @@ Elan::put (unsigned size, uint32_t addr, uint64_t val)
 		break;
 	case 0x74:
 		s.reg74 &= ~data;
+		break;
+	case 0x78:
+		s.reg78 = data;
 		break;
 	default:
 		break;
@@ -1037,17 +1067,21 @@ Elan::run (const uint8_t *data, int64_t size, unsigned depth)
 				if (bytes > VRAM_SIZE)
 					return fail ();
 				bytes = std::min (bytes, VRAM_SIZE - to);
+				s.dma_end = NONE;
 				if (offset & 0x80000000) {
-					from = ((Sh4 *) board->sh)->ddt_source (2) & SH_RAM_MASK;
+					uint32_t start = ((Sh4 *) board->sh)->ddt_source (2);
+
+					from = start & SH_RAM_MASK;
 					bytes = std::min (bytes, SH_RAM_MASK + 1 - from);
 					source = (const uint8_t *) board->ram->ptr (from);
+					s.dma_end = start + bytes;
 				} else {
 					from = offset & RAM_MASK;
 					bytes = std::min (bytes, RAM_SIZE - from);
 					source = ram_base + from;
 				}
 				memcpy (holly->vram->ptr (to), source, bytes);
-				s.dma_lines = 1;
+				s.dma_lines = dma_duration (bytes);
 			} else {
 				uint32_t at = offset & RAM_MASK;
 

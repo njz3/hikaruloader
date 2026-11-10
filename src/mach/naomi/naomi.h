@@ -101,6 +101,8 @@ struct Scene {
 	std::vector<Batch> batches[NUM_LISTS];
 	std::vector<float> mod_vertices;
 	std::vector<ModVol> mod_volumes;
+	/* Those of the translucent modifier volume list, in the same vertices */
+	std::vector<ModVol> mod_volumes_tr;
 	float max_z = 1e-6f;
 };
 
@@ -573,6 +575,7 @@ private:
 	/* False when it stopped on an error */
 	bool	 run (const uint8_t *data, int64_t size, unsigned depth);
 	bool	 fail ();
+	unsigned dma_duration (uint32_t bytes) const;
 	uint32_t ram_offset (const uint8_t *p, uint32_t bytes) const;
 
 	void	 reset_projection ();
@@ -598,12 +601,13 @@ private:
 
 	/* Plain data, for the states: objects by their offset in the RAM */
 	struct {
-		uint32_t reg10, reg74, reg30;
+		uint32_t reg10, reg74, reg78, reg30;
 		uint32_t cmd[8];
 		uint32_t gmp, instance, light_model;
 		uint32_t lights[MAX_LIGHTS];
 		float	 proj[4];	/* fx, tx, fy, ty */
 		uint32_t dma_lines;	/* until a texture's DMA is done */
+		uint32_t dma_end;	/* then channel 2's source, if it fed it */
 	} s;
 
 	/* What they say, read again after a state */

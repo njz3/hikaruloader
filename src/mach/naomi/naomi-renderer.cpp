@@ -107,6 +107,7 @@ layout (binding = 0, r32ui) uniform coherent uimage2D u_heads;
 layout (std430, binding = 0) buffer Nodes { uvec4 nodes[]; };
 uniform uint u_max_nodes;
 uniform uint u_tag;
+uniform uint u_node_flags;
 uniform sampler2D u_opaque_depth;
 #endif
 /* The table's coefficient at a pixel of depth z (the vertices' 1/W): z by
@@ -209,7 +210,7 @@ void main ()
 	if (node < u_max_nodes) {
 		uint next = imageAtomicExchange (u_heads, pixel, node + 1u);
 		nodes[node] = uvec4 (packUnorm4x8 (clamp (color, 0.0, 1.0)), floatBitsToUint (depth),
-		                     next, u_tag + (uint (gl_PrimitiveID) << 8));
+		                     next | u_node_flags, u_tag + (uint (gl_PrimitiveID) << 8));
 	}
 #else
 	out_color = color;
@@ -233,6 +234,11 @@ void main ()
  *    uvec4: colour, depth, next + 1, the blending's source and destination
  *    instructions, the SRC and DST selects at bits 6-7, the triangle's place
  *    in the lists << 8; an r32ui image holds each pixel's last + 1);
+ *  - the translucent modifier volumes applied, each to each fragment: the
+ *    chip processes them layer by layer, so the area of one pixel differs
+ *    from one layer to the next. A polygon the volumes can change is collected
+ *    twice, once for each of its areas (NODE_* in the third word): only the
+ *    fragments of the area the volumes put them in are blended;
  *  - resolved: a pass over the picture blends each pixel's list over a copy
  *    of what is drawn, the farthest first, with the TSP word's two blending
  *    instructions as the chip has them (the other's colour, the source's or
@@ -241,8 +247,15 @@ void main ()
  *    The pass empties the heads for the next frame.
  *
  * The buffer, 2 fragments a pixel at first, grows when a frame fills it.
- * Without it, each triangle is sorted whole (sort_translucent ()).
+ * Without it, each triangle is sorted whole (sort_translucent ()), and the
+ * translucent volumes are not applied: all those polygons are in area 0.
  */
+
+/* The node's third word: next + 1 below, these above */
+#define NODE_VOLUMES	0x80000000u	/* the volumes change this polygon */
+#define NODE_AREA1	0x40000000u	/* it is its area 1's fragment */
+#define NODE_STENCIL	0x20000000u	/* inside the volume being done */
+#define NODE_INSIDE	0x10000000u	/* inside the volumes so far */
 
 static const char *resolve_vs_src = R"(#version 430
 void main ()
@@ -295,10 +308,14 @@ void main ()
 		/* The next KEPT in order, after the last blended */
 		num = 0;
 		more = false;
-		for (i = head; i != 0u; i = nodes[i - 1u].z) {
+		for (i = head; i != 0u; i = nodes[i - 1u].z & 0x0FFFFFFFu) {
 			float d = uintBitsToFloat (nodes[i - 1u].y);
-			uint o = nodes[i - 1u].w >> 8;
+			uint o = nodes[i - 1u].w >> 8, flags = nodes[i - 1u].z;
 
+			/* Of a polygon the volumes change, its fragment of the
+			 * area this pixel of that layer is in */
+			if ((flags & 0x80000000u) != 0u && ((flags & 0x40000000u) != 0u) != ((flags & 0x10000000u) != 0u))
+				continue;
 			if (!before (last_d, last_o, d, o))
 				continue;
 			if (num < KEPT) {
@@ -383,13 +400,18 @@ void main ()
 static const char *mod_vs_src = R"(#version 430
 layout (location = 0) in vec3 in_pos;
 noperspective out float v_z;
+uniform float u_width;
 uniform vec2 u_scale;
 uniform vec2 u_target;
 void main ()
 {
 	float w = 1.0 / in_pos.z;
-	gl_Position = vec4 (in_pos.x * u_scale.x / (u_target.x * 0.5) - 1.0,
-	                    1.0 - in_pos.y * u_scale.y / (u_target.y * 0.5), 0.0, 1.0) * w;
+	float px = in_pos.x * u_scale.x;
+	float x = px / (u_target.x * 0.5) - 1.0;
+	/* WIDESCREEN: where the polygons' vertex shader puts them */
+	if (u_width > 640.0)
+		x = (px + (u_width - 640.0) * 0.5) / (u_width * 0.5) - 1.0;
+	gl_Position = vec4 (x, 1.0 - in_pos.y * u_scale.y / (u_target.y * 0.5), 0.0, 1.0) * w;
 	v_z = in_pos.z;
 }
 )";
@@ -402,6 +424,56 @@ void main ()
 {
 	out_color = vec4 (0.0);
 	gl_FragDepth = v_z * u_zscale;
+}
+)";
+
+/* A translucent volume's triangles over each fragment of their pixels, as the
+ * opaque volumes' stencil over the depth (draw_modifiers ()), u_mode: 0 a closed
+ * volume's face inverts the fragments behind it, 1 an open volume's sets them,
+ * 2 and 3 the sum of an inclusion and of an exclusion volume */
+static const char *mod_tr_fs_src = R"(#version 430
+struct Node { uint color; float depth; uint next; uint tag; };
+layout (binding = 0, r32ui) readonly uniform uimage2D u_heads;
+layout (std430, binding = 0) coherent buffer Nodes { Node nodes[]; };
+noperspective in float v_z;
+uniform float u_zscale;
+uniform int u_mode;
+#define VOLUMES 0x80000000u
+#define STENCIL 0x20000000u
+#define INSIDE 0x10000000u
+void main ()
+{
+	float depth = v_z * u_zscale;
+	uint i = imageLoad (u_heads, ivec2 (gl_FragCoord.xy)).r;
+
+	while (i != 0u) {
+		uint flags = nodes[i - 1u].next;
+
+		if ((flags & VOLUMES) != 0u) {
+			switch (u_mode) {
+			case 0:
+				if (depth > nodes[i - 1u].depth)
+					atomicXor (nodes[i - 1u].next, STENCIL);
+				break;
+			case 1:
+				if (depth > nodes[i - 1u].depth)
+					atomicOr (nodes[i - 1u].next, STENCIL);
+				break;
+			case 2:
+				/* inside = inside | volume */
+				if ((atomicAnd (nodes[i - 1u].next, ~STENCIL) & STENCIL) != 0u)
+					atomicOr (nodes[i - 1u].next, INSIDE);
+				break;
+			default:
+				/* inside = inside & !volume (its result counts inverted:
+				 * outside the volume is what stays) */
+				if ((atomicAnd (nodes[i - 1u].next, ~STENCIL) & STENCIL) != 0u)
+					atomicAnd (nodes[i - 1u].next, ~INSIDE);
+				break;
+			}
+		}
+		i = flags & 0x0FFFFFFFu;
+	}
 }
 )";
 
@@ -781,7 +853,7 @@ BoardRenderer::setup ()
 {
 	program.id = hl::gl::compile_program (vs_src, fs_src);
 	locate (program);
-	program.u_tag = program.u_max_nodes = program.u_opaque_depth = -1;
+	program.u_tag = program.u_max_nodes = program.u_opaque_depth = program.u_node_flags = -1;
 
 	{
 		std::string src = fs_src;
@@ -792,8 +864,17 @@ BoardRenderer::setup ()
 		collect.u_tag = glGetUniformLocation (collect.id, "u_tag");
 		collect.u_max_nodes = glGetUniformLocation (collect.id, "u_max_nodes");
 		collect.u_opaque_depth = glGetUniformLocation (collect.id, "u_opaque_depth");
+		collect.u_node_flags = glGetUniformLocation (collect.id, "u_node_flags");
 		oit.resolve = hl::gl::compile_program (resolve_vs_src, resolve_fs_src);
+		oit.volumes = hl::gl::compile_program (mod_vs_src, mod_tr_fs_src);
+		oit.u_mode = glGetUniformLocation (oit.volumes, "u_mode");
+		oit.u_zscale = glGetUniformLocation (oit.volumes, "u_zscale");
+		oit.u_width = glGetUniformLocation (oit.volumes, "u_width");
+		oit.u_scale = glGetUniformLocation (oit.volumes, "u_scale");
+		oit.u_target = glGetUniformLocation (oit.volumes, "u_target");
 		glGenVertexArrays (1, &oit.vao);
+		if (!oit.volumes)
+			HL_ERROR ("naomi: no translucent modifier volumes");
 		if (!collect.id || !oit.resolve) {
 			HL_ERROR ("naomi: no translucency at each pixel");
 			oit.failed = true;
@@ -803,6 +884,7 @@ BoardRenderer::setup ()
 	u_blit_tex = glGetUniformLocation (blit_program, "u_tex");
 	mod_program = hl::gl::compile_program (mod_vs_src, mod_fs_src);
 	u_mod_zscale = glGetUniformLocation (mod_program, "u_zscale");
+	u_mod_width = glGetUniformLocation (mod_program, "u_width");
 	u_mod_scale = glGetUniformLocation (mod_program, "u_scale");
 	u_mod_target = glGetUniformLocation (mod_program, "u_target");
 
@@ -984,8 +1066,9 @@ BoardRenderer::draw_piece (const Program &p, const Batch &b, uint32_t tsp, uint3
 	}
 
 	if (p.u_tag >= 0) {
+		/* The place in the lists: the same for a polygon's two areas */
 		glUniform1ui (p.u_tag, ((tsp >> 29) & 7) | (((tsp >> 26) & 7) << 3) | (((tsp >> 25) & 1) << 6) |
-		              (((tsp >> 24) & 1) << 7) | ((first / 3) << 8));
+		              (((tsp >> 24) & 1) << 7) | ((b.first / 3) << 8));
 	} else if (opaque)
 		glDisable (GL_BLEND);
 	else {
@@ -1029,6 +1112,17 @@ BoardRenderer::draw_batch (const Program &p, const Draw &d, const Batch &b, bool
 			draw_piece (p, b, b.tsp1, b.tcw1, vertices1_at + b.first1, false, opaque);
 		else
 			draw_piece (p, b, b.tsp, b.tcw, b.first, (draw->shad_scale & 0x100) != 0, opaque);
+	} else if (!opaque && p.u_tag >= 0 && collect_areas && b.shadow &&
+	           (b.two_volume || (draw->shad_scale & 0x100))) {
+		/* Both areas into the lists: the volumes will choose, layer by layer */
+		glUniform1ui (p.u_node_flags, NODE_VOLUMES);
+		draw_piece (p, b, b.tsp, b.tcw, b.first, false, opaque);
+		glUniform1ui (p.u_node_flags, NODE_VOLUMES | NODE_AREA1);
+		if (b.two_volume)
+			draw_piece (p, b, b.tsp1, b.tcw1, vertices1_at + b.first1, false, opaque);
+		else
+			draw_piece (p, b, b.tsp, b.tcw, b.first, true, opaque);
+		glUniform1ui (p.u_node_flags, 0);
 	} else {
 		if (p.u_tag < 0 && !depth_pass)
 			glStencilFunc (GL_ALWAYS, 0, 0);
@@ -1048,6 +1142,7 @@ BoardRenderer::draw_modifiers (const Draw &d, float sx, float sy)
 	(void) sy;
 	glUseProgram (mod_program);
 	glUniform1f (u_mod_zscale, 1.0f / std::max (scene.max_z, d.background_z));
+	glUniform1f (u_mod_width, d.to_texture ? 640.0f : (float) width);
 	glUniform2f (u_mod_scale, d.scale_x, d.scale_y);
 	glUniform2f (u_mod_target, pixel_x, pixel_y);
 	glBindVertexArray (mod_vao);
@@ -1098,6 +1193,45 @@ BoardRenderer::draw_modifiers (const Draw &d, float sx, float sy)
 	glDisable (GL_DEPTH_TEST);
 	glStencilMask (0xFF);
 	glDisable (GL_STENCIL_TEST);
+}
+
+/* The translucent modifier volumes, over the fragments collected: the same
+ * passes as draw_modifiers (), each fragment for a stencil (see "Translucency") */
+void
+BoardRenderer::draw_translucent_volumes ()
+{
+	const Draw &d = *draw;
+	const Scene &scene = *d.scene;
+	int base = -1;
+
+	glUseProgram (oit.volumes);
+	glUniform1f (oit.u_zscale, 1.0f / std::max (scene.max_z, d.background_z));
+	glUniform1f (oit.u_width, d.to_texture ? 640.0f : (float) width);
+	glUniform2f (oit.u_scale, d.scale_x, d.scale_y);
+	glUniform2f (oit.u_target, pixel_x, pixel_y);
+	glBindVertexArray (mod_vao);
+	glBindBuffer (GL_ARRAY_BUFFER, mod_vbo);
+	glBufferData (GL_ARRAY_BUFFER, scene.mod_vertices.size () * sizeof (float), scene.mod_vertices.data (), GL_STREAM_DRAW);
+	glDisable (GL_SCISSOR_TEST);
+	glDisable (GL_STENCIL_TEST);
+	for (const ModVol &m : scene.mod_volumes_tr) {
+		unsigned mode = m.isp >> 29;
+		bool either = !((m.isp >> 26) & 1) && mode > 0;
+
+		if (!m.count)
+			continue;
+		if (base < 0)
+			base = (int) m.first;
+		glUniform1i (oit.u_mode, either ? 1 : 0);
+		glDrawArrays (GL_TRIANGLES, m.first, m.count);
+		glMemoryBarrier (GL_SHADER_STORAGE_BARRIER_BIT);
+		if (mode == 1 || mode == 2) {
+			glUniform1i (oit.u_mode, mode == 1 ? 2 : 3);
+			glDrawArrays (GL_TRIANGLES, base, m.first + m.count - base);
+			glMemoryBarrier (GL_SHADER_STORAGE_BARRIER_BIT);
+			base = -1;
+		}
+	}
 }
 
 /* The background polygon: the plane of its three vertices, the depth and the
@@ -1836,6 +1970,11 @@ BoardRenderer::draw_translucent_per_pixel ()
 {
 	uint32_t zero = 0;
 
+	collect_areas = false;
+	if (oit.volumes)
+		for (const ModVol &m : draw->scene->mod_volumes_tr)
+			collect_areas = collect_areas || m.count;
+
 	/* The opaque polygons' depth, for the collecting shader */
 	glBindFramebuffer (GL_READ_FRAMEBUFFER, target->fb);
 	glBindFramebuffer (GL_DRAW_FRAMEBUFFER, oit.depth_fb);
@@ -1856,14 +1995,20 @@ BoardRenderer::draw_translucent_per_pixel ()
 	set_scene_uniforms (collect);
 	glUniform1i (collect.u_opaque_depth, OIT_DEPTH_UNIT);
 	glUniform1ui (collect.u_max_nodes, oit.max_nodes);
+	glUniform1ui (collect.u_node_flags, 0);
 	glColorMask (GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
 	glDepthMask (GL_FALSE);
 	glDisable (GL_DEPTH_TEST);
 	glDisable (GL_BLEND);
 	for (const Batch &b : draw->scene->batches[LIST_TRANSLUCENT])
 		draw_batch (collect, *draw, b, false, pixel_scale_x (), pixel_scale_y ());
-	glColorMask (GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
 	glMemoryBarrier (GL_SHADER_STORAGE_BARRIER_BIT | GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+	if (collect_areas) {
+		draw_translucent_volumes ();
+		glBindVertexArray (vao);
+		collect_areas = false;
+	}
+	glColorMask (GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
 
 	/* The picture drawn so far, which the lists are blended over */
 	glBindFramebuffer (GL_READ_FRAMEBUFFER, target->fb);
