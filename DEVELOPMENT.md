@@ -266,6 +266,11 @@ channel n at 2n), checked in the game's JVS TEST screen.
   the game's last write, the backup RAM every ten seconds when it changed,
   both on the way out. A `nvram/<game>.eeprom` of the earlier versions is
   read when the game has no `.nvram` yet.
+- NAOMI: `io_boards` in `data/games.json` lists a cabinet's JVS chain, nearest
+  the main board first (the far end takes the first address), with the 837-13938
+  encoder board (`hl::SegaIoBoard13938`); `g2_board` the board on the G2 bus's
+  outside (`naomi-g2board.cpp`, the games' 837-14381:
+  `machine.devices.g2_board:option ('log', 1)` logs its accesses).
 - SGNASCAR has the I/O board of the racing cabinets, an 837-13844, and on it
   the drive board of a Model 3 (Sega Rally 2's, EPR-20512): its program on an
   emulated Z80 when the srally2 set has it, simulated otherwise

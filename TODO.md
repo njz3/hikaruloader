@@ -11,11 +11,14 @@ GENERAL
 -------
 
 - NAOMI, seen in a pass over the 259 sets (3000 frames, attract only):
-  - a jump to code never loaded: capsnk, pjustic, pstone2, gundmct, sgtetris;
-  - the I/O board refused ("does not fulfill the game specs" or "I/O board bad"):
-    dygolf, vathlete, wwfroyal, shootopl, mj1, hopper, shorse*;
+  - a jump to code never loaded: capsnk, pjustic, pstone2, gundmct, sgtetris,
+    vathlete (past its I/O boards, an invalid instruction at 8C04F88C at frame 973);
+  - the SWP hopper board (hopper): its RESET switch (TURN ON AND OFF RESET SW.) is on
+    the 837-14381, its input not known;
+  - the Star Horse sets (shorse*, shors2k1, shors2k2*, shorsep*, shorsepr*): SELF TEST
+    says I/O BAD; they want the 837-13785 ARCNET&IO board, of which nothing is known
+    (no access on the G2 bus: it is not the same board as the medal games');
   - M4: CAUTION 51 (illvelo, mamonoro), ERROR 02 still (mushi2k61, mushi2k62, sl2007);
-  - Dragon Treasure: its own ERROR 13, G2 I/O trouble;
   - Cycraft cabinets (clubkcyc*, inidv3c*): they wait for the motion cabinet on the
     network; black at frame 3000 and not examined: azumanga, quizqgd, samsptk, vtennis,
     vtennisg, deathcox, ggram2, spawn, mvsc2, hmgeo.
@@ -24,8 +27,10 @@ GENERAL
   to see in play; per-pixel translucency only. The Elan's vertex lists take
   no time and its interrupt output is not wired: neither is documented.
 - Net DIMM games: their network commands answer, Virtua Fighter 4 reaches
-  its network check. Not yet playing: Dragon Treasure stops on `G2 I/O
-  TROUBLE` (13), Mahjong MJ on its I/O board, World Club Champion Football
+  its network check. Not yet playing: Dragon Treasure waits for its
+  satellites on the network, its medal mechanisms' ports on the 837-14381 are
+  not known (bit 6 of 01004024 clears its error screens: its RESET switch,
+  probably), Mahjong MJ starts its network, World Club Champion Football
   waits for its server (192.168.102.1, the terminal's); the DIMM firmware
   update discs read no firmware version. The DIMM's TCP service on port
   10703 (set_information, peek, host control) is not there.

@@ -5,6 +5,18 @@ What each version brings, for those who play. How the versions are numbered
 and released: [DEVELOPMENT.md](DEVELOPMENT.md), "Versions and releases".
 
 
+Next version
+------------
+
+- NAOMI: the cabinets with two I/O boards start (Virtua Golf and Shootout Pool
+  with their trackball, on the first mouse; WWF Royal Rumble and Mahjong MJ with
+  a second board for players 3 and 4). Virtua Athlete passes the check too but
+  stops further on.
+- The medal games' G2 expansion board and its backup RAM: Dragon Treasure gets
+  past its G2 I/O error, as far as its network check, once the first boot has
+  written its backup (start it a second time).
+
+
 0.7.0 (2026-11-10)
 ------------------
 
