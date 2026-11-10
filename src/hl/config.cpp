@@ -165,7 +165,7 @@ Config::set_defaults ()
 	cfg->region = 2;	/* Export */
 	/* The simulations, which every game plays with */
 	cfg->io_board_program = false;
-	cfg->security_chips = false;
+	cfg->security_chips = true;
 	/* The speakers the sound card has, all at their full level */
 	cfg->sound_output = Audio::OUTPUT_AUTO;
 	cfg->sound_balance = 50;

@@ -89,8 +89,9 @@ static const uint8_t waveforms[] = {
 
 static const uint32_t NO_VIBRATION = 0xFFFFFFFF;
 
-DriveBoardF355::DriveBoardF355 (Machine *mach_) :
-	mach (mach_)
+DriveBoardF355::DriveBoardF355 (Machine *mach_, bool wheeler_) :
+	mach (mach_),
+	wheeler (wheeler_)
 {
 	reset ();
 }
@@ -137,17 +138,19 @@ DriveBoardF355::update_spring ()
 	 * rising by about 1.34 a step of the wheel */
 	float force = std::min (s.strength * 1.34f / 256.0f, 1.0f) * s.power;
 
-	ForceFeedback::spring_offset ((s.reference - 0x80) / 128.0f);
+	ForceFeedback::spring_offset (std::clamp (s.reference + s.reference_shift - 0x80, -128, 127) / 128.0f);
 	ForceFeedback::set (ForceFeedback::SPRING, force, mach->frame);
 }
 
 void
 DriveBoardF355::update_damper ()
 {
-	/* A curve indexed by the wheel's travel over 8 NMIs; full scale at: */
+	/* A curve indexed by the wheel's travel over 8 NMIs (12 on 18 Wheeler);
+	 * full scale at: */
 	static const int full_scale[4] = { 0, 96, 48, 32 };
-	int full = full_scale[s.damping & 3];
-	float slope = full ? std::min (32.0f / full, 1.0f) : 0.0f;
+	static const int full_scale_18[8] = { 0, 56, 48, 40, 32, 24, 16, 8 };
+	int full = wheeler ? full_scale_18[s.damping & 7] : full_scale[s.damping & 3];
+	float slope = full ? std::min ((wheeler ? 48.0f : 32.0f) / full, 1.0f) : 0.0f;
 
 	ForceFeedback::set (ForceFeedback::FRICTION, slope * s.power, mach->frame);
 }
@@ -195,19 +198,21 @@ DriveBoardF355::execute (uint8_t cmd)
 {
 	if (cmd >= 0xF0) {
 		static const float gains[4] = { 1.0f, 0.9f, 0.8f, 0.6f };
+		static const float gains_18[4] = { 1.0f, 0.9f, 0.8f, 0.7f };
 
 		if (cmd <= 0xF7) {
 			s.reply_source = cmd & 7;
 		} else if (cmd >= 0xFA && cmd <= 0xFD) {
 			if (!s.running)
-				s.power = gains[cmd - 0xFA];
+				s.power = (wheeler ? gains_18 : gains)[cmd - 0xFA];
 		} else if (cmd == 0xFE) {
 			s.running = true;
 			s.strength = 0;
 			s.ramp_length = 0;
 			s.ramp_steps = s.ramp_step = 0;
-			s.damping = 2;
+			s.damping = wheeler ? 6 : 2;
 			s.reference = s.reference_high = 0x80;
+			s.reference_shift = 0;
 			s.constant = 0x80;
 			s.vibration = NO_VIBRATION;
 			s.last_torque = NAN;
@@ -225,6 +230,23 @@ DriveBoardF355::execute (uint8_t cmd)
 		return;
 	if (cmd < 0x40) {
 		s.ramp_length = (uint8_t) (cmd * 4);
+	} else if (cmd < 0x80 && wheeler) {
+		switch (cmd & 0xF0) {
+		case 0x40:
+			set_strength (cmd & 15);
+			break;
+		case 0x60:
+			if ((cmd & 7) != s.damping) {
+				s.damping = cmd & 7;
+				update_damper ();
+			}
+			break;
+		default:
+			/* The spring's centre moves: 5x up, 7x down, by 2n */
+			s.reference_shift = (int8_t) ((cmd & 15) * ((cmd & 0xF0) == 0x50 ? 2 : -2));
+			update_spring ();
+			break;
+		}
 	} else if (cmd < 0x80) {
 		uint8_t curve = (cmd >> 4) & 3;
 

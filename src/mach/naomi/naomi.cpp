@@ -401,9 +401,9 @@ Board::init ()
 		mie->monitor_15khz = rom_board->size () > 0x42A && *(uint8_t *) rom_board->ptr (0x42A) == 2;
 	jvs = new hl::JvsBus (machine);
 	/* F355 Challenge's cabinets have the drive board's I/O board, the 837-13844 */
-	if (!strncmp (game->name, "f355", 4)) {
+	if (!strncmp (game->name, "f355", 4) || !strncmp (game->name, "18wheel", 7)) {
 		if (!index)
-			drive_board = new hl::DriveBoard (machine, new hl::DriveBoardF355 (machine));
+			drive_board = new hl::DriveBoard (machine, new hl::DriveBoardF355 (machine, game->name[0] == '1'));
 		io_board = new hl::SegaIoBoard13844 (machine, jvs, drive_board);
 	}
 	else

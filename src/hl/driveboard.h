@@ -86,7 +86,9 @@ public:
  * go to the wheel directly. See driveboard-f355.cpp */
 class DriveBoardF355 : public DriveBoardProgram {
 public:
-	explicit DriveBoardF355 (Machine *mach);
+	/* wheeler: 18 Wheeler's EPR-23000, the same program but for its gains, its
+	 * damping curves and its 5x and 7x, which move the spring's centre */
+	explicit DriveBoardF355 (Machine *mach, bool wheeler = false);
 
 	void	 reset () override;
 	void	 nmi (uint8_t command, uint8_t wheel, Servo &servo) override;
@@ -103,8 +105,10 @@ private:
 	void	 update_torque ();
 
 	Machine	*mach;
+	bool	 wheeler;
 	struct {
 		bool	 running, half, vibration_reversed;
+		int8_t	 reference_shift;
 		uint8_t	 reply_source, last_command, pending, pending_nmis, wheel;
 		uint8_t	 ramp_length, strength, ramp_from, ramp_to, ramp_steps, ramp_step, damping;
 		uint8_t	 reference, reference_high, constant, vibration_nmis;
