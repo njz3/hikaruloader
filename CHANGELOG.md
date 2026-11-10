@@ -13,6 +13,14 @@ and released: [DEVELOPMENT.md](DEVELOPMENT.md), "Versions and releases".
 - Planet Harriers with a controller: the stick moves as Brave Firefighters'
   sights do, and its up and down can be inverted (`PHARRIER_INVERT_Y`).
 - Alt+Enter: full screen or a window. The main keys in the About tab.
+- NAOMI's M4 cartridges: their header read plain or through the decryption,
+  for the BIOS of their region: Illvelo, Mamoru-kun, Shooting Love 2007 and
+  Mushiking start.
+- Initial D links from the first start of a new save (the machine restarts
+  once by itself).
+- F355 Challenge Deluxe, one screen at a time: the picture stays on the boards
+  with a monitor (no more black screen).
+- A game's stray pointer no longer takes the emulator down.
 - Club Kart for Cycraft and Initial D Ver. 3 Cycraft Edition start: their boards
   are Net DIMMs and the cabinet's motion PC is answered by Hikaruloader.
 - The Net DIMM's TCP service (port 10703), on `DIMM_LISTEN`: reading and
