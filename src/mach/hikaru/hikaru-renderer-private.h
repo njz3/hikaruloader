@@ -139,6 +139,8 @@ typedef struct {
 	uint8_t			pattern;
 	uint8_t			polytype;	/* HIKARU_POLYTYPE_* */
 	bool			has_two_sided_lighting;
+	/* Drawn for the second video output (781's front buffer 2 or 3) */
+	bool			second_monitor;
 	uint32_t		num;
 	/* The middle of its vertices, in the model: for the back to front
 	 * order of the translucent meshes */
@@ -260,6 +262,17 @@ public:
 	hikaru_mesh_t		*mesh_list[8][8];
 	uint32_t		 num_meshes[8][8];
 	uint32_t		 total_meshes;
+	/* The board's second video output, in a window of its own: with
+	 * [Display] MULTI_SCREEN = WINDOWS, opened with its first list */
+	struct {
+		bool wanted = false;		/* the setting */
+		bool drawing = false;		/* draw_scene () is at its meshes */
+		bool keep_verts = false;	/* for draw_scene () to come */
+		bool has_meshes = false;	/* in this frame */
+		GLuint fb = 0, color = 0, depth = 0, program = 0, vao = 0;
+		unsigned w = 0, h = 0;
+		hl::ExtraWindow *window = NULL;
+	} second;
 
 	struct {
 		unsigned		num_verts, num_tris;

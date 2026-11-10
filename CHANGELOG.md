@@ -28,6 +28,8 @@ Next version
 - `WIDESCREEN`: the games' own view limits are widened by recognising their
   code on the SH-4, without a patch at a fixed address for each game: clones
   are covered too.
+- The Hikaru's 24 kHz modes fill the picture. Its second video output has its
+  own window with `MULTI_SCREEN = WINDOWS`: the check ROM's two-monitor test.
 - NAOMI games link over `[Network]`: F355 Challenge Twin and the others with a
   communication board, two Hikaruloaders on a TCP ring. `LINK_NODE`: a slave's
   car or seat.

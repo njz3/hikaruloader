@@ -2480,6 +2480,10 @@ draw_mesh (Renderer *hr, hikaru_mesh_t *mesh)
 
 	HL_ASSERT (mesh);
 
+	/* The other video output's */
+	if (hr->second.has_meshes && mesh->second_monitor != hr->second.drawing)
+		return;
+
 	LOG ("==== DRAWING MESH @%p (#vertices=%u #instances=%u) ====",
 	     mesh, mesh->num_tris * 3, mesh->num_instances);
 
@@ -2693,11 +2697,17 @@ Renderer::end_mesh (uint32_t addr)
 
 	HL_ASSERT (hr->meshes.current);
 
-	/* Drawn for the second monitor (781's front buffer 2 or 3): one output
-	 * here, the first monitor's. Its triangles went into the same picture */
+	/* Drawn for the second monitor (781's front buffer 2 or 3): its window's
+	 * when there is one; else one output here, the first monitor's. Its
+	 * triangles would go into the same picture */
 	if (hr->gpu->fb_config.num_1 >= 2) {
-		hr->push.num_verts = 0;
-		hr->push.num_tris = 0;
+		if (hr->second.wanted) {
+			hr->meshes.current->second_monitor = true;
+			hr->second.has_meshes = true;
+		} else {
+			hr->push.num_verts = 0;
+			hr->push.num_tris = 0;
+		}
 	}
 
 	/* Upload the pushed vertex data. */
@@ -3394,7 +3404,8 @@ draw_scene (Renderer *hr)
 	glFrontFace (GL_CCW);
 	hr->meshes.front_cw = false;
 	glBindVertexArray (0);
-	hr->meshes.verts.clear ();
+	if (!hr->second.keep_verts)
+		hr->meshes.verts.clear ();
 
 	glDepthMask (GL_TRUE);
 
@@ -4433,6 +4444,102 @@ copy_frame_gpu (Renderer *hr, Gpu *gpu)
 	}
 }
 
+static const char *second_vs_src = R"(#version 330 core
+out vec2 v_uv;
+uniform vec4 u_part;
+void main ()
+{
+	vec2 p = vec2 ((gl_VertexID << 1) & 2, gl_VertexID & 2);
+	v_uv = u_part.xy + p * u_part.zw;
+	gl_Position = vec4 (p * 2.0 - 1.0, 0.0, 1.0);
+}
+)";
+
+static const char *second_fs_src = R"(#version 330 core
+in vec2 v_uv;
+out vec4 out_color;
+uniform sampler2D u_tex;
+void main ()
+{
+	out_color = vec4 (texture (u_tex, v_uv).rgb, 1.0);
+}
+)";
+
+/* The list for the board's second video output, in its own buffers and its
+ * own window, after the first monitor's picture */
+static void
+draw_second_monitor (Renderer *hr)
+{
+	auto &s = hr->second;
+	int w, h;
+
+	if (!s.fb) {
+		glGenFramebuffers (1, &s.fb);
+		glGenTextures (1, &s.color);
+		glGenRenderbuffers (1, &s.depth);
+		glGenVertexArrays (1, &s.vao);
+		s.program = hl::gl::compile_program (second_vs_src, second_fs_src);
+	}
+	if (s.w != hr->framebuffer.w || s.h != hr->framebuffer.h) {
+		s.w = hr->framebuffer.w;
+		s.h = hr->framebuffer.h;
+		glBindTexture (GL_TEXTURE_2D, s.color);
+		glTexImage2D (GL_TEXTURE_2D, 0, GL_RGBA8, s.w, s.h, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+		glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		glBindTexture (GL_TEXTURE_2D, 0);
+		glBindRenderbuffer (GL_RENDERBUFFER, s.depth);
+		glRenderbufferStorage (GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, s.w, s.h);
+		glBindRenderbuffer (GL_RENDERBUFFER, 0);
+		glBindFramebuffer (GL_FRAMEBUFFER, s.fb);
+		glFramebufferTexture2D (GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, s.color, 0);
+		glFramebufferRenderbuffer (GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, s.depth);
+	}
+	glBindFramebuffer (GL_FRAMEBUFFER, s.fb);
+	s.drawing = true;
+	draw_scene (hr);
+	s.drawing = false;
+
+	if (!s.window) {
+		hl::Config *cfg = hl::Config::get ();
+		int count = MAX2 (SDL_GetNumVideoDisplays (), 1);
+		int d = hl::Window::find_display (cfg->screen_display[1]);
+		int ww = (int) hr->scene_w * cfg->window_scale, wh = 480 * cfg->window_scale;
+		SDL_Rect r = { 0, 0, 1920, 1080 };
+
+		if (d < 0)
+			d = count > 1 ? 1 : 0;
+		SDL_GetDisplayBounds (d, &r);
+		s.window = new hl::ExtraWindow ("Hikaruloader - second monitor", d,
+		                                r.x + MAX2 ((r.w - ww) / 2, 0), r.y + MAX2 ((r.h - wh) / 2, 0), ww, wh);
+		SDL_RaiseWindow (hl::Window::sdl_window ());
+	}
+	s.window->begin (&w, &h);
+	glDisable (GL_DEPTH_TEST);
+	glDisable (GL_BLEND);
+	glDisable (GL_SCISSOR_TEST);
+	glDisable (GL_CULL_FACE);
+	glBindFramebuffer (GL_FRAMEBUFFER, 0);
+	glViewport (0, 0, w, h);
+	glUseProgram (s.program);
+	glBindVertexArray (s.vao);
+	glActiveTexture (GL_TEXTURE0);
+	glBindTexture (GL_TEXTURE_2D, s.color);
+	glUniform1i (glGetUniformLocation (s.program, "u_tex"), 0);
+	/* A 24 kHz mode: the top left part of the buffers */
+	{
+		float pw = hr->frame_gpu.active_w / 640.0f, ph = hr->frame_gpu.active_h / 480.0f;
+
+		glUniform4f (glGetUniformLocation (s.program, "u_part"), 0.0f, 1.0f - ph, pw, ph);
+	}
+	glDrawArrays (GL_TRIANGLES, 0, 3);
+	glBindVertexArray (0);
+	glUseProgram (0);
+	s.window->end ();
+	glBindFramebuffer (GL_FRAMEBUFFER, hr->target_fb);
+	HL_ASSERT_NO_GL_ERROR ();
+}
+
 static void
 draw (Renderer *hr)
 {
@@ -4498,7 +4605,9 @@ draw (Renderer *hr)
 		 * pixel's samples would all take the same value */
 		if (ms)
 			glEnable (GL_MULTISAMPLE);
+		hr->second.keep_verts = hr->second.has_meshes;
 		draw_scene (hr);
+		hr->second.keep_verts = false;
 		HL_ASSERT_NO_GL_ERROR ();
 		drawn = true;
 
@@ -4729,6 +4838,9 @@ draw (Renderer *hr)
 	/* CRT_PRESET's passes into the window's picture, then BEZEL */
 	hr->presentation->end (hr->target_fb, hr->target_width, hr->target_height, hr->target_layout);
 	HL_ASSERT_NO_GL_ERROR ();
+
+	if (hr->second.has_meshes)
+		draw_second_monitor (hr);
 }
 
 /* A sync of the other context's: its work done on the GPU, then deleted */
@@ -5219,6 +5331,7 @@ Renderer::on_begin_frame ()
 		for (i = 0; i < 8; i++)
 			hr->num_meshes[vpi][i] = 0;
 	hr->total_meshes = 0;
+	hr->second.has_meshes = false;
 	hr->meshes.verts.clear ();
 
 	update_debug_flags (hr);
@@ -5319,6 +5432,14 @@ Renderer::~Renderer ()
 		hl::Window::set_native_size (640, 480);
 	destroy_3d_state (hr);
 	destroy_fb_state (hr);
+	if (second.fb) {
+		glDeleteFramebuffers (1, &second.fb);
+		glDeleteTextures (1, &second.color);
+		glDeleteRenderbuffers (1, &second.depth);
+		glDeleteVertexArrays (1, &second.vao);
+		hl::gl::destroy_program (second.program);
+	}
+	delete second.window;
 
 	invalidate_texcache (NULL);
 }
@@ -5359,8 +5480,11 @@ Renderer::Renderer (hl::Buffer *fb, hl::Buffer *texram[2]) :
 		HL_ABORT ("could not build the 3D state");
 	HL_ASSERT_NO_GL_ERROR ();
 
-	/* The thread's renderer has the GL objects */
-	if (hl::Config::get ()->threaded_rendering && start_thread (fb, texram))
+	second.wanted = hl::Config::get ()->multi_screen == hl::MULTI_WINDOWS;
+
+	/* The thread's renderer has the GL objects; the second monitor's
+	 * window is the main context's */
+	if (hl::Config::get ()->threaded_rendering && !second.wanted && start_thread (fb, texram))
 		return;
 
 	if (build_fb_state (hr))
