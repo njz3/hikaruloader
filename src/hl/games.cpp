@@ -315,14 +315,14 @@ load_sections (json_t *root, Game *game, RomSet *set, const char *path)
 }
 
 static RomSet *
-open_romset (GameEntry *entry, const char *path)
+open_romset (GameEntry *entry, const char *path, const char *archive = NULL)
 {
 	const char *names[3] = { entry->name, entry->parent, entry->bios };
-	return new RomSet (path, names, NUMELEM (names));
+	return new RomSet (path, names, NUMELEM (names), archive);
 }
 
 Game *
-Game::create (GameList *game_list, const char *path, const char *name)
+Game::create (GameList *game_list, const char *path, const char *name, const char *archive)
 {
 	GameEntry *entry;
 	RomSet *set;
@@ -365,7 +365,7 @@ Game::create (GameList *game_list, const char *path, const char *name)
 		}
 	}
 
-	set = open_romset (entry, path);
+	set = open_romset (entry, path, archive);
 	ret = load_sections (entry->root, game, set, path);
 	destroy (set);
 	if (ret)

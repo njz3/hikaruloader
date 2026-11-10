@@ -87,7 +87,8 @@ class Game {
 public:
 	/* NULL when the game is not in the list, or its files cannot be
 	 * loaded */
-	static Game	*create (GameList *list, const char *path, const char *name);
+	static Game	*create (GameList *list, const char *path, const char *name,
+	                         const char *archive = NULL);
 	~Game ();
 
 	Buffer		*section_data (const char *name);

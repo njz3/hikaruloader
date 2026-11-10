@@ -150,7 +150,7 @@ public:
 	bool		 save () const;
 
 	/* The games folders in use: games_dir (one, or several separated by
-	 * ';'), or "roms" beside the program */
+	 * ';'), or "roms" beside the program; rom_archive's folder before them */
 	void		 games_dir_in_use (char *dst, size_t size) const;
 
 	/* [Display] */
@@ -225,6 +225,9 @@ public:
 	/* Empty: "roms" beside the program; several separated by ';', looked
 	 * in in that order (hl::RomSet) */
 	char		games_dir[2048];
+	/* -z: the zip or 7z holding this start's game, whatever its name; never
+	 * saved. Its folder is the first looked in, for the BIOS and the CHD */
+	char		rom_archive[1024] = "";
 	/* All that is written goes there (hl::Paths); empty: none. The
 	 * hikaruloader.ini beside the program's alone counts */
 	char		write_dir[512];

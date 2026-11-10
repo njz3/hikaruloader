@@ -68,6 +68,10 @@ struct Picker
         entries.clear();
         for (unsigned i = 0; i < list->entries.size (); i++)
         {
+            // The other machines' games start from the command line (-r, -z)
+            const char *mach = list->entries[i].mach;
+            if (strcmp(mach, "hikaru") && strcmp(mach, "gaelco"))
+                continue;
             Entry entry;
             entry.index = i;
             list->check (i, dir, &entry.found, &entry.total);

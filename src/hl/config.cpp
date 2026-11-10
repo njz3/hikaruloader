@@ -263,12 +263,24 @@ void
 Config::games_dir_in_use (char *dst, size_t size) const
 {
 	const Config *cfg = this;
+	char first[1040] = "";
 
+	if (cfg->rom_archive[0]) {
+		const char *slash = strrchr (cfg->rom_archive, '/');
+		const char *back = strrchr (cfg->rom_archive, '\\');
+
+		if (back && (!slash || back > slash))
+			slash = back;
+		if (slash)
+			snprintf (first, sizeof (first), "%.*s;", (int) (slash - cfg->rom_archive), cfg->rom_archive);
+		else
+			snprintf (first, sizeof (first), ".;");
+	}
 	if (cfg->games_dir[0])
-		snprintf (dst, size, "%s", cfg->games_dir);
+		snprintf (dst, size, "%s%s", first, cfg->games_dir);
 	else {
 		char *base = SDL_GetBasePath ();
-		snprintf (dst, size, "%sroms", base ? base : "./");
+		snprintf (dst, size, "%s%sroms", first, base ? base : "./");
 		SDL_free (base);
 	}
 }

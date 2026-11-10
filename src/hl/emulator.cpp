@@ -170,7 +170,7 @@ Emulator::load_game (const char *name, const char *log_path)
 		ui::Interface::show_loading (entry ? entry->description : rom_name);
 
 		Config::get ()->games_dir_in_use (folders, sizeof (folders));
-		game = Game::create (game_list, folders, rom_name);
+		game = Game::create (game_list, folders, rom_name, Config::get ()->rom_archive);
 		if (!game) {
 			HL_ERROR ("failed to load '%s': can't load game files", rom_name);
 			snprintf (message, sizeof (message), ui::Interface::tr ("%s could not be loaded; see %s."),

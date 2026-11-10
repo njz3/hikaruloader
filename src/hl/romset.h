@@ -40,7 +40,10 @@ namespace hl {
  * parent's archive, are found that way, and a renamed file still loads. */
 class RomSet {
 public:
-	RomSet (const char *path, const char * const *names, unsigned num_names);
+	/* archive (or NULL): a zip or a 7z of any name, looked in before the
+	 * sets */
+	RomSet (const char *path, const char * const *names, unsigned num_names,
+	        const char *archive = NULL);
 
 	/* The folders of a path list, separated by ';', in order: each one
 	 * trimmed of its spaces, the empty ones left out */

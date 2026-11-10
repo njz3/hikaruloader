@@ -17,6 +17,7 @@
  * along with Hikaruloader.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "hl/archive.h"
 #include "hl/pointers.h"
 #include "hl/emulator.h"
 #include "hl/shell.h"
@@ -30,6 +31,7 @@
 static struct {
 	char rom_path[2048];
 	char rom_name[256];
+	char rom_archive[1024];
 	int num_frames;
 	int start_state;
 	char state_path[256];
@@ -42,11 +44,14 @@ static struct {
 
 static hl::Emulator *emulator;
 
-static const char global_opts[] = "R:r:n:l:s:x:Lvh?";
+static const char global_opts[] = "R:r:z:n:l:s:x:Lvh?";
 static const char global_help[] = "Usage: %s [options]\n"
 "	-R <path>	Path to the ROM directory (MAME zips, or a folder per game);\n"
 "			several separated by ';', looked in in that order\n"
-"	-r <string>	Name of the game to run (MAME set name); none: the picker\n"
+"	-r <string>	Name of the game to run (MAME set name); none: the picker,\n"
+"			which has the Hikaru and Gaelco games only\n"
+"	-z <file>	The zip or 7z holding -r's game, whatever its name; the\n"
+"			BIOS and the parent also looked for in its folder\n"
 "	-n <num>	Only run for num frames\n"
 "	-l <num|file>	Load state num (<game>-<num>.hlstate, 0 the latest, 4 the\n"
 "			oldest), or a state file, at startup:\n"
@@ -126,6 +131,9 @@ parse_global_opts (int argc, char **argv)
 			break;
 		case 'r':
 			strncpy (options.rom_name, optarg, 32);
+			break;
+		case 'z':
+			strncpy (options.rom_archive, optarg, sizeof (options.rom_archive) - 1);
 			break;
 		case 'n':
 			options.num_frames = atoi (optarg);
@@ -289,6 +297,22 @@ main (const int argc, char **argv)
 	/* -R stands for the games folder of the settings */
 	if (options.rom_path[0])
 		snprintf (cfg->games_dir, sizeof (cfg->games_dir), "%s", options.rom_path);
+	if (options.rom_archive[0]) {
+		hl::Archive *archive;
+
+		if (!options.rom_name[0]) {
+			HL_ERROR ("-z needs the name of the game (-r)");
+			show_help (argc, argv);
+			goto fail;
+		}
+		archive = hl::Archive::open (options.rom_archive);
+		if (!archive) {
+			HL_ERROR ("cannot read the archive '%s' (a .zip or a .7z)", options.rom_archive);
+			goto fail;
+		}
+		delete archive;
+		snprintf (cfg->rom_archive, sizeof (cfg->rom_archive), "%s", options.rom_archive);
+	}
 	cfg->games_dir_in_use (rom_path, sizeof (rom_path));
 	/* The agent's frames go as fast as they can; not saved */
 	if (options.agent)

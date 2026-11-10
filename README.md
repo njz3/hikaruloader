@@ -103,9 +103,10 @@ What is still wrong in each game is in
 Starting a game
 ---------------
 
-Started without arguments, Hikaruloader shows its picker: the games of the
-games folder, each marked Ready, Incomplete (some files missing) or Not
-found. The arrows (or a controller's D-pad) choose, Enter (a controller's A,
+Started without arguments, Hikaruloader shows its picker: the Hikaru and
+Gaelco games of the games folder, each marked Ready, Incomplete (some files
+missing) or Not found. NAOMI, Atomiswave and GD-ROM games are not in it for
+now: they start from the command line. The arrows (or a controller's D-pad) choose, Enter (a controller's A,
 or a double click) launches, Tab opens the settings, Escape quits. The games
 folder is the one of the settings (Picker tab), else `roms` beside the
 program. There can be several, separated by `;`
@@ -128,6 +129,7 @@ hikaruloader.exe [options]
 |---|---|
 | `-R <folder>` | The games folder for this start: the MAME zips or 7z, or a folder per game; several separated by `;` (`-R "D:\roms;E:\mame\roms"`) |
 | `-r <set>` | Starts that game at once, by its MAME set name (`-r sgnascar`), without the picker |
+| `-z <file>` | With `-r`: the zip or 7z holding that game, whatever its name (`-r vstrik3c -z D:\roms\vs3.7z`). Its folder is the first looked in for the BIOS, the parent and the CHD, then the games folders |
 | `-l <file>` | Loads that save state at the start: the game goes on from its frame. `-l 0` to `-l 4` load one of the game's own states, those F4 saves, 0 the latest |
 | `-n <frames>` | Quits after that many frames |
 | `-L`, `--list` | Lists the games and quits: title, set, version, year and maker, the MAME sets each one needs, each ROM file with its CRC32, and how many of them the games folder holds |
@@ -140,6 +142,7 @@ For example:
 
 ```
 hikaruloader.exe -R D:\roms -r airtrix
+hikaruloader.exe -r vstrik3c -z D:\naomi\vstrik3c.zip
 hikaruloader.exe -r sgnascar -l D:\states\race.hlstate
 hikaruloader.exe -r swracer -l 2
 hikaruloader.exe -L -R D:\roms

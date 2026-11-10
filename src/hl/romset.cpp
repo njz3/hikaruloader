@@ -58,10 +58,20 @@ RomSet::split_folders (const char *path)
 	return folders;
 }
 
-RomSet::RomSet (const char *path, const char * const *names, unsigned num_names) :
+RomSet::RomSet (const char *path, const char * const *names, unsigned num_names,
+                const char *archive_path) :
 	roots (split_folders (path))
 {
 	unsigned i, k;
+
+	if (archive_path && archive_path[0]) {
+		Archive *archive = Archive::open (archive_path);
+
+		if (archive)
+			archives.push_back (archive);
+		else
+			HL_ERROR ("cannot read the archive '%s'", archive_path);
+	}
 
 	for (i = 0; i < num_names && dirs.size () < MAX_DIRS; i++) {
 		if (!names[i] || !names[i][0])
