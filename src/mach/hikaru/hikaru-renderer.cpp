@@ -4424,6 +4424,13 @@ copy_frame_gpu (Renderer *hr, Gpu *gpu)
 	hr->frame_gpu.layer_order = REG1AUNIT (0, 0x38) & 3;
 	hr->frame_gpu.layer_test = REG1AUNIT (0, 0x3C) & 7;
 	hr->frame_gpu.lists_begun = gpu->lists_begun;
+	{
+		int w = (int) (REG1A (0x88) >> 16) - (int) (REG1A (0x88) & 0xFFFF);
+		int h = (int) (REG1A (0x8C) >> 16) - (int) (REG1A (0x8C) & 0xFFFF);
+
+		hr->frame_gpu.active_w = (w > 0 && w <= 640) ? (unsigned) w : 640;
+		hr->frame_gpu.active_h = (h > 0 && h <= 480) ? (unsigned) h : 480;
+	}
 }
 
 static void
@@ -4586,6 +4593,25 @@ draw (Renderer *hr)
 		out[0] = out[1] = 0;
 		out[2] = hr->scene_w;
 		out[3] = 480;
+	}
+
+	/* A 24 kHz mode (496x384, 496x377): the buffers are still 640x480, its
+	 * picture their top left part, shown as the whole */
+	if (gpu->active_w != hr->framebuffer.shown_w || gpu->active_h != hr->framebuffer.shown_h) {
+		hr->framebuffer.shown_w = gpu->active_w;
+		hr->framebuffer.shown_h = gpu->active_h;
+		HL_PRINT ("hikaru: the picture is %ux%u", gpu->active_w, gpu->active_h);
+	}
+	if (gpu->active_w != 640 || gpu->active_h != 480) {
+		GLint v[4];
+
+		glGetIntegerv (GL_VIEWPORT, v);
+		glEnable (GL_SCISSOR_TEST);
+		glScissor (v[0], v[1], v[2], v[3]);
+		v[1] += v[3] - (GLint) (v[3] * 480 / gpu->active_h);
+		v[2] = (GLint) (v[2] * 640 / gpu->active_w);
+		v[3] = (GLint) (v[3] * 480 / gpu->active_h);
+		glViewport (v[0], v[1], v[2], v[3]);
 	}
 
 	/* Figure out the GPU framebuffer assignments. */

@@ -187,6 +187,9 @@ public:
 		/* 1A0001B8 & 3, 1A0001BC & 7: the stacking order of the 3D
 		 * and the layers, how each is tested (see hikaru-gpu.cpp) */
 		unsigned layer_order, layer_test;
+		/* The picture's active size, 640x480 or the 24 kHz modes': from
+		 * the blanking registers 1A000088 and 1A00008C */
+		unsigned active_w, active_h;
 		uint32_t lists_begun;
 	} frame_gpu;
 	/* The TEXRAM and the framebuffer draw () reads: the GPU's, or the
@@ -394,6 +397,8 @@ public:
 		/* The GPU's command lists begun when the scene was last drawn:
 		 * a frame without one keeps that picture */
 		uint32_t lists_drawn;
+		/* The active size last logged */
+		unsigned shown_w, shown_h;
 		struct {
 			GLuint u_front;
 			GLuint u_back;
