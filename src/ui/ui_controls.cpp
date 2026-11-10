@@ -56,6 +56,8 @@ const Section kSections[] = {
     {"Driving", N_("Driving")},
     {"Pointer", N_("Mouse and light gun games")},
     {"Gaelco", N_("Gaelco cabinets")},
+    // Read by the NAOMI and Atomiswave games instead of the rows above
+    {"Naomi", N_("NAOMI and Atomiswave games (their own rows)")},
     {"Emulator", N_("Emulator")},
 };
 
@@ -80,6 +82,8 @@ const char *actionLabel(const std::string &key)
         {"P1_Button2", N_("Button 2")},
         {"P1_Button3", N_("Button 3")},
         {"P1_Button4", N_("Button 4")},
+        {"P1_Button5", N_("Button 5")},
+        {"P1_Button6", N_("Button 6")},
         {"P1_Card1Insert", N_("Card: insert or take back")},
         {"P2_Up", N_("Player 2: up")},
         {"P2_Down", N_("Player 2: down")},

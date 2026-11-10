@@ -1078,6 +1078,9 @@ msgstr "Jeux à la souris ou au light gun"
 msgid "Gaelco cabinets"
 msgstr "Bornes Gaelco"
 
+msgid "NAOMI and Atomiswave games (their own rows)"
+msgstr "Jeux NAOMI et Atomiswave (leurs propres lignes)"
+
 #: src/ui/ui_controls.cpp
 msgid "Emulator"
 msgstr "Émulateur"
@@ -1141,6 +1144,12 @@ msgstr "Bouton 3"
 #: src/ui/ui_controls.cpp
 msgid "Button 4"
 msgstr "Bouton 4"
+
+msgid "Button 5"
+msgstr "Bouton 5"
+
+msgid "Button 6"
+msgstr "Bouton 6"
 
 #: src/ui/ui_controls.cpp
 msgid "Card: insert or take back"
