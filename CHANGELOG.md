@@ -23,6 +23,8 @@ Next version
   GPU's copies within the framebuffer kept the pixels' order in their words).
 - NAOMI: the pictures drawn by a thread of their own with `THREADED_RENDERING`
   (on by default, as for the Hikaru), the boards' emulation going on meanwhile.
+- NAOMI: the framebuffer a game shows without a 3D scene (its 2D screens) read
+  some 6 times faster, 0.3 ms a frame instead of 2.
 - Ferrari F355 Challenge: the deluxe cabinet's sound (its volume control,
   on the drive board's I/O board, turned up), and in a race the dashboard,
   the lap times and the track map on every version.

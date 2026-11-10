@@ -25,6 +25,7 @@
 #include <cmath>
 #include <condition_variable>
 #include <cstddef>
+#include <cstring>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -1600,18 +1601,25 @@ BoardRenderer::read_vram (Holly *holly, Frame &f)
 	unsigned w = line * 4 / bytes, x, y;
 	uint32_t at = holly->fb_r_sof1 () & 0x00FFFFFC;
 	std::vector<uint32_t> &rgba = f.vram_rgba;
+	const uint8_t *base = (const uint8_t *) holly->vram->ptr (0);
+	uint8_t row[4096 + 4];
 
 	f.vram = false;
-	if (!(ctrl & 1) || w > 1024 || lines > 1024)
+	if (!(ctrl & 1) || w > 1024 || lines > 1024 || !base || holly->vram->size () < 0x01000000)
 		return false;
 	rgba.resize (w * lines);
 	for (y = 0; y < lines; y++) {
+		/* The line's 32-bit words, each whole at its place in the
+		 * interleaved banks (Holly::map32) */
+		for (x = 0; x < line; x++)
+			memcpy (&row[x * 4], base + Holly::map32 ((at + x * 4) & 0x00FFFFFC), 4);
 		for (x = 0; x < w; x++) {
-			uint32_t c = 0, p;
-			unsigned i;
+			const uint8_t *q = &row[x * bytes];
+			uint32_t c, p;
 
-			for (i = 0; i < bytes; i++)
-				c |= (uint32_t) holly->vram->get (1, Holly::map32 ((at + x * bytes + i) & 0x00FFFFFF)) << (8 * i);
+			c = bytes == 2 ? (uint32_t) (q[0] | q[1] << 8) :
+			    bytes == 3 ? (uint32_t) (q[0] | q[1] << 8 | q[2] << 16) :
+			                 (uint32_t) (q[0] | q[1] << 8 | q[2] << 16 | (uint32_t) q[3] << 24);
 			switch (depth) {
 			case 0: p = rgba_16 (0, (uint16_t) c) | 0xFF000000u; break;
 			case 1: p = rgba_16 (1, (uint16_t) c); break;
