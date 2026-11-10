@@ -5,8 +5,8 @@ What each version brings, for those who play. How the versions are numbered
 and released: [DEVELOPMENT.md](DEVELOPMENT.md), "Versions and releases".
 
 
-Next version
-------------
+0.7.0 (2026-11-10)
+------------------
 
 - NAOMI and NAOMI 2 games, the cabinets of several boards included (F355
   Challenge Deluxe's three screens, Airline Pilots, Strike Fighter).
@@ -39,6 +39,10 @@ Next version
   high-density area whatever the PIC says.
 - NAOMI: the BIOS of a region the game's header accepts, its latest revision:
   the Japanese games no longer stop on an Export BIOS.
+- `MULTI_SCREEN = WINDOWS`: each window's monitor chosen from a list, by its
+  name and its mode, or AUTO.
+- The games of several NAOMI boards run faster: F355 Challenge Deluxe's four
+  boards from about 40 to 56 frames a second.
 - NAOMI games link over `[Network]`: F355 Challenge Twin and the others with a
   communication board, two Hikaruloaders on a TCP ring. `LINK_NODE`: a slave's
   car or seat.
