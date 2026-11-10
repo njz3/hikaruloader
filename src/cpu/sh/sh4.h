@@ -303,9 +303,16 @@ public:
 	bool		rfcr_counts = false;
 	/* The SCIF's other end: NULL, what is sent goes to the log */
 	SerialPipe	*scif_pipe = NULL;
-	/* Its interrupts, as the pipe and the SCSCR2 stand: ready to send as
-	 * long as TIE is set, a byte to take */
-	void		scif_update ();
+	/* Called as time passes, cycles of it: what the pipe has comes into the
+	 * receive FIFO at the line's speed, and the interrupts follow the FIFO
+	 * and the SCSCR2: ready to send as long as TIE is set, a byte to take */
+	void		scif_update (unsigned cycles);
+	/* The receive FIFO; the credit, of the line's time, in cycles x bauds */
+	uint8_t		scif_rx[16];
+	unsigned	scif_rx_count = 0;
+	uint64_t	scif_rx_credit = 0;
+	/* SCFSR2's RDF and DR, and as last read: only a bit read as 1 clears */
+	uint16_t	scif_status = 0, scif_status_read = 0;
 	uint32_t	rfcr = 0;
 	/* Whatever its machine wants to find from the CPU */
 	void		*user = NULL;

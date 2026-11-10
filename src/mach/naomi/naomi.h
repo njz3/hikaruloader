@@ -684,6 +684,60 @@ private:
 	bool	 inserted = false, read_pending = false, was_held = false;
 };
 
+/* The SWP hopper board of the medal games, on the SCIF; see naomi-hopper.cpp */
+class SwpHopper : public SerialPipe {
+public:
+	SwpHopper ();
+
+	void	 write (uint8_t value) override;
+	int	 available () override;
+	uint8_t	 read () override;
+	/* Each frame: the coin chute */
+	void	 frame ();
+	/* The game's board restarted: the line starts anew */
+	void	 reset ();
+	/* What is battery backed on the board, for the nvram file */
+	const void *settings () const { return &s; }
+	size_t	 settings_size () const { return sizeof (s); }
+	bool	 load (const uint8_t *data, size_t size);
+	/* Since the last time it was asked */
+	bool	 changed ();
+	int	 save_state (hl::State *state);
+	int	 load_state (hl::State *state);
+
+private:
+	/* Words alone: compared with memcmp, and written to the nvram file */
+	struct Settings {
+		uint32_t credit0 = 0, credit1 = 0, total_credit = 100, premium = 0;
+		uint32_t game_number = 0, won = 0, paid = 0;
+		uint32_t free_play = 0, auto_pay_out = 0, two_way = 1, auto_exchange = 0;
+		uint32_t coin_discrimination = 1, bet_button = 1;
+		uint32_t currency = 0xFF, medal_exchange = 5, cur_base = 100;
+		uint32_t max_pay = 1999900, max_credit = 1999900, hopper_size = 39900;
+		uint32_t max_bet = 10000, min_bet = 100, add_bet = 100;
+	};
+
+	uint32_t arg (size_t offset) const;
+	void	 send (uint8_t cmd, const std::vector<uint32_t> &payload);
+	void	 command (uint8_t cmd);
+	void	 power_on ();
+	void	 config ();
+	void	 bet ();
+	void	 pay_out (uint32_t value);
+	void	 coin_in ();
+	void	 send_pay_win ();
+	void	 set_defaults ();
+	uint32_t play_options () const;
+	uint32_t exchange_options () const;
+	void	 put_clock (uint32_t *words) const;
+
+	Settings s, saved;
+	std::vector<uint8_t> in;
+	std::deque<uint8_t> out;
+	uint32_t expected = 0;
+	bool	 started = false, coin_held = false;
+};
+
 /* A Sanwa CRP-1231 card reader on the SCIF (Initial D's) */
 class SanwaCard : public SerialPipe {
 public:
@@ -756,9 +810,11 @@ public:
 	std::unique_ptr<ServoBoard> servo;
 	std::unique_ptr<ClubKartCard> card;
 	std::unique_ptr<SanwaCard> sanwa;
+	std::unique_ptr<SwpHopper> hopper;
 	/* F355 Challenge's, on the I/O board's lines */
 	hl::DriveBoard *drive_board = NULL;
 	void	 setup_servo ();
+	void	 setup_hopper ();
 	unsigned servo_lines = 0;
 	void	 default_backup ();
 	void	 reset (hl::ResetType type);

@@ -16,6 +16,8 @@ Next version
   the game, next to the zip.
 - `[Naomi]` in controls.ini: NAOMI and Atomiswave's own controls.
 - 18 Wheeler and F355 Challenge have their drive boards.
+- Club Kart Prize plays with its coin hopper board: Coin 1 goes in its chute,
+  and its credits are kept in the game's nvram file.
 - The SH-4's instruction cache: the Hikaru's check ROM tests its RAM and shows
   its car on the road.
 - `SECURITY_CHIPS` is on by default: the BIOS is no longer patched when the

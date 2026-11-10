@@ -193,8 +193,71 @@ get_sr (Sh4 *ctx)
 	return SR.full;
 }
 
+enum {
+	SCFSR_DR	= 1,
+	SCFSR_RDF	= 2
+};
+
+static bool
+scif_rx_triggered (Sh4 *ctx)
+{
+	static const unsigned levels[4] = { 1, 4, 8, 14 };
+
+	return ctx->scif_rx_count >= levels[(IREG_GET (2, SCIF_SCFCR2) >> 6) & 3];
+}
+
+static void
+scif_status_set (Sh4 *ctx, uint16_t bit)
+{
+	ctx->scif_status |= bit;
+	ctx->scif_status_read &= ~bit;
+}
+
+/* The bytes arrive at the speed the SCSMR2 and the SCBRR2 set, not all at once:
+ * a game empties the FIFO into a ring of its own, which a long answer would
+ * overflow. Each byte's time brings one; RDF tells the FIFO reached its trigger
+ * level and, with none left to come, DR that some wait under it: code polling
+ * those bits leaves the bytes of a message on their way alone. A byte the FIFO
+ * has no room for waits in the pipe. */
+static void
+scif_receive (Sh4 *ctx, unsigned cycles, bool deliver)
+{
+	SerialPipe *pipe = ctx->scif_pipe;
+	uint16_t smr = IREG_GET (2, SCIF_SCSMR2);
+	uint32_t brr = IREG_GET (1, SCIF_SCBRR2);
+	/* The start bit, the data, the parity, the stop bits */
+	uint32_t bits = 1 + ((smr & 0x40) ? 7 : 8) + ((smr & 0x20) ? 1 : 0) + ((smr & 0x08) ? 2 : 1);
+	/* Pphi is 50 MHz on these boards */
+	uint32_t bauds = 50000000 / (32 << (2 * (smr & 3))) / (brr + 1);
+	uint64_t byte = (uint64_t) ctx->cpu_hz * bits;
+
+	if (!pipe->available () && !ctx->scif_rx_count) {
+		ctx->scif_rx_credit = 0;
+		return;
+	}
+	ctx->scif_rx_credit += (uint64_t) cycles * bauds;
+	/* Time goes by, up to a FIFO's worth, but the bytes wait for the CPU */
+	ctx->scif_rx_credit = MIN2 (ctx->scif_rx_credit, byte * sizeof (ctx->scif_rx));
+	if (!deliver)
+		return;
+	while (ctx->scif_rx_credit >= byte) {
+		if (!pipe->available ()) {
+			scif_status_set (ctx, SCFSR_DR);
+		} else if (ctx->scif_rx_count < sizeof (ctx->scif_rx)) {
+			ctx->scif_rx[ctx->scif_rx_count++] = pipe->read ();
+			if (scif_rx_triggered (ctx))
+				scif_status_set (ctx, SCFSR_RDF);
+		} else {
+			/* Full */
+			ctx->scif_rx_credit = byte;
+			break;
+		}
+		ctx->scif_rx_credit -= byte;
+	}
+}
+
 void
-Sh4::scif_update ()
+Sh4::scif_update (unsigned cycles)
 {
 	Sh4 *ctx = this;
 	uint16_t scr;
@@ -202,9 +265,18 @@ Sh4::scif_update ()
 	if (!scif_pipe)
 		return;
 	scr = IREG_GET (2, SCIF_SCSCR2);
+	/* RE set, and the FIFO not held in reset. The time of this CPU goes by
+	 * in slices and its timers' interrupts come at their ends: with RIE,
+	 * a byte comes when its interrupt can be taken at once, or a handler
+	 * polling the status there would find the bits meant for another one */
+	if ((scr & 0x10) && !(IREG_GET (2, SCIF_SCFCR2) & 2)) {
+		bool can_take = !irq_ready && intc.irqs[SH4_IESOURCE_RXIF].priority > SR.bit.i;
+
+		scif_receive (this, cycles, !(scr & 0x40) || can_take);
+	}
 	if (scr & 0x80)
 		set_irq_state (SH4_IESOURCE_TXIF, hl::IRQ_STATE_RAISED);
-	if ((scr & 0x40) && scif_pipe->available ())
+	if ((scr & 0x40) && scif_status)
 		set_irq_state (SH4_IESOURCE_RXIF, hl::IRQ_STATE_RAISED);
 }
 
@@ -812,15 +884,23 @@ sh4_ireg_get (Sh4 *ctx, unsigned size, uint32_t addr, void *val)
 	case SCIF_SCFSR2:
 		/* A pipe on it: no error flag, whatever was written back */
 		if (ctx->scif_pipe)
-			set_ptr (val, size, 0x0060 | (ctx->scif_pipe->available () ? 3 : 0));
+		{
+			ctx->scif_status_read = ctx->scif_status;
+			set_ptr (val, size, 0x0060 | ctx->scif_status);
+		}
 		else
 			set_ptr (val, size, (IREG_GET (2, addr) & ~0x0003) | 0x0060);
 		break;
 	case SCIF_SCFDR2:
-		set_ptr (val, size, ctx->scif_pipe ? MIN2 (ctx->scif_pipe->available (), 16) : 0);
+		set_ptr (val, size, ctx->scif_pipe ? ctx->scif_rx_count : 0);
 		break;
 	case SCIF_SCFRDR2:
-		set_ptr (val, size, ctx->scif_pipe ? ctx->scif_pipe->read () : 0);
+		if (ctx->scif_rx_count) {
+			set_ptr (val, size, ctx->scif_rx[0]);
+			memmove (ctx->scif_rx, ctx->scif_rx + 1, --ctx->scif_rx_count);
+		} else {
+			set_ptr (val, size, 0);
+		}
 		break;
 	case SCIF_SCLSR2:
 		if (ctx->scif_pipe) {
@@ -915,11 +995,32 @@ sh4_ireg_put (Sh4 *ctx, unsigned size, uint32_t addr, uint64_t val)
 		} else if (val != '\r')
 			ctx->scif_line += (char) val;
 		return 0;
+	case SCIF_SCFCR2:
+		/* RFRST */
+		if (val & 2)
+			ctx->scif_rx_count = 0;
+		break;
+	case SCIF_SCFSR2:
+		if (ctx->scif_pipe) {
+			uint16_t keep = (uint16_t) val | ~ctx->scif_status_read;
+
+			/* Those bits stay as long as what sets them is there */
+			if (scif_rx_triggered (ctx))
+				keep |= SCFSR_RDF;
+			if (ctx->scif_rx_count)
+				keep |= SCFSR_DR;
+			ctx->scif_status &= keep;
+			ctx->scif_status_read &= keep;
+			/* The interrupt follows the bits at once: the line's next
+			 * round would leave them set for others to find */
+			ctx->set_irq_state (SH4_IESOURCE_RXIF,
+			                    (ctx->scif_status && (IREG_GET (2, SCIF_SCSCR2) & 0x40)) ?
+			                    hl::IRQ_STATE_RAISED : hl::IRQ_STATE_CLEAR);
+		}
+		break;
 	case SCIF_SCSMR2:
 	case SCIF_SCBRR2:
 	case SCIF_SCSCR2:
-	case SCIF_SCFSR2:
-	case SCIF_SCFCR2:
 	case SCIF_SCSPTR2:
 	case SCIF_SCLSR2:
 	case SCI_SCSMR1:
@@ -3045,6 +3146,13 @@ Sh4::load_state (hl::State *state)
 	LOAD (ctx->mmu);
 	LOAD (ctx->slot_pc);
 	LOAD (ctx->oc_ram);
+	if (ctx->scif_pipe) {
+		LOAD (ctx->scif_rx);
+		LOAD (ctx->scif_rx_count);
+		LOAD (ctx->scif_rx_credit);
+		LOAD (ctx->scif_status);
+		LOAD (ctx->scif_status_read);
+	}
 	sh4_mmu_update (ctx);
 	ctx->mmu.flush_blocks = true;
 
@@ -3068,6 +3176,13 @@ Sh4::save_state (hl::State *state)
 	SAVE (ctx->mmu);
 	SAVE (ctx->slot_pc);
 	SAVE (ctx->oc_ram);
+	if (ctx->scif_pipe) {
+		SAVE (ctx->scif_rx);
+		SAVE (ctx->scif_rx_count);
+		SAVE (ctx->scif_rx_credit);
+		SAVE (ctx->scif_status);
+		SAVE (ctx->scif_status_read);
+	}
 
 	return ret;
 }

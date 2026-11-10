@@ -546,6 +546,8 @@ Board::software_reset ()
 	holly->reset_requested = false;
 	if (servo)
 		servo->reset ();
+	if (hopper)
+		hopper->reset ();
 		/* As at power-on: the BIOS would restart again on a manual reset's EXPEVT */
 	sh->reset (hl::RESET_HARD);
 	holly->reset (hl::RESET_SOFT);
@@ -595,6 +597,17 @@ Board::setup_servo ()
 	}
 }
 
+/* The medal games: their hopper board on the SH-4's SCIF */
+void
+Board::setup_hopper ()
+{
+	if (strncmp (game->name, "clubkp", 6))
+		return;
+	hopper.reset (new SwpHopper ());
+	((Sh4 *) sh)->scif_pipe = hopper.get ();
+	HL_PRINT ("naomi: a hopper board on the SCIF");
+}
+
 unsigned
 Board::begin_frame ()
 {
@@ -618,8 +631,8 @@ Board::run_lines (unsigned line, unsigned count)
 			servo_lines = 0;
 			servo->tick ();
 		}
-		if (card || sanwa)
-			((Sh4 *) sh)->scif_update ();
+		if (card || sanwa || hopper)
+			((Sh4 *) sh)->scif_update (cycles_per_line);
 		sh->run (cycles_per_line);
 		aica->exec (cycles_per_line);
 		if (mie)
@@ -639,6 +652,8 @@ Board::end_frame (std::vector<int16_t> *audio)
 
 	if (card)
 		card->frame ();
+	if (hopper)
+		hopper->frame ();
 	if (gd)
 		gd->frame ();
 	if (sanwa)
@@ -680,6 +695,8 @@ Board::save_state (hl::State *state)
 	}
 	if (servo)
 		ret |= servo->save_state (state);
+	if (hopper)
+		ret |= hopper->save_state (state);
 	SAVE (porta);
 	ret |= cart->save_state (state);
 	ret |= comm.save_state (state);
@@ -698,6 +715,8 @@ Board::load_state (hl::State *state)
 	}
 	if (servo)
 		ret |= servo->load_state (state);
+	if (hopper)
+		ret |= hopper->load_state (state);
 	LOAD (porta);
 	ret |= cart->load_state (state);
 	ret |= comm.load_state (state);
@@ -744,26 +763,42 @@ Board::nvram_read (const hl::Nvram &nvram)
 	block_name (name, NV_TYPES[3], index);
 	if ((d = nvram.get (name)))
 		cart->eeprom.load (d->data (), d->size ());
+	if (hopper && (d = nvram.get ("HOPR")))
+		hopper->load (d->data (), d->size ());
 }
 
 /* A new cabinet's backup memory where the game needs one: F355 Twin's says it
  * is not linked to another (data/naomi, from Flycast's resources/flash); a game
- * without its record starts looking for the cabinet it would be linked to */
+ * without its record starts looking for the cabinet it would be linked to.
+ * The same for the MIE's EEPROM, the settings a game's operator would have made */
 void
 Board::default_backup ()
 {
-	const std::string name = std::string ("data/naomi/") + game->name + ".sram";
+	const struct {
+		const char *ext;
+		void *dst;
+		size_t size;
+	} defaults[2] = {
+		{ ".sram", sram->ptr (0), sram->size () },
+		{ ".eeprom", mie ? mie->eeprom.mem : NULL, mie ? sizeof (mie->eeprom.mem) : 0 }
+	};
 
-	for (const std::string &path : { hl::Paths::config_read (name.c_str ()), "./" + name }) {
-		FILE *fp = fopen (path.c_str (), "rb");
+	for (auto &d : defaults) {
+		const std::string name = std::string ("data/naomi/") + game->name + d.ext;
 
-		if (!fp)
+		if (!d.dst)
 			continue;
-		size_t got = fread (sram->ptr (0), 1, sram->size (), fp);
+		for (const std::string &path : { hl::Paths::config_read (name.c_str ()), "./" + name }) {
+			FILE *fp = fopen (path.c_str (), "rb");
 
-		fclose (fp);
-		HL_PRINT ("naomi: the backup memory from '%s' (%u bytes)", path.c_str (), (unsigned) got);
-		return;
+			if (!fp)
+				continue;
+			size_t got = fread (d.dst, 1, d.size, fp);
+
+			fclose (fp);
+			HL_PRINT ("naomi: the default '%s' from '%s' (%u bytes)", d.ext, path.c_str (), (unsigned) got);
+			break;
+		}
 	}
 }
 
@@ -783,6 +818,8 @@ Board::nvram_write (hl::Nvram &nvram)
 	nvram.set (name, sram->ptr (0), sram->size ());
 	block_name (name, NV_TYPES[3], index);
 	nvram.set (name, cart->eeprom.image, hl::X76F100::IMAGE_SIZE);
+	if (hopper)
+		nvram.set ("HOPR", hopper->settings (), hopper->settings_size ());
 }
 
 bool
@@ -800,6 +837,8 @@ Board::nvram_changed ()
 		flash->changed = false;
 		return true;
 	}
+	if (hopper && hopper->changed ())
+		return true;
 	if (!memcmp (now, nvram_old, sizeof (now)))
 		return false;
 	memcpy (nvram_old, now, sizeof (now));
@@ -1143,6 +1182,7 @@ Naomi::create (hl::Game *game)
 	if (naomi->master ()->drive_board)
 		hl::Outputs::get ()->board (14, true);
 	naomi->master ()->setup_servo ();
+	naomi->master ()->setup_hopper ();
 	naomi->setup_screens ();
 	naomi->renderer = new Renderer (naomi);
 	naomi->load_nvram ();
