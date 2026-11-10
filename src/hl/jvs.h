@@ -197,6 +197,9 @@ protected:
 	{ (void) slot; (void) count; return false; }
 	virtual bool	 analogs (unsigned channels, std::vector<uint8_t> &out)
 	{ (void) channels; (void) out; return false; }
+	/* Encoders: channels of 16-bit counts */
+	virtual bool	 rotary (unsigned channels, std::vector<uint8_t> &out)
+	{ (void) channels; (void) out; return false; }
 	virtual bool	 outputs (unsigned bytes, const uint8_t *data)
 	{ (void) bytes; (void) data; return false; }
 };
@@ -237,6 +240,9 @@ public:
 	/* The coins counted, and the outputs (lamps) the game drives */
 	uint16_t coin[2];
 	uint8_t	 output;
+	/* The cabinet's controls and lamps are wired to this board: not to the
+	 * others of a chain */
+	bool	 cabinet = true;
 
 	/* The cabinet's side, for a board that runs its own program
 	 * (hl::JvsLine) on these same inputs and outputs: the system byte
@@ -269,6 +275,34 @@ private:
 	/* A coin counts when its switch goes down */
 	void	 count_coins ();
 	bool	 coin_held[2];
+};
+
+/* The Sega 837-13938 "ENCORDER BD" (so spelled in its identity), chained after
+ * an 837-13551 for the trackballs and the rollers of some cabinets: 1 player
+ * of 9 switches, 4 encoders, 8 outputs. Its counters at 20, 22, 24, 26 (16
+ * bits). The first mouse rolls encoders 0 (X) and 1 (Y) */
+class SegaIoBoard13938 : public SegaIoBoard {
+public:
+	SegaIoBoard13938 (Machine *mach, JvsBus *bus);
+
+	int	 get (unsigned size, uint32_t addr, void *val) override;
+	void	 reset (ResetType type) override;
+	int	 save_state (State *state) override;
+	int	 load_state (State *state) override;
+
+	uint16_t encoder[4];
+
+protected:
+	const char *identity () override;
+	uint8_t	 command_revision () override { return 0x13; }
+	uint8_t	 jvs_revision () override { return 0x30; }
+	void	 functions (std::vector<uint8_t> &out) override;
+	bool	 rotary (unsigned channels, std::vector<uint8_t> &out) override;
+	bool	 outputs (unsigned bytes, const uint8_t *data) override;
+
+private:
+	/* The mouse's last place, and what it has rolled */
+	double	 last_x, last_y, rolled_x, rolled_y;
 };
 
 class DriveBoard;

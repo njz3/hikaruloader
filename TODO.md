@@ -11,23 +11,28 @@ GENERAL
 -------
 
 - NAOMI, seen in a pass over the 259 sets (3000 frames, attract only):
-  - the I/O board refused ("does not fulfill the game specs" or "I/O board bad"):
-    dygolf, vathlete, wwfroyal, shootopl, mj1, hopper, shorse*;
-  - M4: CAUTION 51 (illvelo, mamonoro), ERROR 02 still (mushi2k61, mushi2k62, sl2007);
-  - Dragon Treasure: its own ERROR 13, G2 I/O trouble;
+  - a jump to code never loaded: vathlete (past its I/O boards, an invalid instruction at
+    8C04F88C at frame 973);
+  - the SWP hopper board (hopper): its RESET switch (TURN ON AND OFF RESET SW.) is on
+    the 837-14381, its input not known;
+  - the Star Horse sets (shorse*, shors2k1, shors2k2*, shorsep*, shorsepr*): SELF TEST
+    says I/O BAD; they want the 837-13785 ARCNET&IO board, of which nothing is known
+    (no access on the G2 bus: it is not the same board as the medal games');
   - Namco's own I/O boards are not there: ninjaslt (JVS command 25, the guns' screen
     position) and mazan stop on I/O PCB ERROR;
   - vtennis and vtennisg stay black: from frame 1296 their frame loop waits on a lock
     that is no longer released (the channel 2 DMA's source moved to 0C0CA380 that frame);
   - spawn, hmgeo, alienfnt want a linked cabinet in their factory settings (blank EEPROM):
-    their own test menus change it.
+    their own test menus change it; mushi2k62 and rhytngk black at frame 2400.
 - NAOMI: the translucent modifier volumes change no picture in the attracts
   of Virtua Striker 3, Club Kart, The King of Route 66 and Airline Pilots:
   to see in play; per-pixel translucency only. The Elan's vertex lists take
   no time and its interrupt output is not wired: neither is documented.
 - Net DIMM games: their network commands answer, Virtua Fighter 4 reaches
-  its network check. Not yet playing: Dragon Treasure stops on `G2 I/O
-  TROUBLE` (13), Mahjong MJ on its I/O board, World Club Champion Football
+  its network check. Not yet playing: Dragon Treasure waits for its
+  satellites on the network, its medal mechanisms' ports on the 837-14381 are
+  not known (bit 6 of 01004024 clears its error screens: its RESET switch,
+  probably), Mahjong MJ starts its network, World Club Champion Football
   waits for its server (192.168.102.1 port 59200, its "control process",
   which speaks first and is not in any set: what it sends is not known); the
   DIMM firmware update discs read no firmware version.

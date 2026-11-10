@@ -356,11 +356,19 @@ Game::create (GameList *game_list, const char *path, const char *name, const cha
 			game->id = (uint32_t) strtoul (text, NULL, 16);
 		if ((text = json_string_value (json_object_get (entry->root, "gdrom"))))
 			snprintf (game->gdrom, sizeof (game->gdrom), "%s", text);
+		if ((text = json_string_value (json_object_get (entry->root, "g2_board"))))
+			snprintf (game->g2_board, sizeof (game->g2_board), "%s", text);
 		game->naomi2 = json_is_true (json_object_get (entry->root, "naomi2"));
 		game->boards = (unsigned) json_integer_value (json_object_get (entry->root, "boards"));
 		game->network_boards = (unsigned) json_integer_value (json_object_get (entry->root, "network_boards"));
 		game->net_dimm = json_is_true (json_object_get (entry->root, "net_dimm"));
 		game->motion_pc = json_is_true (json_object_get (entry->root, "motion_pc"));
+		{
+			json_t *io_boards = json_object_get (entry->root, "io_boards");
+
+			for (size_t k = 0; k < json_array_size (io_boards); k++)
+				game->io_boards.push_back (json_string_value (json_array_get (io_boards, k)));
+		}
 		{
 			json_t *screens = json_object_get (entry->root, "screens");
 

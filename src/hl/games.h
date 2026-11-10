@@ -116,6 +116,13 @@ public:
 	bool net_dimm = false;
 	/* A motion cabinet whose PC the Net DIMM talks to (games.json "motion_pc") */
 	bool motion_pc = false;
+	/* The JVS I/O boards of its cabinet (games.json "io_boards"), the one
+	 * nearest the main board first, by their Sega numbers; none listed: the
+	 * machine's usual board */
+	std::vector<std::string> io_boards;
+	/* The board on the G2 bus's outside (games.json "g2_board"), by its
+	 * Sega number; "": none */
+	char g2_board[16] = "";
 	/* The boards of its cabinet, linked (multiboard); 0: one */
 	unsigned boards = 0;
 	/* Complete systems on a ring of communication boards in one cabinet
