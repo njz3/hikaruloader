@@ -218,8 +218,6 @@ Sh4Offsets::Sh4Offsets (Sh4 *ctx)
 	chain_ends = (int32_t) ((const uint8_t *) &ctx->chain.ends - base);
 	chain_gone = (int32_t) ((const uint8_t *) &ctx->chain.gone - base);
 	icache = (int32_t) ((const uint8_t *) ctx->blocks.icache.tags - base);
-	icache_held = (int32_t) ((const uint8_t *) ctx->blocks.icache.held - base);
-	held_epoch = (int32_t) ((const uint8_t *) &ctx->blocks.held_epoch - base);
 	sr = (int32_t) ((const uint8_t *) &ctx->regs.sr - base);
 	gbr = (int32_t) ((const uint8_t *) &ctx->regs.gbr - base);
 	remaining = (int32_t) ((const uint8_t *) &ctx->remaining - base);
@@ -1771,21 +1769,8 @@ Sh4X64::translate (Sh4 *ctx, Sh4Block *block)
 	e.pop (RBX);
 	e.ret ();
 
-	/* Its lines fetched: noted; nothing of the guest's in the registers
-	 * yet. A block that ran from a line it has just lost is looked at
-	 * again */
+	/* Fetching its lines; nothing of the guest's in the registers yet */
 	e.bind (icache_miss);
-	for (uint32_t line = Sh4ICache::tag (block->pc); line <= Sh4ICache::tag (icache_last); line++) {
-		const int32_t at = (int32_t) (4 * (line & (Sh4ICache::NUM_LINES - 1)));
-
-		e.mov_imm32 (RAX, line);
-		e.store32 (RBX, o.icache + at, RAX);
-		e.mov_imm32 (RAX, 0);
-		e.store32 (RBX, o.icache_held + at, RAX);
-	}
-	e.load32 (RAX, RBX, o.held_epoch);
-	e.cmp32_mem (RBX, o.epoch, RAX);
-	e.jcc (CC_NE, icache_done);
 	e.mov (RCX, RBX);
 	e.mov32 (RDX, RSI);
 	e.mov_imm32 (R8, icache_last);

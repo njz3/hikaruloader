@@ -956,7 +956,6 @@ sh4_ireg_put (Sh4 *ctx, unsigned size, uint32_t addr, uint64_t val)
 			ctx->blocks.icache.reset ();
 			ctx->blocks.icache_changed ();
 		}
-		ctx->blocks.icache.enabled = (val & 0x100) != 0;
 		val &= ~(uint64_t) 0x808;
 		break;
 	/* UBC */
@@ -1446,7 +1445,7 @@ sh4_tlb_array_put (Sh4 *ctx, uint32_t addr, uint32_t val)
 		if ((addr >> 24) == 0xF1 || !(addr & 8) ||
 		    ((ic.tags[line] << Sh4ICache::LINE_BITS) & 0x1FFFFC00) == (val & 0x1FFFFC00)) {
 			ic.tags[line] = Sh4ICache::NONE;
-			ic.held[line] = 0;
+			ic.held[line] = false;
 			ctx->blocks.icache_changed ();
 		}
 		break;
@@ -1602,11 +1601,16 @@ Sh4::ddt_done (unsigned ch, uint32_t source)
 #define AREA(addr_) \
 	(((addr_) >> 26) & 7)
 
-/* The lines from pc to last come in: noted */
+/* The lines from pc to last come in. A copy held when the cache is on, the
+ * area cached (not P2, P4) and the line in a RAM or ROM; the others noted as
+ * fetched, so that their blocks do not come here again */
 void
 sh4_icache_fill (Sh4 *ctx, uint32_t pc, uint32_t last)
 {
 	Sh4ICache &ic = ctx->blocks.icache;
+	hl::Mmap::Window *code = &ctx->code;
+	const uint32_t area = pc >> 29;
+	const bool cached = (IREG_GET (4, CCN_CCR) & 0x100) && area != 5 && area != 7;
 	uint32_t a = pc & ADDR_MASK & ~((1u << Sh4ICache::LINE_BITS) - 1);
 
 	last &= ADDR_MASK;
@@ -1616,9 +1620,14 @@ sh4_icache_fill (Sh4 *ctx, uint32_t pc, uint32_t last)
 		if (ic.tags[i] == Sh4ICache::tag (a))
 			continue;
 		ic.tags[i] = Sh4ICache::tag (a);
-		ic.held[i] = 0;
+		ic.held[i] = false;
+		if (cached && ((a >= code->lo && a + 31 <= code->hi) || ctx->mmap->window (a, code)) &&
+		    a + 31 <= code->hi) {
+			memcpy (ic.data[i], code->base + (a & code->mask), sizeof (ic.data[i]));
+			ic.held[i] = true;
+		}
+		ctx->blocks.line_replaced ();
 	}
-	ctx->blocks.line_replaced ();
 }
 
 static int

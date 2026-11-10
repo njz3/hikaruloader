@@ -217,10 +217,8 @@ Sh4BlockCache::covered (uint32_t addr, unsigned size)
 		const Sh4Block *block = page ? page->blocks[(pc & ((1u << PAGE_BITS) - 1)) >> 1].get () : NULL;
 
 		if (block && block->checkable && block->checked == epoch &&
-		    block->pc + 2 * block->num_words > addr) {
-			capture (block, addr, size);
+		    block->pc + 2 * block->num_words > addr)
 			return true;
-		}
 		if (!(pc & ((1u << PAGE_BITS) - 1)) || (addr & ~1u) - pc >= 2 * (MAX_OPS + 1))
 			break;
 	}
@@ -229,10 +227,8 @@ Sh4BlockCache::covered (uint32_t addr, unsigned size)
 		const std::unique_ptr<Page> &page = pages[pc >> PAGE_BITS];
 
 		if (page && page->blocks[(pc & ((1u << PAGE_BITS) - 1)) >> 1] &&
-		    page->blocks[(pc & ((1u << PAGE_BITS) - 1)) >> 1]->checked == epoch) {
-			capture (page->blocks[(pc & ((1u << PAGE_BITS) - 1)) >> 1].get (), addr, size);
+		    page->blocks[(pc & ((1u << PAGE_BITS) - 1)) >> 1]->checked == epoch)
 			return true;
-		}
 	}
 	uncovered[next_uncovered] = Uncovered { addr, size, epoch, stamped };
 	next_uncovered = (next_uncovered + 1) & 3;
@@ -260,24 +256,6 @@ Sh4BlockCache::fresh (Sh4Block *block)
 		stamp (block);
 	}
 	return true;
-}
-
-void
-Sh4BlockCache::capture (const Sh4Block *block, uint32_t addr, unsigned size)
-{
-	const uint32_t mask = ~((1u << Sh4ICache::LINE_BITS) - 1);
-	uint32_t a = addr & mask, last = (addr + size - 1) & mask;
-
-	if (!icache.enabled)
-		return;
-	for (; a <= last; a += 1u << Sh4ICache::LINE_BITS) {
-		const unsigned i = Sh4ICache::index (a);
-
-		if (icache.tags[i] != Sh4ICache::tag (a) || icache.held[i])
-			continue;
-		memcpy (icache.data[i], (const uint8_t *) block->code + (a - block->pc), sizeof (icache.data[i]));
-		icache.held[i] = 1;
-	}
 }
 
 bool
