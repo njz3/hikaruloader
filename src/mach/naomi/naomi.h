@@ -1074,11 +1074,15 @@ private:
 	unsigned screen_idle = 0;
 
 	std::vector<std::thread> threads;
+	/* The boards meet 66 times a frame: waking a thread each time costs more
+	 * than the wait, so they spin; asleep (go) only for the long waits, the
+	 * frame's end or a pause */
 	std::mutex lock;
-	std::condition_variable go, done;
-	uint64_t slice_id = 0;
-	unsigned running = 0;
-	bool	 quitting = false;
+	std::condition_variable go;
+	std::atomic<uint64_t> slice_id { 0 };
+	std::atomic<unsigned> running { 0 };
+	std::atomic<unsigned> sleeping { 0 };
+	std::atomic<bool> quitting { false };
 	unsigned slice_line = 0, slice_count = 0;
 };
 

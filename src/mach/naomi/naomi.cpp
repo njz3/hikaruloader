@@ -34,6 +34,8 @@
 #include "cpu/sh/sh4.h"
 #include "mach/hikaru/hikaru-aica.h"
 #include "mach/naomi/naomi.h"
+
+#include <immintrin.h>
 #include "hl/outputs.h"
 #include "mach/naomi/naomi-renderer.h"
 
@@ -1012,6 +1014,15 @@ Naomi::keep_nvram ()
 		save_nvram ();
 }
 
+/* About a millisecond of waiting, with the pauses' length on today's CPUs */
+static const unsigned WORKER_SPINS = 20000, MASTER_SPINS = 20000;
+
+static inline void
+spin_pause ()
+{
+	_mm_pause ();
+}
+
 void
 Naomi::run_slice (Board *board)
 {
@@ -1022,18 +1033,27 @@ void
 Naomi::worker (unsigned index)
 {
 	uint64_t seen = 0;
-	std::unique_lock<std::mutex> hold (lock);
 
 	for (;;) {
-		go.wait (hold, [&] { return quitting || slice_id != seen; });
+		unsigned spins = 0;
+
+		while (!quitting && slice_id == seen) {
+			if (++spins < WORKER_SPINS)
+				spin_pause ();
+			else {
+				std::unique_lock<std::mutex> hold (lock);
+
+				sleeping++;
+				go.wait (hold, [&] { return quitting || slice_id != seen; });
+				sleeping--;
+				spins = 0;
+			}
+		}
 		if (quitting)
 			return;
 		seen = slice_id;
-		hold.unlock ();
 		run_slice (boards[index].get ());
-		hold.lock ();
-		if (!--running)
-			done.notify_one ();
+		running--;
 	}
 }
 
@@ -1193,16 +1213,22 @@ Naomi::run_frame ()
 		slice_line = line;
 		slice_count = SLICE_LINES;
 		if (boards.size () > 1) {
-			std::unique_lock<std::mutex> hold (lock);
+			unsigned spins = 0;
 
 			running = (unsigned) boards.size () - 1;
 			slice_id++;
-			go.notify_all ();
-			hold.unlock ();
+			if (sleeping) {
+				std::lock_guard<std::mutex> hold (lock);
+
+				go.notify_all ();
+			}
 			run_slice (master ());
-			hold.lock ();
-			done.wait (hold, [&] { return running == 0; });
-			hold.unlock ();
+			/* A PC with few cores: the others need this one */
+			while (running)
+				if (++spins < MASTER_SPINS)
+					spin_pause ();
+				else
+					std::this_thread::yield ();
 			for (auto &b : boards)
 				if (b->link)
 					b->link->sync ();
