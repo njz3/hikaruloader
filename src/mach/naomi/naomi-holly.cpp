@@ -144,6 +144,7 @@ enum {
 	PVR_SCALER_CTL	= 0x0F4 / 4,
 	PVR_PAL_CTRL	= 0x108 / 4,
 	PVR_SPG_STATUS	= 0x10C / 4,
+	PVR_Y_COEFF	= 0x118 / 4,
 	PVR_PT_ALPHA	= 0x11C / 4,
 	PVR_TA_OL_BASE	= 0x124 / 4,
 	PVR_TA_ISP_BASE	= 0x128 / 4,
@@ -1226,6 +1227,7 @@ Holly::start_render ()
 	d.shad_scale = pvr[PVR_SHAD_SCALE];
 	d.background_z = to_float (pvr[PVR_BACKGND_D]);
 	d.to_texture = (pvr[PVR_FB_W_SOF1] & 0x01000000) != 0;
+	d.y_coeff = pvr[PVR_Y_COEFF] & 0xFFFF;
 	d.scale_x = (pvr[PVR_SCALER_CTL] & 0x10000) ? 0.5f : 1.0f;
 	{
 		uint32_t vscale = pvr[PVR_SCALER_CTL] & 0xFFFF;

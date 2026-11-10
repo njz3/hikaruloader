@@ -98,6 +98,7 @@ private:
 	void draw_translucent_per_pixel ();
 	void write_back (const Draw &d, Target &t);
 	bool show_vram ();
+	GLuint filter_lines (const Draw &d);
 	GLuint texture (uint32_t tcw, uint32_t tsp);
 
 	Holly *holly;
@@ -122,7 +123,10 @@ private:
 	GLint u_blit_tex, u_mod_zscale, u_mod_scale, u_mod_target;
 	GLuint vao, vbo, mod_vao, mod_vbo, blit_vao, fog_tex, vram_tex;
 
-	Target screen, offscreen;
+	Target screen, offscreen, filtered;
+	GLuint filter_program = 0;
+	GLint u_filter_tex, u_filter_line, u_filter_coef;
+	GLuint shown_color = 0;	/* the last picture for the screen */
 	/* The frames since a scene was drawn for the screen */
 	unsigned frames_without = 1000;
 

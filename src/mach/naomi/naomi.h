@@ -136,6 +136,7 @@ struct Draw {
 	bool to_texture;	/* FB_W_SOF1 bit 24 */
 	float scale_x;		/* SCALER_CTL's */
 	float scale_y;
+	uint32_t y_coeff;	/* its filter's coefficients */
 	uint32_t fog_color, fog_color_vertex, fog_density;
 	uint32_t clamp_max, clamp_min;
 	uint16_t fog_table[128];

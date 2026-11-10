@@ -365,6 +365,21 @@ void main ()
 )";
 
 
+static const char *filter_fs_src = R"(#version 430
+in vec2 v_uv;
+out vec4 out_color;
+uniform sampler2D u_tex;
+uniform float u_line;
+uniform vec2 u_coef;
+void main ()
+{
+	vec3 c = texture (u_tex, v_uv - vec2 (0.0, u_line)).rgb * u_coef.x +
+	         texture (u_tex, v_uv).rgb * u_coef.y +
+	         texture (u_tex, v_uv + vec2 (0.0, u_line)).rgb * u_coef.x;
+	out_color = vec4 (c, 1.0);
+}
+)";
+
 static const char *mod_vs_src = R"(#version 430
 layout (location = 0) in vec3 in_pos;
 noperspective out float v_z;
@@ -1395,6 +1410,46 @@ BoardRenderer::write_back (const Draw &d, Target &t)
 	}
 }
 
+/* The Y scaler's filter, three lines through Y_COEFF's coefficients, when the
+ * picture is scaled down: returns the texture to show */
+GLuint
+BoardRenderer::filter_lines (const Draw &d)
+{
+	float c0 = (d.y_coeff & 255) / 256.0f, c1 = ((d.y_coeff >> 8) & 255) / 256.0f;
+
+	if (d.scale_y >= 1.0f || (c0 == 0.0f && c1 == 0.0f))
+		return screen.color;
+	if (!filter_program) {
+		filter_program = hl::gl::compile_program (blit_vs_src, filter_fs_src);
+		u_filter_tex = glGetUniformLocation (filter_program, "u_tex");
+		u_filter_line = glGetUniformLocation (filter_program, "u_line");
+		u_filter_coef = glGetUniformLocation (filter_program, "u_coef");
+		glUseProgram (filter_program);
+		glUniform1i (glGetUniformLocation (filter_program, "u_flip"), 0);
+		glUseProgram (0);
+	}
+	make_target (filtered, screen.w, screen.h);
+	glBindFramebuffer (GL_FRAMEBUFFER, filtered.fb);
+	glViewport (0, 0, filtered.w, filtered.h);
+	glDisable (GL_DEPTH_TEST);
+	glDisable (GL_STENCIL_TEST);
+	glDisable (GL_BLEND);
+	glDisable (GL_SCISSOR_TEST);
+	glUseProgram (filter_program);
+	glBindVertexArray (blit_vao);
+	glActiveTexture (GL_TEXTURE0);
+	glBindTexture (GL_TEXTURE_2D, screen.color);
+	glUniform1i (u_filter_tex, 0);
+	/* A line of the accumulation buffer, of the picture's height */
+	glUniform1f (u_filter_line, d.scale_y / pixel_y);
+	glUniform2f (u_filter_coef, c0, c1);
+	glDrawArrays (GL_TRIANGLES, 0, 3);
+	glBindTexture (GL_TEXTURE_2D, 0);
+	glBindVertexArray (0);
+	glUseProgram (0);
+	return filtered.color;
+}
+
 /* No scene for the screen: the framebuffer the game shows, as it is */
 bool
 BoardRenderer::show_vram ()
@@ -1455,12 +1510,13 @@ BoardRenderer::draw_picture ()
 	}
 	if (for_screen) {
 		draw_scene (*for_screen, screen, false);
+		shown_color = filter_lines (*for_screen);
 		frames_without = 0;
 	} else if (frames_without < 1000)
 		frames_without++;
 
 	if (frames_without == 0 || frames_without < 4)
-		picture.texture = screen.color;
+		picture.texture = shown_color;
 	else if (show_vram ()) {
 		picture.texture = vram_tex;
 		picture.flip = true;
