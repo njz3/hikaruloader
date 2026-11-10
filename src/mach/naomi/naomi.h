@@ -142,6 +142,7 @@ struct Draw {
 	/* The background polygon's: its colours, its corners */
 	Vertex background[3];
 	uint32_t background_isp, background_tsp, background_tcw;
+	bool background_shadow;
 };
 
 /* The cartridge board on the G1 bus: its registers at 005F7000; see

@@ -1283,9 +1283,10 @@ Holly::start_render ()
 				}
 			}
 			v.base = word (p);
-			v.offset = 0;
+			v.offset = ((d.background_isp >> 24) & 1) ? word (p + 4) : 0;
 			at += (skip * (shadow ? 2 : 1) + 3) * 4;
 		}
+		d.background_shadow = (tag >> 27) & 1;
 	}
 	keep_textures (d);
 	draws.push_back (std::move (d));

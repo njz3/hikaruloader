@@ -1061,6 +1061,69 @@ BoardRenderer::draw_modifiers (const Draw &d, float sx, float sy)
 	glDisable (GL_STENCIL_TEST);
 }
 
+/* The background polygon: the plane of its three vertices, the depth and the
+ * coordinates and colours by 1/W, at the corners of the picture. When its
+ * three vertices do not make a plane, its first vertex's values everywhere */
+void
+BoardRenderer::background_vertices (const Draw &d, Vertex *quad) const
+{
+	Vertex v[3] = { d.background[0], d.background[1], d.background[2] };
+	float extra = (!d.to_texture && width > 640) ? (width - 640) * 0.5f : 0.0f;
+	float xs[2] = { -extra / d.scale_x, (pixel_x + extra) / d.scale_x }, ys[2] = { 0.0f, pixel_y / d.scale_y };
+	float area = (v[1].x - v[0].x) * (v[2].y - v[0].y) - (v[2].x - v[0].x) * (v[1].y - v[0].y);
+	bool plane = area != 0.0f && std::isfinite (area);
+	bool gouraud = (d.background_isp >> 23) & 1;
+	unsigned i, k;
+
+	for (i = 0; i < 3; i++)
+		if (!(v[i].z > 0.0f) || !std::isfinite (v[i].z))
+			v[0].z = v[1].z = v[2].z = std::max (d.background_z, 1e-11f);
+	if (!gouraud) {
+		v[0].base = v[1].base = v[2].base;
+		v[0].offset = v[1].offset = v[2].offset;
+	}
+
+	auto corner = [&] (float x, float y) {
+		Vertex out = v[0];
+		float l[3] = { 1.0f, 0.0f, 0.0f }, z = 0.0f, u = 0.0f, tv = 0.0f, a[4] = {}, b[4] = {};
+		unsigned c;
+
+		if (plane) {
+			l[1] = ((x - v[0].x) * (v[2].y - v[0].y) - (v[2].x - v[0].x) * (y - v[0].y)) / area;
+			l[2] = ((v[1].x - v[0].x) * (y - v[0].y) - (x - v[0].x) * (v[1].y - v[0].y)) / area;
+			l[0] = 1.0f - l[1] - l[2];
+		}
+		for (k = 0; k < 3; k++) {
+			z += l[k] * v[k].z;
+			u += l[k] * v[k].u * v[k].z;
+			tv += l[k] * v[k].v * v[k].z;
+			for (c = 0; c < 4; c++) {
+				a[c] += l[k] * ((v[k].base >> (c * 8)) & 255) * v[k].z;
+				b[c] += l[k] * ((v[k].offset >> (c * 8)) & 255) * v[k].z;
+			}
+		}
+		out.x = x;
+		out.y = y;
+		out.z = z > 0.0f ? z : v[0].z;
+		out.u = u / out.z;
+		out.v = tv / out.z;
+		out.base = out.offset = 0;
+		for (c = 0; c < 4; c++) {
+			out.base |= (uint32_t) std::max (0.0f, std::min (255.0f, a[c] / out.z)) << (c * 8);
+			out.offset |= (uint32_t) std::max (0.0f, std::min (255.0f, b[c] / out.z)) << (c * 8);
+		}
+		return out;
+	};
+	Vertex tl = corner (xs[0], ys[0]), tr = corner (xs[1], ys[0]), bl = corner (xs[0], ys[1]), br = corner (xs[1], ys[1]);
+
+	quad[0] = tl;
+	quad[1] = tr;
+	quad[2] = br;
+	quad[3] = tl;
+	quad[4] = br;
+	quad[5] = bl;
+}
+
 /* Whether the opaque or punch-through lists have shadowed polygons and volumes
  * to shadow them */
 static bool
@@ -1112,21 +1175,37 @@ BoardRenderer::draw_scene (const Draw &d, Target &t, bool to_texture)
 	if (!to_texture && width > 640)
 		sx = (float) t.w / 854.0f;
 
-	if (scene.vertices.empty ())
+	/* The background: its plane over the whole picture, after the others */
+	Batch background = {};
+
+	background.isp = d.background_isp;
+	background.tsp = d.background_tsp;
+	background.tcw = d.background_tcw;
+	background.shadow = d.background_shadow;
+	background.first = (uint32_t) (scene.vertices.size () + scene.vertices1.size ());
+	background.count = 6;
+
+	if (scene.vertices.empty () && !((d.background_isp >> 25) & 1))
 		return;
 
-	bool per_pixel = !to_texture && !d.presort && hl::Config::get ()->sort_translucent_pixels &&
+	bool per_pixel =!to_texture && !d.presort && hl::Config::get ()->sort_translucent_pixels &&
 	                 !oit.failed && oit_buffers (t.w, t.h);
 
 	glUseProgram (program.id);
 	glBindVertexArray (vao);
 	glBindBuffer (GL_ARRAY_BUFFER, vbo);
 	vertices1_at = (uint32_t) scene.vertices.size ();
-	glBufferData (GL_ARRAY_BUFFER, (scene.vertices.size () + scene.vertices1.size ()) * sizeof (Vertex), NULL,
+	glBufferData (GL_ARRAY_BUFFER, (scene.vertices.size () + scene.vertices1.size () + 6) * sizeof (Vertex), NULL,
 	              GL_STREAM_DRAW);
 	glBufferSubData (GL_ARRAY_BUFFER, 0, scene.vertices.size () * sizeof (Vertex), scene.vertices.data ());
 	glBufferSubData (GL_ARRAY_BUFFER, scene.vertices.size () * sizeof (Vertex),
 	                 scene.vertices1.size () * sizeof (Vertex), scene.vertices1.data ());
+	{
+		Vertex quad[6];
+
+		background_vertices (d, quad);
+		glBufferSubData (GL_ARRAY_BUFFER, background.first * sizeof (Vertex), sizeof (quad), quad);
+	}
 	set_scene_uniforms (program);
 	glActiveTexture (GL_TEXTURE1);
 	glBindTexture (GL_TEXTURE_1D, fog_tex);
@@ -1167,6 +1246,11 @@ BoardRenderer::draw_scene (const Draw &d, Target &t, bool to_texture)
 		glEnable (GL_STENCIL_TEST);
 		volumes_ready = true;
 	}
+
+	/* The background polygon goes under everything, at its own depth */
+	glDisable (GL_DEPTH_TEST);
+	draw_batch (program, d, background, true, sx, sy);
+	glEnable (GL_DEPTH_TEST);
 
 	punch_flag = 0;
 	for (const Batch &b : scene.batches[LIST_OPAQUE])

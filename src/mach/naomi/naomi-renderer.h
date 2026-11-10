@@ -91,6 +91,7 @@ private:
 	void draw_piece (const Program &p, const Batch &b, uint32_t tsp, uint32_t tcw, uint32_t first, bool shadowed,
 	                 bool opaque);
 	void draw_modifiers (const Draw &d, float sx, float sy);
+	void background_vertices (const Draw &d, Vertex *quad) const;
 	void set_scene_uniforms (const Program &p);
 	bool oit_buffers (unsigned w, unsigned h);
 	void destroy_oit ();
