@@ -16,8 +16,13 @@ GENERAL
   - M4: CAUTION 51 (illvelo, mamonoro), ERROR 02 still (mushi2k61, mushi2k62, sl2007);
   - Dragon Treasure: its own ERROR 13, G2 I/O trouble;
   - Cycraft cabinets (clubkcyc*, inidv3c*): they wait for the motion cabinet on the
-    network; black at frame 3000 and not examined: azumanga, quizqgd, samsptk, vtennis,
-    vtennisg, deathcox, ggram2, spawn, mvsc2, hmgeo.
+    network;
+  - Namco's own I/O boards are not there: ninjaslt (JVS command 25, the guns' screen
+    position) and mazan stop on I/O PCB ERROR;
+  - vtennis and vtennisg stay black: from frame 1296 their frame loop waits on a lock
+    that is no longer released (the channel 2 DMA's source moved to 0C0CA380 that frame);
+  - spawn, hmgeo, alienfnt want a linked cabinet in their factory settings (blank EEPROM):
+    their own test menus change it.
 - NAOMI: the translucent modifier volumes change no picture in the attracts
   of Virtua Striker 3, Club Kart, The King of Route 66 and Airline Pilots:
   to see in play; per-pixel translucency only. The Elan's vertex lists take

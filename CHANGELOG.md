@@ -11,6 +11,8 @@ Next version
 - Capcom vs. SNK, Project Justice, Power Stone 2, Gundam: Federation vs. Zeon
   and Sega Tetris no longer stop during their attract: their cartridges' 64 KB
   decryption buffer had only half its size.
+- Azumanga Daioh Puzzle Bobble and Quiz Keitai Q mode (and the games that go to
+  sleep between two frames) no longer stay black: the SH-4 now wakes up.
 
 
 0.7.0 (2026-11-10)
