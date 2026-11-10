@@ -2701,6 +2701,7 @@ Renderer::end_mesh (uint32_t addr)
 	 * when there is one; else one output here, the first monitor's. Its
 	 * triangles would go into the same picture */
 	if (hr->gpu->fb_config.num_1 >= 2) {
+		hr->second.seen = true;
 		if (hr->second.wanted) {
 			hr->meshes.current->second_monitor = true;
 			hr->second.has_meshes = true;
@@ -4560,8 +4561,12 @@ draw (Renderer *hr)
 	n2 = gpu->fb_config.num_2;
 	/* The list for the second monitor came last (a 781 naming buffer 2 or
 	 * 3, with meshes), the first monitor's scene stays what is shown */
-	if (n1 >= 2 && hr->total_meshes)
+	if (n1 >= 2 && hr->total_meshes) {
 		n1 = 0;
+		/* 781's buffers 2 and 3 are the second output's: layer 1 stays a
+		 * layer of the first monitor (its texts), not a buffer */
+		n2 = 1;
+	}
 
 	factor = 0.0f;
 	if (gpu->fb_config.blend)

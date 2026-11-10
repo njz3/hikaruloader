@@ -1157,6 +1157,9 @@ Controls::source_pressed (const Source &s, bool hotkey)
 	case SRC_KEY: {
 		int n = 0;
 		const Uint8 *keys = SDL_GetKeyboardState (&n);
+		/* Alt+Enter is the window's */
+		if (s.index == SDL_SCANCODE_RETURN && (SDL_GetModState () & KMOD_ALT))
+			return false;
 		return keyboard_focus () && s.index < n && keys[s.index];
 	}
 	case SRC_MOUSE_BUTTON:

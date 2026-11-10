@@ -82,6 +82,8 @@ public:
 	/* The NextScreen input: the next board's picture, on the cabinets of
 	 * several boards */
 	virtual void	 next_screen () {}
+	/* The screens of its cabinet */
+	virtual unsigned screens () const { return renderer ? renderer->screens () : 1; }
 
 	/* Clears the buffers (the batteries' aside), resets the devices, the
 	 * machine, the renderer */

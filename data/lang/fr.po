@@ -719,6 +719,72 @@ msgid "How the CPUs find their RAM and ROM: the page table at once, the regions 
 msgstr "Comment les processeurs trouvent leur RAM et leur ROM : la table de pages d'un coup, les régions parcourues l'une après l'autre (la première méthode), le fastmem à leurs propres adresses dans l'espace d'adressage du PC. La même machine dans tous les cas : le changement prend effet à l'image suivante."
 
 #: src/ui/ui_common.cpp
+msgid "Main keys"
+msgstr "Touches principales"
+
+msgid "By default; the Controls tab changes them."
+msgstr "Par défaut ; l'onglet Contrôles permet de les changer."
+
+msgid "Opens and closes the settings"
+msgstr "Ouvre et ferme les paramètres"
+
+msgid "Loads the state chosen, the latest by default"
+msgstr "Charge l'état choisi, le plus récent par défaut"
+
+msgid "Chooses the state to load: a newer one"
+msgstr "Choisit l'état à charger : un plus récent"
+
+msgid "Chooses the state to load: an older one"
+msgstr "Choisit l'état à charger : un plus ancien"
+
+msgid "Saves the state, as the latest of the five kept"
+msgstr "Sauvegarde l'état, comme le plus récent des cinq gardés"
+
+msgid "Test: the game's test menu"
+msgstr "Test : le menu de test du jeu"
+
+msgid "Service"
+msgstr "Service"
+
+msgid "The card: in the reader, or taken back"
+msgstr "La carte : dans le lecteur, ou reprise"
+
+msgid "NAOMI cabinets of several boards: the next board's picture"
+msgstr "Bornes NAOMI à plusieurs cartes : l'image de la carte suivante"
+
+msgid "Quits the emulator"
+msgstr "Quitte l'émulateur"
+
+msgid "Shows and hides the frame rate"
+msgstr "Affiche et masque le nombre d'images par seconde"
+
+msgid "Pauses and resumes the game"
+msgstr "Met le jeu en pause et le reprend"
+
+msgid "Back to the picker the game was started from, else quits"
+msgstr "Retour au catalogue d'où le jeu a été lancé, sinon quitte"
+
+msgid "Coins"
+msgstr "Pièces"
+
+msgid "Full screen or window"
+msgstr "Plein écran ou fenêtre"
+
+msgid "Game"
+msgstr "Jeu"
+
+msgid "Several boards"
+msgstr "Plusieurs cartes"
+
+msgid "One board at a time"
+msgstr "Une carte à la fois"
+
+msgid "Side by side in one window"
+msgstr "Côte à côte dans une fenêtre"
+
+msgid "One window per board"
+msgstr "Une fenêtre par carte"
+
 msgid "Monitor of window"
 msgstr "Moniteur de la fenêtre"
 

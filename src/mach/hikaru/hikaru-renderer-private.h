@@ -182,6 +182,8 @@ public:
 
 	Gpu *gpu;
 
+	unsigned screens () const override { return second.seen ? 2 : 1; }
+
 	/* What draw () reads of the GPU's: copied at the frame's end */
 	struct {
 		decltype (Gpu::fb_config) fb_config;
@@ -269,6 +271,7 @@ public:
 		bool drawing = false;		/* draw_scene () is at its meshes */
 		bool keep_verts = false;	/* for draw_scene () to come */
 		bool has_meshes = false;	/* in this frame */
+		bool seen = false;		/* the game drives that output */
 		GLuint fb = 0, color = 0, depth = 0, program = 0, vao = 0;
 		unsigned w = 0, h = 0;
 		hl::ExtraWindow *window = NULL;

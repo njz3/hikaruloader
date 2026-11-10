@@ -612,8 +612,11 @@ Config::override_display_mode (const char *name)
 			break;
 	if (i == NUM_DISPLAY_MODES)
 		return false;
-	display_mode_file = display_mode;
-	display_stretch_file = display_stretch;
+	/* What the file says, once: a second override is not the file's */
+	if (!display_overridden) {
+		display_mode_file = display_mode;
+		display_stretch_file = display_stretch;
+	}
 	display_mode = display_mode_cli = i;
 	display_stretch = display_stretch_cli = stretch;
 	display_overridden = true;

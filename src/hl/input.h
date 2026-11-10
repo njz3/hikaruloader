@@ -114,6 +114,9 @@ public:
 	/* Feeds an SDL event to the debug keys and the devices (a controller
 	 * plugged in or out). Returns event_action (event). */
 	static int		 handle_event (const SDL_Event *event);
+	/* Alt+Enter, which is the window's: neither the game's Start nor the
+	 * interface's Enter */
+	static bool		 is_alt_enter (const SDL_Event *event);
 
 	/* The game sees no input while the settings window is open */
 	static void		 suspend (bool on);

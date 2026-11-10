@@ -66,6 +66,8 @@ public:
 	 * returns when name is empty; back to the picker when it cannot be
 	 * loaded. False when the player quits, or the named game fails. */
 	bool	 load_game (const char *name, const char *log_path);
+	/* The screens of the game running, 0 without one */
+	static int game_screens ();
 	/* Frees the machine and its game, for the picker's next one */
 	void	 unload_game ();
 

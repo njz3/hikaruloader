@@ -19,6 +19,7 @@
  */
 
 #include "hl/input.h"
+#include "hl/window.h"
 #include "hl/config.h"
 #include "hl/controls.h"
 #include "hl/ffb.h"
@@ -183,9 +184,21 @@ Input::release_all ()
 	memset (shell_held, 0, sizeof (shell_held));
 }
 
+bool
+Input::is_alt_enter (const SDL_Event *event)
+{
+	return (event->type == SDL_KEYDOWN || event->type == SDL_KEYUP) &&
+	       event->key.keysym.sym == SDLK_RETURN && (event->key.keysym.mod & KMOD_ALT);
+}
+
 int
 Input::handle_event (const SDL_Event *event)
 {
+	if (is_alt_enter (event)) {
+		if (event->type == SDL_KEYDOWN && !event->key.repeat)
+			Window::toggle_fullscreen ();
+		return -1;
+	}
 	switch (event->type) {
 	case SDL_KEYDOWN:
 	case SDL_KEYUP:

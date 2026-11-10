@@ -149,6 +149,14 @@ Emulator::create_machine ()
 	return NULL;
 }
 
+static Machine *running_machine = NULL;
+
+int
+Emulator::game_screens ()
+{
+	return running_machine ? (int) running_machine->screens () : 0;
+}
+
 bool
 Emulator::load_game (const char *name, const char *log_path)
 {
@@ -188,6 +196,7 @@ Emulator::load_game (const char *name, const char *log_path)
 				snprintf (title, sizeof (title), "%s [%s]",
 				          entry ? entry->description : game->name, game->name);
 				Window::set_title (title);
+				running_machine = mach;
 				Outputs::get ()->start (game->name, game->parent);
 				telemetry::Service::get ().start (mach);
 				return true;
@@ -205,6 +214,7 @@ Emulator::load_game (const char *name, const char *log_path)
 void
 Emulator::unload_game ()
 {
+	running_machine = NULL;
 	Outputs::get ()->stop ();
 	telemetry::Service::get ().stop ();
 	destroy (mach);

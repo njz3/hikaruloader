@@ -1076,6 +1076,7 @@ public:
 	int	 on_save_state (hl::State *state) override;
 	const char *debug_string () override;
 	void	 next_screen () override;
+	unsigned screens () const override { return (unsigned) screen_order.size (); }
 
 	std::vector<std::unique_ptr<Board>> boards;
 	std::unique_ptr<Multiboard> link;

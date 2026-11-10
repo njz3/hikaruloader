@@ -44,6 +44,9 @@ public:
 	static void		 drawable_size (int *width, int *height);
 	/* Full screen, window size, v-sync, cursor */
 	static void		 apply_display ();
+	/* Alt+Enter: a window, or the desktop's full screen; for this start,
+	 * the setting left as it is */
+	static void		 toggle_fullscreen ();
 
 	/* The monitors, in the log. Which one a setting names: a number, the
 	 * one Windows gives it (its DISPLAY<n>); INDEX:<n>, SDL's own from 0;

@@ -72,6 +72,8 @@ public:
 	/* Draws the frame, then lets the window present it */
 	void		end_frame ();
 	virtual void	reset () {}
+	/* The video outputs the game has drawn for */
+	virtual unsigned screens () const { return 1; }
 
 	unsigned width;
 	unsigned height;

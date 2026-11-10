@@ -26,6 +26,7 @@
 // adapted to Hikaruloader; the About tab says so.
 
 #include "ui/ui_common.h"
+#include "hl/emulator.h"
 #include "ui/ui_folder.h"
 #include "ui/ui_po.h"
 
@@ -44,6 +45,7 @@
 
 #include "hl/audio.h"
 #include "hl/config.h"
+#include "hl/input.h"
 #include "hl/crt_preset.h"
 #include "hl/outputs.h"
 #include "hl/renderer.h"
@@ -177,6 +179,50 @@ void restartNote(bool inGame)
 
 void wrappedNote(const char *text);
 
+// The options of the game running: its screens, for a cabinet of several
+void drawGameTab(int screens)
+{
+    hl::Config *cfg = hl::Config::get ();
+    bool saved = false;
+
+    // MULTI_SCREEN, SCREEN_<n>_DISPLAY: the NAOMI cabinets of several boards
+    const char *multiLabels[] = {tr("One board at a time"), tr("Side by side in one window"),
+                                 tr("One window per board")};
+    ImGui::Combo(tr("Several boards"), &cfg->multi_screen, multiLabels, IM_ARRAYSIZE(multiLabels));
+    ImGui::BeginDisabled(cfg->multi_screen != hl::MULTI_WINDOWS);
+    const std::vector<hl::Window::DisplayChoice> monitors = hl::Window::display_choices();
+    for (int i = 0; i < std::min(screens, (int)hl::MAX_SCREENS); i++)
+    {
+        char label[64];
+        snprintf(label, sizeof(label), "%s %d", tr("Monitor of window"), i + 1);
+        char *value = cfg->screen_display[i];
+        const bool automatic = !value[0] || !strcasecmp(value, "AUTO");
+        const int found = automatic ? -1 : hl::Window::find_display(value);
+        std::string preview = automatic ? std::string(tr("AUTO (the next one)"))
+                              : found >= 0 && found < (int)monitors.size() ? monitors[found].label
+                                                                           : std::string(value) + " - " + tr("not connected");
+        if (ImGui::BeginCombo(label, preview.c_str()))
+        {
+            if (ImGui::Selectable(tr("AUTO (the next one)"), automatic))
+            {
+                snprintf(value, sizeof(cfg->screen_display[i]), "AUTO");
+                saved = true;
+            }
+            for (int m = 0; m < (int)monitors.size(); m++)
+                if (ImGui::Selectable(monitors[m].label.c_str(), m == found))
+                {
+                    snprintf(value, sizeof(cfg->screen_display[i]), "%s", monitors[m].value.c_str());
+                    saved = true;
+                }
+            ImGui::EndCombo();
+        }
+    }
+    ImGui::EndDisabled();
+    wrappedNote(tr("Read when a game starts. F8 shows the next board."));
+    restartNote(true);
+    (void) saved;
+}
+
 void drawDisplayTab()
 {
     hl::Config *cfg = hl::Config::get ();
@@ -257,42 +303,6 @@ void drawDisplayTab()
     }
     wrappedNote(tr("On a CRT driven at a super resolution (1920x240): its real shape as the aspect ratio (4:3 or 16:9, black bars) "
                    "and a stretched mode. The frame then covers the screen, whatever the shape of its pixels."));
-
-    // MULTI_SCREEN, SCREEN_<n>_DISPLAY: the NAOMI cabinets of several boards
-    const char *multiLabels[] = {tr("One board at a time"), tr("Side by side in one window"),
-                                 tr("One window per board")};
-    if (ImGui::Combo(tr("Several boards"), &cfg->multi_screen, multiLabels, IM_ARRAYSIZE(multiLabels)))
-        changed = true;
-    ImGui::BeginDisabled(cfg->multi_screen != hl::MULTI_WINDOWS);
-    const std::vector<hl::Window::DisplayChoice> monitors = hl::Window::display_choices();
-    for (int i = 0; i < hl::MAX_SCREENS; i++)
-    {
-        char label[64];
-        snprintf(label, sizeof(label), "%s %d", tr("Monitor of window"), i + 1);
-        char *value = cfg->screen_display[i];
-        const bool automatic = !value[0] || !strcasecmp(value, "AUTO");
-        const int found = automatic ? -1 : hl::Window::find_display(value);
-        std::string preview = automatic ? std::string(tr("AUTO (the next one)"))
-                              : found >= 0 && found < (int)monitors.size() ? monitors[found].label
-                                                                           : std::string(value) + " - " + tr("not connected");
-        if (ImGui::BeginCombo(label, preview.c_str()))
-        {
-            if (ImGui::Selectable(tr("AUTO (the next one)"), automatic))
-            {
-                snprintf(value, sizeof(cfg->screen_display[i]), "AUTO");
-                changed = true;
-            }
-            for (int m = 0; m < (int)monitors.size(); m++)
-                if (ImGui::Selectable(monitors[m].label.c_str(), m == found))
-                {
-                    snprintf(value, sizeof(cfg->screen_display[i]), "%s", monitors[m].value.c_str());
-                    changed = true;
-                }
-            ImGui::EndCombo();
-        }
-    }
-    ImGui::EndDisabled();
-    wrappedNote(tr("Read when a game starts. F8 shows the next board."));
 
     ImGui::BeginDisabled(cfg->display_mode != hl::DISPLAY_WINDOW);
     if (ImGui::BeginCombo(tr("Window size"), windowSizeLabel(cfg->window_scale)))
@@ -795,6 +805,42 @@ void drawAboutTab()
     ImGui::TextDisabled("Dear ImGui %s", IMGUI_VERSION);
     ImGui::TextDisabled("%s (MIT)", LUA_COPYRIGHT);
     ImGui::Separator();
+    ImGui::TextUnformatted(tr("Main keys"));
+    static const struct
+    {
+        const char *key, *what;
+    } keys[] = {
+        {"Tab", "Opens and closes the settings"},
+        {"F1", "Loads the state chosen, the latest by default"},
+        {"F2", "Chooses the state to load: a newer one"},
+        {"F3", "Chooses the state to load: an older one"},
+        {"F4", "Saves the state, as the latest of the five kept"},
+        {"F5", "Test: the game's test menu"},
+        {"F6", "Service"},
+        {"F7", "The card: in the reader, or taken back"},
+        {"F8", "NAOMI cabinets of several boards: the next board's picture"},
+        {"F9", "Quits the emulator"},
+        {"F12", "Shows and hides the frame rate"},
+        {"P", "Pauses and resumes the game"},
+        {"Esc", "Back to the picker the game was started from, else quits"},
+        {"5, 6", "Coins"},
+        {"Enter", "Start"},
+        {"Alt+Enter", "Full screen or window"},
+    };
+    if (ImGui::BeginTable("##keys", 2, ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_RowBg))
+    {
+        for (const auto &k : keys)
+        {
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            ImGui::TextUnformatted(k.key);
+            ImGui::TableSetColumnIndex(1);
+            ImGui::TextUnformatted(tr(k.what));
+        }
+        ImGui::EndTable();
+    }
+    ImGui::TextDisabled("%s", tr("By default; the Controls tab changes them."));
+    ImGui::Separator();
     ImGui::PushTextWrapPos(0.0f);
     ImGui::TextUnformatted(tr("Hikaru Loader, a SEGA Hikaru emulator."));
     ImGui::TextUnformatted("Copyright (C) 2026, Benjamin Maurin (njz3)");
@@ -903,7 +949,7 @@ void shutdownContext()
 
 bool processEvent(const SDL_Event *event)
 {
-    if (!g_initialised)
+    if (!g_initialised || hl::Input::is_alt_enter(event))
         return false;
     return ImGui_ImplSDL2_ProcessEvent(event);
 }
@@ -955,6 +1001,12 @@ void drawSettings(bool *open, bool inGame)
         if (ImGui::BeginTabItem(tr("Display")))
         {
             drawDisplayTab();
+            ImGui::EndTabItem();
+        }
+        // Only when a game with several screens runs: nothing else is its own yet
+        if (inGame && hl::Emulator::game_screens() > 1 && ImGui::BeginTabItem(tr("Game")))
+        {
+            drawGameTab(hl::Emulator::game_screens());
             ImGui::EndTabItem();
         }
         if (ImGui::BeginTabItem(tr("Enhancements")))

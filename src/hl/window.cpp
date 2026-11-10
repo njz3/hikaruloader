@@ -170,6 +170,18 @@ Window::set_output_viewport (const ScreenLayout &l, int width, int height)
 }
 
 void
+Window::toggle_fullscreen ()
+{
+	Config *cfg = Config::get ();
+	char name[32];
+
+	snprintf (name, sizeof (name), "%s%s", cfg->display_mode == DISPLAY_WINDOW ? "BORDERLESS" : "WINDOW",
+	          cfg->display_stretch ? "_STRETCH" : "");
+	if (cfg->override_display_mode (name))
+		apply_display ();
+}
+
+void
 Window::apply_display ()
 {
 	static int applied_mode = -1, applied_scale = -1, applied_width = -1;
