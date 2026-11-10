@@ -5,6 +5,23 @@ What each version brings, for those who play. How the versions are numbered
 and released: [DEVELOPMENT.md](DEVELOPMENT.md), "Versions and releases".
 
 
+Next version
+------------
+
+- NAOMI and NAOMI 2 games, the cabinets of several boards included (F355
+  Challenge Deluxe's three screens, Airline Pilots, Strike Fighter).
+- Atomiswave games: 36 in the list, the wheel games with their force feedback.
+- GD-ROM games on the DIMM board: Initial D Arcade Stage Ver. 3 Export plays,
+  with its magnetic card (F7) and its wheel. The CHD goes in a folder named as
+  the game, next to the zip.
+- `[Naomi]` in controls.ini: NAOMI and Atomiswave's own controls.
+- 18 Wheeler and F355 Challenge have their drive boards.
+- The SH-4's instruction cache: the Hikaru's check ROM tests its RAM and shows
+  its car on the road.
+- `SECURITY_CHIPS` is on by default: the BIOS is no longer patched when the
+  chips' images are in the set.
+
+
 0.6.2 (2026-11-09)
 ------------------
 
