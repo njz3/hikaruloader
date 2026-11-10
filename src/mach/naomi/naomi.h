@@ -32,6 +32,7 @@
 #include <mutex>
 #include <string>
 #include <thread>
+#include <unordered_map>
 #include <vector>
 
 #include "hl/mmap.h"
@@ -96,9 +97,28 @@ struct Scene {
 	float max_z = 1e-6f;
 };
 
+/* A texture's bytes as the VRAM had them at a STARTRENDER: what the core draws
+ * then; the game may write the VRAM's next picture as soon as it starts */
+struct TextureData {
+	std::vector<uint8_t> bytes;
+	uint64_t hash;
+};
+
+typedef std::unordered_map<uint64_t, std::shared_ptr<const TextureData>> TextureMap;
+
+static inline uint64_t
+texture_key (uint32_t tcw, uint32_t tsp)
+{
+	return ((uint64_t) tcw << 32) | (tsp & 0x3F);
+}
+
+/* The bytes of a texture in the VRAM (naomi-renderer.cpp) */
+uint32_t texture_size (uint32_t tcw, uint32_t tsp, uint32_t text_control);
+
 /* Holly's registers as a drawing wants them, at its STARTRENDER */
 struct Draw {
 	std::shared_ptr<Scene> scene;
+	TextureMap textures;
 	uint32_t fb_w_sof1, fb_w_ctrl, fb_w_linestride;
 	uint32_t fb_x_clip, fb_y_clip;
 	uint32_t text_control, pal_ctrl;
@@ -430,6 +450,7 @@ private:
 	void	 after (unsigned lines_, uint32_t ist);
 
 	void	 ta_reset_list ();
+	void	 keep_textures (Draw &d);
 	void	 ta_polygon_header (const uint32_t *w);
 	void	 ta_vertex (const uint32_t *w);
 	void	 ta_sprite (const uint32_t *w);
@@ -464,6 +485,9 @@ private:
 	std::vector<Context> contexts;
 	std::shared_ptr<Scene> building;
 	std::vector<Draw> draws;
+	/* The textures' copies, for those that did not change at the next
+	 * STARTRENDER */
+	TextureMap kept_textures;
 
 	/* Plain data, for the states */
 	struct {

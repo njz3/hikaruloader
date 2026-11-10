@@ -625,13 +625,23 @@ decode_level (std::vector<uint32_t> &out, const uint8_t *data, const Draw &d, ui
 	}
 }
 
+uint32_t
+texture_size (uint32_t tcw, uint32_t tsp, uint32_t text_control)
+{
+	unsigned w = 8u << ((tsp >> 3) & 7), h = 8u << (tsp & 7);
+
+	/* The levels are square: the height is not looked at */
+	if (is_mipmapped (tcw))
+		h = w;
+	return texture_bytes (tcw, w, h, (text_control & 31) * 32);
+}
+
 GLuint
 BoardRenderer::texture (uint32_t tcw, uint32_t tsp)
 {
 	unsigned w = 8u << ((tsp >> 3) & 7), h = 8u << (tsp & 7);
-	uint64_t key = ((uint64_t) tcw << 32) | (tsp & 0x3F);
+	uint64_t key = texture_key (tcw, tsp);
 
-	/* The levels are square: the height is not looked at */
 	if (is_mipmapped (tcw))
 		h = w;
 	Texture &t = textures[key];
@@ -640,18 +650,12 @@ BoardRenderer::texture (uint32_t tcw, uint32_t tsp)
 		return t.id;
 	t.seen = frame_count;
 
-	hl::Buffer *vram = holly->vram;
-	uint32_t addr = (tcw & 0x1FFFFF) << 3;
-	unsigned stride = (draw->text_control & 31) * 32;
-	uint32_t bytes = texture_bytes (tcw, w, h, stride), i;
-	uint64_t hash = (0xCBF29CE484222325ull ^ stride) * 0x100000001B3ull;
+	/* As it was at the STARTRENDER */
+	auto found = draw->textures.find (key);
+	const TextureData *kept = found != draw->textures.end () ? found->second.get () : NULL;
+	uint64_t hash = kept ? kept->hash : 0x100000001B3ull;
+	unsigned i;
 
-	if (addr + bytes <= vram->size ()) {
-		const uint32_t *p = (const uint32_t *) vram->ptr (addr);
-
-		for (i = 0; i < bytes / 4; i++)
-			hash = (hash ^ p[i]) * 0x100000001B3ull;
-	}
 	if (is_paletted (tcw)) {
 		unsigned first = ((tcw >> 27) & 7) == 5 ? ((tcw >> 21) & 63) << 4 : ((tcw >> 25) & 3) << 8;
 		unsigned count = ((tcw >> 27) & 7) == 5 ? 16 : 256;
@@ -665,7 +669,7 @@ BoardRenderer::texture (uint32_t tcw, uint32_t tsp)
 	t.hash = hash;
 
 	std::vector<uint32_t> rgba;
-	const uint8_t *data = (const uint8_t *) (addr + bytes <= vram->size () ? vram->ptr (addr) : NULL);
+	const uint8_t *data = kept ? kept->bytes.data () : NULL;
 
 	if (!t.id)
 		glGenTextures (1, &t.id);
@@ -1050,6 +1054,7 @@ BoardRenderer::draw_scene (const Draw &d, Target &t, bool to_texture)
 
 	draw = &d;
 	target = &t;
+	frame_count++;
 	glBindFramebuffer (GL_FRAMEBUFFER, t.fb);
 	glViewport (0, 0, t.w, t.h);
 	glDisable (GL_SCISSOR_TEST);
@@ -1211,7 +1216,6 @@ BoardRenderer::draw_picture ()
 	const Draw *for_screen = NULL;
 	Picture picture;
 
-	frame_count++;
 	make_target (screen, width * scale, height * scale);
 	for (const Draw &d : draws) {
 		if (d.to_texture) {

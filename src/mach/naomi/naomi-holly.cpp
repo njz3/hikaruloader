@@ -1222,7 +1222,53 @@ Holly::start_render ()
 			at += (skip * (shadow ? 2 : 1) + 3) * 4;
 		}
 	}
+	keep_textures (d);
 	draws.push_back (std::move (d));
+}
+
+/* The textures of a drawing as they are now (renders end before the games go
+ * on writing the next picture to the VRAM; the frame is drawn much later) */
+void
+Holly::keep_textures (Draw &d)
+{
+	uint32_t stride = (d.text_control & 31) * 32;
+	auto take = [&] (uint32_t tcw, uint32_t tsp) {
+		uint64_t key = texture_key (tcw, tsp);
+
+		if (d.textures.count (key))
+			return;
+		uint32_t bytes = texture_size (tcw, tsp, d.text_control);
+		uint32_t addr = (tcw & 0x1FFFFF) << 3, i;
+
+		if (addr + bytes > vram->size ())
+			return;
+		const uint32_t *p = (const uint32_t *) vram->ptr (addr);
+		uint64_t hash = (0xCBF29CE484222325ull ^ stride) * 0x100000001B3ull;
+
+		for (i = 0; i < bytes / 4; i++)
+			hash = (hash ^ p[i]) * 0x100000001B3ull;
+
+		std::shared_ptr<const TextureData> &kept = kept_textures[key];
+
+		if (!kept || kept->hash != hash) {
+			std::shared_ptr<TextureData> copy = std::make_shared<TextureData> ();
+
+			copy->bytes.assign ((const uint8_t *) p, (const uint8_t *) p + bytes);
+			copy->hash = hash;
+			kept = copy;
+		}
+		d.textures[key] = kept;
+	};
+	unsigned l;
+
+	for (l = 0; l < NUM_LISTS; l++)
+		for (const Batch &b : d.scene->batches[l])
+			if ((b.isp >> 25) & 1)
+				take (b.tcw, b.tsp);
+	if ((d.background_isp >> 25) & 1)
+		take (d.background_tcw, d.background_tsp);
+	if (kept_textures.size () > 8192)
+		kept_textures.clear ();
 }
 
 void
