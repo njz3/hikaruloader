@@ -5,8 +5,8 @@ What each version brings, for those who play. How the versions are numbered
 and released: [DEVELOPMENT.md](DEVELOPMENT.md), "Versions and releases".
 
 
-Next version
-------------
+0.7.1 (2026-11-10)
+------------------
 
 - The settings' Game tab: the options of the game running, during a game
   (the screens of a cabinet of several, Planet Harriers' stick).
