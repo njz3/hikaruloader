@@ -124,14 +124,15 @@ public:
 	enum Type { TYPE_ROM, TYPE_M1, TYPE_M2, TYPE_M4 };
 
 	Cart (hl::Buffer *rom, Type type, uint32_t key, uint32_t id, const uint8_t *m4_key);
+	virtual ~Cart () {}
 
-	void	 reset ();
-	uint32_t get (unsigned reg);
-	void	 put (unsigned reg, uint32_t val);
+	virtual void	 reset ();
+	virtual uint32_t get (unsigned reg);
+	virtual void	 put (unsigned reg, uint32_t val);
 	/* The G1's DMA: size bytes from where DMA_OFFSET points */
-	void	 dma (uint8_t *out, uint32_t size);
-	int	 save_state (hl::State *state);
-	int	 load_state (hl::State *state);
+	virtual void	 dma (uint8_t *out, uint32_t size);
+	virtual int	 save_state (hl::State *state);
+	virtual int	 load_state (hl::State *state);
 
 	hl::X76F100 eeprom;
 
@@ -186,6 +187,82 @@ private:
 		uint8_t	 cfi;
 		uint16_t iv;
 		uint32_t counter;
+	} s;
+};
+
+/* The Atomiswave's ROM board; see naomi-aw.cpp */
+class AwCart : public Cart {
+public:
+	AwCart (hl::Buffer *rom, uint8_t key);
+
+	void	 reset () override;
+	uint32_t get (unsigned reg) override;
+	void	 put (unsigned reg, uint32_t val) override;
+	void	 dma (uint8_t *out, uint32_t size) override;
+	int	 save_state (hl::State *state) override;
+	int	 load_state (hl::State *state) override;
+
+private:
+	uint16_t decrypted (uint32_t address) const;
+	void	 recalc (int mode);
+
+	const uint16_t *data;
+	uint32_t bytes, mpr_offset;
+	uint8_t	 key;
+	struct {
+		uint32_t epr_offset, record_index, first_file_index, file_offset;
+		uint32_t dma_offset, dma_limit, bank;
+	} r;
+};
+
+/* The Atomiswave's BIOS flash: the writes (read as a ROM in the map) */
+class AwFlash : public hl::Device {
+public:
+	AwFlash (hl::Machine *mach, hl::Buffer *rom);
+
+	int	 get (unsigned size, uint32_t addr, void *val) override;
+	int	 put (unsigned size, uint32_t addr, uint64_t val) override;
+	void	 reset (hl::ResetType type) override;
+	int	 save_state (hl::State *state) override;
+	int	 load_state (hl::State *state) override;
+
+	/* Programmed or erased since the last save */
+	bool	 changed = false;
+
+private:
+	hl::Buffer *rom;
+	unsigned step;
+};
+
+/* The Atomiswave's controllers on the Maple bus */
+class AwControllers {
+public:
+	/* How many are plugged */
+	unsigned count = 2;
+	/* The reply to a frame at port, in out (at most 64 words): its words, 0 for none */
+	unsigned reply (unsigned port, const uint32_t *request, uint32_t *out);
+
+private:
+	uint16_t switches (unsigned port) const;
+};
+
+/* The Atomiswave's "modem" area: coins, digital outputs */
+class AwModem : public hl::Device {
+public:
+	explicit AwModem (Board *board);
+
+	int	 get (unsigned size, uint32_t addr, void *val) override;
+	int	 put (unsigned size, uint32_t addr, uint64_t val) override;
+	void	 reset (hl::ResetType type) override;
+	int	 save_state (hl::State *state) override;
+	int	 load_state (hl::State *state) override;
+
+private:
+	uint8_t	 coins ();
+
+	Board	*board;
+	struct {
+		uint8_t devices, output, chute[2];
 	} s;
 };
 
@@ -657,6 +734,12 @@ public:
 	/* 0 the master, whose screen the machine shows first */
 	unsigned index;
 	bool	 is_naomi2;
+	/* A NAOMI's sister: no MIE, its controllers on the Maple bus; naomi-aw.cpp */
+	bool	 is_atomiswave;
+	bool	 aw_wheel = false;
+	AwControllers controllers;
+	AwModem	*modem = NULL;
+	AwFlash	*flash = NULL;
 
 	hl::Cpu	*sh;
 	hl::Mmap *mmap;

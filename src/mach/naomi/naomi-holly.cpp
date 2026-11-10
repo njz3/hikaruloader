@@ -377,7 +377,7 @@ Holly::g1_dma ()
 
 	/* Only from the cartridge to the RAM */
 	if (g1[0x0C / 4] & 1) {
-		uint32_t offs = star & 0x01FFFFFF;
+		uint32_t offs = star & (board->ram->size () - 1);
 		/* Aimed elsewhere (0: Strike Fighter's), the data read goes nowhere */
 		bool to_ram = (star & 0x1C000000) == 0x0C000000;
 		std::vector<uint8_t> nowhere (to_ram ? 0 : len);
@@ -386,7 +386,7 @@ Holly::g1_dma ()
 		if (to_ram && offs + len > board->ram->size ())
 			len = board->ram->size () - offs;
 		to = to_ram ? (uint8_t *) board->ram->ptr (offs) : nowhere.data ();
-		if (board->index == 0 && board->comm.dma_to_ram (to, len)) {
+		if (!board->is_atomiswave && board->index == 0 && board->comm.dma_to_ram (to, len)) {
 			/* From the communication board */
 		} else if (!board->link || !board->link->dma (len, to))
 			board->cart->dma (to, len);
@@ -478,6 +478,18 @@ Holly::maple_step ()
 
 			switch (pattern) {
 			case 0:
+				if (board->is_atomiswave) {
+					/* The controllers answer at once */
+					uint32_t reply[64];
+					unsigned words = board->controllers.reply (mp.port, data, reply);
+
+					if (!words)
+						mp.state = MP_TIMEOUT;
+					else
+						for (i = 0; i < words; i++)
+							mem->put (4, mp.dest + i * 4, reply[i]);
+					break;
+				}
 				/* The MIE alone, on port 0 */
 				if (mp.port == 0) {
 					board->mie->maple_write (data, length);
@@ -487,7 +499,7 @@ Holly::maple_step ()
 					mp.state = MP_TIMEOUT;
 				break;
 			case 3:
-				if (mp.port == 0)
+				if (mp.port == 0 && board->mie)
 					board->mie->maple_reset ();
 				break;
 			case 7:
@@ -1323,7 +1335,7 @@ Holly::get (unsigned size, uint32_t addr, void *val)
 		if (offs == 0x5F6C18)
 			data = mp.state != MP_IDLE;
 	} else if (offs >= 0x5F7000 && offs < 0x5F7100) {
-		if (offs >= 0x5F7018 && offs < 0x5F702C && board->index == 0)
+		if (offs >= 0x5F7018 && offs < 0x5F702C && board->index == 0 && !board->is_atomiswave)
 			data = board->comm.get (offs);
 		else if (!board->link || !board->link->g1_get (offs, &data))
 			data = board->cart->get (offs & 0xFF);
@@ -1398,7 +1410,7 @@ Holly::put (unsigned size, uint32_t addr, uint64_t val_)
 		if (offs == 0x5F6C18 && !(old & 1) && (val & 1) && (maple[0x14 / 4] & 1) && !(maple[0x10 / 4] & 1))
 			maple_start ();
 	} else if (offs >= 0x5F7000 && offs < 0x5F7100) {
-		if (offs >= 0x5F7018 && offs < 0x5F702C && board->index == 0)
+		if (offs >= 0x5F7018 && offs < 0x5F702C && board->index == 0 && !board->is_atomiswave)
 			board->comm.put (offs, val);
 		else if (!board->link || !board->link->g1_put (offs, val))
 			board->cart->put (offs & 0xFF, val);

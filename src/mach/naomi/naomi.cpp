@@ -211,6 +211,7 @@ Board::Board (Naomi *machine_, unsigned index_, hl::Game *game_) :
 	index (index_)
 {
 	is_naomi2 = game->naomi2;
+	is_atomiswave = !strcmp (game->board, "aw");
 	sh = NULL;
 	mmap = NULL;
 	holly = NULL;
@@ -261,18 +262,27 @@ Board::setup_mmap ()
 	int ret = 0;
 	uint32_t mirror;
 
-	ret |= map->add_rom (0x00000000, 0x001FFFFF, 0x001FFFFF, 0, bios, "BIOS");
-	ret |= map->add_ram (0x00200000, 0x00207FFF, 0x00007FFF, 0, sram, "SRAM");
+	if (is_atomiswave) {
+		/* The flash: its writes first, its reads the ROM's */
+		ret |= map->add_dev (0x00000000, 0x0001FFFF, 0x0001FFFF, HL_REGION_W | HL_REGION_SIZE_ALL, flash, "FLASH");
+		ret |= map->add_rom (0x00000000, 0x0001FFFF, 0x0001FFFF, 0, bios, "BIOS");
+		ret |= map->add_ram (0x00200000, 0x0021FFFF, 0x0001FFFF, 0, sram, "SRAM");
+	} else {
+		ret |= map->add_rom (0x00000000, 0x001FFFFF, 0x001FFFFF, 0, bios, "BIOS");
+		ret |= map->add_ram (0x00200000, 0x00207FFF, 0x00007FFF, 0, sram, "SRAM");
+	}
 	for (mirror = 0; mirror <= 0x02000000; mirror += 0x02000000) {
 		ret |= map->add_dev (mirror + 0x005F6800, mirror + 0x005F9FFF, 0x00FFFFFF, DEV_FLAGS, holly, "HOLLY");
-		ret |= map->add_dev (mirror + 0x00600000, mirror + 0x006007FF, 0x00FFFFFF, DEV_FLAGS, zero, "MODEM");
+		ret |= map->add_dev (mirror + 0x00600000, mirror + 0x006007FF, 0x00FFFFFF, DEV_FLAGS, is_atomiswave ? (hl::Device *) modem : zero, "MODEM");
 		ret |= map->add_dev (mirror + 0x00700000, mirror + 0x0071000F, 0x00FFFFFF, DEV_FLAGS, aica_bus, "AICA");
 		ret |= map->add_ram (mirror + 0x00800000, mirror + 0x00FFFFFF, 0x007FFFFF, 0, aica_ram, "AICA-RAM");
 		ret |= map->add_dev (mirror + 0x01000000, mirror + 0x01FFFFFF, 0x00FFFFFF, DEV_FLAGS, g2, "G2");
 	}
-	ret |= map->add_ram (0x04000000, 0x04FFFFFF, 0x00FFFFFF, 0, vram, "VRAM64");
+	/* The Atomiswave has half of it, as a Dreamcast */
+	const uint32_t vram_mask = is_atomiswave ? 0x007FFFFF : 0x00FFFFFF;
+	ret |= map->add_ram (0x04000000, 0x04FFFFFF, vram_mask, 0, vram, "VRAM64");
 	ret |= map->add_dev (0x05000000, 0x05FFFFFF, 0x00FFFFFF, DEV_FLAGS, vram32, "VRAM32");
-	ret |= map->add_ram (0x06000000, 0x06FFFFFF, 0x00FFFFFF, 0, vram, "VRAM64B");
+	ret |= map->add_ram (0x06000000, 0x06FFFFFF, vram_mask, 0, vram, "VRAM64B");
 	ret |= map->add_dev (0x07000000, 0x07FFFFFF, 0x00FFFFFF, DEV_FLAGS, vram32, "VRAM32B");
 	if (elan) {
 		/* What is written here reaches both CLX2, one Holly for us */
@@ -282,7 +292,7 @@ Board::setup_mmap ()
 		ret |= map->add_dev (0x09000000, 0x09FFFFFF, 0x0FFFFFFF, DEV_FLAGS, elan, "ELAN-CMD");
 		ret |= map->add_ram (0x0A000000, 0x0BFFFFFF, 0x01FFFFFF, 0, elan_ram, "ELAN-RAM");
 	}
-	ret |= map->add_ram (0x0C000000, 0x0FFFFFFF, 0x01FFFFFF, 0, ram, "RAM");
+	ret |= map->add_ram (0x0C000000, 0x0FFFFFFF, ram->size () - 1, 0, ram, "RAM");
 	ret |= map->add_dev (0x10000000, 0x13FFFFFF, 0x03FFFFFF, DEV_FLAGS, area4, "TA");
 	if (ret) {
 		delete map;
@@ -304,14 +314,14 @@ Board::init ()
 	unsigned i;
 
 	has_cart = index == 0;
-	if (!bios_rom || !rom_board || !mie_rom) {
+	if (!bios_rom || !rom_board || (!mie_rom && !is_atomiswave)) {
 		HL_ERROR ("naomi: %s: its BIOS, its cartridge or the MIE's ROM (mie.zip) is missing", game->name);
 		return false;
 	}
 
 	add_buffer (bios, 2 * MB, true);
-	add_buffer (sram, 32 * KB, true);
-	add_buffer (ram, 32 * MB);
+	add_buffer (sram, is_atomiswave ? 128 * KB : 32 * KB, true);
+	add_buffer (ram, is_atomiswave ? 16 * MB : 32 * MB);
 	add_buffer (vram, 16 * MB);
 	add_buffer (aica_ram, 8 * MB);
 	if (!bios || !sram || !ram || !vram || !aica_ram)
@@ -334,7 +344,9 @@ Board::init ()
 
 		if (key_rom)
 			key = (uint32_t) key_rom->get (4, 0);
-		if (has_cart)
+		if (is_atomiswave)
+			cart.reset (new AwCart (rom_board, (uint8_t) key));
+		else if (has_cart)
 			cart.reset (new Cart (rom_board, type, key, game->id, pic ? (const uint8_t *) pic->ptr (0) : NULL));
 		else {
 			/* A slave's slot is empty: the bus reads all ones */
@@ -362,15 +374,24 @@ Board::init ()
 			return false;
 		elan = new Elan (this, elan_ram);
 	}
-	mie = new Mie (this, mie_rom);
-	if (index)
-		memset (mie->eeprom.mem, 0, sizeof (mie->eeprom.mem));
-	else if (mie_default && mie_default->size () >= 128)
-		for (i = 0; i < 128; i++)
-			mie->eeprom.mem[i] = *(uint8_t *) mie_default->ptr (i ^ 1);
+	if (is_atomiswave) {
+		flash = new AwFlash (machine, bios);
+		modem = new AwModem (this);
+		aw_wheel = !strcmp (game->name, "maxspeed") || !strcmp (game->name, "ftspeed");
+		if (!strcmp (game->name, "ggisuka"))
+			controllers.count = 4;
+	} else {
+		mie = new Mie (this, mie_rom);
+		if (index)
+			memset (mie->eeprom.mem, 0, sizeof (mie->eeprom.mem));
+		else if (mie_default && mie_default->size () >= 128)
+			for (i = 0; i < 128; i++)
+				mie->eeprom.mem[i] = *(uint8_t *) mie_default->ptr (i ^ 1);
+	}
 	/* The board's switch SW1-1 as the cabinet's monitor, from the game's
 	 * header. The BIOS's table: 1 = 31 kHz, 2 = 15 kHz, others are not checked */
-	mie->monitor_15khz = rom_board->size () > 0x42A && *(uint8_t *) rom_board->ptr (0x42A) == 2;
+	if (mie)
+		mie->monitor_15khz = rom_board->size () > 0x42A && *(uint8_t *) rom_board->ptr (0x42A) == 2;
 	jvs = new hl::JvsBus (machine);
 	/* F355 Challenge's cabinets have the drive board's I/O board, the 837-13844 */
 	if (!strncmp (game->name, "f355", 4)) {
@@ -403,7 +424,8 @@ Board::init ()
 	sh->name = index == 0 ? "master" : index == 1 ? "slave1" : "slave2";
 	if (index == 0) {
 		holly->name = "holly";
-		mie->name = "mie";
+		if (mie)
+			mie->name = "mie";
 		aica->name = "aica";
 		jvs->name = "jvs";
 		machine->add_memory ("ram", ram);
@@ -464,6 +486,8 @@ void
 Board::configure_eeprom ()
 {
 	hl::Buffer *rom = game->section_data ("rom_board");
+	if (!mie)
+		return;
 	uint8_t *mem = mie->eeprom.mem;
 	const uint8_t *h = (const uint8_t *) rom->ptr (0);
 	const uint8_t *coin = h + 0x1E0;
@@ -520,7 +544,8 @@ Board::software_reset ()
 	sh->reset (hl::RESET_HARD);
 	holly->reset (hl::RESET_SOFT);
 	aica->reset (hl::RESET_SOFT);
-	mie->reset (hl::RESET_SOFT);
+	if (mie)
+		mie->reset (hl::RESET_SOFT);
 	((Sh4 *) sh)->blocks.new_epoch ();
 }
 
@@ -539,6 +564,8 @@ Board::reset (hl::ResetType type)
 void
 Board::setup_servo ()
 {
+	if (is_atomiswave)
+		return;
 	hl::Buffer *rom = game->section_data ("rom_board");
 	const char *title = (const char *) rom->ptr (0x30);
 
@@ -582,7 +609,8 @@ Board::run_lines (unsigned line, unsigned count)
 			((Sh4 *) sh)->scif_update ();
 		sh->run (cycles_per_line);
 		aica->exec (cycles_per_line);
-		mie->exec (mie_t_states);
+		if (mie)
+			mie->exec (mie_t_states);
 		holly->line (n);
 		if (holly->reset_requested)
 			software_reset ();
@@ -629,6 +657,10 @@ Board::save_state (hl::State *state)
 	int ret = 0;
 
 	ret |= main_serial.save_state (state);
+	if (modem) {
+		ret |= modem->save_state (state);
+		ret |= flash->save_state (state);
+	}
 	if (servo)
 		ret |= servo->save_state (state);
 	SAVE (porta);
@@ -643,6 +675,10 @@ Board::load_state (hl::State *state)
 	int ret = 0;
 
 	ret |= main_serial.load_state (state);
+	if (modem) {
+		ret |= modem->load_state (state);
+		ret |= flash->load_state (state);
+	}
 	if (servo)
 		ret |= servo->load_state (state);
 	LOAD (porta);
@@ -680,8 +716,11 @@ Board::nvram_read (const hl::Nvram &nvram)
 	if ((d = nvram.get (name)))
 		main_serial.load (d->data (), d->size ());
 	block_name (name, NV_TYPES[1], index);
-	if ((d = nvram.get (name)) && d->size () == sizeof (mie->eeprom.mem))
+	if (mie && (d = nvram.get (name)) && d->size () == sizeof (mie->eeprom.mem))
 		memcpy (mie->eeprom.mem, d->data (), d->size ());
+	/* The Atomiswave's BIOS: its settings in its flash */
+	if (flash && (d = nvram.get ("FLSH")) && d->size () == 0x20000)
+		memcpy (bios->ptr (0), d->data (), d->size ());
 	block_name (name, NV_TYPES[2], index);
 	if ((d = nvram.get (name)) && d->size () == sram->size ())
 		memcpy (sram->ptr (0), d->data (), d->size ());
@@ -719,7 +758,10 @@ Board::nvram_write (hl::Nvram &nvram)
 	block_name (name, NV_TYPES[0], index);
 	nvram.set (name, main_serial.image, hl::X76F100::IMAGE_SIZE);
 	block_name (name, NV_TYPES[1], index);
-	nvram.set (name, mie->eeprom.mem, sizeof (mie->eeprom.mem));
+	if (mie)
+		nvram.set (name, mie->eeprom.mem, sizeof (mie->eeprom.mem));
+	if (flash)
+		nvram.set ("FLSH", bios->ptr (0), 0x20000);
 	block_name (name, NV_TYPES[2], index);
 	nvram.set (name, sram->ptr (0), sram->size ());
 	block_name (name, NV_TYPES[3], index);
@@ -732,8 +774,15 @@ Board::nvram_changed ()
 	uint8_t now[sizeof (nvram_old)];
 
 	memcpy (now, main_serial.image, 128);
-	memcpy (now + 128, mie->eeprom.mem, 128);
+	if (mie)
+		memcpy (now + 128, mie->eeprom.mem, 128);
+	else
+		memset (now + 128, 0, 128);
 	memcpy (now + 256, cart->eeprom.image, 132);
+	if (flash && flash->changed) {
+		flash->changed = false;
+		return true;
+	}
 	if (!memcmp (now, nvram_old, sizeof (now)))
 		return false;
 	memcpy (nvram_old, now, sizeof (now));
