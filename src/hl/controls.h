@@ -119,6 +119,9 @@ public:
 	/* An axis's row: -1 (left) ... +1 (right), its dead zone applied; its
 	 * _Left and _Right rows add the keys' full turns. [Driving] P1_Steer's
 	 * joystick axes (a wheel's) go Config::wheel_scale () times further */
+	/* The board running: its section ([Naomi]) is looked at first for
+	 * Digital, Common and Driving's rows; "" none */
+	void		 set_platform (const char *section) { platform = section; }
 	double		 axis (const char *section, const char *key);
 	/* A sight's row, -1 ... +1: a mouse or a light gun puts it where it
 	 * points, a stick and the row's _Left and _Right keys move it, faster
@@ -187,6 +190,7 @@ private:
 	bool		 hidden (const Source &s) const;
 	bool		 guide_held (int player) const;
 	int		 player_of (int instance) const;
+	std::string	 platform;
 	double		 source_axis (const Source &s);
 	double		 source_pedal (const Source &s);
 	double		 deadzone (const char *key) const;

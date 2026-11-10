@@ -387,6 +387,8 @@ AwControllers::switches (unsigned port) const
 	if (hl::Input::action (hl::ACTION_TEST)) held |= 0x4000;
 	if (hl::Input::action (hl::ACTION_SERVICE)) held |= 0x2000;
 	if (hl::Input::action (hl::ACTION_BUTTON4)) held |= 0x0400;
+	if (hl::Controls::get ().pressed ("Naomi", "P1_Button5")) held |= 0x0200;
+	if (hl::Controls::get ().pressed ("Naomi", "P1_Button6")) held |= 0x0100;
 	return (uint16_t) ~held;
 }
 

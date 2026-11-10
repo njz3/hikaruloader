@@ -139,17 +139,20 @@ public:
  * over its own code, the SH-4 manual's reason for CCR.ICI). Each block looks
  * at its lines as it starts: one comparison a line, in its translation.
  *
- * tags[]: the line each index last fetched, its address >> 5, 29 bits, also
- * where the cache is off or the area uncached (P2): those hold no copy
- * (held[] clear), the memory is the code. CCR.IIX's index is not modelled */
+ * tags[]: the line each index last fetched, its address >> 5, 29 bits. The
+ * translations only note it: its bytes are copied here when a store is about
+ * to change them (Sh4BlockCache::covered ()), held[] then set, with the cache
+ * on (enabled, CCR.ICE). Until then the memory is the same as the line.
+ * CCR.IIX's index is not modelled */
 class Sh4ICache {
 public:
 	static const unsigned LINE_BITS = 5, NUM_LINES = 256, LINE_WORDS = 16;
 	static const uint32_t NONE = 0xFFFFFFFFu;
 
 	uint32_t		 tags[NUM_LINES];
-	bool			 held[NUM_LINES];
+	uint32_t		 held[NUM_LINES];
 	uint16_t		 data[NUM_LINES][LINE_WORDS];
+	bool			 enabled = false;
 
 	static unsigned		 index (uint32_t addr) { return (addr >> LINE_BITS) & (NUM_LINES - 1); }
 	static uint32_t		 tag (uint32_t addr) { return (addr & 0x1FFFFFFF) >> LINE_BITS; }
@@ -157,7 +160,7 @@ public:
 	{
 		for (unsigned i = 0; i < NUM_LINES; i++) {
 			tags[i] = NONE;
-			held[i] = false;
+			held[i] = 0;
 		}
 	}
 	bool			 present (uint32_t addr) const
@@ -209,6 +212,8 @@ public:
 		if (held_epoch == epoch)
 			new_epoch ();
 	}
+	/* The epoch a block last ran on from a held line, for the translations */
+	uint32_t		 held_epoch = 0;
 
 	/* Code epochs (above). The CPU's own RAM or ROM, from lo to hi (29
 	 * bits): where nothing writes but the CPU and what the machine tells
@@ -280,8 +285,9 @@ private:
 	bool			 fresh (Sh4Block *block);
 	/* Its code rewritten behind the lines the instruction cache holds */
 	bool			 held_in_cache (const Sh4Block *block) const;
-	/* The epoch a block last ran on so (0: none) */
-	uint32_t		 held_epoch = 0;
+	/* The lines the store of size bytes at addr is about to change, those
+	 * the cache has: copied from the block they were fetched for */
+	void			 capture (const Sh4Block *block, uint32_t addr, unsigned size);
 };
 
 /* The interpreter's handler for an instruction (sh4.cpp) */

@@ -112,6 +112,27 @@ static const char *default_file =
 	"P1_Missile = MOUSE0_BUTTON_RIGHT\n"
 	"P1_Bomb = MOUSE0_BUTTON_MIDDLE\n"
 	"\n"
+	"[Naomi]\n"
+	"P1_Start = KEY_Return, GC0_BUTTON_START\n"
+	"P1_Up = KEY_Up, GC0_BUTTON_DPUP\n"
+	"P1_Down = KEY_Down, GC0_BUTTON_DPDOWN\n"
+	"P1_Left = KEY_Left, GC0_BUTTON_DPLEFT\n"
+	"P1_Right = KEY_Right, GC0_BUTTON_DPRIGHT\n"
+	"P1_Button1 = KEY_LeftCtrl, GC0_BUTTON_A\n"
+	"P1_Button2 = KEY_LeftAlt, GC0_BUTTON_B\n"
+	"P1_Button3 = KEY_LeftShift, GC0_BUTTON_X\n"
+	"P1_Button4 = KEY_Z, GC0_BUTTON_Y\n"
+	"P1_Button5 = KEY_X, GC0_BUTTON_LEFTSHOULDER\n"
+	"P1_Button6 = KEY_C, GC0_BUTTON_RIGHTSHOULDER\n"
+	"P1_Steer = GC0_AXIS_LEFTX, JOY0_AXIS_0\n"
+	"P1_Gas = GC0_AXIS_RIGHTTRIGGER, JOY0_AXIS_1_NEGATIVE_SIDE\n"
+	"P1_Brake = GC0_AXIS_LEFTTRIGGER, JOY0_AXIS_2_NEGATIVE_SIDE\n"
+	"P1_Steer_Left = KEY_Left\n"
+	"P1_Steer_Right = KEY_Right\n"
+	"P1_Gas_Digital = KEY_Up\n"
+	"P1_Brake_Digital = KEY_Down\n"
+	"ViewChange = KEY_V, GC0_BUTTON_Y\n"
+	"\n"
 	"[Gaelco]\n"
 	"VolumeUp = KEY_PageUp, GC0_BUTTON_DPUP\n"
 	"VolumeDown = KEY_PageDown, GC0_BUTTON_DPDOWN\n"
@@ -245,6 +266,27 @@ static const struct {
 	{ "Pointer", "P1_Bullet", "Planet Harriers: bullets, as P1_Button1" },
 	{ "Pointer", "P1_Missile", "Planet Harriers: missiles, as P1_Button2" },
 	{ "Pointer", "P1_Bomb", "Planet Harriers: bombs, as P1_Button3" },
+	{ "Naomi", NULL,
+	  "NAOMI and Atomiswave's own controls: Hikaru and Gaelco keep theirs" },
+	{ "Naomi", "P1_Start", "Start" },
+	{ "Naomi", "P1_Up", "Up" },
+	{ "Naomi", "P1_Down", "Down" },
+	{ "Naomi", "P1_Left", "Left" },
+	{ "Naomi", "P1_Right", "Right" },
+	{ "Naomi", "P1_Button1", "Button 1" },
+	{ "Naomi", "P1_Button2", "Button 2" },
+	{ "Naomi", "P1_Button3", "Button 3" },
+	{ "Naomi", "P1_Button4", "Button 4" },
+	{ "Naomi", "P1_Button5", "Button 5 (Atomiswave's fighting games)" },
+	{ "Naomi", "P1_Button6", "Button 6 (Atomiswave's fighting games)" },
+	{ "Naomi", "P1_Steer", "The wheel" },
+	{ "Naomi", "P1_Gas", "The accelerator" },
+	{ "Naomi", "P1_Brake", "The brake" },
+	{ "Naomi", "P1_Steer_Left", "The wheel turned all the way to the left" },
+	{ "Naomi", "P1_Steer_Right", "The wheel turned all the way to the right" },
+	{ "Naomi", "P1_Gas_Digital", "The accelerator pressed all the way" },
+	{ "Naomi", "P1_Brake_Digital", "The brake pressed all the way" },
+	{ "Naomi", "ViewChange", "The view change button" },
 	{ "Gaelco", NULL,
 	  "The Gaelco cabinets' own buttons, read by their games alone: ATV Track and\n"
 	  "Smashing Drive read none of the Digital rows (Gaelco Football's sticks and\n"
@@ -806,6 +848,14 @@ Controls::parse_all ()
 const Controls::Binding *
 Controls::binding (const char *section, const char *key)
 {
+	if (!platform.empty () && (!strcasecmp (section, "Digital") || !strcasecmp (section, "Driving") ||
+	                           !strcasecmp (section, "Common"))) {
+		auto own = parsed.find (normalize (platform.c_str ()) + "/" + normalize (key));
+
+		if (own != parsed.end ())
+			return own->second;
+	}
+
 	auto it = parsed.find (normalize (section) + "/" + normalize (key));
 	return (it != parsed.end ()) ? it->second : NULL;
 }

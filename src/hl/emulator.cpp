@@ -47,6 +47,7 @@
 #include "mach/hikaru/hikaru.h"
 #include "mach/gaelco/gaelco.h"
 #include "mach/naomi/naomi.h"
+#include "hl/controls.h"
 #endif
 
 namespace hl {
@@ -142,6 +143,7 @@ Emulator::create_machine ()
 		return hikaru::Hikaru::create (game);
 	if (!strcmp (game->mach, "gaelco"))
 		return gaelco::Gaelco::create (game);
+	Controls::get ().set_platform (!strcmp (game->mach, "naomi") ? "Naomi" : "");
 	if (!strcmp (game->mach, "naomi"))
 		return naomi::Naomi::create (game);
 	return NULL;
