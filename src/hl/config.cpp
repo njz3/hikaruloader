@@ -177,6 +177,7 @@ Config::set_defaults ()
 	/* The link the board's EEPROM holds; a cabinet alone, its own next */
 	cfg->link = -1;
 	/* Two cabinets, as before November 2026; PROGRAM links more */
+	cfg->link_node = 1;
 	cfg->comm_board = COMM_BOARD_SIMULATED;
 	cfg->port_in = 1970;
 	strcpy (cfg->address_out, "127.0.0.1");
@@ -452,6 +453,8 @@ Config::set_value (const char *section, const char *key, const char *value)
 	} else if (!strcasecmp (section, "Network")) {
 		if (!strcasecmp (key, "LINK"))
 			cfg->link = parse_name (value, link_names, (int) NUMELEM (link_names), cfg->link + 1) - 1;
+		else if (!strcasecmp (key, "LINK_NODE"))
+			cfg->link_node = (unsigned) MAX2 (1, MIN2 (7, atoi (value)));
 		else if (!strcasecmp (key, "COMM_BOARD"))
 			cfg->comm_board = parse_name (value, comm_board_names, NUM_COMM_BOARDS, cfg->comm_board);
 		else if (!strcasecmp (key, "PORT_IN"))
@@ -940,6 +943,10 @@ Config::save () const
 	         "# written to the EEPROM at the game's start. One master per ring; a relay\n"
 	         "# (SGNASCAR's monitor) does not play. Default: %s\n", link_names[def.link + 1]);
 	fprintf (fp, "LINK = %s\n", link_names[cfg->link + 1]);
+	fprintf (fp,
+	         "\n# On NAOMI games, a slave's number on the ring, 1 to 7: its car or seat. Each\n"
+	         "# slave its own. Default: %u\n", def.link_node);
+	fprintf (fp, "LINK_NODE = %u\n", cfg->link_node);
 	fprintf (fp,
 	         "\n# The communication board: SIMULATED, its program's work done by\n"
 	         "# Hikaruloader, two cabinets at most; PROGRAM, its 68000 running the\n"

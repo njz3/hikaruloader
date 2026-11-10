@@ -324,6 +324,9 @@ public:
 
 	hl::Eeprom93C46 eeprom;
 	bool	 monitor_15khz = false;
+	/* The board's switches SW1 (bits 0-3, 1 off): where it is in a cabinet
+	 * of several screens; 0F for a board alone */
+	uint8_t	 switches = 0x0F;
 
 private:
 	void	 reply_timer ();
@@ -589,25 +592,81 @@ private:
 	uint64_t commands;	/* those of this kick */
 };
 
-/* The communication board on the G1 bus (005F7018-005F702B), on the master: its
- * two memories, as a cabinet alone sees them, no link to another. A plain object
- * of its board; see naomi-comm.cpp */
+/* What carries a communication board's frames to the next board of its ring:
+ * TCP between two emulators ([Network]), or the boards of one machine (Driving
+ * Simulator's three). Each board has its own; see naomi-comm.cpp */
+class CommRing {
+public:
+	virtual ~CommRing () {}
+
+	/* The game let the board's 68000 go: mode as it gave it (0 master) and
+	 * the bytes each node sends; false when the ring cannot open */
+	virtual bool start (uint16_t mode, uint16_t slot_size) = 0;
+	/* The game holds the board, or the link is gone */
+	virtual void stop () = 0;
+	/* Each frame until true: this node's number and how many there are */
+	virtual bool numbered (unsigned *node, unsigned *nodes) = 0;
+	/* Each frame since: what this node sends, where what the previous one
+	 * sends goes (out and in may overlap); true when in was filled */
+	virtual bool exchange (const uint8_t *out, uint8_t *in, uint32_t size,
+	                       uint16_t number, uint16_t *number_in) = 0;
+	virtual bool broken () const = 0;
+};
+
+/* The memory of the boards of one machine that are on one ring: each board's
+ * letter box, used between two slices with all the boards stopped */
+struct CommBoxes {
+	struct Box {
+		std::vector<uint8_t> data;
+		uint16_t number = 0;
+		bool full = false;
+	};
+	explicit CommBoxes (unsigned nodes) : boxes (nodes) {}
+	std::vector<Box> boxes;
+	unsigned started = 0;
+};
+
+/* The rings the board can have: over TCP as [Network] says, or the machine's own */
+CommRing *comm_network_ring (hl::Machine *mach);
+CommRing *comm_local_ring (CommBoxes *boxes, unsigned index);
+
+/* The communication board on the G1 bus (005F7018-005F702B): its two memories,
+ * its ring if it has one. A plain object of its board; see naomi-comm.cpp */
 class CommBoard {
 public:
 	CommBoard ();
 
+	/* The ring that carries its frames: none, a cabinet alone */
+	void	 attach (CommRing *ring);
 	void	 reset ();
 	uint32_t get (uint32_t addr);
 	void	 put (uint32_t addr, uint32_t val);
 	/* The G1's DMA, when the board has the bus: false else */
 	bool	 dma_to_ram (uint8_t *out, uint32_t size);
 	bool	 dma_from_ram (const uint8_t *in, uint32_t size);
+	/* Once a frame, all the boards stopped: the ring's work */
+	void	 vblank ();
 	int	 save_state (hl::State *state);
 	int	 load_state (hl::State *state);
 
+	/* For the logs */
+	const char *name = "comm";
+
 private:
+	void	 start_ring ();
+	void	 connected ();
+	void	 lost ();
+	uint16_t slot_size () const;
+
+	enum RingState { RING_OFF, RING_NUMBERING, RING_UP };
+
 	std::vector<uint8_t> m68k_ram, comm_ram;
 	uint16_t control, offset, status1, status2;
+
+	std::unique_ptr<CommRing> ring;
+	RingState ring_state;
+	unsigned node, nodes;
+	uint16_t packet;
 };
 
 /* The link of a cabinet of several boards (F355 Challenge's): a memory the
@@ -655,6 +714,19 @@ private:
 	unsigned id;
 	uint32_t offset;
 	uint16_t dma_offset, seen_status;
+};
+
+/* What Driving Simulator's master says on the SCIF: the rev counter and the
+ * speedometer of its dashboard; see naomi-comm.cpp */
+class DriveSimMeters : public SerialPipe {
+public:
+	void	 write (uint8_t value) override;
+	int	 available () override { return 0; }
+	uint8_t	 read () override { return 0; }
+
+private:
+	std::vector<uint8_t> frame;
+	int	 tacho = -1, speed = -1;
 };
 
 /* Club Kart's card reader, on the SCIF; see naomi-card.cpp */
@@ -792,8 +864,9 @@ private:
 /* One NAOMI board, whole: an SH-4 at 200 MHz, a Holly (two and an Elan on the
  * NAOMI 2), an AICA with its ARM7, the MIE, a cartridge. An object with no state
  * outside it, its parts talking to it alone: a machine holds several of them
- * (the cabinets of several boards, multiboard), each run by a thread of its own.
- * What crosses between boards goes through Multiboard. See naomi.cpp */
+ * (the cabinets of several boards, multiboard; or whole systems on one ring,
+ * Driving Simulator's three), each run by a thread of its own. What crosses
+ * between boards goes through Multiboard or CommBoxes. See naomi.cpp */
 class Board {
 public:
 	Board (Naomi *machine, unsigned index, hl::Game *game);
@@ -811,12 +884,22 @@ public:
 	std::unique_ptr<ClubKartCard> card;
 	std::unique_ptr<SanwaCard> sanwa;
 	std::unique_ptr<SwpHopper> hopper;
+	std::unique_ptr<DriveSimMeters> meters;
 	/* F355 Challenge's, on the I/O board's lines */
 	hl::DriveBoard *drive_board = NULL;
 	void	 setup_servo ();
 	void	 setup_hopper ();
 	unsigned servo_lines = 0;
 	void	 default_backup ();
+	void	 default_eeprom ();
+	/* [Network] LINK as the game's own settings hold it, from its title;
+	 * see naomi-comm.cpp */
+	void	 link_settings ();
+	/* A byte of a record of the EEPROM, or of the backup memory's: false
+	 * when the game has not written that record yet */
+	bool	 eeprom_write (unsigned offs, uint8_t val);
+	uint8_t	 eeprom_read (unsigned offs) const;
+	bool	 flash_write (unsigned offs, uint8_t val);
 	void	 reset (hl::ResetType type);
 	/* The software reset (SB_SFRES): the SH-4 and the Holly */
 	void	 software_reset ();
@@ -856,6 +939,12 @@ public:
 	bool	 has_cart;
 	MultiboardPort *link;
 	CommBoard comm;
+	/* Its G1 bus has the communication board */
+	bool	 has_comm = false;
+	/* Vertical blank went by since the last time the boards met */
+	bool	 vblank_due = false;
+	/* [Network] LINK could not be set yet: the record is not there */
+	bool	 link_settings_due = false;
 	hl::Device *aica;
 	hl::JvsBus *jvs;
 	hl::Device *io_board;
@@ -901,6 +990,10 @@ public:
 
 	std::vector<std::unique_ptr<Board>> boards;
 	std::unique_ptr<Multiboard> link;
+	/* The boards are complete systems on a ring of communication boards,
+	 * each with its cartridge (games.json "network_boards") */
+	std::unique_ptr<CommBoxes> comm_boxes;
+	bool	 networked = false;
 	/* [Display] MULTI_SCREEN for this game: MULTI_ONE with one board */
 	int	 multi_screen = 0;
 	/* The boards that have a monitor, left to right */
@@ -924,8 +1017,6 @@ public:
 	hl::Nvram nvram;
 	std::string nvram_path;
 	unsigned nvram_due;
-	/* The AICA's interrupt to its SH-4 */
-	void	 aica_line (bool raised);
 
 	explicit Naomi (hl::Game *game);
 
