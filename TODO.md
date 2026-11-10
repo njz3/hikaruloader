@@ -10,6 +10,11 @@ this file's history (git).
 GENERAL
 -------
 
+- Hikaru, hikcheck's C.R.T. TEST PAGE#2 (page 1, its colour bars and "31KHz", is right): a quad over the
+  whole picture shows the 64x64 font's top left corner (texhead 0, 12.4 texcoords 0-1E1, 0-161)
+  magnified some 20 times; the texhead committed after it (16x16, repeated, whole texels) would make
+  a 16-texel grid of those coordinates, but nothing in the list recalls it (its 0E8 headers have
+  bit 16 set, the glyphs' not; taking texhead 1 for that bit did not give a clean grid).
 - NAOMI, seen in a pass over the 259 sets (3000 frames, attract only):
   - a jump to code never loaded: vathlete (past its I/O boards, an invalid instruction at
     8C04F88C at frame 973);
