@@ -264,16 +264,35 @@ void drawDisplayTab()
     if (ImGui::Combo(tr("Several boards"), &cfg->multi_screen, multiLabels, IM_ARRAYSIZE(multiLabels)))
         changed = true;
     ImGui::BeginDisabled(cfg->multi_screen != hl::MULTI_WINDOWS);
+    const std::vector<hl::Window::DisplayChoice> monitors = hl::Window::display_choices();
     for (int i = 0; i < hl::MAX_SCREENS; i++)
     {
         char label[64];
         snprintf(label, sizeof(label), "%s %d", tr("Monitor of window"), i + 1);
-        if (ImGui::InputText(label, cfg->screen_display[i], sizeof(cfg->screen_display[i])))
-            changed = true;
+        char *value = cfg->screen_display[i];
+        const bool automatic = !value[0] || !strcasecmp(value, "AUTO");
+        const int found = automatic ? -1 : hl::Window::find_display(value);
+        std::string preview = automatic ? std::string(tr("AUTO (the next one)"))
+                              : found >= 0 && found < (int)monitors.size() ? monitors[found].label
+                                                                           : std::string(value) + " - " + tr("not connected");
+        if (ImGui::BeginCombo(label, preview.c_str()))
+        {
+            if (ImGui::Selectable(tr("AUTO (the next one)"), automatic))
+            {
+                snprintf(value, sizeof(cfg->screen_display[i]), "AUTO");
+                changed = true;
+            }
+            for (int m = 0; m < (int)monitors.size(); m++)
+                if (ImGui::Selectable(monitors[m].label.c_str(), m == found))
+                {
+                    snprintf(value, sizeof(cfg->screen_display[i]), "%s", monitors[m].value.c_str());
+                    changed = true;
+                }
+            ImGui::EndCombo();
+        }
     }
     ImGui::EndDisabled();
-    wrappedNote(tr("Read when a game starts. A monitor: the number Windows gives it, INDEX:<n> counting from 0, or a "
-                   "part of its name; AUTO for the next one. F8 shows the next board."));
+    wrappedNote(tr("Read when a game starts. F8 shows the next board."));
 
     ImGui::BeginDisabled(cfg->display_mode != hl::DISPLAY_WINDOW);
     if (ImGui::BeginCombo(tr("Window size"), windowSizeLabel(cfg->window_scale)))

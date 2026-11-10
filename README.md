@@ -275,9 +275,10 @@ effect at once.
 - *Several boards* (`MULTI_SCREEN`), for the NAOMI cabinets of several boards and the Hikaru's second video output (`WINDOWS`, in a window of its own when a game drives it), read when a game
   starts: `ONE` shows one board (F8 the next), `SIDE_BY_SIDE` puts the screens in a row in the
   window, for a very wide monitor, `WINDOWS` gives each a window. `SCREEN_ORDER` gives the boards
-  with a monitor, left to right (`2,1,3`). With `WINDOWS`, `SCREEN_1_DISPLAY` to `SCREEN_3_DISPLAY`
-  name each window's monitor: the number Windows gives it (`2`), `INDEX:1` counting from 0, or a
-  part of its name (`DELL`); the log lists the monitors at its start.
+  with a monitor, left to right (`2,1,3`). With `WINDOWS`, a list gives each window's monitor, by its name, its device,
+  its mode and its place on the desktop, or AUTO. In the file, `SCREEN_1_DISPLAY` to `SCREEN_3_DISPLAY`:
+  a part of its name (`DELL`), `INDEX:1` counting from 0, or the number of its `DISPLAY` device
+  (`2`); the log lists the monitors at its start.
 - *Display mode* (`DISPLAY_MODE`): window, full screen or borderless full
   screen (both at the desktop's resolution: no mode change), the frame at
   its shape in the middle; or *stretched* (`WINDOW_STRETCH`...), the frame

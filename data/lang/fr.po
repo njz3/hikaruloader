@@ -719,6 +719,18 @@ msgid "How the CPUs find their RAM and ROM: the page table at once, the regions 
 msgstr "Comment les processeurs trouvent leur RAM et leur ROM : la table de pages d'un coup, les régions parcourues l'une après l'autre (la première méthode), le fastmem à leurs propres adresses dans l'espace d'adressage du PC. La même machine dans tous les cas : le changement prend effet à l'image suivante."
 
 #: src/ui/ui_common.cpp
+msgid "Monitor of window"
+msgstr "Moniteur de la fenêtre"
+
+msgid "AUTO (the next one)"
+msgstr "AUTO (le suivant)"
+
+msgid "not connected"
+msgstr "non connecté"
+
+msgid "Read when a game starts. F8 shows the next board."
+msgstr "Lu au lancement d'un jeu. F8 montre la carte suivante."
+
 msgid "NAOMI SH-4 clock"
 msgstr "Horloge du SH-4 NAOMI"
 

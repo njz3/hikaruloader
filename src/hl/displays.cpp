@@ -107,6 +107,41 @@ Window::log_displays ()
 	}
 }
 
+std::vector<Window::DisplayChoice>
+Window::display_choices ()
+{
+	std::vector<DisplayChoice> list;
+	int count = SDL_GetNumVideoDisplays (), i;
+
+	for (i = 0; i < count; i++) {
+		const char *name = SDL_GetDisplayName (i);
+		SDL_DisplayMode mode = { 0, 0, 0, 0, NULL };
+		SDL_Rect r = { 0, 0, 0, 0 };
+		DisplayChoice choice;
+		char text[256];
+		int number = system_number (i);
+
+		SDL_GetCurrentDisplayMode (i, &mode);
+		SDL_GetDisplayBounds (i, &r);
+		if (number)
+			snprintf (text, sizeof (text), "%s - DISPLAY%d - %dx%d, %d Hz - at %d,%d", name ? name : "?",
+			          number, r.w, r.h, mode.refresh_rate, r.x, r.y);
+		else
+			snprintf (text, sizeof (text), "%s - %dx%d, %d Hz - at %d,%d", name ? name : "?",
+			          r.w, r.h, mode.refresh_rate, r.x, r.y);
+		choice.label = text;
+		/* Its name when that finds it: it follows the monitor around */
+		if (name && name[0] && !isdigit ((unsigned char) name[0]) && find_display (name) == i)
+			choice.value = name;
+		else {
+			snprintf (text, sizeof (text), "INDEX:%d", i);
+			choice.value = text;
+		}
+		list.push_back (choice);
+	}
+	return list;
+}
+
 int
 Window::find_display (const char *name)
 {

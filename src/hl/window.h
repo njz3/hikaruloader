@@ -50,6 +50,13 @@ public:
 	 * else a part of its name. -1: none, or AUTO. See displays.cpp */
 	static void		 log_displays ();
 	static int		 find_display (const char *name);
+	/* The monitors, in SDL's order, for a list to choose from: what to
+	 * write in the setting (their name, or INDEX:<n> for those a name does
+	 * not tell apart) and how to show them */
+	struct DisplayChoice {
+		std::string	 value, label;
+	};
+	static std::vector<DisplayChoice> display_choices ();
 	/* The window on that display, at x, y in a window (the desktop's
 	 * coordinates); display -1: in the middle of the first, as at start */
 	static void		 place (int display, int x, int y);
