@@ -531,11 +531,6 @@ Mie::sh4_read (uint8_t port)
 {
 	uint8_t val;
 
-	/* XXX hack (Valkyrie's): the BIOS (@0C00B860) waits for GPIO E's
-	 * bits 0-3, which it has just cleared, to read other than 0; what sets
-	 * them is not known. They toggle at each read */
-	if (port == 0x04)
-		io.gpio[4] ^= 0x0F;
 	val = port_read (port);
 	if (log_ports)
 		HL_PRINT ("mie: SH-4: in %02X = %02X", port, val);
