@@ -372,7 +372,6 @@ static void find_file(const char *name, const u8 *dir_sector, u32 &file_start, u
 				break;
 			fname[i] = c;
 		}
-		printf("file: [%s]\n", fname);fflush(stdout);
 		bool found = false;
 		if (name[0] == '*')
 		{
@@ -438,7 +437,6 @@ public:
 			}
 
 			Track t;
-			printf("track %d: [%s]\n", n, text); fflush(stdout);
 			uint32_t in_file =(pregap > 0 && pgtype[0] == 'V') ? (uint32_t) pregap : 0;
 
 			t.start = total + pregap;
@@ -553,14 +551,12 @@ GdCart::load (hl::Machine *machine, hl::Game *game, const uint8_t *pic, uint32_t
 
 	/* The primary volume descriptor, the path table: at the high-density
 	 * area's start when the disc has one */
-	printf("name %s\n",name);fflush(stdout);
 	on_cd = !sector (45000 + 16, buffer) || memcmp (buffer + 1, "CD001", 5) != 0;
 	if (on_cd && !sector (16, buffer))
 		return NULL;
 	uint32_t table = buffer[0x8C] | (buffer[0x8D] << 8) | (buffer[0x8E] << 16) | ((uint32_t) buffer[0x8F] << 24);
 	if (!sector (table, buffer))
 		return NULL;
-	printf("oncd %d table %u\n", on_cd, table); for (int z = 0; z < 96; z++) printf("%02x ", buffer[z]); printf("\n"); fflush(stdout);
 	if (!on_cd) {
 		uint32_t d = buffer[2] | (buffer[3] << 8) | (buffer[4] << 16) | ((uint32_t) buffer[5] << 24);
 
