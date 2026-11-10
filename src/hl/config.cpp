@@ -189,6 +189,7 @@ Config::set_defaults ()
 	cfg->dimm_map[0] = 0;
 	cfg->dimm_port_offset = 0;
 	cfg->dimm_listen = false;
+	strcpy (cfg->dimm_service_ip, "127.0.0.1");
 	/* Off, as in MAME, Supermodel and Flycast: a server on the PC's
 	 * addresses; their ports */
 	cfg->outputs_network = false;
@@ -498,6 +499,8 @@ Config::set_value (const char *section, const char *key, const char *value)
 			cfg->dimm_port_offset = MAX2 (0, MIN2 (60000, atoi (value)));
 		else if (!strcasecmp (key, "DIMM_LISTEN"))
 			cfg->dimm_listen = parse_bool (value);
+		else if (!strcasecmp (key, "DIMM_SERVICE_IP"))
+			snprintf (cfg->dimm_service_ip, sizeof (cfg->dimm_service_ip), "%s", value);
 	} else if (!strcasecmp (section, "Outputs")) {
 		if (!strcasecmp (key, "NETWORK"))
 			cfg->outputs_network = parse_bool (value);
@@ -1030,6 +1033,10 @@ Config::save () const
 	         "# other board is on another PC; else they are on 127.0.0.1 alone. Default: %s\n",
 	         bool_name (def.dimm_listen));
 	fprintf (fp, "DIMM_LISTEN = %s\n", bool_name (cfg->dimm_listen));
+	fprintf (fp,
+	         "\n# DIMM_LISTEN on, the address of the board's own TCP service (port 10703, plus\n"
+	         "# DIMM_PORT_OFFSET): 0.0.0.0 for every interface. Default: %s\n", def.dimm_service_ip);
+	fprintf (fp, "DIMM_SERVICE_IP = %s\n", cfg->dimm_service_ip);
 
 	fprintf (fp, "\n[Outputs]\n");
 	fprintf (fp,

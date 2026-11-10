@@ -46,6 +46,16 @@
  * where an address the game uses is, and DIMM_PORT_OFFSET moves the ports
  * this board binds. An address the map does not list is not reachable, no
  * host name is looked up: nothing leaves the PC unless the user asked for it.
+ *
+ * The board has a TCP service of its own, on port 10703, for the machines that
+ * put a game on it or watch it: [Network] DIMM_LISTEN opens it, on the address
+ * DIMM_SERVICE_IP says (127.0.0.1 by default). A packet is a 32-bit header
+ * (little endian) and what it announces: opcode, flags, 16 bits of length.
+ *
+ *   01 nothing       04 write the DIMM      05 read the DIMM
+ *   07 host mode     09 end                 0A restart (not done)
+ *   10 peek          16 host control read   17 time limit
+ *   18 information   19 set information     7F key code (ignored)
  */
 
 /* Before windows.h, which the other headers may bring */
@@ -181,6 +191,7 @@ struct DimmNet::Sock {
 	bool	 stream = false;
 	int	 error = 0;
 	uint32_t connect_ms = 0, send_ms = 0, recv_ms = 0;
+	bool	 smcp = false;	/* connected to the cabinet's motion PC, in here */
 
 	bool	 connecting = false, receiving = false, sending = false, accepting = false;
 	uint16_t connect_ret = 0, recv_ret = 0, send_ret = 0, accept_ret = 0;
@@ -202,7 +213,8 @@ struct DimmNet::Sock {
 	}
 };
 
-DimmNet::DimmNet (uint8_t *memory, uint32_t size, uint32_t buffers_) :
+DimmNet::DimmNet (uint8_t *memory, uint32_t size, uint32_t buffers_, Host *host_,
+                  uint32_t file_size, uint32_t file_crc, bool motion_pc) :
 	mask (size - 1),
 	buffers (buffers_),
 	mem (memory),
@@ -213,7 +225,13 @@ DimmNet::DimmNet (uint8_t *memory, uint32_t size, uint32_t buffers_) :
 	global_error (0),
 	now_us (0),
 	next_socket (0),
-	notes (0)
+	notes (0),
+	host (host_),
+	info_size (file_size),
+	info_crc (file_crc),
+	service_fd (NO_SOCKET),
+	service_us (0),
+	control_state (CONTROL_NONE)
 {
 	const hl::Config *cfg = hl::Config::get ();
 	uint32_t ip = 0;
@@ -231,11 +249,16 @@ DimmNet::DimmNet (uint8_t *memory, uint32_t size, uint32_t buffers_) :
 	port_offset = cfg->dimm_port_offset;
 	listening = cfg->dimm_listen;
 	parse_map (cfg->dimm_map);
+	if (cfg->dimm_listen)
+		open_service (cfg->dimm_service_ip);
+	if (motion_pc)
+		smcp.reset (new SmcpPeer ());
 }
 
 DimmNet::~DimmNet ()
 {
 	close_all ();
+	close_service ();
 	for (Sock *s : socks)
 		delete s;
 #ifdef _WIN32
@@ -248,7 +271,10 @@ DimmNet::close_all ()
 {
 	for (Sock *s : socks)
 		s->close ();
+	if (smcp)
+		smcp->reset ();
 	sel = Select ();
+	control_state = CONTROL_NONE;
 }
 
 /*
@@ -488,6 +514,13 @@ DimmNet::start_connect (Sock *s, uint32_t index, uint16_t ret, const uint32_t *a
 
 	game_address (a[2], ip, port);
 	targets (ip, port, where);
+	if (where.empty () && smcp && port == 2000) {
+		NOTE ("connect socket %u to the motion PC", index);
+		smcp->reset ();
+		s->smcp = true;
+		done (r, ret, false, (uint16_t) index, 0);
+		return true;
+	}
 	if (where.empty ()) {
 		NOTE ("connect to %u.%u.%u.%u:%u: not in DIMM_MAP", ip >> 24, (ip >> 16) & 255, (ip >> 8) & 255, ip & 255, port);
 		fail (s, VX_ENETUNREACH);
@@ -556,6 +589,14 @@ DimmNet::try_recv (Sock *s, uint32_t index, Reply &r)
 	uint8_t *p = ptr (s->recv_at, len);
 	int n;
 
+	if (s->smcp) {
+		n = (int) smcp->output (p, len);
+		if (!n)
+			return false;
+		s->receiving = false;
+		done (r, s->recv_ret, false, (uint16_t) index, (uint32_t) n);
+		return true;
+	}
 	if (s->recv_from) {
 		sockaddr_in from {};
 		socklen_t size = sizeof (from);
@@ -596,6 +637,14 @@ DimmNet::try_send (Sock *s, uint32_t index, Reply &r)
 {
 	uint32_t len = s->send_len;
 	const uint8_t *p = ptr (s->send_at, len);
+
+	if (s->smcp) {
+		smcp->input (p, len);
+		s->sending = false;
+		done (r, s->send_ret, false, (uint16_t) index, len);
+		return true;
+	}
+
 	int n = send (s->fd, (const char *) p, (int) len, 0);
 
 	if (n >= 0) {
@@ -674,7 +723,7 @@ DimmNet::check_select (Reply &r, bool timed_out)
 {
 	const uint32_t sets[3] = { sel.in, sel.out, sel.except };
 	fd_set host[3];
-	bool any = false;
+	bool any = false, peer_ready = false, peer_asked = false;
 	uintptr_t top = 0;
 	uint32_t i, k, total = 0;
 
@@ -685,6 +734,11 @@ DimmNet::check_select (Reply &r, bool timed_out)
 			continue;
 		for (k = 0; k < 3; k++) {
 			if (sets[k] && (mem[(sets[k] + i / 8) & mask] & (1 << (i & 7)))) {
+				if (socks[i - 1]->smcp) {
+					peer_asked = true;
+					peer_ready |= (k == 0 && smcp->pending ()) || k == 1;
+					continue;
+				}
 				FD_SET (socks[i - 1]->fd, &host[k]);
 				top = std::max (top, socks[i - 1]->fd);
 				any = true;
@@ -705,7 +759,7 @@ DimmNet::check_select (Reply &r, bool timed_out)
 			return true;
 		}
 	}
-	if (rc == 0 && !timed_out && (any || sel.deadline))
+	if (rc == 0 && !peer_ready && !timed_out && (any || peer_asked || sel.deadline))
 		return false;
 
 	uint8_t out[3][32];
@@ -716,7 +770,8 @@ DimmNet::check_select (Reply &r, bool timed_out)
 			continue;
 		for (k = 0; k < 3; k++) {
 			if (sets[k] && (mem[(sets[k] + i / 8) & mask] & (1 << (i & 7))) &&
-			    FD_ISSET (socks[i - 1]->fd, &host[k])) {
+			    (socks[i - 1]->smcp ? (k == 0 && smcp->pending ()) || k == 1
+			                        : FD_ISSET (socks[i - 1]->fd, &host[k]) != 0)) {
 				out[k][i / 8] |= (uint8_t) (1 << (i & 7));
 				total++;
 			}
@@ -860,6 +915,8 @@ DimmNet::command (uint16_t ret, uint8_t buffer_index, Reply &r)
 		return true;
 	}
 	case 3:		/* close */
+		if (s->smcp)
+			smcp->reset ();
 		s->close ();
 		done (r, ret, false, (uint16_t) index, 0);
 		return true;
@@ -1025,7 +1082,7 @@ DimmNet::poll_sockets (Reply &r)
 	FD_ZERO (&out);
 	FD_ZERO (&except);
 	for (const Sock *s : socks) {
-		if (s->fd == NO_SOCKET || !s->busy ())
+		if (s->fd == NO_SOCKET || !s->busy () || s->smcp)
 			continue;
 		if (s->connecting || s->sending)
 			FD_SET (s->fd, &out);
@@ -1053,8 +1110,8 @@ DimmNet::poll_sockets (Reply &r)
 			continue;
 		next_socket = (unsigned) (j + 1);
 
-		const bool ready_in = FD_ISSET (s->fd, &in) || FD_ISSET (s->fd, &except);
-		const bool ready_out = FD_ISSET (s->fd, &out) || FD_ISSET (s->fd, &except);
+		const bool ready_in = s->smcp ? smcp->pending () : FD_ISSET (s->fd, &in) || FD_ISSET (s->fd, &except);
+		const bool ready_out = s->smcp || FD_ISSET (s->fd, &out) || FD_ISSET (s->fd, &except);
 
 		if (s->connecting) {
 			bool ended = false;
@@ -1122,7 +1179,336 @@ bool
 DimmNet::poll (uint64_t elapsed_us, Reply &r)
 {
 	now_us += elapsed_us;
+	if (smcp)
+		smcp->tick (elapsed_us);
 	return poll_sockets (r);
+}
+
+/* What one machine connected to the service has going */
+struct DimmNet::Client {
+	uintptr_t fd = NO_SOCKET;
+	std::vector<uint8_t> in, out;
+	size_t	 sent = 0;
+	uint32_t dl_addr = 0, dl_left = 0, dl_seq = 1;
+	bool	 control = false;	/* waits for the NAOMI's control word */
+	bool	 ended = false;
+};
+
+static uint16_t
+get16 (const uint8_t *p)
+{
+	return (uint16_t) (p[0] | (p[1] << 8));
+}
+
+static uint32_t
+get32 (const uint8_t *p)
+{
+	return p[0] | ((uint32_t) p[1] << 8) | ((uint32_t) p[2] << 16) | ((uint32_t) p[3] << 24);
+}
+
+static void
+push16 (std::vector<uint8_t> &out, uint32_t v)
+{
+	out.push_back ((uint8_t) v);
+	out.push_back ((uint8_t) (v >> 8));
+}
+
+static void
+push32 (std::vector<uint8_t> &out, uint32_t v)
+{
+	push16 (out, v);
+	push16 (out, v >> 16);
+}
+
+void
+DimmNet::open_service (const char *address)
+{
+	const unsigned port = (unsigned) (10703 + port_offset);
+	uint32_t ip;
+
+	if (!parse_ip (address, ip)) {
+		HL_ERROR ("naomi: [Network] DIMM_SERVICE_IP '%s' is not an address", address);
+		return;
+	}
+
+	uintptr_t fd = (uintptr_t) socket (AF_INET, SOCK_STREAM, 0);
+
+	if (fd == NO_SOCKET)
+		return;
+#ifdef _WIN32
+	u_long on = 1;
+#else
+	int on = 1;
+
+	setsockopt (fd, SOL_SOCKET, SO_REUSEADDR, (const char *) &on, sizeof (on));
+#endif
+	ioctlsocket (fd, FIONBIO, &on);
+
+	sockaddr_in at {};
+
+	at.sin_family = AF_INET;
+	at.sin_addr.s_addr = htonl (ip);
+	at.sin_port = htons ((uint16_t) port);
+	if (bind (fd, (const sockaddr *) &at, sizeof (at)) < 0 || listen (fd, 4) < 0) {
+		HL_ERROR ("naomi: Net DIMM: the service cannot listen on %s:%u", address, port);
+		closesocket (fd);
+		return;
+	}
+	service_fd = fd;
+	HL_PRINT ("naomi: Net DIMM: service on %s:%u", address, port);
+}
+
+void
+DimmNet::close_service ()
+{
+	for (Client *c : clients) {
+		closesocket (c->fd);
+		delete c;
+	}
+	clients.clear ();
+	if (service_fd != NO_SOCKET)
+		closesocket (service_fd);
+	service_fd = NO_SOCKET;
+}
+
+void
+DimmNet::send_packet (Client *c, uint8_t opcode, uint8_t flags, const std::vector<uint8_t> &payload)
+{
+	push16 (c->out, (uint32_t) payload.size ());
+	c->out.push_back (flags);
+	c->out.push_back (opcode);
+	c->out.insert (c->out.end (), payload.begin (), payload.end ());
+}
+
+/* As much of a read of the DIMM as the connection takes now */
+void
+DimmNet::pump_download (Client *c)
+{
+	while (c->dl_left && c->out.size () - c->sent < 64 * 1024) {
+		uint32_t chunk = std::min (c->dl_left, (uint32_t) 8192);
+		const uint8_t *from = ptr (c->dl_addr, chunk);
+		std::vector<uint8_t> p;
+
+		push32 (p, c->dl_seq++);
+		push32 (p, c->dl_addr);
+		push16 (p, 0);
+		p.insert (p.end (), from, from + chunk);
+		send_packet (c, 4, chunk < c->dl_left ? 0x80 : 0x81, p);
+		c->dl_addr += chunk;
+		c->dl_left -= chunk;
+	}
+}
+
+void
+DimmNet::serve_packet (Client *c, const uint8_t *packet, uint32_t size)
+{
+	const uint8_t opcode = packet[3];
+	const uint8_t *data = packet + 4;
+	const uint32_t len = size - 4;
+	std::vector<uint8_t> p;
+
+	switch (opcode) {
+	case 0x01:	/* nothing */
+		break;
+	case 0x04:	/* write the DIMM: sequence, address, 2 bytes, the data */
+		if (len > 10) {
+			uint32_t n = len - 10;
+			uint8_t *to = ptr (get32 (data + 4), n);
+
+			memcpy (to, data + 10, n);
+		}
+		break;
+	case 0x05: {	/* read the DIMM */
+		if (len < 8)
+			break;
+
+		uint32_t addr = get32 (data), count = get32 (data + 4), value = 0;
+		const uint32_t low = addr & 0x3FFFFFFF;
+
+		/* The state of the check of the loaded data, and the game's size */
+		if (low == 0x3FFEFFE0 || low == 0x3FFF0004) {
+			value = low == 0x3FFEFFE0 ? 2 : info_size;
+			push32 (p, 1);
+			push32 (p, addr);
+			push16 (p, 0);
+			push32 (p, value);
+			send_packet (c, 4, 0x81, p);
+			break;
+		}
+		c->dl_addr = addr;
+		c->dl_left = count;
+		c->dl_seq = 1;
+		pump_download (c);
+		break;
+	}
+	case 0x07:	/* host mode: the bits set, the bits cleared */
+		if (len < 2)
+			break;
+		push32 (p, data[0] & (uint32_t) ~data[1]);
+		send_packet (c, 7, 0, p);
+		break;
+	case 0x09:
+		c->ended = true;
+		break;
+	case 0x0A:
+		NOTE ("service: restart asked, not done");
+		break;
+	case 0x10: {	/* peek */
+		if (len < 8)
+			break;
+
+		const uint32_t kind = get32 (data + 4);
+
+		push32 (p, 0);
+		push32 (p, host->bus_read (get32 (data), kind == 1 ? 1 : kind == 2 ? 2 : 4));
+		send_packet (c, 0x10, 0, p);
+		break;
+	}
+	case 0x16:	/* the host control word: the NAOMI's answer later */
+		c->control = true;
+		if (control_state == CONTROL_NONE)
+			control_state = CONTROL_WANTED;
+		break;
+	case 0x17:	/* the time limit */
+		NOTE ("service: time limit %u", len >= 4 ? get32 (data) : 0);
+		break;
+	case 0x18: {	/* the board and the game */
+		const uint32_t mb = (mask + 1) >> 20;
+
+		push16 (p, 0xC);
+		push16 (p, 0x317);
+		push16 (p, mb - 16);
+		push16 (p, mb);
+		push32 (p, info_crc);
+		send_packet (c, 0x18, 0, p);
+		break;
+	}
+	case 0x19:	/* what the machine says it has loaded: crc, size */
+		if (len >= 8) {
+			info_crc = get32 (data);
+			info_size = get32 (data + 4);
+			NOTE ("service: set_information %08X, %u bytes", info_crc, info_size);
+		}
+		break;
+	case 0x7F:	/* the key of the data: already decrypted here */
+		break;
+	default:
+		NOTE ("service: opcode %02X not known", opcode);
+		break;
+	}
+}
+
+void
+DimmNet::control_answer (uint32_t address)
+{
+	std::vector<uint8_t> p;
+
+	push32 (p, 0);
+	push32 (p, address);
+	for (Client *c : clients) {
+		if (c->control) {
+			c->control = false;
+			send_packet (c, 0x10, 0x81, p);
+		}
+	}
+	control_state = CONTROL_NONE;
+}
+
+/* What is waiting to leave; false: the connection is gone */
+bool
+DimmNet::flush_client (Client *c)
+{
+	while (c->sent < c->out.size ()) {
+		int n = send (c->fd, (const char *) c->out.data () + c->sent, (int) (c->out.size () - c->sent), 0);
+
+		if (n <= 0)
+			return n < 0 && pending_error (last_error ());
+		c->sent += (size_t) n;
+	}
+	c->out.clear ();
+	c->sent = 0;
+	return true;
+}
+
+void
+DimmNet::service (uint64_t elapsed_us)
+{
+	if (service_fd == NO_SOCKET)
+		return;
+	service_us += elapsed_us;
+	if (service_us < 1000)
+		return;
+	service_us = 0;
+
+	uintptr_t fd = (uintptr_t) accept (service_fd, NULL, NULL);
+
+	if (fd != NO_SOCKET) {
+		if (clients.size () >= 4) {
+			closesocket (fd);
+		} else {
+#ifdef _WIN32
+			u_long on = 1;
+#else
+			int on = 1;
+#endif
+			const int nodelay = 1;
+			Client *c = new Client ();
+
+			ioctlsocket (fd, FIONBIO, &on);
+			setsockopt (fd, IPPROTO_TCP, TCP_NODELAY, (const char *) &nodelay, sizeof (nodelay));
+			c->fd = fd;
+			clients.push_back (c);
+			NOTE ("service: a client connected");
+		}
+	}
+
+	for (size_t i = 0; i < clients.size (); ) {
+		Client *c = clients[i];
+		bool alive = true;
+
+		while (alive && !c->ended) {
+			uint8_t buffer[4096];
+			int n = recv (c->fd, (char *) buffer, sizeof (buffer), 0);
+
+			if (n == 0) {
+				alive = false;
+			} else if (n < 0) {
+				alive = pending_error (last_error ());
+				break;
+			} else {
+				c->in.insert (c->in.end (), buffer, buffer + n);
+			}
+			/* Whole packets out of what came in */
+			size_t at = 0;
+
+			while (!c->ended && c->in.size () - at >= 4) {
+				const uint32_t size = 4 + (uint32_t) get16 (c->in.data () + at);
+
+				if (c->in.size () - at < size)
+					break;
+				serve_packet (c, c->in.data () + at, size);
+				at += size;
+			}
+			c->in.erase (c->in.begin (), c->in.begin () + (std::ptrdiff_t) at);
+		}
+		pump_download (c);
+		alive = flush_client (c) && alive;
+		if (!alive || (c->ended && c->out.empty ())) {
+			closesocket (c->fd);
+			delete c;
+			clients.erase (clients.begin () + (std::ptrdiff_t) i);
+			continue;
+		}
+		i++;
+	}
+	if (control_state != CONTROL_NONE) {
+		bool waiting = false;
+
+		for (const Client *c : clients)
+			waiting |= c->control;
+		if (!waiting)
+			control_state = CONTROL_NONE;
+	}
 }
 
 } /* namespace naomi */

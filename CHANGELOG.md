@@ -5,6 +5,16 @@ What each version brings, for those who play. How the versions are numbered
 and released: [DEVELOPMENT.md](DEVELOPMENT.md), "Versions and releases".
 
 
+Next version
+------------
+
+- Club Kart for Cycraft and Initial D Ver. 3 Cycraft Edition start: their boards
+  are Net DIMMs and the cabinet's motion PC is answered by Hikaruloader.
+- The Net DIMM's TCP service (port 10703), on `DIMM_LISTEN`: reading and
+  writing the DIMM, peeking at the NAOMI, the host's control word. It listens
+  on `127.0.0.1` unless `DIMM_SERVICE_IP` says otherwise.
+
+
 0.7.0 (2026-11-10)
 ------------------
 

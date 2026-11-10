@@ -307,6 +307,7 @@ Board::init ()
 {
 	hl::Buffer *bios_rom = game->section_data ("bios");
 	hl::Buffer *rom_board = game->section_data ("rom_board");
+	GdCart::File gd_file {};
 	hl::Buffer *gd_pic = game->section_data ("pic");
 	hl::Buffer *mie_rom = game->section_data ("mie");
 	hl::Buffer *main_rom = game->section_data ("main_x76f100");
@@ -320,7 +321,7 @@ Board::init ()
 	has_comm = !is_atomiswave && (index == 0 || machine->networked);
 	if (game->gdrom[0] && !rom_board && has_cart)
 		rom_board = GdCart::load (machine, game, gd_pic ? (const uint8_t *) gd_pic->ptr (0) : NULL,
-		                          gd_pic ? gd_pic->size () : 0);
+		                          gd_pic ? gd_pic->size () : 0, gd_file);
 	rom_image = rom_board;
 	/* The BIOS refuses a game not for its region: one the game's header
 	 * lists (byte 428; M1 and M4 headers are encrypted) */
@@ -363,7 +364,7 @@ Board::init ()
 		if (is_atomiswave)
 			cart.reset (new AwCart (rom_board, (uint8_t) key));
 		else if (game->gdrom[0])
-			cart.reset (gd = new GdCart (this, rom_board));
+			cart.reset (gd = new GdCart (this, rom_board, gd_file));
 		else if (has_cart)
 			cart.reset (new Cart (rom_board, type, key, game->id, pic ? (const uint8_t *) pic->ptr (0) : NULL));
 		else {
@@ -687,7 +688,8 @@ Board::setup_servo ()
 		((Sh4 *) sh)->scif_pipe = sanwa.get ();
 	}
 	/* The first Club Kart's card reader */
-	if (!strncmp (game->name, "clubkrt", 7) || !strcmp (game->name, "clubk2k3")) {
+	if (!strncmp (game->name, "clubkrt", 7) || !strcmp (game->name, "clubk2k3") ||
+	    !strncmp (game->name, "clubkcyc", 8)) {
 		card.reset (new ClubKartCard (game->name));
 		((Sh4 *) sh)->scif_pipe = card.get ();
 	}

@@ -55,6 +55,7 @@
 #include <vector>
 
 #include <libchdr/chd.h>
+#include <miniz.h>
 
 #include "hl/config.h"
 #include "mach/naomi/naomi.h"
@@ -518,7 +519,7 @@ find_chd (hl::Game *game, const char *name)
 }
 
 hl::Buffer *
-GdCart::load (hl::Machine *machine, hl::Game *game, const uint8_t *pic, uint32_t pic_size)
+GdCart::load (hl::Machine *machine, hl::Game *game, const uint8_t *pic, uint32_t pic_size, File &file)
 {
 	char name[128];
 	uint64_t key = 0;
@@ -638,7 +639,11 @@ GdCart::load (hl::Machine *machine, hl::Game *game, const uint8_t *pic, uint32_t
 
 	u32 subkeys[32];
 	uint8_t *to = (uint8_t *) dimm->ptr (0);
+	/* What the board's TCP service reports: the disc's bytes */
+	const bool with_crc = game->net_dimm && hl::Config::get ()->dimm_listen;
+	mz_ulong crc = MZ_CRC32_INIT;
 
+	file.size = file_size;
 	des_generate_subkeys (rev64 (key), subkeys);
 	for (i = 0; i < rounded / 2048; i++) {
 		if (!sector (file_start + i, to + i * 2048)) {
@@ -647,13 +652,16 @@ GdCart::load (hl::Machine *machine, hl::Game *game, const uint8_t *pic, uint32_t
 		}
 		uint64_t *block = (uint64_t *) (to + i * 2048);
 
+		if (with_crc)
+			crc = mz_crc32 (crc, to + i * 2048, MIN2 (2048u, file_size - i * 2048));
 		for (unsigned k = 0; k < 256; k++)
 			block[k] = des_encrypt_decrypt<true> (block[k], subkeys);
 	}
+	file.crc = ~(uint32_t) crc;
 	return dimm;
 }
 
-GdCart::GdCart (Board *board_, hl::Buffer *dimm) :
+GdCart::GdCart (Board *board_, hl::Buffer *dimm, const File &file) :
 	Cart (dimm, Cart::TYPE_ROM, 0, 0, NULL),
 	board (board_),
 	bytes (dimm->size ()),
@@ -663,7 +671,7 @@ GdCart::GdCart (Board *board_, hl::Buffer *dimm) :
 {
 	memset (&d, 0, sizeof (d));
 	if (board->game->net_dimm)
-		net.reset (new DimmNet (memory, bytes, bytes - 16 * MB));
+		net.reset (new DimmNet (memory, bytes, bytes - 16 * MB, this, file.size, file.crc, board->game->motion_pc));
 }
 
 void
@@ -678,6 +686,15 @@ GdCart::peek (uint32_t addr)
 	uint32_t val = 0;
 
 	board->mmap->get (4, addr, &val);
+	return val;
+}
+
+uint32_t
+GdCart::bus_read (uint32_t addr, unsigned size)
+{
+	uint32_t val = 0;
+
+	board->mmap->get (size, addr, &val);
 	return val;
 }
 
@@ -715,6 +732,9 @@ GdCart::command ()
 		reply (d.command & 0x7E00, true, 0, 0xFFFFFFFF);
 		return;
 	}
+	/* The NAOMI's answer to the board's control read */
+	if (cmd == 1 && net)
+		net->control_answer (((uint32_t) d.parameterh << 16) | d.parameterl);
 	if (cmd == 15) {
 		/* The firmware's start-up: one DIMM of the file's size, a
 		 * GD-ROM connected, firmware 1.02, then the base address */
@@ -833,8 +853,18 @@ GdCart::poll (unsigned lines)
 	uint64_t us = lines_ns / 1000;
 
 	lines_ns %= 1000;
+	net->service (us);
 	if (d.irq || mailbox_wait)
 		return;
+
+	if (net->control_wanted ()) {
+		d.command = 0x8200;
+		d.offset = 0;
+		d.parameterl = d.parameterh = 0;
+		interrupt (true);
+		net->control_sent ();
+		return;
+	}
 
 	DimmNet::Reply r;
 

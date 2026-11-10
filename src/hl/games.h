@@ -114,6 +114,8 @@ public:
 	char gdrom[32] = "";
 	/* Its DIMM board is a Net DIMM (games.json "net_dimm") */
 	bool net_dimm = false;
+	/* A motion cabinet whose PC the Net DIMM talks to (games.json "motion_pc") */
+	bool motion_pc = false;
 	/* The boards of its cabinet, linked (multiboard); 0: one */
 	unsigned boards = 0;
 	/* Complete systems on a ring of communication boards in one cabinet

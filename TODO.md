@@ -16,8 +16,7 @@ GENERAL
     dygolf, vathlete, wwfroyal, shootopl, mj1, hopper, shorse*;
   - M4: CAUTION 51 (illvelo, mamonoro), ERROR 02 still (mushi2k61, mushi2k62, sl2007);
   - Dragon Treasure: its own ERROR 13, G2 I/O trouble;
-  - Cycraft cabinets (clubkcyc*, inidv3c*): they wait for the motion cabinet on the
-    network; black at frame 3000 and not examined: azumanga, quizqgd, samsptk, vtennis,
+  - black at frame 3000 and not examined: azumanga, quizqgd, samsptk, vtennis,
     vtennisg, deathcox, ggram2, spawn, mvsc2, hmgeo.
 - NAOMI: the translucent modifier volumes change no picture in the attracts
   of Virtua Striker 3, Club Kart, The King of Route 66 and Airline Pilots:
@@ -26,9 +25,11 @@ GENERAL
 - Net DIMM games: their network commands answer, Virtua Fighter 4 reaches
   its network check. Not yet playing: Dragon Treasure stops on `G2 I/O
   TROUBLE` (13), Mahjong MJ on its I/O board, World Club Champion Football
-  waits for its server (192.168.102.1, the terminal's); the DIMM firmware
-  update discs read no firmware version. The DIMM's TCP service on port
-  10703 (set_information, peek, host control) is not there.
+  waits for its server (192.168.102.1 port 59200, its "control process",
+  which speaks first and is not in any set: what it sends is not known); the
+  DIMM firmware update discs read no firmware version.
+- Cycraft cabinets: the motion PC is answered, its motion data ignored (nothing
+  moves); no game played to the end with it yet.
 - An event-driven scheduler. The machine runs a line at a time (544 a
   frame): each SH-4 a line's cycles, then the MEMCTL's DMA, the GPU, the
   MIE and the AICAs.

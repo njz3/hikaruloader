@@ -23,8 +23,11 @@
 #define HL_NAOMI_NETDIMM_H
 
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <vector>
+
+#include "mach/naomi/naomi-smcp.h"
 
 namespace naomi {
 
@@ -43,9 +46,19 @@ public:
 		bool	 failed;
 	};
 
+	/* The NAOMI, as the board's TCP service reads it */
+	class Host {
+	public:
+		virtual ~Host () {}
+		/* A read of 1, 2 or 4 bytes on the NAOMI's bus */
+		virtual uint32_t bus_read (uint32_t addr, unsigned bytes) = 0;
+	};
+
 	/* memory: the DIMM's, size bytes (a power of 2); buffers: where its
-	 * 16 MB of command buffers begin */
-	DimmNet (uint8_t *memory, uint32_t size, uint32_t buffers);
+	 * 16 MB of command buffers begin; file_size and file_crc: the game's
+	 * file, as the TCP service reports it */
+	DimmNet (uint8_t *memory, uint32_t size, uint32_t buffers, Host *host,
+	         uint32_t file_size, uint32_t file_crc, bool motion_pc);
 	~DimmNet ();
 
 	/* The board's address, as [Network] gives it */
@@ -58,8 +71,19 @@ public:
 	bool	 poll (uint64_t elapsed_us, Reply &reply);
 	void	 close_all ();
 
+	/* The board's own TCP service (port 10703), [Network] DIMM_LISTEN on:
+	 * the time gone by */
+	void	 service (uint64_t elapsed_us);
+	/* A client waits for the NAOMI's control word: the mailbox's command
+	 * is to be sent, then the NAOMI answers it */
+	bool	 control_wanted () const { return control_state == CONTROL_WANTED; }
+	void	 control_sent () { control_state = CONTROL_SENT; }
+	void	 control_answer (uint32_t address);
+
 private:
 	struct Sock;
+	struct Client;
+	enum { CONTROL_NONE, CONTROL_WANTED, CONTROL_SENT };
 	struct Peer {
 		std::string name;	/* a host name, "": an address */
 		uint32_t ip;		/* the address the game uses, 0 any */
@@ -104,6 +128,13 @@ private:
 	bool	 poll_sockets (Reply &r);
 	uint32_t add_socket (uintptr_t fd, bool stream);
 
+	void	 open_service (const char *address);
+	void	 close_service ();
+	void	 serve_packet (Client *c, const uint8_t *packet, uint32_t size);
+	void	 send_packet (Client *c, uint8_t opcode, uint8_t flags, const std::vector<uint8_t> &payload);
+	void	 pump_download (Client *c);
+	bool	 flush_client (Client *c);
+
 	uint32_t mask, buffers;
 	uint8_t	*mem;
 	uint32_t own_ip;
@@ -116,6 +147,16 @@ private:
 	uint64_t now_us;
 	unsigned next_socket;
 	unsigned notes;		/* what the log has been told so far */
+
+	Host	*host;
+	uint32_t info_size, info_crc;	/* the file, or what set_information said */
+	uintptr_t service_fd;
+	std::vector<Client *> clients;
+	uint64_t service_us;
+	int	 control_state;
+
+	/* A Cycraft cabinet's PC, for the games that have one */
+	std::unique_ptr<SmcpPeer> smcp;
 };
 
 } /* namespace naomi */
