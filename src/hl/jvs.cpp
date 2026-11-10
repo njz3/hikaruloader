@@ -1095,8 +1095,11 @@ uint16_t
 SegaIoBoard13844::shifter_bits ()
 {
 	static const uint16_t bits[5] = { 0x0000, 0x2800, 0x1800, 0x2000, 0x1000 };
+	/* As the INPUT TEST reads them: low on down, high on up, reverse
+	 * on down and left */
+	static const uint16_t three[5] = { 0x0000, 0x1000, 0x2000, 0x1800, 0x0000 };
 
-	return bits[Gearbox::get ().gear (mach->frame) % 5];
+	return (three_position_lever ? three : bits)[Gearbox::get ().gear (mach->frame) % 5];
 }
 
 /* NASCAR Arcade's view change button: player 1's down, as its INPUT TEST's

@@ -409,7 +409,10 @@ Board::init ()
 	if (!strncmp (game->name, "f355", 4) || !strncmp (game->name, "18wheel", 7)) {
 		if (!index)
 			drive_board = new hl::DriveBoard (machine, new hl::DriveBoardF355 (machine, game->name[0] == '1'));
-		io_board = new hl::SegaIoBoard13844 (machine, jvs, drive_board);
+		hl::SegaIoBoard13844 *board13844 = new hl::SegaIoBoard13844 (machine, jvs, drive_board);
+
+		board13844->three_position_lever = game->name[0] == '1';
+		io_board = board13844;
 	}
 	/* The other boards of a machine of whole systems have no I/O board */
 	else if (!index || !machine->networked)

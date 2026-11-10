@@ -719,6 +719,12 @@ msgid "How the CPUs find their RAM and ROM: the page table at once, the regions 
 msgstr "Comment les processeurs trouvent leur RAM et leur ROM : la table de pages d'un coup, les régions parcourues l'une après l'autre (la première méthode), le fastmem à leurs propres adresses dans l'espace d'adressage du PC. La même machine dans tous les cas : le changement prend effet à l'image suivante."
 
 #: src/ui/ui_common.cpp
+msgid "NAOMI SH-4 clock"
+msgstr "Horloge du SH-4 NAOMI"
+
+msgid "The SH-4 clock of the NAOMI, NAOMI 2 and Atomiswave: their games unpack their pictures by the time each frame leaves, so 200 MHz, the board's, by default: slower, pictures show before they are complete."
+msgstr "L'horloge du SH-4 des NAOMI, NAOMI 2 et Atomiswave : leurs jeux décompressent leurs images dans le temps que laisse chaque image, d'où 200 MHz, celle de la carte, par défaut ; plus lent, des images s'affichent avant d'être complètes."
+
 msgid "SH-4 clock"
 msgstr "Horloge des SH-4"
 

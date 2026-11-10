@@ -294,6 +294,9 @@ public:
 	DriveBoard *drive;
 	/* Outputs 9 to 14, in bits 7 to 2 */
 	uint8_t	 output2;
+	/* The cabinet's lever: an H of four gears, or three positions (18
+	 * Wheeler's low, high and reverse: gears 1, 2 and 3) */
+	bool	 three_position_lever = false;
 
 	/* With the drive board's reply in bits 7-4, as on the cabinet; the
 	 * view change button on player 1's (view_bits ()), the gear lever on
