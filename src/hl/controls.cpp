@@ -1354,6 +1354,10 @@ Controls::deadzone (const char *key) const
 bool
 Controls::pressed (const char *section, const char *key)
 {
+	const double *h = held_value (section, key);
+	if (h)
+		return *h >= 0.5;
+
 	const Binding *b = enabled ? binding (section, key) : NULL;
 
 	if (!b)

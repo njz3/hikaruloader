@@ -432,6 +432,7 @@ Game::create (GameList *game_list, const char *path, const char *name, const cha
 					HL_PRINT ("games: %s: control '%s' unknown", game->name, role);
 					continue;
 				}
+				in.role = role;
 				in.section = r->section;
 				in.key = r->key;
 				in.label = label ? label : role;

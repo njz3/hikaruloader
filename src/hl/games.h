@@ -38,7 +38,8 @@ namespace hl {
  * player's switches */
 struct GameInput {
 	enum Kind { AXIS, LEVER, PEDAL, SWITCH };
-	std::string section, key, label;
+	/* Its role (games.json's name), its row, its INPUT TEST's name */
+	std::string role, section, key, label;
 	Kind kind = AXIS;
 	/* SWITCH: the player (from 0) and the bit in its 16 (START 0x8000) */
 	unsigned player = 0;

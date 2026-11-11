@@ -415,7 +415,7 @@ shared: change it only together with Supermodel and sm2-emu.
 | `set INPUT VALUE`, `setraw INPUT RAW` | Holds an input (a switch: 0 or 1; the analog controls, as sm2-emu's and Supermodel's: `Steering` -1 left to 1, `Accelerator`, `Brake`, `LeftLever`, `RightLever` 0 to 1, over controls.ini's rows; NASCAR Arcade's `Gear`, 0 for neutral to 4, as sm2-emu's): `ok` |
 | `get INPUT` | `value RAW` (`Gear`: the gear the game reads) |
 | `release INPUT\|all` | `ok` |
-| `inputs` | `inputs N`, then N lines `NAME TYPE`: Test, Service..., ViewChange (NASCAR Arcade's view change, linuxloader's name), VolumeUp, VolumeDown, LeftBrake, RightBrake, Horn (the Gaelco cabinets' `[Gaelco]` rows); `Gear other` with NASCAR Arcade's gear lever |
+| `inputs` | `inputs N`, then N lines `NAME TYPE`: Test, Service..., ViewChange (NASCAR Arcade's view change, linuxloader's name), VolumeUp, VolumeDown, LeftBrake, RightBrake, Horn (the Gaelco cabinets' `[Gaelco]` rows); ShiftUp, ShiftDown (the gear lever's up and down, sm2-emu's names) and Start2 (player 2's start); the game's own controls (games.json `controls`), by their role: Elevator, Aileron, Rudder, LeverL, LeverR (axis, -1 to 1), GunX, GunY, Trigger, Offscreen and GunX2... (Supermodel's names), StickX, StickY, StickX2, StickY2 (sm2-emu's); `Gear other` with NASCAR Arcade's gear lever |
 | `obs [W H]` | The picture box-scaled to W x H (640 x 480): `obs W H`, then W*H*3 bytes, RGB, top row first |
 | `shot PATH` | The picture as a 24-bit BMP: `ok` |
 | `save PATH`, `load PATH` | Save states: `ok` |

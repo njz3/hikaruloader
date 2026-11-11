@@ -44,6 +44,11 @@ Next version
   Baseball, Zombie Revenge, Soul Surfer, Shakatto Tambourine).
 - Fixed: those analog sticks rested at one end, and Alien Front's pedals were
   swapped (its brake on the second channel, its accelerator on the third).
+- The agent mode presses the gear lever (ShiftUp, ShiftDown), player 2's start
+  (Start2) and the game's own controls: a flying game's (Elevator, Aileron,
+  Rudder, LeverL, LeverR), the light guns' (GunX, GunY, Trigger, Offscreen, and
+  GunX2... for player 2), the analog sticks' (StickX, StickY); `inputs` lists
+  those of the game running.
 - A game's own settings: *Save for <set> alone* in the settings writes those
   that differ from the common ones to `games/<set>.ini`, read over
   `hikaruloader.ini` for that game (aspect ratio, widescreen, force feedback's

@@ -89,9 +89,10 @@ public:
 	void		 set_enabled (bool on) { enabled = on; }
 	bool		 is_enabled () const { return enabled || !held.empty (); }
 
-	/* An axis's or a pedal's row held at a value by the agent (its
-	 * Steering, Accelerator, Brake), over the bindings; release_held
-	 * gives them back to the bindings (key NULL: all) */
+	/* A row held at a value by the agent (its Steering, Accelerator,
+	 * Brake, ShiftUp, the game's own controls...), over the bindings: an
+	 * axis's, a pedal's, a switch's (pressed from 0.5); release_held gives
+	 * them back to the bindings (key NULL: all) */
 	void		 hold (const char *section, const char *key, double value);
 	void		 release_held (const char *section, const char *key);
 

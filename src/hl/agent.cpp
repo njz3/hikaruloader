@@ -114,6 +114,63 @@ find_analog (const char *name)
 	return -1;
 }
 
+/* The rows held by name: the gear lever's paddles and player 2's start (sm2-emu's
+ * names), then the game's own controls (games.json "controls"), by their
+ * role, Supermodel's names for the guns and sm2-emu's for the sticks */
+static int find_input (const char *name);
+
+struct AgentRow {
+	std::string name;
+	const char *section, *key;
+	GameInput::Kind kind;
+};
+
+static std::string
+agent_name (const std::string &role)
+{
+	static const struct { const char *role, *name; } names[] = {
+		{ "P1_GunX", "GunX" }, { "P1_GunY", "GunY" }, { "P1_Trigger", "Trigger" },
+		{ "P1_Reload", "Offscreen" }, { "P2_GunX", "GunX2" }, { "P2_GunY", "GunY2" },
+		{ "P2_Trigger", "Trigger2" }, { "P2_Reload", "Offscreen2" },
+		{ "P1_StickX", "StickX" }, { "P1_StickY", "StickY" },
+		{ "P2_StickX", "StickX2" }, { "P2_StickY", "StickY2" },
+	};
+	for (const auto &n : names)
+		if (role == n.role)
+			return n.name;
+	return role;
+}
+
+static std::vector<AgentRow>
+agent_rows ()
+{
+	std::vector<AgentRow> rows = {
+		{ "ShiftUp", "Driving", "GearUp", GameInput::SWITCH },
+		{ "ShiftDown", "Driving", "GearDown", GameInput::SWITCH },
+		{ "Start2", "Common", "P2_Start", GameInput::SWITCH },
+	};
+
+	for (const GameInput &in : Controls::get ().game_inputs ()) {
+		std::string name = agent_name (in.role);
+
+		/* Those named already: the wheel's and the pedals' (analogs[]) */
+		if (find_analog (name.c_str ()) >= 0 || find_input (name.c_str ()) >= 0 ||
+		    std::any_of (rows.begin (), rows.end (), [&] (const AgentRow &r) { return !strcasecmp (r.name.c_str (), name.c_str ()); }))
+			continue;
+		rows.push_back ({ name, in.section.c_str (), in.key.c_str (), in.kind });
+	}
+	return rows;
+}
+
+static int
+find_row (const std::vector<AgentRow> &rows, const char *name)
+{
+	for (size_t i = 0; i < rows.size (); i++)
+		if (!strcasecmp (rows[i].name.c_str (), name))
+			return (int) i;
+	return -1;
+}
+
 static int
 find_input (const char *name)
 {
@@ -381,6 +438,7 @@ Agent::run (const std::string &line)
 	char name[64];
 	double value;
 	int input;
+	const std::vector<AgentRow> rows = agent_rows ();
 
 	while (*args == ' ')
 		args++;
@@ -406,6 +464,13 @@ Agent::run (const std::string &line)
 		else if ((input = find_analog (name)) >= 0) {
 			Controls::get ().hold (analogs[input].section, analogs[input].key, value);
 			reply ("ok");
+		} else if ((input = find_row (rows, name)) >= 0) {
+			const AgentRow &r = rows[input];
+
+			if (r.kind == GameInput::SWITCH)
+				value = (strcmp (cmd, "set") ? value != 0.0 : value >= 0.5) ? 1.0 : 0.0;
+			Controls::get ().hold (r.section, r.key, value);
+			reply ("ok");
 		} else if ((input = find_input (name)) < 0)
 			reply ("err unknown input %s", name);
 		else {
@@ -420,7 +485,17 @@ Agent::run (const std::string &line)
 			reply ("value %.4f", analogs[input].axis ?
 			       Controls::get ().axis (analogs[input].section, analogs[input].key) :
 			       Controls::get ().pedal (analogs[input].section, analogs[input].key));
-		else if ((input = find_input (args)) < 0)
+		else if ((input = find_row (rows, args)) >= 0) {
+			const AgentRow &r = rows[input];
+			Controls &c = Controls::get ();
+
+			if (r.kind == GameInput::SWITCH)
+				reply ("value %d", c.pressed (r.section, r.key) ? 1 : 0);
+			else
+				reply ("value %.4f", r.kind == GameInput::PEDAL ? c.pedal (r.section, r.key) :
+				                     r.kind == GameInput::LEVER ? c.aim (r.section, r.key) :
+				                     c.axis (r.section, r.key));
+		} else if ((input = find_input (args)) < 0)
 			reply ("err unknown input %s", args);
 		else
 			reply ("value %d", Input::action (inputs[input].action) ? 1 : 0);
@@ -437,6 +512,9 @@ Agent::run (const std::string &line)
 		} else if ((input = find_analog (args)) >= 0) {
 			Controls::get ().release_held (analogs[input].section, analogs[input].key);
 			reply ("ok");
+		} else if ((input = find_row (rows, args)) >= 0) {
+			Controls::get ().release_held (rows[input].section, rows[input].key);
+			reply ("ok");
 		} else if ((input = find_input (args)) < 0)
 			reply ("err unknown input %s", args);
 		else {
@@ -444,12 +522,15 @@ Agent::run (const std::string &line)
 			reply ("ok");
 		}
 	} else if (!strcmp (cmd, "inputs")) {
-		reply ("inputs %u", (unsigned) (NUMELEM (analogs) + NUMELEM (inputs)) +
+		reply ("inputs %u", (unsigned) (NUMELEM (analogs) + NUMELEM (inputs) + rows.size ()) +
 		                    (Gearbox::get ().attached () ? 1 : 0));
 		for (const auto &a : analogs)
 			reply ("%s %s", a.name, a.axis ? "axis" : "analog");
 		for (const auto &in : inputs)
 			reply ("%s switch", in.name);
+		for (const auto &r : rows)
+			reply ("%s %s", r.name.c_str (), r.kind == GameInput::SWITCH ? "switch" :
+			                                  r.kind == GameInput::PEDAL ? "analog" : "axis");
 		if (Gearbox::get ().attached ())
 			reply ("Gear other");
 	} else if (!strcmp (cmd, "obs"))
