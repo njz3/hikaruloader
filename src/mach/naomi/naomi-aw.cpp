@@ -445,8 +445,20 @@ AwControllers::reply (unsigned port, const uint32_t *request, uint32_t *out, uin
  *  00600280 r	 0000dcba: coins 1 to 4, active low
  *  00600284 rw	 ddcc0000: the kind of devices on Maple ports 2 and 3, as written
  *  00600288 w	 0000dcba: coin counters 1, 2, lockouts 1, 2
- *  0060028C rw	 the digital outputs: on the wheel's games, bit 0 the force's
- *		 direction, bits 1 to 4 its strength
+ *  0060028C rw	 the digital outputs, POUT0 to POUT7 (the EX. IO board's CN304)
+ *
+ * The wheel's games (Maximum Speed, Faster Than Speed) drive their wheel's
+ * motor with POUT0 to POUT4, as their manuals' wiring diagrams have them:
+ * POUT0 the motor board's DIR, POUT1 to POUT4 its IN0 to IN3 (A to D), a
+ * strength of 0 to 15. The board (HAPP 50-2000, 24 V in, the motor 0 to 90 V
+ * DC on a belt) only powers the motor: the game works the force out from
+ * the wheel's position. Its WHEEL FEEDBACK TEST (I/O TEST, once the wheel
+ * calibrated) gives the way: the wheel to the left, DIR 1 and a strength
+ * rising with the turn (9 at a quarter, 15 at the end, NORMAL), the wheel
+ * pushed back to the right. In a race, the same spring, and the game's own
+ * jolts and shakes against the walls. The strength's top is the motor's
+ * whole torque; the game's WHEEL STRENGTH (OFF, LIGHT, NORMAL, HEAVY) sets
+ * how hard.
  */
 
 AwModem::AwModem (Board *board_) :
@@ -523,7 +535,9 @@ AwModem::put (unsigned size, uint32_t addr, uint64_t val)
 		if ((uint8_t) val != s.output) {
 			s.output = (uint8_t) val;
 			if (board->aw_wheel) {
-				float force = ((s.output >> 1) & 15) / 15.0f * 0.5f;
+				/* The motor's torque (see above): DIR 1 to the right,
+				 * a constant force < 0 here */
+				float force = ((s.output >> 1) & 15) / 15.0f;
 
 				hl::Outputs::get ()->signal ("awffb", s.output);
 				hl::ForceFeedback::set (hl::ForceFeedback::CONSTANT, (s.output & 1) ? -force : force, board->holly->frames);

@@ -242,7 +242,9 @@ Config::set_defaults ()
 	/* A wheel and its pedals, or a game controller's stick and trigger,
 	 * drive the pod at once */
 	cfg->twin_levers = TWIN_LEVERS_COMBINED;
-	cfg->background_input = false;
+	/* The joysticks read without the focus: vJoy fed by another program, a
+	 * cabinet's front end in front; the keyboard needs it */
+	cfg->background_input = true;
 }
 
 Config *
@@ -1432,8 +1434,9 @@ Config::write (FILE *fp) const
 	fprintf (fp, "TWIN_LEVERS = %s\n", twin_levers_names[cfg->twin_levers]);
 	fprintf (fp,
 	         "\n# true, the joysticks, wheels and controllers go on working while another\n"
-	         "# window has the focus, their hotkeys too; the keyboard only ever works\n"
-	         "# with the focus. Default: %s\n", bool_name (def.background_input));
+	         "# window has the focus (vJoy fed by another program, a front end), their\n"
+	         "# hotkeys too; the keyboard only ever works with the focus. Default: %s\n",
+	         bool_name (def.background_input));
 	fprintf (fp, "BACKGROUND_INPUT = %s\n", bool_name (cfg->background_input));
 
 	/* The controls are controls.ini's (hl::Controls) */

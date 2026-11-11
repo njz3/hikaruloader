@@ -825,8 +825,9 @@ Two games also send what the player does, 1 while it lasts and 0 after:
 player's nozzle; `shot1` in Planet Harriers, while the player fires, and
 `bullet1`, `missile1` and `bomb1`, each weapon's button held, whether or not
 the game fires. The Atomiswave's wheel games, Maximum Speed and Faster Than
-Speed, send their wheel's force as `awffb`: bit 0 its direction, bits 1 to 4
-its strength (0 to 15), as the game writes them.
+Speed, send their wheel's force as `awffb`: bit 0 its direction (1 pushes
+the wheel to the right), bits 1 to 4 its strength (0 to 15), as the game
+writes them to the cabinet's motor board.
 
 Brave Firefighters' menu has no OUTPUT TEST: its revolving lights' outputs
 come from Odin's list of the game, not seen in play. NASCAR Arcade's test lights its two lamps in turn: the

@@ -282,6 +282,9 @@ channel n at 2n), checked in the game's JVS TEST screen.
   "turn" : "Steering", "side" : "left"}` makes a place one of a pair of
   thrust levers that `TWIN_LEVERS = COMBINED` drives from those two roles
   (Star Wars: Racer Arcade's).
+  `"uses" : [roles]`: the layouts' roles the game has (its INPUT TEST's, from
+  the survey), the others' places dropped, so that the Controls tab and the
+  agent's `inputs` give exactly the game's controls; none: all of them.
   Ports: `sys`, `p1`, `p2` (a player's 16 switches, bit 15 START ... 4
   BUTTON6), `coin` (1, 2), `an` (channels); a cabinet's second 837-13551
   (the far end of its chain) `p3`, `p4`, `coin` 3 and 4, `sys2`, `an2`

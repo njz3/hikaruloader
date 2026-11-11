@@ -2123,3 +2123,9 @@ msgstr "Ses assignations à son premier branchement, et ce que Défaut et Réini
 
 msgid "(profile)"
 msgstr "(profil)"
+
+msgid "ON"
+msgstr "ON"
+
+msgid "OFF"
+msgstr "OFF"

@@ -1030,23 +1030,51 @@ void drawGameInputs()
         ImGui::AlignTextToFramePadding();
         ImGui::TextUnformatted(p.label.empty() ? actionLabel(p.row->key) : p.label.c_str());
         ImGui::TableSetColumnIndex(1);
-        double v = game.value(p.row->key);
-        switch (p.row->kind)
+        // A channel: what the board sends, its top byte as the games' INPUT
+        // TESTs show it (80H a wheel's middle), the combined levers too
+        const bool channel = p.port.rfind("an", 0) == 0 ||
+                             (p.port.size() == 2 && p.port[0] == 'a' && isdigit((unsigned char)p.port[1]));
+        uint16_t raw = 0;
+        if (channel && p.row->kind != hl::Controls::ROW_SWITCH && game.analog(p.port.c_str(), p.index, &raw))
         {
-            case hl::Controls::ROW_AXIS:
-            case hl::Controls::ROW_LEVER:
-                centreBar("##axis", v, 0.0);
-                break;
-            case hl::Controls::ROW_PEDAL:
+            char text[16];
+            snprintf(text, sizeof text, "%02XH", raw >> 8);
+            ImGui::AlignTextToFramePadding();
+            ImGui::TextUnformatted(text);
+            ImGui::SameLine(ImGui::CalcTextSize("00H").x + ImGui::GetStyle().ItemSpacing.x * 2);
+            // At rest at its range's start: from it to its end
+            double t = p.hi == p.lo ? 0.0 : ((double)raw - p.lo) / ((double)p.hi - p.lo);
+            if (p.row->kind == hl::Controls::ROW_PEDAL)
+                ImGui::ProgressBar((float)t, ImVec2(-FLT_MIN, 0), "");
+            else
+                centreBar("##axis", t * 2.0 - 1.0, 0.0);
+        }
+        else
+        {
+            double v = game.value(p.row->key);
+            switch (p.row->kind)
             {
-                char text[16];
-                snprintf(text, sizeof text, "%d%%", (int)(v * 100.0 + 0.5));
-                ImGui::ProgressBar((float)v, ImVec2(-FLT_MIN, 0), text);
-                break;
+                case hl::Controls::ROW_AXIS:
+                case hl::Controls::ROW_LEVER:
+                    centreBar("##axis", v, 0.0);
+                    break;
+                case hl::Controls::ROW_PEDAL:
+                {
+                    char text[16];
+                    snprintf(text, sizeof text, "%d%%", (int)(v * 100.0 + 0.5));
+                    ImGui::ProgressBar((float)v, ImVec2(-FLT_MIN, 0), text);
+                    break;
+                }
+                default:
+                {
+                    // A switch: ON or OFF, as the INPUT TESTs say it
+                    const bool on = game.pressed(p.row->key);
+                    pressDot(on);
+                    ImGui::SameLine();
+                    ImGui::TextUnformatted(on ? tr("ON") : tr("OFF"));
+                    break;
+                }
             }
-            default:
-                pressDot(v > 0.5);
-                break;
         }
         ImGui::PopID();
     }

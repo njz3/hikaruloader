@@ -216,6 +216,21 @@ GameControls::set_game (GameList *list, const char *name)
 		over (all, top, layout);
 		layout_text += (layout_text.empty () ? "" : "+") + name_of;
 	}
+	/* "uses": the layouts' roles the game has (its INPUT TEST's), the
+	 * others' places gone */
+	json_t *uses = field (list, entry, "uses");
+	if (json_is_array (uses)) {
+		auto used = [&] (const Place &p) {
+			size_t k;
+			json_t *one;
+
+			json_array_foreach (uses, k, one)
+				if (json_is_string (one) && !strcasecmp (json_string_value (one), p.row->key))
+					return true;
+			return false;
+		};
+		all.erase (std::remove_if (all.begin (), all.end (), [&] (const Place &p) { return !used (p); }), all.end ());
+	}
 	/* The game's places take theirs from the layouts' roles: a role it
 	 * lists, a place it puts another role on */
 	controls = field (list, entry, "controls");

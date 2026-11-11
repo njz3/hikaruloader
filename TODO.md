@@ -16,9 +16,9 @@ GENERAL
   a 16-texel grid of those coordinates, but nothing in the list recalls it (its 0E8 headers have
   bit 16 set, the glyphs' not; taking texhead 1 for that bit did not give a clean grid).
 - Atomiswave: the guns, trackballs and fishing reel on Maple ports 2-3 are not emulated. The
-  wheel games' force (maxspeed, ftspeed, `awffb`): in a race their bit 0 (the direction) flips
-  every few frames (strengths 3, 12 and 15 seen, off the track mostly), felt as a shake: to
-  check on a real wheel and on the track.
+  wheel games' force (maxspeed, ftspeed): read as their manuals wire it and checked in Faster
+  Than Speed's WHEEL FEEDBACK TEST, not yet felt on a real wheel; the motor's own lag (its
+  belt, the wheel's weight) is not modelled.
 - Controls: Jambo! Safari's LEVER UP and LEVER DOWN reach its INPUT TEST as two switches
   (ShiftUp, ShiftDown); whether the cabinet's lever stays in its positions is not known. The
   mahjong panel, the card readers' own switches and Club Kart's view button are not placed
@@ -107,9 +107,9 @@ The controls (`src/hl/controls.cpp`):
 
 - The devices' profiles: none shipped yet (`data/devices`): to make from real
   wheels, pedals, shifters and sticks, with *Save as a profile...*.
-- `BACKGROUND_INPUT = true`: vJoy's axes and buttons reached no game while a
-  Windows Security window had the focus (SDL read them from a console
-  program); they did once the window had it again.
+- `BACKGROUND_INPUT` (true by default): vJoy is read with another window in
+  front, but its axes and buttons reached no game while a Windows Security
+  window (PickerHost.exe, a credential prompt) was in front; why not known.
 
 - The controllers' hotkeys (Guide + a button) are checked on SDL's virtual
   controller only: to try on real pads (an Xbox pad's Guide through XInput,

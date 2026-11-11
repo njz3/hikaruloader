@@ -34,7 +34,18 @@ Next version
 - Fixed: Maximum Speed's and Faster Than Speed's wheel and pedals stayed at 0
   (their CONTROLER SETTING SCREEN, 0 mph in a race): they are on the
   Atomiswave's third controller port, not on the second. Their wheel's force
-  goes to the network outputs too (`awffb`).
+  goes to the network outputs too (`awffb`), and at its whole strength: the
+  game's 15 is the motor's top (it was half), its WHEEL STRENGTH setting
+  (OFF, LIGHT, NORMAL, HEAVY) as on the cabinet; the force's way checked in
+  Faster Than Speed's WHEEL FEEDBACK TEST (the wheel pushed back to the
+  middle).
+- The joysticks, wheels and controllers are read in the background by
+  default (`BACKGROUND_INPUT = true`): vJoy fed by another program, a front
+  end in front. The keyboard still needs the focus.
+- The Controls tab shows each game's own controls only (`uses` in
+  `data/games.json`, from its INPUT TEST): NASCAR Arcade no longer lists six
+  buttons and a second player. *What the game receives* shows each channel's
+  value as the INPUT TESTs do (80H the middle) and the switches ON or OFF.
 - Widescreen 3D (16:9) switched during a game: applied when the settings close,
   the window's picture 854 or 640 wide at once; the game's own view widened
   from the next time it computes it (Hikaru, NAOMI, Gaelco).
