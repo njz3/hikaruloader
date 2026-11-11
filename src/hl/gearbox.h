@@ -25,11 +25,12 @@
 namespace hl {
 
 /* A cabinet's gear lever, held in its positions: the gears the game's
- * "gearbox" has (-1 reverse, 0 neutral, 1 to 4: GameControls::gears), from
+ * "gearbox" has (-1 reverse, 0 neutral, 1 to 6: GameControls::gears), from
  * the player's controls, as sm2-emu has them. An H shifter's positions
- * (controls.ini's GearReverse, GearNeutral, Gear1 to Gear4), a button held
+ * (controls.ini's GearReverse, GearNeutral, Gear1 to Gear6), a button held
  * each while the lever is there; paddles (ShiftUp, ShiftDown) a position up
- * or down each press, in the gears' order. A position held wins. With none
+ * or down each press, in the gears' order, unless the cabinet has paddles
+ * of its own (paddles false: F355's). A position held wins. With none
  * held, an H shifter's lever is in neutral when the game has one
  * (SHIFTER_NEUTRAL), else the last gear stays; a paddle's shift from a gear
  * to another goes through neutral SHIFT_NEUTRAL_MS. Looked at once a frame
@@ -38,7 +39,7 @@ class Gearbox {
 public:
 	static Gearbox	&get ();
 	/* The gear engaged in that frame, among gears (empty: 0) */
-	int		 gear (uint64_t frame, const std::vector<int> &gears);
+	int		 gear (uint64_t frame, const std::vector<int> &gears, bool paddles = true);
 	/* The one of the last frame looked at, for the settings' page */
 	int		 engaged () const { return current_out; }
 	/* In neutral (or the first gear without one), as a game starts */

@@ -114,13 +114,19 @@ static const Controls::RowDef row_table[] = {
 	{ "Driving", "Gear2", SW, "", "Gear 2, held" },
 	{ "Driving", "Gear3", SW, "", "Gear 3, held" },
 	{ "Driving", "Gear4", SW, "", "Gear 4, held" },
+	{ "Driving", "Gear5", SW, "", "Gear 5, held" },
+	{ "Driving", "Gear6", SW, "", "Gear 6, held" },
+	{ "Driving", "Clutch", PD, "", "The clutch pedal (F355 Challenge)" },
+	{ "Driving", "Clutch_Digital", KY, "", "The clutch pressed all the way" },
 	{ "Driving", "Horn", SW, "KEY_H, GC0_BUTTON_X", "The horn" },
 	{ "Driving", "LeftBrake", SW, "KEY_Q, GC0_BUTTON_LEFTSHOULDER", "A handlebar's left brake lever (the brake pulls both)" },
 	{ "Driving", "RightBrake", SW, "KEY_E, GC0_BUTTON_RIGHTSHOULDER", "Its right brake lever" },
 	{ "Driving", "LeftLever", PD, "GC0_AXIS_LEFTY_NEGATIVE_SIDE",
 	  "A pod's left thrust lever, 0 at rest (TWIN_LEVERS = ORIGINAL; COMBINED: the\n"
 	  "accelerator and the wheel)" },
+	{ "Driving", "LeftLever_Digital", KY, "KEY_A", "The left lever pushed all the way (Axis_Key_Ramp)" },
 	{ "Driving", "RightLever", PD, "GC0_AXIS_RIGHTY_NEGATIVE_SIDE", "Its right thrust lever" },
+	{ "Driving", "RightLever_Digital", KY, "KEY_D", "The right lever pushed all the way" },
 
 	{ "Flight", NULL, SW, NULL,
 	  "The flying games: _Left and _Right the keys moving an axis (Axis_Key_Ramp);\n"

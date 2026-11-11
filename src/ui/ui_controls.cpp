@@ -111,11 +111,17 @@ const char *actionLabel(const std::string &key)
         {"Gear2", N_("Gear 2")},
         {"Gear3", N_("Gear 3")},
         {"Gear4", N_("Gear 4")},
+        {"Gear5", N_("Gear 5")},
+        {"Gear6", N_("Gear 6")},
+        {"Clutch", N_("Clutch")},
+        {"Clutch_Digital", N_("Clutch (all the way)")},
         {"Horn", N_("Horn")},
         {"LeftBrake", N_("Left brake lever")},
         {"RightBrake", N_("Right brake lever")},
         {"LeftLever", N_("Left lever (its engine's thrust)")},
         {"RightLever", N_("Right lever (its engine's thrust)")},
+        {"LeftLever_Digital", N_("Left lever (all the way)")},
+        {"RightLever_Digital", N_("Right lever (all the way)")},
         {"Elevator", N_("Elevator (wheel pushed, pulled)")},
         {"Aileron", N_("Aileron (wheel turned)")},
         {"Rudder", N_("Rudder pedals")},
@@ -554,7 +560,7 @@ void mappingPage()
                 roles.push_back({p.row, p.label});
             }
         if (!hl::GameControls::get().gears().empty())
-            for (const char *key : {"ShiftUp", "ShiftDown", "GearReverse", "GearNeutral", "Gear1", "Gear2", "Gear3", "Gear4"})
+            for (const char *key : {"ShiftUp", "ShiftDown", "GearReverse", "GearNeutral", "Gear1", "Gear2", "Gear3", "Gear4", "Gear5", "Gear6"})
                 roles.push_back({hl::Controls::row_def(key), ""});
         for (const auto &r : roles)
         {
@@ -744,9 +750,9 @@ void drawShifter()
                                    "gear to another passes through neutral this long, as a\n"
                                    "real lever does."));
     ImGui::PushTextWrapPos(0.0f);
-    ImGui::TextDisabled("%s", tr("The gear levers held in their positions (NASCAR Arcade, 18 Wheeler, Crazy Taxi...): Shift up and "
+    ImGui::TextDisabled("%s", tr("The gear levers held in their positions (NASCAR Arcade, F355, 18 Wheeler, Crazy Taxi...): Shift up and "
                                  "Shift down a position at each press, or an H shifter's positions (Reverse, Neutral, Gear 1 to "
-                                 "4), in the Driving section of a device's bindings."));
+                                 "6), in the Driving section of a device's bindings."));
     ImGui::PopTextWrapPos();
     if (!changed)
         return;

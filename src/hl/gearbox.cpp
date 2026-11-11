@@ -44,11 +44,11 @@ Gearbox::reset ()
 }
 
 int
-Gearbox::gear (uint64_t frame, const std::vector<int> &gears)
+Gearbox::gear (uint64_t frame, const std::vector<int> &gears, bool paddles)
 {
 	static const struct { const char *key; int gear; } positions[] = {
 		{ "GearReverse", -1 }, { "GearNeutral", 0 }, { "Gear1", 1 },
-		{ "Gear2", 2 }, { "Gear3", 3 }, { "Gear4", 4 },
+		{ "Gear2", 2 }, { "Gear3", 3 }, { "Gear4", 4 }, { "Gear5", 5 }, { "Gear6", 6 },
 	};
 	const Config *cfg = Config::get ();
 	Controls &c = Controls::get ();
@@ -78,8 +78,8 @@ Gearbox::gear (uint64_t frame, const std::vector<int> &gears)
 	}
 
 	/* The paddles: a position each press, through neutral between two */
-	up = c.pressed ("Driving", "ShiftUp");
-	down = c.pressed ("Driving", "ShiftDown");
+	up = paddles && c.pressed ("Driving", "ShiftUp");
+	down = paddles && c.pressed ("Driving", "ShiftDown");
 	from = current;
 	if (!held) {
 		size_t at = std::find (gears.begin (), gears.end (), current) - gears.begin ();

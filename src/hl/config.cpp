@@ -1414,7 +1414,7 @@ Config::write (FILE *fp) const
 	         "# WHEEL_ROTATION is taken from, 90 to 3600. Default: %d\n", def.wheel_range);
 	fprintf (fp, "WHEEL_RANGE = %d\n", cfg->wheel_range);
 	fprintf (fp,
-	         "\n# A gear lever held in its positions, an H shifter (controls.ini's Gear1 to Gear4):\n"
+	         "\n# A gear lever held in its positions, an H shifter (controls.ini's Gear1 to Gear6):\n"
 	         "# true, its lever in none of the gears is in neutral, as on the cabinet;\n"
 	         "# false, the last gear stays until another or GearNeutral. Default: %s\n",
 	         bool_name (def.shifter_neutral));

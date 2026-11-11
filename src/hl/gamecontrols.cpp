@@ -225,13 +225,23 @@ GameControls::set_game (GameList *list, const char *name)
 }
 
 bool
+GameControls::placed (const char *role) const
+{
+	for (const Place &p : all)
+		if (!strcasecmp (p.row->key, role))
+			return true;
+	return false;
+}
+
+bool
 GameControls::has (const char *role) const
 {
 	for (const Place &p : all)
 		if (!strcasecmp (p.row->key, role))
 			return true;
 	if (!gear_list.empty ())
-		for (const char *r : { "ShiftUp", "ShiftDown", "GearReverse", "GearNeutral", "Gear1", "Gear2", "Gear3", "Gear4" })
+		for (const char *r : { "ShiftUp", "ShiftDown", "GearReverse", "GearNeutral", "Gear1", "Gear2", "Gear3",
+		                       "Gear4", "Gear5", "Gear6" })
 			if (!strcasecmp (r, role))
 				return true;
 	return false;
@@ -303,7 +313,7 @@ GameControls::switches (const char *port, uint64_t frame)
 		if (p.index < 32 && p.port == port && pressed (p.row->key))
 			bits |= 1u << p.index;
 	if (!gear_list.empty ()) {
-		int g = Gearbox::get ().gear (frame, gear_list);
+		int g = Gearbox::get ().gear (frame, gear_list, paddles ());
 
 		for (const Gear &gear : gear_table)
 			if (gear.gear == g)

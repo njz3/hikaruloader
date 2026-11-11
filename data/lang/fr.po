@@ -1974,8 +1974,8 @@ msgstr "Image de la carte suivante (plusieurs cartes)"
 msgid "All the controls"
 msgstr "Tous les contrôles"
 
-msgid "The gear levers held in their positions (NASCAR Arcade, 18 Wheeler, Crazy Taxi...): Shift up and Shift down a position at each press, or an H shifter's positions (Reverse, Neutral, Gear 1 to 4), in the Driving section of a device's bindings."
-msgstr "Les leviers de vitesses qui restent en position (NASCAR Arcade, 18 Wheeler, Crazy Taxi...) : Rapport sup. et Rapport inf. changent de position à chaque appui, ou les positions d'une grille en H (Marche arrière, Point mort, Rapports 1 à 4), dans la section Conduite des associations d'un périphérique."
+msgid "The gear levers held in their positions (NASCAR Arcade, F355, 18 Wheeler, Crazy Taxi...): Shift up and Shift down a position at each press, or an H shifter's positions (Reverse, Neutral, Gear 1 to 6), in the Driving section of a device's bindings."
+msgstr "Les leviers de vitesses qui restent en position (NASCAR Arcade, F355, 18 Wheeler, Crazy Taxi...) : Rapport sup. et Rapport inf. changent de position à chaque appui, ou les positions d'une grille en H (Marche arrière, Point mort, Rapports 1 à 6), dans la section Conduite des associations d'un périphérique."
 
 msgid "Gear"
 msgstr "Rapport"
@@ -1985,3 +1985,21 @@ msgstr "R"
 
 msgid "Gear lever"
 msgstr "Levier de vitesses"
+
+msgid "Left lever (all the way)"
+msgstr "Levier gauche (à fond)"
+
+msgid "Right lever (all the way)"
+msgstr "Levier droit (à fond)"
+
+msgid "Gear 5"
+msgstr "Vitesse 5"
+
+msgid "Gear 6"
+msgstr "Vitesse 6"
+
+msgid "Clutch"
+msgstr "Embrayage"
+
+msgid "Clutch (all the way)"
+msgstr "Embrayage (à fond)"

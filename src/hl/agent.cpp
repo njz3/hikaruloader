@@ -432,7 +432,8 @@ Agent::run (const std::string &line)
 		const Controls::RowDef *row;
 
 		if (!strcasecmp (args, "Gear") && !GameControls::get ().gears ().empty ())
-			reply ("value %d", Gearbox::get ().gear (emu->mach->frame, GameControls::get ().gears ()));
+			reply ("value %d", Gearbox::get ().gear (emu->mach->frame, GameControls::get ().gears (),
+			                                         GameControls::get ().paddles ()));
 		else if (!(row = find_role (args)))
 			reply ("err unknown input %s", args);
 		else if (row->kind == Controls::ROW_SWITCH)

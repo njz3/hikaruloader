@@ -44,7 +44,7 @@ class GameList;
  *		"range" : [ "<at rest or left>", "<pressed or right>" ] (16-bit
  *		hex) }, or a list of places;
  *	"gearbox" : { "<gear>" : [ "<port>:<n>", ... ], ... }: a gear lever
- *		held in a position, each gear ("R", "N", "1" to "4") the
+ *		held in a position, each gear ("R", "N", "1" to "6") the
  *		switches it closes;
  *	"fixed" : [ "<port>:<n>", ... ]: switches always closed.
  *
@@ -72,6 +72,8 @@ public:
 	const std::vector<Place> &places () const { return all; }
 	/* The role is on one of the game's places (or its gear lever's) */
 	bool		 has (const char *role) const;
+	/* On one of its places (not the gear lever's) */
+	bool		 placed (const char *role) const;
 
 	/* A role now: a switch held, an axis -1 (left, up) to 1, a pedal or
 	 * a lever 0 to 1 (a sight's -1 to 1); over the held values of the
@@ -86,8 +88,10 @@ public:
 	bool		 analog (const char *port, unsigned index, uint16_t *value);
 
 	/* The gear lever: the gears it has, by number (-1 reverse, 0
-	 * neutral, 1 to 4), in their order */
+	 * neutral, 1 to 6), in their order; moved by ShiftUp and ShiftDown
+	 * unless the cabinet has them on paddles of its own */
 	const std::vector<int> &gears () const { return gear_list; }
+	bool		 paddles () const { return !placed ("ShiftUp") && !placed ("ShiftDown"); }
 
 private:
 	GameControls () = default;

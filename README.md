@@ -161,7 +161,7 @@ Keys and controllers
 | Left Ctrl, Left Alt, Left Shift, Z; a controller's A, B, X, Y | Buttons 1 to 4 |
 | A controller's left stick and triggers, a wheel's axes | Steering, accelerator, brake (the arrows too: all the way in 250 ms, back to the middle in 100 ms, `Axis_Key_Ramp` and `Axis_Key_Return` in `controls.ini`'s `[Config]`) |
 | Page Up, Page Down; a controller's R1, L1 | NASCAR Arcade's gear up, down |
-| V; a controller's Y | NASCAR Arcade's view change (`ViewChange`, linuxloader's name; Down too, as on the cabinet's I/O board) |
+| V; a controller's Y | The view change (`ViewChange`, linuxloader's name): NASCAR Arcade, Initial D, 18 Wheeler... |
 | P; Guide + X | Pause |
 | F4, F1; Guide + R1, Guide + L1 | Save a new state, load the latest or the one chosen |
 | F2, F3 | Choose the state F1 loads, newer or older, among the last five (shown at the top of the picture) |
@@ -228,12 +228,15 @@ wheel's driver (Logitech G HUB, Thrustmaster's or Fanatec's control panel),
 `[Input]` `WHEEL_ROTATION` and `WHEEL_RANGE`.
 
 **Gear levers.** Some cabinets have a lever that stays where it is put,
-each position closing switches the game decodes: NASCAR Arcade's and
-F355's four-speed H, 18 Wheeler's low, high and reverse, Crazy Taxi's drive
-and reverse (`gearbox` in `data/games.json`). Shift up and Shift down
-(`ShiftUp`, `ShiftDown` in `controls.ini`) move it a position at each
-press; an H shifter binds its positions (`GearReverse`, `GearNeutral`,
-`Gear1` to `Gear4`), as sm2-emu has them. Initial D's lever, which springs
+each position closing switches the game decodes, as their INPUT TESTs read
+them: NASCAR Arcade's four-speed H, F355's six-speed H, 18 Wheeler's low,
+high and reverse, Crazy Taxi's drive and reverse (`gearbox` in
+`data/games.json`). Shift up and Shift down (`ShiftUp`, `ShiftDown` in
+`controls.ini`) move it a position at each press; an H shifter binds its
+positions (`GearReverse`, `GearNeutral`, `Gear1` to `Gear6`), as sm2-emu has
+them. F355's wing paddles are Shift up and Shift down themselves (its H then
+only by an H shifter's positions); its assist switches SC, TC, ABS and IBS
+are buttons 1 to 4, its clutch `Clutch`. Initial D's lever, which springs
 back, is the same two rows, read as they are pressed. The Controls tab's
 *Gear lever*: *Neutral when no gear is engaged*, an H shifter's lever in
 none of its gears in neutral, as on the cabinet (else the last gear stays);
@@ -249,9 +252,9 @@ accelerator gives the thrust of both and the wheel the difference, the pod
 turning to the side steered, for a wheel and pedals or a controller's
 stick and trigger; *Original*, an axis each, as on the cabinet
 (`LeftLever`, `RightLever`: a controller's two sticks pushed up by
-default) (`[Input]` `TWIN_LEVERS`). Button 1 is the boost, the brake its
-brake; Left and Right are the game's left and right buttons (◁ ▷, the
-menus).
+default, A and D on the keyboard) (`[Input]` `TWIN_LEVERS`, taken at once).
+Button 1 is the boost, the brake its brake; Left and Right are the game's
+left and right buttons (◁ ▷, the menus).
 
 <img src="docs/media/swracer-levers.png" width="720" alt="A comic strip: the pedal pushes both levers, the wheel moves them apart; the pod turns away from the engine that pushes harder, and stops when the pedal is released">
 

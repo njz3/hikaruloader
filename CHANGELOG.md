@@ -40,9 +40,15 @@ Next version
   An earlier `controls.ini` is not read as it was: delete it for the new
   defaults, and bind again.
 - The gear levers held in their positions emulated from Shift up and down
-  or an H shifter's positions: NASCAR Arcade's and F355's H, 18 Wheeler's
-  low, high and reverse, Crazy Taxi's drive and reverse (reverse new:
-  `GearReverse`). Their switches no longer take a player's stick.
+  or an H shifter's positions: NASCAR Arcade's H, F355's six-speed H (5 and
+  6 new), 18 Wheeler's low, high and reverse, Crazy Taxi's drive and reverse
+  (reverse new: `GearReverse`). Their switches no longer take a player's
+  stick.
+- F355 Challenge's controls as its INPUT TEST reads them: the wing paddles
+  (Shift up and down), the assist switches SC, TC, ABS and IBS (buttons 1 to
+  4: they were on the arrows, which also steer), the clutch (`Clutch`).
+- Star Wars: Racer Arcade's levers on the keyboard too, in the original mode:
+  A and D (`LeftLever_Digital`, `RightLever_Digital`).
 - Air Trix's yaw and roll on an analog stick (its roll stayed at 00).
 - `INVERT_STICK_Y` (was `PHARRIER_INVERT_Y`): every analog stick game's, a
   game's own setting to save for it alone.
