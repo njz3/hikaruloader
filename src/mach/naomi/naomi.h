@@ -326,9 +326,21 @@ class AwControllers {
 public:
 	/* How many are plugged */
 	unsigned count = 2;
+	/* What each port has: a pad, or the EX. IO board's light gun or mouse
+	 * (a trackball, a fishing reel's sensor): the game's places "p<n>" and
+	 * "a<n>", "gun<n>", "mouse<n>" */
+	enum Kind { PAD, GUN, MOUSE };
+	Kind	 kind[4] = { PAD, PAD, PAD, PAD };
 	/* The reply to a frame at port, in out (at most 64 words): its words,
 	 * 0 for none; the machine's frame, for the game's gear lever */
 	unsigned reply (unsigned port, const uint32_t *request, uint32_t *out, uint64_t frame);
+	/* A gun's aim on the picture (0-639, 0-479); false off it */
+	bool	 gun_aim (unsigned port, uint64_t frame, unsigned *x, unsigned *y);
+
+private:
+	/* A mouse's places' last values, for its movement */
+	double	 mouse_last[4][2] = {};
+	bool	 mouse_seen[4][2] = {};
 };
 
 /* The Atomiswave's "modem" area: coins, digital outputs */
@@ -561,6 +573,13 @@ private:
 		uint8_t	 end;
 		int32_t	 timer;
 	} mp;
+	/* A light gun's Light-Gun mode (Maple's pattern 2): the HV counter
+	 * latched to SPG_TRIGGER_POS at its aim's line in the next picture,
+	 * line -1 none (off the picture); not in the states */
+	struct {
+		int	 line = -1;
+		unsigned hpos = 0, flip = 0;
+	} gun;
 	uint32_t line_now;
 	/* For the log */
 	uint32_t logged[32];

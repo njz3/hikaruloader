@@ -414,10 +414,21 @@ Board::init ()
 		aw_wheel = hl::GameControls::get ().has ("Steering");
 		/* A controller on each Maple port the game's controls are on
 		 * ("p<n>", "a<n>"): the wheel's cabinets have theirs on the
-		 * third, the EX. IO board's; the four-player games' on all four */
-		for (const hl::GameControls::Place &p : hl::GameControls::get ().places ())
-			if (p.port.size () == 2 && (p.port[0] == 'p' || p.port[0] == 'a') && p.port[1] >= '1' && p.port[1] <= '4')
-				controllers.count = std::max (controllers.count, (unsigned) (p.port[1] - '0'));
+		 * third, the EX. IO board's; the four-player games' on all four;
+		 * the EX. IO board's light guns and mice ("gun<n>", "mouse<n>") */
+		for (const hl::GameControls::Place &p : hl::GameControls::get ().places ()) {
+			const std::string &port = p.port;
+			char n = port.empty () ? 0 : port.back ();
+			std::string kind = port.substr (0, port.size () - 1);
+
+			if (n < '1' || n > '4' || (kind != "p" && kind != "a" && kind != "gun" && kind != "mouse"))
+				continue;
+			controllers.count = std::max (controllers.count, (unsigned) (n - '0'));
+			if (kind == "gun")
+				controllers.kind[n - '1'] = AwControllers::GUN;
+			else if (kind == "mouse")
+				controllers.kind[n - '1'] = AwControllers::MOUSE;
+		}
 	} else {
 		mie = new Mie (this, mie_rom);
 		if (index && !machine->networked)

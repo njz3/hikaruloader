@@ -15,14 +15,15 @@ GENERAL
   magnified some 20 times; the texhead committed after it (16x16, repeated, whole texels) would make
   a 16-texel grid of those coordinates, but nothing in the list recalls it (its 0E8 headers have
   bit 16 set, the glyphs' not; taking texhead 1 for that bit did not give a clean grid).
-- Atomiswave: the guns, trackballs and fishing reel on Maple ports 2-3 are not emulated. The
-  wheel games' force (maxspeed, ftspeed): read as their manuals wire it and checked in Faster
-  Than Speed's WHEEL FEEDBACK TEST, not yet felt on a real wheel; the motor's own lag (its
-  belt, the wheel's weight) is not modelled.
-- Controls: Jambo! Safari's LEVER UP and LEVER DOWN reach its INPUT TEST as two switches
-  (ShiftUp, ShiftDown); whether the cabinet's lever stays in its positions is not known. The
-  mahjong panel, the card readers' own switches and Club Kart's view button are not placed
-  (data/games.json).
+- Atomiswave: the wheel games' force (maxspeed, ftspeed): read as their manuals wire it and
+  checked in Faster Than Speed's WHEEL FEEDBACK TEST, not yet felt on a real wheel; the
+  motor's own lag (its belt, the wheel's weight) is not modelled. The guns' factory aim (a
+  blank NVRAM) is off by up to 100 pixels, each game its own: their GUN ADJUST sets it;
+  Extreme Hunting 2 does not boot. The trackballs read a stick's speed, not a mouse's moves.
+  Ranger Mission's GUN TEST shows player 1's "trigger" 1 at rest and 0 pulled (2P's always 0),
+  though its GUN ADJUST and Sports Shooting's calibration take the shots: what it shows, to see.
+- Controls: the mahjong panel, the card readers' own switches and Club Kart's view button
+  are not placed (data/games.json).
 - NAOMI, seen in a pass over the 259 sets (3000 frames, attract only):
   - a jump to code never loaded: vathlete (past its I/O boards, an invalid instruction at
     8C04F88C at frame 973);

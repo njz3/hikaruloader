@@ -137,6 +137,7 @@ enum {
 	PVR_FOG_DENSITY	= 0x0B8 / 4,
 	PVR_CLAMP_MAX	= 0x0BC / 4,
 	PVR_CLAMP_MIN	= 0x0C0 / 4,
+	PVR_TRIGGER_POS	= 0x0C4 / 4,
 	PVR_HBLANK_INT	= 0x0C8 / 4,
 	PVR_VBLANK_INT	= 0x0CC / 4,
 	PVR_SPG_LOAD	= 0x0D8 / 4,
@@ -161,7 +162,9 @@ enum {
 };
 
 enum {
-	MP_IDLE, MP_SEND, MP_WAIT_REPLY, MP_WAIT_NOP, MP_TIMEOUT, MP_GOT_REPLY, MP_DONE
+	MP_IDLE, MP_SEND, MP_WAIT_REPLY, MP_WAIT_NOP, MP_TIMEOUT, MP_GOT_REPLY, MP_DONE,
+	/* Light-Gun mode: the DMA busy until the gun's line, or the blank */
+	MP_GUN
 };
 
 static const uint32_t VRAM_MASK = 0x00FFFFFF;
@@ -318,6 +321,20 @@ Holly::line (unsigned n)
 	if (irl_pins >= 0)
 		((Sh4 *) board->sh)->set_irq_state (SH4_IESOURCE_IRQ0 + irl_pins, hl::IRQ_STATE_RAISED, this);
 
+	/* A light gun's line: the HV counter latched, the DMA over; by the
+	 * blank, nothing latched (off the picture) */
+	if (mp.state == MP_GUN && ((gun.line >= 0 && (int) n == gun.line) || n == (vb & 0x3FF))) {
+		static const bool log_gun = getenv ("HR_LOG_GUN") != NULL;
+		if (log_gun)
+			HL_PRINT ("maple: frame %llu line %u, Light-Gun mode over: %s", (unsigned long long) frames, n,
+			          gun.line >= 0 && (int) n == gun.line ? "latched" : "nothing latched");
+		if (gun.line >= 0 && (int) n == gun.line)
+			pvr[PVR_TRIGGER_POS] = ((n & 0x3FF) << 16) | (gun.hpos & 0x3FF);
+		gun.line = -1;
+		mp.state = MP_IDLE;
+		maple[0x18 / 4] = 0;
+		raise_ist (IST_DMA_MAPLE);
+	}
 	if (n == (vb & 0x3FF)) {
 		frames++;
 		board->vblank_due = true;
@@ -465,20 +482,30 @@ Holly::maple_step ()
 	for (;;) {
 		switch (mp.state) {
 		case MP_SEND: {
-			uint32_t header[2], data[256], length, pattern, i;
+			uint32_t header[2], data[256], length = 0, pattern, i;
 
 			mem->get (4, mp.address, &header[0]);
-			mem->get (4, mp.address + 4, &header[1]);
-			mp.address += 8;
+			mp.address += 4;
 			mp.end = header[0] >> 31;
 			mp.port = (header[0] >> 16) & 3;
 			pattern = (header[0] >> 8) & 7;
-			length = (header[0] & 255) + 1;
-			mp.dest = header[1];
-			for (i = 0; i < length; i++)
-				mem->get (4, mp.address + i * 4, &data[i]);
-			mp.address += length * 4;
+			/* Normal data: the receive address and the data; the other
+			 * patterns are the instruction alone */
+			if (pattern == 0) {
+				mem->get (4, mp.address, &header[1]);
+				mp.address += 4;
+				length = (header[0] & 255) + 1;
+				mp.dest = header[1];
+				for (i = 0; i < length; i++)
+					mem->get (4, mp.address + i * 4, &data[i]);
+				mp.address += length * 4;
+			}
 
+			/* HR_LOG_GUN=1: the AW's instructions other than data */
+			static const bool log_patterns = getenv ("HR_LOG_GUN") != NULL;
+			if (log_patterns && board->is_atomiswave && pattern)
+				HL_PRINT ("maple: frame %llu line %u, pattern %u port %u%s", (unsigned long long) frames, line_now,
+				          pattern, mp.port, mp.end ? " (end)" : "");
 			switch (pattern) {
 			case 0:
 				if (board->is_atomiswave) {
@@ -501,9 +528,40 @@ Holly::maple_step ()
 				} else
 					mp.state = MP_TIMEOUT;
 				break;
+			case 2: {
+				/* Light-Gun mode: SDCKB seized, the HV counter latched
+				 * where the port's gun sees the beam in the next picture
+				 * (the line from the blank's end, the dot from 286, as
+				 * Flycast has them), the DMA busy until then (or until
+				 * the blank, off the picture: nothing latched); the same
+				 * place twice reads off the picture: the last bits
+				 * alternate */
+				unsigned x, y;
+				/* HR_LOG_GUN=1: each Light-Gun mode, the port and the aim */
+				static const bool log_gun = getenv ("HR_LOG_GUN") != NULL;
+
+				gun.line = -1;
+				if (log_gun)
+					HL_PRINT ("maple: frame %llu, Light-Gun mode on port %u (%s)", (unsigned long long) frames, mp.port,
+					          board->controllers.kind[mp.port] == AwControllers::GUN ? "a gun" : "no gun");
+				if (board->is_atomiswave && board->controllers.kind[mp.port] == AwControllers::GUN &&
+				    board->controllers.gun_aim (mp.port, frames, &x, &y)) {
+					bool interlace = (pvr[0x0D0 / 4] >> 4) & 1;
+
+					gun.line = (int) ((interlace ? y / 2 : y) + ((pvr[PVR_VBLANK_INT] >> 16) & 0x3FF)) ^ ((gun.flip >> 1) & 1);
+					gun.hpos = (x + 286) ^ (gun.flip & 1);
+					gun.flip++;
+				}
+				if (board->is_atomiswave && board->controllers.kind[mp.port] == AwControllers::GUN)
+					mp.state = MP_GUN;
+				break;
+			}
 			case 3:
 				if (mp.port == 0 && board->mie)
 					board->mie->maple_reset ();
+				break;
+			case 4:
+				/* Return from Light-Gun mode: SDCKB released */
 				break;
 			case 7:
 				mp.state = MP_WAIT_NOP;
@@ -518,6 +576,7 @@ Holly::maple_step ()
 		}
 		case MP_WAIT_REPLY:
 		case MP_WAIT_NOP:
+		case MP_GUN:
 		case MP_IDLE:
 			return;
 		case MP_TIMEOUT:

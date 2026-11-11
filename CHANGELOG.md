@@ -13,6 +13,13 @@ Next version
   (Marvel vs. Capcom 2, the fighting games, the two-player cabinets).
 - Fixed: the Atomiswave's player 2 pad sent nothing: its stick and buttons
   1 to 6 reach the games now (the wheel cabinets excepted).
+- The Atomiswave's light guns (Ranger Mission, Sports Shooting USA, Extreme
+  Hunting, Sega Clay Challenge) and trackballs (WaiWai Drive, Sega Bass
+  Fishing Challenge's reel), on the EX. IO board's controller ports: a gun's
+  aim latched where it points as the picture is drawn, its trigger, off the
+  picture; their GUN ADJUST and GUN TEST work. The Maple bus's other
+  instructions (reset, NOP, light gun) are one word, as the hardware has
+  them.
 - Device profiles: a model of device's bindings (a wheel, pedals, a shifter,
   a stick, a pad) put on a player's bindings the first time that device is
   connected, and what its *Default* and *Reset...* put back. *Save as a

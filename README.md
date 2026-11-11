@@ -752,6 +752,12 @@ hidden; Tab, Alt, the Windows key or another window let it go.
 |---|---|
 | Brave Firefighters | `MOUSE0` for player 1, `MOUSE1` for player 2: left button water, right button fog |
 | Planet Harriers | `MOUSE0`: left button bullets, right missiles, middle bombs |
+| Atomiswave guns: Ranger Mission, Sports Shooting USA, Extreme Hunting, Sega Clay Challenge | `MOUSE0` for player 1, `MOUSE1` for player 2: left button the trigger, off the picture to reload; the pump (or Sports Shooting's tilt switch) on the right button (`P1_Fire2`) |
+| Atomiswave trackballs: WaiWai Drive (two), Sega Bass Fishing Challenge's reel | The analog sticks (`P1_StickX`, `P1_StickY`; `P2_` WaiWai Drive's second): the further the faster |
+
+The Atomiswave's guns aim as the cabinet's do: once each, shoot the centre
+mark of the game's GUN ADJUST (Sports Shooting USA: its three targets) in its
+test menu; the game keeps it.
 
 A mouse moves its sight from where it was. A gun that sends absolute positions
 aims at the game's 4:3 picture in the middle of the window. A controller's

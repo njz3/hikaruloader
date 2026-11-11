@@ -363,7 +363,60 @@ AwFlash::load_state (hl::State *state)
  */
 
 static const char AW_MODEL[] = "Dreamcast Controller";
+static const char AW_GUN[] = "Dreamcast Gun";
+static const char AW_MOUSE[] = "Dreamcast Mouse";
 static const char AW_LICENSE[] = "Produced By or Under License From SEGA ENTERPRISES,LTD.";
+
+/*
+ * The EX. IO board's devices on ports 3 and 4 (00600284 tells the game
+ * which): a Dreamcast light gun, its aim on "gun<n>" (0 left to right, 1 top
+ * to bottom, 2 the trigger, 3 off the picture), its position latched by the
+ * Holly's Light-Gun mode (Holly::maple_step), its trigger in its switches
+ * (bit 2); a Dreamcast mouse, the trackballs' and Sega Bass Fishing
+ * Challenge's reel sensor, its movement on "mouse<n>" (0 across, 1 down; an
+ * axis a speed, a sight or a lever its moves), its buttons 2 to 4 (A, B, S:
+ * left, right, middle), the movement 0x200 at rest, as Flycast has them.
+ */
+bool
+AwControllers::gun_aim (unsigned port, uint64_t frame, unsigned *x, unsigned *y)
+{
+	hl::GameControls &g = hl::GameControls::get ();
+	char gun[8];
+	uint16_t vx, vy;
+
+	snprintf (gun, sizeof (gun), "gun%u", port + 1);
+	if ((g.switches (gun, frame) >> 3) & 1)
+		return false;
+	if (!g.analog (gun, 0, &vx) || !g.analog (gun, 1, &vy))
+		return false;
+	*x = (unsigned) vx * 640 / 65536;
+	*y = (unsigned) vy * 480 / 65536;
+	return true;
+}
+
+/* A mouse's movement on one of its places since the last time asked: an
+ * axis a speed, a sight or a lever where it moved */
+static int
+mouse_move (const char *port, unsigned index, double *last, bool *seen)
+{
+	hl::GameControls &g = hl::GameControls::get ();
+
+	for (const auto &p : g.places ())
+		if (p.port == port && p.index == index) {
+			double v = g.value (p.row->key), d;
+			int sign = p.lo > p.hi ? -1 : 1;
+
+			if (p.row->kind == hl::Controls::ROW_AXIS)
+				d = v * 16.0;
+			else {
+				d = *seen ? (v - *last) * 320.0 : 0.0;
+				*last = v;
+				*seen = true;
+			}
+			return sign * (int) lround (d);
+		}
+	return 0;
+}
 
 static void
 copy_spaces (uint8_t *to, const char *text, unsigned size)
@@ -398,6 +451,24 @@ AwControllers::reply (unsigned port, const uint32_t *request, uint32_t *out, uin
 		copy_spaces ((uint8_t *) (out + 1) + 18, AW_MODEL, 30);
 		copy_spaces ((uint8_t *) (out + 1) + 48, AW_LICENSE, 60);
 		out[28] = 0x01F401AE;
+		if (kind[port] == GUN) {
+			/* A light gun and its buttons, North America's */
+			out[1] = 0x81000000;
+			out[2] = 0;
+			out[3] = 0xFE000000;
+			out[5] = 0x00000001;
+			memset (out + 6, 0, 12);
+			copy_spaces ((uint8_t *) (out + 1) + 18, AW_GUN, 30);
+			out[28] = 0x01200069;
+		} else if (kind[port] == MOUSE) {
+			/* Three buttons, three axes */
+			out[1] = 0x00020000;
+			out[2] = 0x00070E00;
+			out[3] = 0;
+			memset (out + 6, 0, 12);
+			copy_spaces ((uint8_t *) (out + 1) + 18, AW_MOUSE, 30);
+			out[28] = 0x01F40190;
+		}
 		if (command == 0x02) {
 			copy_spaces ((uint8_t *) (out + 29), "Version 1.000,1998/05/11,315-6215-AB   ,Analog Module: The 4th Edition. 05/08", 80);
 			words = 49;
@@ -413,6 +484,41 @@ AwControllers::reply (unsigned port, const uint32_t *request, uint32_t *out, uin
 		out[0] = 7;
 		break;
 	case 0x09: {	/* get condition */
+		if (kind[port] == GUN) {
+			char gun[8];
+
+			snprintf (gun, sizeof (gun), "gun%u", port + 1);
+			out[1] = 0x01000000;
+			out[2] = ((hl::GameControls::get ().switches (gun, frame) >> 2) & 1) ? 0xFFFB : 0xFFFF;
+			out[3] = 0x80808080;
+			words = 3;
+			out[0] = 8;
+			break;
+		}
+		if (kind[port] == MOUSE) {
+			char mouse[8];
+			uint32_t held;
+			uint8_t buttons = 0xFF;
+			int dx, dy;
+
+			snprintf (mouse, sizeof (mouse), "mouse%u", port + 1);
+			held = hl::GameControls::get ().switches (mouse, frame);
+			if (held & (1u << 2))
+				buttons &= ~(1u << 2);
+			if (held & (1u << 3))
+				buttons &= ~(1u << 1);
+			if (held & (1u << 4))
+				buttons &= ~(1u << 3);
+			dx = std::clamp (mouse_move (mouse, 0, &mouse_last[port][0], &mouse_seen[port][0]) + 0x200, 0, 0x3FF);
+			dy = std::clamp (mouse_move (mouse, 1, &mouse_last[port][1], &mouse_seen[port][1]) + 0x200, 0, 0x3FF);
+			out[1] = 0x00020000;
+			out[2] = buttons;
+			out[3] = (uint32_t) dx | ((uint32_t) dy << 16);
+			out[4] = out[5] = out[6] = 0x02000200;
+			words = 6;
+			out[0] = 8;
+			break;
+		}
 		uint8_t analog[6] = { 0x80, 0x00, 0x00, 0x80, 0x00, 0x00 };
 		hl::GameControls &g = hl::GameControls::get ();
 		char pad[4];

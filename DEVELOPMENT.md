@@ -290,7 +290,10 @@ channel n at 2n), checked in the game's JVS TEST screen.
   (the far end of its chain) `p3`, `p4`, `coin` 3 and 4, `sys2`, `an2`
   (`SegaIoBoard::unit`); the Atomiswave's `p1` to `p4` and `a1` to `a4`, a
   pad answering on each port the game's places use (two at least), coins 3
-  and 4 the EX. IO board's; Gaelco's port selects (`f000`, `e800`,
+  and 4 the EX. IO board's; on ports 3 and 4 the EX. IO board's light guns
+  `gun3`, `gun4` (0 X, 1 Y, 2 trigger, 3 off the picture: their aim latched
+  to SPG_TRIGGER_POS by the Holly's Light-Gun mode, `HR_LOG_GUN=1` logs it)
+  and mice `mouse3`, `mouse4` (0 X, 1 Y, 2 to 4 the buttons); Gaelco's port selects (`f000`, `e800`,
   `7000`...).
   `gearbox`: a lever held in its positions, `"R"`, `"N"`, `"1"`... each the
   switches it closes (`hl::Gearbox`); `fixed`: switches always closed. A
