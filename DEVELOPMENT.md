@@ -293,7 +293,10 @@ channel n at 2n), checked in the game's JVS TEST screen.
   and 4 the EX. IO board's; on ports 3 and 4 the EX. IO board's light guns
   `gun3`, `gun4` (0 X, 1 Y, 2 trigger, 3 off the picture: their aim latched
   to SPG_TRIGGER_POS by the Holly's Light-Gun mode, `HR_LOG_GUN=1` logs it)
-  and mice `mouse3`, `mouse4` (0 X, 1 Y, 2 to 4 the buttons); Gaelco's port selects (`f000`, `e800`,
+  and mice `mouse3`, `mouse4` (0 X, 1 Y, 2 to 4 the buttons); a Namco JVS
+  board's screen positions `pos1`, `pos2` (0 X, 1 Y, 2 off the picture: the
+  `jvs_guns` layout; a board's channel n is `pos<first player + n>`, Mazan's
+  second sensor board `pos2`); Gaelco's port selects (`f000`, `e800`,
   `7000`...).
   `gearbox`: a lever held in its positions, `"R"`, `"N"`, `"1"`... each the
   switches it closes (`hl::Gearbox`); `fixed`: switches always closed. A
@@ -320,6 +323,15 @@ channel n at 2n), checked in the game's JVS TEST screen.
   encoder board (`hl::SegaIoBoard13938`); another 837-13551 has players 3 and
   4, as the four-player games read them (their JVS TEST's NODE 1);
   `io_players` the players of the first board (4 on Power Stone 2's);
+  Namco's boards (`hl::NamcoIoBoard`, as Flycast has them): `namco-jyu`
+  (Ninja Assault: two players, two guns), `namco-fcb` (Mazan: two, one per
+  sensor of the sword, the first node 1), `namco-fca` (Gun Survivor 2: the
+  gun's yaw, pitch and roll on `an` 0 to 2). Their screen position (JVS
+  command 25) in the counts the games' factory settings take (the shots land
+  where they aim before any GUN INITIALIZE or SWORD ADJUSTMENT: measured in
+  the tests, `HR_LOG_GUN=1` logs the positions read); command 70, Namco's
+  board start (Mazan's sensors: `JvsDevice::maker_command`), as Flycast
+  answers it, the FCB's channels 0 until it ends;
 - A cabinet's other hardware, in `data/games.json` too (a clone's is its
   parent's, `hl::Game`): `io_boards` `["837-13844"]` the racing cabinets' I/O
   board (Hikaru and NAOMI), `drive_board` the wheel's drive board on it

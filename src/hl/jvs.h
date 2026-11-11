@@ -203,6 +203,14 @@ protected:
 	{ (void) channels; (void) out; return false; }
 	virtual bool	 outputs (unsigned bytes, const uint8_t *data)
 	{ (void) bytes; (void) data; return false; }
+	/* Screen positions (light guns, touch panels): channel's X and Y,
+	 * 16 bits each; channel from 1 */
+	virtual bool	 screen (unsigned channel, std::vector<uint8_t> &out)
+	{ (void) channel; (void) out; return false; }
+	/* A command of the board's maker, not in the standard: the bytes it
+	 * takes, of left (its report's data in out), 0 when it has none */
+	virtual size_t	 maker_command (const uint8_t *cmd, size_t left, std::vector<uint8_t> &out)
+	{ (void) cmd; (void) left; (void) out; return 0; }
 };
 
 /* The Sega 837-13551 "I/O BD JVS", the cabinets' usual I/O board: two players
@@ -307,6 +315,59 @@ protected:
 private:
 	/* The mouse's last place, and what it has rolled */
 	double	 last_x, last_y, rolled_x, rolled_y;
+};
+
+/* Namco's JVS I/O boards of their NAOMI cabinets, as Flycast has them: the
+ * JYU-PCB (Ninja Assault: two players, two guns), the FCB (Mazan: the place
+ * where the sword crosses one of its two sensors, a board each), the FCA-1
+ * (Gun Survivor 2: one player, the gun's yaw, pitch and roll on its
+ * channels). Their switches, coins and channels on the 837-13551's ports
+ * (port: a cabinet's next board the next ones); the screen position of its
+ * channel n (command 25) on "pos<first_player + n>": 0 left to right, 1 top
+ * to bottom, 2 off the picture (then 0, 0), in the board's counts (Model).
+ * Command 70, Namco's own, starts the board up: the FCB's channels stay 0
+ * meanwhile, as they do with the sword out of its sensor. */
+class NamcoIoBoard : public SegaIoBoard {
+public:
+	struct Model {
+		/* As games.json's "io_boards" name it: "namco-jyu" */
+		const char *name;
+		const char *identity;
+		uint8_t	 players, switches, coins, analogs, encoders, positions, outputs;
+		/* The FCB's channels: 0 while it starts or while its position
+		 * is off the picture, 8000 else */
+		bool	 presence;
+		/* A screen position's counts at the picture's left and top
+		 * edges, and across it and down it */
+		int32_t	 left, width, top, height;
+	};
+	/* NULL for a name it does not know */
+	static const Model *find (const std::string &name);
+
+	NamcoIoBoard (Machine *mach, JvsBus *bus, const Model *model);
+
+	void	 reset (ResetType type) override;
+	int	 save_state (State *state) override;
+	int	 load_state (State *state) override;
+
+	const Model *model;
+	/* Between the start (command 70) and its end */
+	bool	 starting;
+
+protected:
+	const char *identity () override { return model->identity; }
+	void	 functions (std::vector<uint8_t> &out) override;
+	bool	 analogs (unsigned channels, std::vector<uint8_t> &out) override;
+	bool	 rotary (unsigned channels, std::vector<uint8_t> &out) override;
+	bool	 outputs (unsigned bytes, const uint8_t *data) override;
+	bool	 screen (unsigned channel, std::vector<uint8_t> &out) override;
+	size_t	 maker_command (const uint8_t *cmd, size_t left, std::vector<uint8_t> &out) override;
+
+private:
+	/* Player's screen position, in the board's counts; false off the
+	 * picture */
+	bool	 position (unsigned player, unsigned *x, unsigned *y);
+	uint8_t	 lamps_out[2];
 };
 
 class DriveBoard;

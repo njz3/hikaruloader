@@ -459,6 +459,37 @@ Board::init ()
 
 		io_board = board13844;
 	}
+	/* Namco's boards (hl::NamcoIoBoard), each on the next ports (p2, pos2
+	 * after p1, pos1): the first at the far end of the chain, node 1
+	 * (Mazan's coins and lamps on node 1), so made last */
+	else if (!game->io_boards.empty () && hl::NamcoIoBoard::find (game->io_boards[0]) &&
+	         (!index || !machine->networked)) {
+		std::vector<unsigned> first (game->io_boards.size () + 1, 0);
+
+		for (i = 0; i < game->io_boards.size (); i++) {
+			const hl::NamcoIoBoard::Model *model = hl::NamcoIoBoard::find (game->io_boards[i]);
+
+			first[i + 1] = first[i] + (model ? model->players : 0);
+		}
+		for (i = game->io_boards.size (); i-- > 0;) {
+			const hl::NamcoIoBoard::Model *model = hl::NamcoIoBoard::find (game->io_boards[i]);
+			hl::NamcoIoBoard *board;
+
+			if (!model) {
+				HL_ERROR ("naomi: unknown I/O board %s", game->io_boards[i].c_str ());
+				continue;
+			}
+			board = new hl::NamcoIoBoard (machine, jvs, model);
+			board->unit = i;
+			board->first_player = first[i];
+			if (i)
+				board->lamps = false;
+			else
+				io_board = board;
+			HL_PRINT ("naomi: the I/O board %s, node %u (ports p%u to p%u)", model->name,
+			          (unsigned) i + 1, first[i] + 1, first[i + 1]);
+		}
+	}
 	/* The other boards of a machine of whole systems have no I/O board */
 	else if (!index || !machine->networked) {
 		unsigned units = 1;

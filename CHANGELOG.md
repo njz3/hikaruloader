@@ -19,6 +19,12 @@ Next version
   as before.
 - Beach Spikers starts as a four-player cabinet on a blank EEPROM (its
   header names no players): a game with players 3 and 4 gets them.
+- Namco's I/O boards for their NAOMI cabinets: Ninja Assault (no longer
+  I/O PCB ERROR: its two guns aim where they point, the trigger off the
+  picture reloads), Mazan: Flash of the Blade (no longer black: the sword
+  on the mouse, a quick swing slashes, its two sensors' boards), Gun
+  Survivor 2 (the gun's yaw, pitch and roll, the trigger, the gun button),
+  checked in their I/O tests.
 - The Atomiswave's light guns (Ranger Mission, Sports Shooting USA, Extreme
   Hunting, Sega Clay Challenge) and trackballs (WaiWai Drive, Sega Bass
   Fishing Challenge's reel), on the EX. IO board's controller ports: a gun's

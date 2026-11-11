@@ -754,10 +754,15 @@ hidden; Tab, Alt, the Windows key or another window let it go.
 | Planet Harriers | `MOUSE0`: left button bullets, right missiles, middle bombs |
 | Atomiswave guns: Ranger Mission, Sports Shooting USA, Extreme Hunting, Sega Clay Challenge | `MOUSE0` for player 1, `MOUSE1` for player 2: left button the trigger, off the picture to reload; the pump (or Sports Shooting's tilt switch) on the right button (`P1_Fire2`) |
 | Atomiswave trackballs: WaiWai Drive (two), Sega Bass Fishing Challenge's reel | The analog sticks (`P1_StickX`, `P1_StickY`; `P2_` WaiWai Drive's second): the further the faster |
+| Ninja Assault | `MOUSE0` for player 1, `MOUSE1` for player 2: left button the trigger, off the picture and the trigger to reload |
+| Mazan: Flash of the Blade | `MOUSE0` the sword: a quick swing slashes (to start, to choose, to fight); `P1_Reload` takes it out of the sensors, `P1_Button2` puts it in its holder |
+| Gun Survivor 2 Biohazard Code: Veronica | The gun's yaw and pitch on the sight (`P1_GunX`, `P1_GunY`: the mouse, the left stick), its roll on `Rudder` (the right stick); the trigger, the gun button (`P1_Fire2`, `P1_Start` too) to start and walk |
 
 The Atomiswave's guns aim as the cabinet's do: once each, shoot the centre
 mark of the game's GUN ADJUST (Sports Shooting USA: its three targets) in its
-test menu; the game keeps it.
+test menu; the game keeps it. Ninja Assault's guns and Mazan's sword aim
+where they point from the start (their GUN INITIALIZE and SWORD ADJUSTMENT
+can still change it); Gun Survivor 2's I/F INITIALIZE takes the gun's middle.
 
 A mouse moves its sight from where it was. A gun that sends absolute positions
 aims at the game's 4:3 picture in the middle of the window. A controller's

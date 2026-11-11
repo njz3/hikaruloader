@@ -33,8 +33,11 @@ GENERAL
   - the Star Horse sets (shorse*, shors2k1, shors2k2*, shorsep*, shorsepr*): SELF TEST
     says I/O BAD; they want the 837-13785 ARCNET&IO board, of which nothing is known
     (no access on the G2 bus: it is not the same board as the medal games');
-  - Namco's own I/O boards are not there: ninjaslt (JVS command 25, the guns' screen
-    position) and mazan stop on I/O PCB ERROR;
+  - World Kicks runs on an 837-13551 (its menus, its four sticks on channels 0 to 7),
+    not its own Namco V226 board: its kick sensors (KICK, FRONT/BACK in its SWITCH
+    TEST) would be channels 8 to 11 of the V226's twelve, the four players' buttons on
+    player 1's switches (Flycast); roles for players 3 and 4's sticks and the kicks
+    are missing;
   - vtennis and vtennisg stay black: from frame 1296 their frame loop waits on a lock
     that is no longer released (the channel 2 DMA's source moved to 0C0CA380 that frame);
   - spawn, hmgeo, alienfnt want a linked cabinet in their factory settings (blank EEPROM):

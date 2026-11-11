@@ -562,6 +562,10 @@ JvsDevice::answer (const uint8_t *data, size_t size, std::vector<uint8_t> &repor
 			used = 2;
 			ok = left >= used && rotary (cmd[1], out);
 			break;
+		case 0x25: /* Screen position: the channel */
+			used = 2;
+			ok = left >= used && screen (cmd[1], out);
+			break;
 		case 0x30: /* Coins taken: slot, count */
 		case 0x31:
 			used = 4;
@@ -573,8 +577,12 @@ JvsDevice::answer (const uint8_t *data, size_t size, std::vector<uint8_t> &repor
 			ok = left >= used && outputs (cmd[1], cmd + 2);
 			break;
 		default:
-			HL_ERROR ("jvs: device %02X: unknown command %02X", address, cmd[0]);
-			return false;
+			used = maker_command (cmd, left, out);
+			if (!used) {
+				HL_ERROR ("jvs: device %02X: unknown command %02X", address, cmd[0]);
+				return false;
+			}
+			break;
 		}
 		if (left < used) {
 			reports.push_back (REPORT_PARAMS);
@@ -982,6 +990,184 @@ SegaIoBoard13938::get (unsigned size, uint32_t addr, void *val)
 		return 0;
 	}
 	return SegaIoBoard::get (size, addr, val);
+}
+
+/* NamcoIoBoard */
+
+/* Their identities and functions as Flycast has them (maple_jvs.cpp): the
+ * FCA-1's one coin slot, the BIOS stopping with two. The screen positions'
+ * counts as the games' factory settings take them, the shots where they aim
+ * before any adjustment: the JYU's X 56 to 414 across the picture, Y 68 to
+ * 543 down it (Ninja Assault's GUN INITIALIZE, the shots within a pixel); the
+ * FCB's signed, X -9840 to 13060, Y 28370 to 8030 (Mazan's SWORD TEST: -320
+ * to 319 across, 240 to -240 down) */
+static const NamcoIoBoard::Model namco_models[] = {
+	{ "namco-jyu", "namco ltd.;JYU-PCB;Ver1.00;JPN,2Coins 2Guns", 2, 12, 2, 0, 0, 2, 16, false, 56, 358, 68, 475 },
+	{ "namco-fcb", "namco ltd.;FCB;Ver1.0;JPN,Touch Panel & Multipurpose", 1, 16, 2, 7, 2, 1, 6, true, -9840, 22900, 28370, -20340 },
+	{ "namco-fca", "namco ltd.;FCA-1;Ver1.01;JPN,Multipurpose + Rotary Encoder", 1, 16, 1, 7, 2, 0, 6, false, 0, 0, 0, 0 },
+};
+
+const NamcoIoBoard::Model *
+NamcoIoBoard::find (const std::string &name)
+{
+	for (const Model &m : namco_models)
+		if (name == m.name)
+			return &m;
+	return NULL;
+}
+
+NamcoIoBoard::NamcoIoBoard (Machine *mach, JvsBus *bus, const Model *model) :
+	SegaIoBoard (mach, bus),
+	model (model)
+{
+	player_count = model->players;
+	Outputs::get ()->board (model->outputs, false);
+	reset (RESET_HARD);
+}
+
+void
+NamcoIoBoard::functions (std::vector<uint8_t> &out)
+{
+	out.insert (out.end (), { 0x01, model->players, model->switches, 0 });
+	if (model->coins)
+		out.insert (out.end (), { 0x02, model->coins, 0, 0 });
+	if (model->analogs)
+		out.insert (out.end (), { 0x03, model->analogs, 16, 0 });
+	if (model->encoders)
+		out.insert (out.end (), { 0x04, model->encoders, 0, 0 });
+	/* Screen positions: 16 bits of X, 16 of Y, the channels */
+	if (model->positions)
+		out.insert (out.end (), { 0x06, 16, 16, model->positions });
+	out.insert (out.end (), { 0x12, model->outputs, 0, 0 });
+}
+
+bool
+NamcoIoBoard::position (unsigned player, unsigned *x, unsigned *y)
+{
+	GameControls &g = GameControls::get ();
+	std::string port = "pos" + std::to_string (player + 1);
+	uint16_t vx, vy;
+
+	if (!cabinet || ((g.switches (port.c_str (), mach->frame) >> 2) & 1))
+		return false;
+	if (!g.analog (port.c_str (), 0, &vx) || !g.analog (port.c_str (), 1, &vy))
+		return false;
+	/* Signed counts, 16 bits */
+	*x = (unsigned) (model->left + (int64_t) vx * model->width / 65536) & 0xFFFF;
+	*y = (unsigned) (model->top + (int64_t) vy * model->height / 65536) & 0xFFFF;
+	return true;
+}
+
+bool
+NamcoIoBoard::screen (unsigned channel, std::vector<uint8_t> &out)
+{
+	unsigned x = 0, y = 0;
+
+	if (channel < 1 || channel > model->positions)
+		return false;
+	if (!position (first_player + channel - 1, &x, &y))
+		x = y = 0;
+	/* HR_LOG_GUN=1: the positions read, at each change */
+	static const bool log_gun = getenv ("HR_LOG_GUN") != NULL;
+	if (log_gun) {
+		static uint32_t last[4] = { ~0u, ~0u, ~0u, ~0u };
+		unsigned player = MIN2 (first_player + channel - 1, 3u);
+
+		if (last[player] != ((x << 16) | y))
+			HL_PRINT ("jvs: device %02X: screen position %u: %u, %u, frame %llu", address, channel,
+			          x, y, (unsigned long long) mach->frame);
+		last[player] = (x << 16) | y;
+	}
+	out.insert (out.end (), { (uint8_t) (x >> 8), (uint8_t) x, (uint8_t) (y >> 8), (uint8_t) y });
+	return true;
+}
+
+bool
+NamcoIoBoard::analogs (unsigned channels, std::vector<uint8_t> &out)
+{
+	unsigned x, y, i;
+	uint16_t v;
+
+	if (!model->presence)
+		return SegaIoBoard::analogs (channels, out);
+	if (channels > 8)
+		return false;
+	v = (!starting && position (first_player, &x, &y)) ? 0x8000 : 0;
+	for (i = 0; i < channels; i++)
+		out.insert (out.end (), { (uint8_t) (v >> 8), (uint8_t) v });
+	return true;
+}
+
+bool
+NamcoIoBoard::rotary (unsigned channels, std::vector<uint8_t> &out)
+{
+	/* Nothing on them in these cabinets */
+	if (channels > 4)
+		return false;
+	out.insert (out.end (), 2 * channels, 0);
+	return true;
+}
+
+bool
+NamcoIoBoard::outputs (unsigned bytes, const uint8_t *data)
+{
+	if (bytes < 1 || bytes > 2)
+		return false;
+	memcpy (lamps_out, data, bytes);
+	output = data[0];
+	if (cabinet && lamps)
+		Outputs::get ()->jvs (data, bytes);
+	return true;
+}
+
+/* Namco's start (70), its replies as Flycast gives them (the board's own are
+ * not known). Mazan's, other commands after them in their packets: 70 18
+ * and four bytes, 70 60 and one, 70 62 03 and two, the reads of 16 bytes
+ * (pages 00 to F0 of 01 twice, 00 of 02), the last 70 62 03 00 10 the end
+ * of the start; any other the rest of the packet */
+size_t
+NamcoIoBoard::maker_command (const uint8_t *cmd, size_t left, std::vector<uint8_t> &out)
+{
+	size_t size;
+
+	if (cmd[0] != 0x70)
+		return 0;
+	size = (left < 2) ? left : (cmd[1] == 0x18) ? 6 : (cmd[1] == 0x60) ? 3 : (cmd[1] == 0x62) ? 5 : left;
+	starting = true;
+	if (left >= 3 && cmd[2] == 3) {
+		out.push_back (0x10);
+		out.insert (out.end (), 16, 0x7F);
+		if (left >= 5 && (cmd[4] == 0x10 || cmd[4] == 0x11))
+			starting = false;
+	} else
+		out.insert (out.end (), { 2, 3, 1 });
+	return size;
+}
+
+void
+NamcoIoBoard::reset (ResetType type)
+{
+	SegaIoBoard::reset (type);
+	starting = false;
+	lamps_out[0] = lamps_out[1] = 0;
+}
+
+int
+NamcoIoBoard::save_state (State *state)
+{
+	int ret = SegaIoBoard::save_state (state);
+	ret |= state->put (&starting, sizeof (starting));
+	ret |= state->put (lamps_out, sizeof (lamps_out));
+	return ret;
+}
+
+int
+NamcoIoBoard::load_state (State *state)
+{
+	int ret = SegaIoBoard::load_state (state);
+	ret |= state->get (&starting, sizeof (starting));
+	ret |= state->get (lamps_out, sizeof (lamps_out));
+	return ret;
 }
 
 /* SegaIoBoard13844 */
