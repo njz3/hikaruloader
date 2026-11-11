@@ -709,6 +709,21 @@ switch_word (unsigned player, bool swap_left_right, SegaIoBoard::PointerGame gam
 	return bits;
 }
 
+/* A row of controls.ini held: through its action when it has one (the
+ * shell's and the agent's presses, the platform's rows: hl::Input), else
+ * its bindings */
+static bool
+row_pressed (const char *section, const char *key)
+{
+	for (int a = 0; a < NUM_ACTIONS; a++) {
+		const char *s, *k;
+
+		if (Input::row_of ((Action) a, &s, &k) && !strcasecmp (s, section) && !strcasecmp (k, key))
+			return Input::action ((Action) a);
+	}
+	return Controls::get ().pressed (section, key);
+}
+
 bool
 SegaIoBoard::switches (unsigned players, unsigned bytes, std::vector<uint8_t> &out)
 {
@@ -722,7 +737,7 @@ SegaIoBoard::switches (unsigned players, unsigned bytes, std::vector<uint8_t> &o
 	static const bool log_inputs = getenv ("HR_LOG_INPUTS") != NULL;
 	if (log_inputs) {
 		static uint32_t last = ~0u;
-		uint32_t now = ((uint32_t) switch_word (0, swap_left_right, pointer_game) << 1) | (Input::action (ACTION_TEST) ? 1 : 0);
+		uint32_t now = ((uint32_t) SegaIoBoard::player_bits (0) << 1) | (Input::action (ACTION_TEST) ? 1 : 0);
 		if (now != last)
 			HL_PRINT ("inputs: frame %llu, test %u, player 1 %04X",
 			          (unsigned long long) mach->frame, now & 1, now >> 1);
@@ -746,7 +761,15 @@ SegaIoBoard::system_bits ()
 uint16_t
 SegaIoBoard::player_bits (unsigned player)
 {
-	return cabinet ? switch_word (player, swap_left_right, pointer_game) : 0;
+	uint16_t bits;
+
+	if (!cabinet)
+		return 0;
+	bits = switch_word (player, swap_left_right, pointer_game);
+	for (const GameInput &in : game_switches)
+		if (in.player == player && row_pressed (in.section.c_str (), in.key.c_str ()))
+			bits |= in.mask;
+	return bits;
 }
 
 /* The wheel and the pedals read from the controllers once a call for
@@ -877,16 +900,17 @@ SegaIoBoard::read_controls ()
 	 * from 0; the channels it leaves out as they are */
 	if (!analog_inputs.empty ()) {
 		for (unsigned i = 0; i < analog_inputs.size () && i < 8; i++) {
-			const AnalogInput &in = analog_inputs[i];
+			const GameInput &in = analog_inputs[i];
+			const char *section = in.section.c_str (), *key = in.key.c_str ();
 
 			if (in.key.empty () || analog_set[i])
 				continue;
-			if (in.kind == AnalogInput::PEDAL)
-				analog[i] = (uint16_t) lround (c.pedal ("Analog", in.key.c_str ()) * 0xFFFF);
+			if (in.kind == GameInput::PEDAL)
+				analog[i] = (uint16_t) lround (c.pedal (section, key) * 0xFFFF);
 			else
-				analog[i] = (uint16_t) lround (0x8000 + (in.kind == AnalogInput::LEVER ?
-				                                         c.aim ("Analog", in.key.c_str ()) :
-				                                         c.axis ("Analog", in.key.c_str ())) * 0x7FFF);
+				analog[i] = (uint16_t) lround (0x8000 + (in.kind == GameInput::LEVER ?
+				                                         c.aim (section, key) :
+				                                         c.axis (section, key)) * 0x7FFF);
 		}
 		return;
 	}
@@ -912,6 +936,18 @@ SegaIoBoard::analogs (unsigned channels, std::vector<uint8_t> &out)
 		out.push_back ((uint8_t) (analog[i] >> 8));
 		out.push_back ((uint8_t) analog[i]);
 	}
+	/* HR_LOG_INPUTS=1: the channels' top bytes too, at each change */
+	static const bool log_inputs = getenv ("HR_LOG_INPUTS") != NULL;
+	if (log_inputs && cabinet) {
+		static std::string last;
+		char text[48] = "";
+
+		for (i = 0; i < channels && i < 8; i++)
+			snprintf (text + 3 * i, sizeof (text) - 3 * i, " %02X", analog[i] >> 8);
+		if (last != text)
+			HL_PRINT ("inputs: frame %llu, analogs%s", (unsigned long long) mach->frame, text);
+		last = text;
+	}
 	return true;
 }
 
@@ -936,7 +972,7 @@ SegaIoBoard::reset (ResetType type)
 	memset (analog_set, 0, sizeof (analog_set));
 	analog[0] = 0x8000;
 	for (unsigned i = 0; i < analog_inputs.size () && i < 8; i++)
-		if (!analog_inputs[i].key.empty () && analog_inputs[i].kind != AnalogInput::PEDAL)
+		if (!analog_inputs[i].key.empty () && analog_inputs[i].kind != GameInput::PEDAL)
 			analog[i] = 0x8000;
 	coin[0] = coin[1] = 0;
 	coin_held[0] = coin_held[1] = false;

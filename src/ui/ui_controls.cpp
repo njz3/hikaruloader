@@ -55,7 +55,8 @@ const Section kSections[] = {
     {"Common", N_("All games")},
     {"Digital", N_("Stick and buttons")},
     {"Driving", N_("Driving")},
-    {"Pointer", N_("Mouse and light gun games")},
+    {"Pointer", N_("Mouse, light gun and analog stick games")},
+    {"Flight", N_("Flying games")},
     {"Gaelco", N_("Gaelco cabinets")},
     // Read by the NAOMI and Atomiswave games instead of the rows above
     {"Naomi", N_("NAOMI and Atomiswave games (their own rows)")},
@@ -100,7 +101,7 @@ const char *actionLabel(const std::string &key)
         {"P1_Steer_Right", N_("Steer right (all the way)")},
         {"P1_Gas_Digital", N_("Accelerator (all the way)")},
         {"P1_Brake_Digital", N_("Brake (all the way)")},
-        {"ViewChange", N_("Change view (NASCAR Arcade)")},
+        {"ViewChange", N_("Change view")},
         {"GearUp", N_("Shift up")},
         {"GearDown", N_("Shift down")},
         {"Gear1", N_("Gear 1")},
@@ -115,18 +116,25 @@ const char *actionLabel(const std::string &key)
         {"LeftBrake", N_("Left brake lever (ATV Track)")},
         {"RightBrake", N_("Right brake lever (ATV Track)")},
         {"Horn", N_("Horn, also start (Smashing Drive)")},
-        {"P1_AimX", N_("Sight left and right (Brave Firefighters)")},
-        {"P1_AimY", N_("Sight up and down (Brave Firefighters)")},
-        {"P1_Water", N_("Water (Brave Firefighters)")},
+        {"P1_AimX", N_("Sight or gun left and right")},
+        {"P1_AimY", N_("Sight or gun up and down")},
+        {"P1_Water", N_("Trigger (Brave Firefighters: water)")},
         {"P1_Fog", N_("Fog (Brave Firefighters)")},
-        {"P1_OffScreen", N_("Aimed off the screen (Brave Firefighters)")},
-        {"P2_AimX", N_("Player 2's sight left and right")},
-        {"P2_AimY", N_("Player 2's sight up and down")},
-        {"P2_Water", N_("Player 2's water")},
+        {"P1_OffScreen", N_("Gun off the screen, reload")},
+        {"P2_AimX", N_("Player 2's sight or gun left and right")},
+        {"P2_AimY", N_("Player 2's sight or gun up and down")},
+        {"P2_Water", N_("Player 2's trigger")},
         {"P2_Fog", N_("Player 2's fog")},
-        {"P2_OffScreen", N_("Player 2 aimed off the screen")},
-        {"P1_StickX", N_("Stick left and right (Planet Harriers)")},
-        {"P1_StickY", N_("Stick up and down (Planet Harriers)")},
+        {"P2_OffScreen", N_("Player 2's gun off the screen")},
+        {"P1_StickX", N_("Analog stick left and right")},
+        {"P1_StickY", N_("Analog stick up and down")},
+        {"P2_StickX", N_("Player 2's analog stick left and right")},
+        {"P2_StickY", N_("Player 2's analog stick up and down")},
+        {"P1_Elevator", N_("Elevator (wheel pushed, pulled)")},
+        {"P1_Aileron", N_("Aileron (wheel turned)")},
+        {"P1_Rudder", N_("Rudder pedals")},
+        {"P1_ThrustL", N_("Left thrust lever")},
+        {"P1_ThrustR", N_("Right thrust lever")},
         {"P1_Bullet", N_("Bullets (Planet Harriers)")},
         {"P1_Missile", N_("Missiles (Planet Harriers)")},
         {"P1_Bomb", N_("Bombs (Planet Harriers)")},
@@ -147,41 +155,30 @@ const char *actionLabel(const std::string &key)
     for (const auto &l : labels)
         if (!strcasecmp(key.c_str(), l.key))
             return tr(l.label);
-    // The game's own axes ([Analog]): their names as its INPUT TEST gives
-    // them, the keys moving them after
+    // An axis's keys: the axis's name, and which way
     static std::map<std::string, std::string> made;
-    for (const auto &a : hl::Controls::get().game_axes())
+    for (const char *suffix : {"_Left", "_Right"})
     {
-        if (a.key.empty())
-            continue;
-        const char *more = !strcasecmp(key.c_str(), a.key.c_str()) ? ""
-                           : !strcasecmp(key.c_str(), (a.key + "_Left").c_str()) ? tr(" (down, left)")
-                           : !strcasecmp(key.c_str(), (a.key + "_Right").c_str()) ? tr(" (up, right)")
-                                                                                     : NULL;
-        if (more)
-            return (made[key] = a.label + more).c_str();
+        size_t n = strlen(suffix);
+        if (key.size() > n && !strcasecmp(key.c_str() + key.size() - n, suffix))
+        {
+            std::string base = key.substr(0, key.size() - n);
+            const char *label = actionLabel(base);
+            if (label != base.c_str() && strcasecmp(label, base.c_str()))
+                return (made[key] = std::string(label) + tr(*suffix == '_' && suffix[1] == 'L' ? " (down, left)" : " (up, right)")).c_str();
+        }
     }
     return key.c_str();
 }
 
-// The game's own axis whose row it is: the axis itself (not its keys); NULL
-const hl::AnalogInput *gameAxis(const std::string &key)
+// The game's own control whose row it is (the control itself, not its
+// keys); NULL
+const hl::GameInput *gameInput(const std::string &section, const std::string &key)
 {
-    for (const auto &a : hl::Controls::get().game_axes())
-        if (!a.key.empty() && !strcasecmp(key.c_str(), a.key.c_str()))
+    for (const auto &a : hl::Controls::get().game_inputs())
+        if (!strcasecmp(section.c_str(), a.section.c_str()) && !strcasecmp(key.c_str(), a.key.c_str()))
             return &a;
     return NULL;
-}
-
-// The rows of [Analog] the game has: its axes and their keys
-bool isGameAxisRow(const std::string &key)
-{
-    for (const auto &a : hl::Controls::get().game_axes())
-        if (!a.key.empty() && (!strcasecmp(key.c_str(), a.key.c_str()) ||
-                               !strcasecmp(key.c_str(), (a.key + "_Left").c_str()) ||
-                               !strcasecmp(key.c_str(), (a.key + "_Right").c_str())))
-            return true;
-    return false;
 }
 
 bool isSteering(const std::string &key)
@@ -345,7 +342,8 @@ const char *deviceName(const hl::Controls::Device &d)
     return d.player < 0 ? tr("Keyboard") : d.name.c_str();
 }
 
-void bindingRow(const char *section, const hl::Controls::Row &row)
+// label: the game's name for it, NULL the row's own
+void bindingRow(const char *section, const hl::Controls::Row &row, const char *label = NULL)
 {
     hl::Controls &controls = hl::Controls::get();
     const int player = g_mapping.device.player;
@@ -353,7 +351,7 @@ void bindingRow(const char *section, const hl::Controls::Row &row)
     ImGui::TableNextRow();
     ImGui::TableSetColumnIndex(0);
     ImGui::AlignTextToFramePadding();
-    ImGui::TextUnformatted(actionLabel(row.key));
+    ImGui::TextUnformatted(label ? label : actionLabel(row.key));
     if (ImGui::IsItemHovered())
         ImGui::SetTooltip("%s", row.key.c_str());
 
@@ -405,8 +403,10 @@ void bindingRow(const char *section, const hl::Controls::Row &row)
         g_capture.append = add;
         g_capture.section = section;
         g_capture.key = row.key;
-        const hl::AnalogInput *axis = gameAxis(row.key);
-        controls.capture(player, (isPedal(row.key) || (axis && axis->kind == hl::AnalogInput::PEDAL)) ? hl::Controls::CAPTURE_PEDAL
+        const hl::GameInput *axis = gameInput(section, row.key);
+        if (axis && axis->kind == hl::GameInput::SWITCH)
+            axis = NULL;
+        controls.capture(player, (isPedal(row.key) || (axis && axis->kind == hl::GameInput::PEDAL)) ? hl::Controls::CAPTURE_PEDAL
                                  : (isSteering(row.key) || isPointerAxis(row.key) || axis) ? hl::Controls::CAPTURE_STEERING
                                                        : hl::Controls::CAPTURE_BUTTON);
     }
@@ -547,22 +547,45 @@ void mappingPage()
 
     if (ImGui::BeginChild("##bindings", ImVec2(0, 0), ImGuiChildFlags_Borders))
     {
-        // The game running's own axes first ([Analog], the rows it reads)
-        std::vector<hl::Controls::Row> own;
-        for (const auto &row : controls.rows("Analog"))
-            if (isGameAxisRow(row.key))
-                own.push_back(row);
+        // The game running's own controls first, under its names: the rows
+        // they read, and an axis's keys
+        struct Own
+        {
+            std::string section, label;
+            hl::Controls::Row row;
+        };
+        std::vector<Own> own;
+        for (const auto &in : controls.game_inputs())
+        {
+            static const struct
+            {
+                const char *suffix, *more;
+            } parts[] = {{"", ""}, {"_Left", N_(" (down, left)")}, {"_Right", N_(" (up, right)")}, {"_Digital", N_(" (a key)")}};
+            for (const auto &part : parts)
+            {
+                if (*part.suffix && in.kind == hl::GameInput::SWITCH)
+                    break;
+                std::string key = in.key + part.suffix;
+                for (const auto &row : controls.rows(in.section.c_str()))
+                    if (!strcasecmp(row.key.c_str(), key.c_str()))
+                        own.push_back({in.section, in.label + (*part.more ? tr(part.more) : "") + "  (" + actionLabel(key) + ")", row});
+            }
+        }
         if (!own.empty())
         {
-            header(tr("This game's axes"));
-            if (ImGui::BeginTable("Analog", 4, ImGuiTableFlags_SizingStretchProp))
+            header(tr("This game's controls"));
+            if (ImGui::BeginTable("##own", 4, ImGuiTableFlags_SizingStretchProp))
             {
                 ImGui::TableSetupColumn("##action", ImGuiTableColumnFlags_WidthStretch, 0.34f);
                 ImGui::TableSetupColumn("##binding", ImGuiTableColumnFlags_WidthStretch, 0.30f);
                 ImGui::TableSetupColumn("##now", ImGuiTableColumnFlags_WidthStretch, 0.22f);
                 ImGui::TableSetupColumn("##buttons", ImGuiTableColumnFlags_WidthFixed);
-                for (const auto &row : own)
-                    bindingRow("Analog", row);
+                for (const auto &o : own)
+                {
+                    ImGui::PushID(o.section.c_str());
+                    bindingRow(o.section.c_str(), o.row, o.label.c_str());
+                    ImGui::PopID();
+                }
                 ImGui::EndTable();
             }
         }

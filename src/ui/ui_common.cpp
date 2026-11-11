@@ -1058,12 +1058,42 @@ void drawSettings(bool *open, bool inGame)
     ImGui::EndChild();
 
     ImGui::Separator();
-    if (ImGui::Button(tr("Save")))
+    // During a game: the settings for all games (hikaruloader.ini), or for
+    // this one alone (games/<set>.ini, only what differs from the common ones)
+    const char *game = hl::Config::game();
+    if (ImGui::Button(game[0] ? tr("Save for all games") : tr("Save")))
     {
         char message[1200];
-        snprintf(message, sizeof(message), hl::Config::get ()->save () ? tr("Saved to %s") : tr("Cannot write %s"), hl::Config::path ());
+        snprintf(message, sizeof(message), hl::Config::save_common() ? tr("Saved to %s") : tr("Cannot write %s"), hl::Config::path ());
         g_status = message;
         g_rescan = true;
+    }
+    if (game[0] && ImGui::IsItemHovered())
+        ImGui::SetTooltip("%s", tr("Into hikaruloader.ini; the settings this game has of its own keep their common value there."));
+    if (game[0])
+    {
+        char label[128];
+        ImGui::SameLine();
+        snprintf(label, sizeof(label), tr("Save for %s alone"), game);
+        if (ImGui::Button(label))
+        {
+            char message[1200];
+            snprintf(message, sizeof(message), hl::Config::save_for_game() ? tr("Saved for %s: what differs from the common settings") : tr("Cannot write the settings of %s"), game);
+            g_status = message;
+        }
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("%s", tr("Only the settings that differ from the common ones, in games/<set>.ini, read over them each time this game starts."));
+        if (hl::Config::game_has_file())
+        {
+            ImGui::SameLine();
+            if (ImGui::Button(tr("Common settings")))
+            {
+                hl::Config::use_common_settings();
+                g_status = tr("The common settings again for this game (its file removed).");
+            }
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("%s", tr("Removes this game's own settings file; some settings take effect at its next start."));
+        }
     }
     ImGui::SameLine();
     if (ImGui::Button(tr("Close")))

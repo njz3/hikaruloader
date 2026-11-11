@@ -237,8 +237,10 @@ public:
 	enum PointerGame { POINTER_NONE, POINTER_BRAVEFF, POINTER_PHARRIER };
 	PointerGame pointer_game = POINTER_NONE;
 	/* The game's own analog inputs, by channel (Game::analogs): from
-	 * controls.ini's [Analog] instead of the wheel and pedals */
-	std::vector<AnalogInput> analog_inputs;
+	 * their rows of controls.ini instead of the wheel and pedals */
+	std::vector<GameInput> analog_inputs;
+	/* The game's own switches (Game::switches), added to the players' */
+	std::vector<GameInput> game_switches;
 	/* Set by the shell (or the agent): no longer the controllers' */
 	bool	 analog_set[8];
 	/* The coins counted, and the outputs (lamps) the game drives */

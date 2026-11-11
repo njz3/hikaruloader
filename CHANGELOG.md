@@ -31,8 +31,23 @@ Next version
 - A game's own bindings: *Save these bindings for <set> alone* in the Controls
   tab writes `controls/<set>.ini`, read instead of `controls.ini` for that game.
 - Airline Pilots' five analog inputs can be bound (control wheel's elevator and
-  aileron, rudder pedal, thrust levers L and R, as its INPUT TEST names them),
-  under *This game's axes*; they were missing or fixed at an end.
+  aileron, rudder pedal, thrust levers L and R, as its INPUT TEST names them);
+  they were missing or fixed at an end.
+- The NAOMI games' own controls bound once for all of them, under common
+  names, and shown first in the Controls tab under the game's names: the view
+  change (it reached no NAOMI game: Initial D, King of Route 66, 18 Wheeler,
+  Club Kart Cycraft, Wave Runner GP...), the gear lever (Initial D, 18 Wheeler,
+  Crazy Taxi, Jambo! Safari), the flying games' controls (`[Flight]`: Airline
+  Pilots, Strike Fighter), the light guns' sights, trigger and reload
+  (Confidential Mission, The Maze of the Kings, Lupin the Third, Death Crimson
+  OX), the analog sticks (Monkey Ball, Dynamite Baseball, World Series
+  Baseball, Zombie Revenge, Soul Surfer, Shakatto Tambourine).
+- Fixed: those analog sticks rested at one end, and Alien Front's pedals were
+  swapped (its brake on the second channel, its accelerator on the third).
+- A game's own settings: *Save for <set> alone* in the settings writes those
+  that differ from the common ones to `games/<set>.ini`, read over
+  `hikaruloader.ini` for that game (aspect ratio, widescreen, force feedback's
+  gains...); *Common settings* removes it.
 - Fixed: Airline Pilots (deluxe, three boards) mostly stayed on "Please Wait
   until Slaves synchronize...", without a sound after the BIOS's chime; it
   starts every time now, its music and sounds with it. The boards of a cabinet

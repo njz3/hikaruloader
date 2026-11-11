@@ -1087,18 +1087,45 @@ msgid "Driving"
 msgstr "Conduite"
 
 #: src/ui/ui_controls.cpp
-msgid "Mouse and light gun games"
-msgstr "Jeux à la souris ou au light gun"
+msgid "Mouse, light gun and analog stick games"
+msgstr "Jeux à la souris, au light gun ou au manche analogique"
 
 #: src/ui/ui_controls.cpp
 msgid "Gaelco cabinets"
 msgstr "Bornes Gaelco"
 
+msgid "Save for all games"
+msgstr "Enregistrer pour tous les jeux"
+
+msgid "Into hikaruloader.ini; the settings this game has of its own keep their common value there."
+msgstr "Dans hikaruloader.ini ; les réglages propres à ce jeu y gardent leur valeur commune."
+
+msgid "Save for %s alone"
+msgstr "Enregistrer pour %s seul"
+
+msgid "Saved for %s: what differs from the common settings"
+msgstr "Enregistré pour %s : ce qui diffère des réglages communs"
+
+msgid "Cannot write the settings of %s"
+msgstr "Impossible d'écrire les réglages de %s"
+
+msgid "Only the settings that differ from the common ones, in games/<set>.ini, read over them each time this game starts."
+msgstr "Seuls les réglages qui diffèrent des réglages communs, dans games/<set>.ini, lus par-dessus à chaque lancement de ce jeu."
+
+msgid "Common settings"
+msgstr "Réglages communs"
+
+msgid "The common settings again for this game (its file removed)."
+msgstr "Les réglages communs de nouveau pour ce jeu (son fichier supprimé)."
+
+msgid "Removes this game's own settings file; some settings take effect at its next start."
+msgstr "Supprime le fichier de réglages propre à ce jeu ; certains réglages prennent effet à son prochain lancement."
+
 msgid "NAOMI and Atomiswave games (their own rows)"
 msgstr "Jeux NAOMI et Atomiswave (leurs propres lignes)"
 
-msgid "This game's axes"
-msgstr "Axes de ce jeu"
+msgid "This game's controls"
+msgstr "Contrôles de ce jeu"
 
 msgid " (down, left)"
 msgstr " (bas, gauche)"
@@ -1252,8 +1279,8 @@ msgid "Brake (all the way)"
 msgstr "Frein (à fond)"
 
 #: src/ui/ui_controls.cpp
-msgid "Change view (NASCAR Arcade)"
-msgstr "Changer de vue (NASCAR Arcade)"
+msgid "Change view"
+msgstr "Changer de vue"
 
 #: src/ui/ui_controls.cpp
 msgid "Shift up"
@@ -1312,52 +1339,52 @@ msgid "Horn, also start (Smashing Drive)"
 msgstr "Klaxon, démarre aussi (Smashing Drive)"
 
 #: src/ui/ui_controls.cpp
-msgid "Sight left and right (Brave Firefighters)"
-msgstr "Viseur gauche et droite (Brave Firefighters)"
+msgid "Sight or gun left and right"
+msgstr "Viseur ou pistolet, gauche et droite"
 
 #: src/ui/ui_controls.cpp
-msgid "Sight up and down (Brave Firefighters)"
-msgstr "Viseur haut et bas (Brave Firefighters)"
+msgid "Sight or gun up and down"
+msgstr "Viseur ou pistolet, haut et bas"
 
 #: src/ui/ui_controls.cpp
-msgid "Water (Brave Firefighters)"
-msgstr "Eau (Brave Firefighters)"
+msgid "Trigger (Brave Firefighters: water)"
+msgstr "Gâchette (Brave Firefighters : eau)"
 
 #: src/ui/ui_controls.cpp
 msgid "Fog (Brave Firefighters)"
 msgstr "Brouillard (Brave Firefighters)"
 
 #: src/ui/ui_controls.cpp
-msgid "Aimed off the screen (Brave Firefighters)"
-msgstr "Visée hors de l'écran (Brave Firefighters)"
+msgid "Gun off the screen, reload"
+msgstr "Pistolet hors de l'écran, recharger"
 
 #: src/ui/ui_controls.cpp
-msgid "Player 2's sight left and right"
-msgstr "Viseur du joueur 2, gauche et droite"
+msgid "Player 2's sight or gun left and right"
+msgstr "Viseur ou pistolet du joueur 2, gauche et droite"
 
 #: src/ui/ui_controls.cpp
-msgid "Player 2's sight up and down"
-msgstr "Viseur du joueur 2, haut et bas"
+msgid "Player 2's sight or gun up and down"
+msgstr "Viseur ou pistolet du joueur 2, haut et bas"
 
 #: src/ui/ui_controls.cpp
-msgid "Player 2's water"
-msgstr "Eau du joueur 2"
+msgid "Player 2's trigger"
+msgstr "Gâchette du joueur 2"
 
 #: src/ui/ui_controls.cpp
 msgid "Player 2's fog"
 msgstr "Brouillard du joueur 2"
 
 #: src/ui/ui_controls.cpp
-msgid "Player 2 aimed off the screen"
-msgstr "Joueur 2 visant hors de l'écran"
+msgid "Player 2's gun off the screen"
+msgstr "Pistolet du joueur 2 hors de l'écran"
 
 #: src/ui/ui_controls.cpp
-msgid "Stick left and right (Planet Harriers)"
-msgstr "Manche gauche et droite (Planet Harriers)"
+msgid "Analog stick left and right"
+msgstr "Manche analogique, gauche et droite"
 
 #: src/ui/ui_controls.cpp
-msgid "Stick up and down (Planet Harriers)"
-msgstr "Manche haut et bas (Planet Harriers)"
+msgid "Analog stick up and down"
+msgstr "Manche analogique, haut et bas"
 
 #: src/ui/ui_controls.cpp
 msgid "Bullets (Planet Harriers)"
@@ -1859,3 +1886,30 @@ msgstr "Chargement de %s..."
 
 #~ msgid "The SH-4s' clock: 200 MHz is the board's. Their timers, the MIE and the sound keep real time at any clock; the faster, the more of the PC the waits the games poll take (at 200 MHz, the games' boots run below 60 frames a second on this PC). 100 MHz by default; below, Air Trix's skater loses his body."
 #~ msgstr "L'horloge des SH-4 : 200 MHz est celle de la carte. Leurs minuteries, le MIE et le son gardent le temps réel à toute horloge ; plus elle est rapide, plus les attentes que les jeux font en boucle prennent de PC (à 200 MHz, les démarrages des jeux tournent sous 60 images par seconde sur ce PC). 100 MHz par défaut ; en dessous, le skateur d'Air Trix perd son corps."
+
+msgid "Flying games"
+msgstr "Jeux d'avion"
+
+msgid " (a key)"
+msgstr " (une touche)"
+
+msgid "Player 2's analog stick left and right"
+msgstr "Manche analogique du joueur 2, gauche et droite"
+
+msgid "Player 2's analog stick up and down"
+msgstr "Manche analogique du joueur 2, haut et bas"
+
+msgid "Elevator (wheel pushed, pulled)"
+msgstr "Profondeur (manche poussé, tiré)"
+
+msgid "Aileron (wheel turned)"
+msgstr "Ailerons (manche tourné)"
+
+msgid "Rudder pedals"
+msgstr "Palonnier"
+
+msgid "Left thrust lever"
+msgstr "Manette des gaz gauche"
+
+msgid "Right thrust lever"
+msgstr "Manette des gaz droite"

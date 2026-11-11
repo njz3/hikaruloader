@@ -186,9 +186,17 @@ During a game, *Save these bindings for <set> alone* writes them to
 `controls/<set>.ini` beside `controls.ini`: that game reads them instead from
 then on, and the changes made while it runs go there; *Use the common
 bindings* removes that file. The NAOMI and Atomiswave games read rows of
-their own (`[Naomi]`); a game with analog inputs of its own lists them first,
-under *This game's axes* (`[Analog]`: Airline Pilots' control wheel, rudder
-pedal and thrust levers; a lever stays where the stick or the keys leave it).
+their own (`[Naomi]`).
+
+The controls a game has beyond the stick and the buttons are bound once for
+all the games that have them, under a common name: the wheel and the pedals,
+the view change and the gear lever (`[Driving]`), a flying game's control
+wheel, rudder pedal and thrust levers (`[Flight]`), a light gun's sight,
+trigger and reload, an analog stick (`[Pointer]`). The running game shows
+them first, under *This game's controls*, with the names its INPUT TEST gives
+them: Initial D's VIEW CHANGE and GEAR POSITION, Airline Pilots' CONTROL
+WHEEL(ELEVATOR), Confidential Mission's GUN-X and SCREEN-IN... A lever stays
+where the stick or the keys leave it.
 
 **Hotkeys.** A controller's Guide button (Xbox, PS or Home), held, turns its
 other buttons into the emulator's commands, as RetroArch has them: Guide +
@@ -252,10 +260,18 @@ menus).
 Settings
 --------
 
-Tab opens the settings, in the picker and in a game. Save writes them to
-`hikaruloader.ini` beside the program, each with a comment giving its values
-and its default; the file can be edited by hand as well. A few take effect at
-the game's next start, as the window says.
+Tab opens the settings, in the picker and in a game. *Save for all games*
+writes them to `hikaruloader.ini` beside the program, each with a comment
+giving its values and its default; the file can be edited by hand as well. A
+few take effect at the game's next start, as the window says.
+
+During a game, *Save for <set> alone* writes the settings that differ from
+the common ones to `games/<set>.ini` (the aspect ratio, widescreen, the force
+feedback's gains...): that game reads them over `hikaruloader.ini` from then
+on, the others are not changed. *Common settings* removes that file. The
+picker's, the network's, the outputs', the telemetry's and the controls'
+settings stay common. With a write directory, `games/` is there, a file
+beside the program read when the write directory has none.
 
 **Display.** The picture's settings are those of linuxloader, Supermodel,
 Flycast and sm2-emu, under the same names in `hikaruloader.ini`; each takes

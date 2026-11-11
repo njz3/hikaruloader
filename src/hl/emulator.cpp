@@ -190,6 +190,9 @@ Emulator::load_game (const char *name, const char *log_path)
 			snprintf (message, sizeof (message), ui::Interface::tr ("%s could not be loaded; see %s."),
 			          entry ? entry->description : rom_name, log_path);
 		} else {
+			/* Its own settings over the common ones, before its
+			 * machine reads them */
+			Config::begin_game (game->name);
 			/* The machine's I/O board declares its outputs */
 			Outputs::get ()->stop ();
 			/* Its bezel picture (BEZEL = IMAGE), read at its first frame */
@@ -204,7 +207,7 @@ Emulator::load_game (const char *name, const char *log_path)
 				Window::set_title (title);
 				running_machine = mach;
 				/* Its own bindings file if it has one, its own axes */
-				Controls::get ().set_game (game->name, game->analogs);
+				Controls::get ().set_game (game->name, game->analogs, game->switches);
 				Outputs::get ()->start (game->name, game->parent);
 				telemetry::Service::get ().start (mach);
 				return true;
@@ -213,6 +216,7 @@ Emulator::load_game (const char *name, const char *log_path)
 			snprintf (message, sizeof (message), ui::Interface::tr ("%s needs a machine Hikaruloader does not emulate."),
 			          entry ? entry->description : rom_name);
 			destroy (game);
+			Config::end_game ();
 		}
 		if (!from_picker)
 			return false;
@@ -223,11 +227,12 @@ void
 Emulator::unload_game ()
 {
 	running_machine = NULL;
-	Controls::get ().set_game (NULL, {});
+	Controls::get ().set_game (NULL, {}, {});
 	Outputs::get ()->stop ();
 	telemetry::Service::get ().stop ();
 	destroy (mach);
 	destroy (game);
+	Config::end_game ();
 	Bezel::set_game (NULL, NULL);
 	/* The next output opens with the next game */
 	audio->close ();

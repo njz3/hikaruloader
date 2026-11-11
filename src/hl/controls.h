@@ -69,12 +69,14 @@ public:
 	void		 load (const char *path, const char *save_to = NULL);
 	const char	*path () const { return file.c_str (); }
 
-	/* The game running (NULL: none) and its own analog inputs, shown in
-	 * the Controls tab: its file, controls/<set>.ini beside controls.ini,
-	 * read instead when there is one */
-	void		 set_game (const char *name, const std::vector<AnalogInput> &axes);
+	/* The game running (NULL: none) and its own controls (Game::analogs
+	 * and switches), shown first in the Controls tab under its names: its
+	 * file, controls/<set>.ini beside controls.ini, read instead when
+	 * there is one */
+	void		 set_game (const char *name, const std::vector<GameInput> &analogs,
+		                   const std::vector<GameInput> &switches);
 	const char	*game () const { return game_name.c_str (); }
-	const std::vector<AnalogInput> &game_axes () const { return axes_of_game; }
+	const std::vector<GameInput> &game_inputs () const { return inputs_of_game; }
 	/* That file's path ("" without a game), in use or not */
 	std::string	 game_file () const;
 	bool		 game_file_in_use () const { return !game_name.empty () && file == game_file (); }
@@ -217,7 +219,7 @@ private:
 	std::string	 file;
 	/* controls.ini's paths, read and written; the game's */
 	std::string	 base_read, base_save, game_name;
-	std::vector<AnalogInput> axes_of_game;
+	std::vector<GameInput> inputs_of_game;
 	void		 read (const char *path, const char *save_to);
 	/* The sections in the file's order, each its rows in order */
 	std::vector<std::pair<std::string, std::vector<Row>>> sections;

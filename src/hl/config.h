@@ -19,6 +19,10 @@
 #ifndef __HL_CONFIG_H__
 #define __HL_CONFIG_H__
 
+#include <cstdio>
+#include <string>
+#include <vector>
+
 #include "hl/core.h"
 #include "hl/input.h"
 
@@ -148,6 +152,34 @@ public:
 	/* A missing file leaves the defaults; true when the file was read */
 	bool		 load ();
 	bool		 save () const;
+
+	/* A game's own settings: games/<set>.ini beside hikaruloader.ini (the
+	 * write directory's, else the one beside the program), only the values
+	 * that differ from the common ones, read over them while it runs.
+	 * begin_game () before its machine is made, end_game () after */
+	static void	 begin_game (const char *name);
+	static void	 end_game ();
+	/* The game running ("" none), and whether it has a file of its own */
+	static const char *game ();
+	static bool	 game_has_file ();
+	/* The settings now, those that differ from the common ones, into the
+	 * game's file; the common ones then stay as they were */
+	static bool	 save_for_game ();
+	/* The settings now into hikaruloader.ini, but those the game's file
+	 * sets, which keep their common value there */
+	static bool	 save_common ();
+	/* The game's file removed, the common settings back for it */
+	static void	 use_common_settings ();
+	/* A setting the game's file sets (section, key) */
+	static bool	 set_by_game (const char *section, const char *key);
+	/* Those a game cannot have of its own: the folders, the network... */
+	static bool	 common_only (const char *section, const char *key);
+	/* Every setting as the file has it: section, key, value */
+	struct Entry {
+		std::string section, key, value;
+	};
+	std::vector<Entry> entries () const;
+	bool		 write (FILE *fp) const;
 
 	/* The games folders in use: games_dir (one, or several separated by
 	 * ';'), or "roms" beside the program; rom_archive's folder before them */

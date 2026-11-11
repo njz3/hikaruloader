@@ -18,14 +18,35 @@
 
 #include "hl/config.h"
 #include "hl/audio.h"
+#include "hl/paths.h"
 
 #include <ctype.h>
+#include <filesystem>
+#include <set>
 
 namespace hl {
 
 static Config config;
 static bool config_ready = false;
 static char config_path[1024] = "hikaruloader.ini";
+/* While a game runs: the common settings, its name, its file's settings */
+static Config common;
+static std::string game_name;
+static std::set<std::string> game_keys;
+/* hikaruloader.ini as it was when the game started: what was written to it
+ * meanwhile (the settings saved at once, Save for all games) goes back to
+ * the common settings at its end */
+static std::vector<Config::Entry> disk_at_begin;
+
+static std::vector<Config::Entry>
+disk_entries ()
+{
+	Config disk;
+
+	disk.set_defaults ();
+	disk.load ();
+	return disk.entries ();
+}
 
 static const char *multi_screen_names[NUM_MULTI_SCREEN] = {
 	"ONE", "SIDE_BY_SIDE", "WINDOWS"
@@ -670,13 +691,256 @@ bool_name (bool value)
 bool
 Config::save () const
 {
-	const Config *cfg = this;
-	Config def;
-	FILE *fp;
+	FILE *fp = fopen (config_path, "w");
 
-	fp = fopen (config_path, "w");
 	if (!fp)
 		return false;
+	write (fp);
+	return fclose (fp) == 0;
+}
+
+/* A file of section, key = value lines */
+static std::vector<Config::Entry>
+read_entries (FILE *fp)
+{
+	std::vector<Config::Entry> out;
+	char line[1024], section[64] = "";
+
+	while (fgets (line, sizeof (line), fp)) {
+		char *s = line, *e, *eq;
+
+		while (*s == ' ' || *s == '\t')
+			s++;
+		for (e = s + strlen (s); e > s && (e[-1] == '\n' || e[-1] == '\r' || e[-1] == ' '); e--)
+			e[-1] = '\0';
+		if (!s[0] || s[0] == '#' || s[0] == ';')
+			continue;
+		if (s[0] == '[') {
+			char *close = strchr (s, ']');
+			if (close)
+				*close = '\0';
+			snprintf (section, sizeof (section), "%s", s + 1);
+			continue;
+		}
+		if (!(eq = strchr (s, '=')))
+			continue;
+		*eq = '\0';
+		std::string key = s, value = eq + 1;
+		while (!key.empty () && key.back () == ' ')
+			key.pop_back ();
+		while (!value.empty () && value.front () == ' ')
+			value.erase (0, 1);
+		out.push_back ({ section, key, value });
+	}
+	return out;
+}
+
+std::vector<Config::Entry>
+Config::entries () const
+{
+	std::vector<Entry> out;
+	FILE *fp = tmpfile ();
+
+	if (!fp)
+		return out;
+	write (fp);
+	rewind (fp);
+	out = read_entries (fp);
+	fclose (fp);
+	return out;
+}
+
+static std::string
+entry_name (const char *section, const char *key)
+{
+	std::string s = std::string (section) + "/" + key;
+
+	for (char &c : s)
+		c = (char) tolower ((unsigned char) c);
+	return s;
+}
+
+bool
+Config::common_only (const char *section, const char *key)
+{
+	static const char *sections[] = { "Picker", "Network", "Outputs", "Telemetry", "Controls" };
+	static const char *keys[] = { "Input/BUTTONS_FROM_ONE", "Input/BACKGROUND_INPUT", "Display/GRAPHICS_API" };
+	std::string name = entry_name (section, key);
+
+	for (const char *s : sections)
+		if (!strcasecmp (section, s))
+			return true;
+	for (const char *k : keys) {
+		std::string lower = k;
+
+		for (char &c : lower)
+			c = (char) tolower ((unsigned char) c);
+		if (name == lower)
+			return true;
+	}
+	return false;
+}
+
+static std::string
+game_file_read ()
+{
+	return Paths::config_read ("games/" + game_name + ".ini");
+}
+
+static std::string
+game_file_write ()
+{
+	return Paths::config_write ("games/" + game_name + ".ini");
+}
+
+void
+Config::begin_game (const char *name)
+{
+	Config *cfg = get ();
+	FILE *fp;
+
+	end_game ();
+	if (!name || !name[0])
+		return;
+	common = *cfg;
+	disk_at_begin = disk_entries ();
+	game_name = name;
+	game_keys.clear ();
+	fp = fopen (game_file_read ().c_str (), "r");
+	if (!fp)
+		return;
+	for (const Entry &e : read_entries (fp)) {
+		if (common_only (e.section.c_str (), e.key.c_str ()))
+			continue;
+		cfg->set_value (e.section.c_str (), e.key.c_str (), e.value.c_str ());
+		game_keys.insert (entry_name (e.section.c_str (), e.key.c_str ()));
+	}
+	fclose (fp);
+	HL_PRINT ("settings: %u of %s's own, from '%s'", (unsigned) game_keys.size (), name,
+	          game_file_read ().c_str ());
+}
+
+void
+Config::end_game ()
+{
+	if (game_name.empty ())
+		return;
+	/* The common settings back, with what was written to the common file
+	 * meanwhile */
+	for (const Entry &e : disk_entries ()) {
+		bool changed = true;
+
+		for (const Entry &b : disk_at_begin)
+			if (b.section == e.section && !strcasecmp (b.key.c_str (), e.key.c_str ())) {
+				changed = b.value != e.value;
+				break;
+			}
+		if (changed)
+			common.set_value (e.section.c_str (), e.key.c_str (), e.value.c_str ());
+	}
+	*get () = common;
+	game_name.clear ();
+	game_keys.clear ();
+}
+
+const char *
+Config::game ()
+{
+	return game_name.c_str ();
+}
+
+bool
+Config::game_has_file ()
+{
+	std::error_code ec;
+
+	return !game_name.empty () && std::filesystem::exists (game_file_read (), ec);
+}
+
+bool
+Config::set_by_game (const char *section, const char *key)
+{
+	return game_keys.count (entry_name (section, key)) != 0;
+}
+
+bool
+Config::save_for_game ()
+{
+	std::vector<Entry> now = get ()->entries (), base = common.entries ();
+	std::string path;
+	std::error_code ec;
+	FILE *fp;
+	std::string last;
+
+	if (game_name.empty ())
+		return false;
+	path = game_file_write ();
+	std::filesystem::create_directories (std::filesystem::path (path).parent_path (), ec);
+	fp = fopen (path.c_str (), "w");
+	if (!fp)
+		return false;
+	fprintf (fp, "# %s's own settings, over hikaruloader.ini's while it runs: only those\n"
+	             "# that differ from them. Written by the settings window (Save for this\n"
+	             "# game); delete the file for the common settings again.\n", game_name.c_str ());
+	game_keys.clear ();
+	for (const Entry &e : now) {
+		bool differs = true;
+
+		if (common_only (e.section.c_str (), e.key.c_str ()))
+			continue;
+		for (const Entry &b : base)
+			if (b.section == e.section && !strcasecmp (b.key.c_str (), e.key.c_str ())) {
+				differs = b.value != e.value;
+				break;
+			}
+		if (!differs)
+			continue;
+		if (e.section != last) {
+			fprintf (fp, "\n[%s]\n", e.section.c_str ());
+			last = e.section;
+		}
+		fprintf (fp, "%s = %s\n", e.key.c_str (), e.value.c_str ());
+		game_keys.insert (entry_name (e.section.c_str (), e.key.c_str ()));
+	}
+	fclose (fp);
+	HL_PRINT ("settings: %u of %s's own saved to '%s'", (unsigned) game_keys.size (), game_name.c_str (), path.c_str ());
+	return true;
+}
+
+bool
+Config::save_common ()
+{
+	Config out = *get ();
+
+	if (!game_name.empty ()) {
+		/* The game's own keep their common values in the common file */
+		for (const Entry &e : common.entries ())
+			if (set_by_game (e.section.c_str (), e.key.c_str ()))
+				out.set_value (e.section.c_str (), e.key.c_str (), e.value.c_str ());
+		common = out;
+	}
+	return out.save ();
+}
+
+void
+Config::use_common_settings ()
+{
+	std::error_code ec;
+
+	if (game_name.empty ())
+		return;
+	std::filesystem::remove (game_file_write (), ec);
+	*get () = common;
+	game_keys.clear ();
+	HL_PRINT ("settings: %s back to the common ones", game_name.c_str ());
+}
+
+bool
+Config::write (FILE *fp) const
+{
+	const Config *cfg = this;
+	Config def;
+
 	/* Each setting's comment gives its default, as set_defaults () has it */
 	def.set_defaults ();
 
@@ -1187,7 +1451,7 @@ Config::save () const
 
 	/* The controls are controls.ini's (hl::Controls): the old [Controls]
 	 * is read once, into it, and no longer written */
-	return fclose (fp) == 0;
+	return true;
 }
 
 } /* namespace hl */

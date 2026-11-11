@@ -266,6 +266,20 @@ channel n at 2n), checked in the game's JVS TEST screen.
   the game's last write, the backup RAM every ten seconds when it changed,
   both on the way out. A `nvram/<game>.eeprom` of the earlier versions is
   read when the game has no `.nvram` yet.
+- `controls` in `data/games.json`: a game's own controls, each a common role
+  (`hl::game_role`, `src/hl/games.cpp`: Steering, Accelerator, Brake,
+  ViewChange, ShiftUp, ShiftDown, Elevator, Aileron, Rudder, LeverL, LeverR,
+  P1_GunX, P1_Trigger, P1_Reload, P1_StickX... the row of `controls.ini` it
+  reads) at a place of its I/O board: `"an:<channel>"` or `"p<player>:<bit>"`
+  (bit 15 START ... 9 BUTTON1, as SWITCH_INPUTS gives them), with the name of
+  its INPUT TEST: `"ViewChange" : {"at" : "p1:12", "label" : "VIEW CHANGE"}`.
+  A game with an analog one gets those it lists alone (none: the wheel and
+  pedals on channels 0 to 2); a switch is added to the player's. A clone
+  reads its parent's. NAOMI's 837-13551 alone so far. `HR_LOG_INPUTS=1` logs
+  player 1's switches and the channels the game reads, at each change.
+- `games/<set>.ini` beside `hikaruloader.ini`: a game's own settings, those
+  differing from the common ones (`Config::begin_game`, `save_for_game`);
+  `Config::common_only` lists those kept common.
 - NAOMI: `io_boards` in `data/games.json` lists a cabinet's JVS chain, nearest
   the main board first (the far end takes the first address), with the 837-13938
   encoder board (`hl::SegaIoBoard13938`); `g2_board` the board on the G2 bus's

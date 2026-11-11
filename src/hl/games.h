@@ -21,6 +21,7 @@
 #ifndef __HL_GAMES_H__
 #define __HL_GAMES_H__
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -28,17 +29,30 @@
 
 namespace hl {
 
-/* An analog input of a game's own, on a channel of its I/O board (games.json
- * "analogs", one a channel, null for the machine's usual): its row in
- * controls.ini's [Analog], its name as the game's INPUT TEST gives it, and
- * how the controls move it. AXIS: where the stick is, the middle at rest;
- * LEVER: moved by the stick or the keys and left where it is (a thrust
- * lever); PEDAL: from 0, at rest */
-struct AnalogInput {
-	enum Kind { AXIS, LEVER, PEDAL };
-	std::string key, label;
+/* A control of a game's own, placed by games.json "controls" on a switch or
+ * a channel of its I/O board: a common role (Steering, ViewChange, Elevator,
+ * P1_GunX...: GameRole) read from its row of controls.ini, under the name
+ * the game's INPUT TEST gives it. AXIS: where the stick is, the middle at
+ * rest; LEVER: moved by the stick or the keys and left where it is (a
+ * thrust lever, a sight); PEDAL: from 0, at rest; SWITCH: a bit of a
+ * player's switches */
+struct GameInput {
+	enum Kind { AXIS, LEVER, PEDAL, SWITCH };
+	std::string section, key, label;
 	Kind kind = AXIS;
+	/* SWITCH: the player (from 0) and the bit in its 16 (START 0x8000) */
+	unsigned player = 0;
+	uint16_t mask = 0;
 };
+/* The analog inputs were the first of them */
+typedef GameInput AnalogInput;
+
+/* A common role: its row and how it moves; NULL for an unknown one */
+struct GameRole {
+	const char *role, *section, *key;
+	GameInput::Kind kind;
+};
+const GameRole *game_role (const char *role);
 
 /* A game of data/games.json: its MAME set, and the sections of its ROMs */
 struct GameEntry {
@@ -149,9 +163,12 @@ public:
 	 * slave alone); none listed: all */
 	unsigned screens[4] = { 0, 0, 0, 0 };
 	unsigned num_screens = 0;
-	/* Its analog inputs of its own, by channel (games.json "analogs", its
-	 * parent's when it has none); none: the machine's usual */
-	std::vector<AnalogInput> analogs;
+	/* Its controls of its own (games.json "controls", its parent's when
+	 * it has none): the analog ones by channel (key "" for the machine's
+	 * usual), the switches added to the players'; none: the machine's
+	 * usual alone */
+	std::vector<GameInput> analogs;
+	std::vector<GameInput> switches;
 	std::vector<GameSection> sections;
 
 private:

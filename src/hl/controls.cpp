@@ -114,6 +114,8 @@ static const char *default_file =
 	"P1_StickX_Right = KEY_Right\n"
 	"P1_StickY_Left = KEY_Up\n"
 	"P1_StickY_Right = KEY_Down\n"
+	"P2_StickX = GC1_AXIS_LEFTX\n"
+	"P2_StickY = GC1_AXIS_LEFTY\n"
 	"P1_Bullet = MOUSE0_BUTTON_LEFT\n"
 	"P1_Missile = MOUSE0_BUTTON_RIGHT\n"
 	"P1_Bomb = MOUSE0_BUTTON_MIDDLE\n"
@@ -139,7 +141,7 @@ static const char *default_file =
 	"P1_Brake_Digital = KEY_Down\n"
 	"ViewChange = KEY_V, GC0_BUTTON_Y\n"
 	"\n"
-	"[Analog]\n"
+	"[Flight]\n"
 	"P1_Elevator = GC0_AXIS_LEFTY, JOY0_AXIS_1\n"
 	"P1_Elevator_Left = KEY_Up\n"
 	"P1_Elevator_Right = KEY_Down\n"
@@ -275,22 +277,25 @@ static const struct {
 	  "TWIN_LEVERS = ORIGINAL (COMBINED: P1_Gas and P1_Steer)" },
 	{ "Driving", "P1_RightLever", "The right lever, the right engine's thrust" },
 	{ "Pointer", NULL,
-	  "The games aimed at the screen or flown with a stick, which a mouse or a\n"
-	  "light gun can play: Brave Firefighters' nozzles (Aim, Water, Fog) and\n"
-	  "Planet Harriers' stick (Stick, Bullet, Missile, Bomb). MOUSE0 is the first\n"
+	  "The games aimed at the screen or played with an analog stick, which a mouse\n"
+	  "or a light gun can play: the sights (Aim), their trigger (Water) and reload\n"
+	  "(OffScreen) of Brave Firefighters' nozzles and of the light gun games, the\n"
+	  "sticks of Planet Harriers, Monkey Ball... (Stick). MOUSE0 is the first\n"
 	  "mouse or gun, MOUSE1 the second (hikaruloader.log lists them)" },
-	{ "Pointer", "P1_AimX", "Brave Firefighters: player 1's sight, left to right" },
-	{ "Pointer", "P1_AimY", "Brave Firefighters: player 1's sight, top to bottom" },
-	{ "Pointer", "P1_Water", "Brave Firefighters: player 1's water" },
+	{ "Pointer", "P1_AimX", "Player 1's sight or light gun, left to right (Brave Firefighters, the gun games)" },
+	{ "Pointer", "P1_AimY", "Player 1's sight or light gun, top to bottom" },
+	{ "Pointer", "P1_Water", "Player 1's trigger (Brave Firefighters: its water)" },
 	{ "Pointer", "P1_Fog", "Brave Firefighters: player 1's fog" },
-	{ "Pointer", "P1_OffScreen", "Brave Firefighters: player 1's nozzle aimed off the screen" },
-	{ "Pointer", "P2_AimX", "Brave Firefighters: player 2's sight, left to right" },
-	{ "Pointer", "P2_AimY", "Brave Firefighters: player 2's sight, top to bottom" },
-	{ "Pointer", "P2_Water", "Brave Firefighters: player 2's water" },
+	{ "Pointer", "P1_OffScreen", "Player 1's gun aimed off the screen, to reload (Brave Firefighters: the nozzle)" },
+	{ "Pointer", "P2_AimX", "Player 2's sight or light gun, left to right" },
+	{ "Pointer", "P2_AimY", "Player 2's sight or light gun, top to bottom" },
+	{ "Pointer", "P2_Water", "Player 2's trigger (Brave Firefighters: its water)" },
 	{ "Pointer", "P2_Fog", "Brave Firefighters: player 2's fog" },
 	{ "Pointer", "P2_OffScreen", "Brave Firefighters: player 2's nozzle aimed off the screen" },
-	{ "Pointer", "P1_StickX", "Planet Harriers: the stick, left to right" },
-	{ "Pointer", "P1_StickY", "Planet Harriers: the stick, up to down" },
+	{ "Pointer", "P1_StickX", "Player 1's analog stick, left to right (Planet Harriers, Monkey Ball...)" },
+	{ "Pointer", "P1_StickY", "Player 1's analog stick, up to down" },
+	{ "Pointer", "P2_StickX", "Player 2's analog stick, left to right" },
+	{ "Pointer", "P2_StickY", "Player 2's analog stick, up to down" },
 	{ "Pointer", "P1_Bullet", "Planet Harriers: bullets, as P1_Button1" },
 	{ "Pointer", "P1_Missile", "Planet Harriers: missiles, as P1_Button2" },
 	{ "Pointer", "P1_Bomb", "Planet Harriers: bombs, as P1_Button3" },
@@ -315,11 +320,15 @@ static const struct {
 	{ "Naomi", "P1_Gas_Digital", "The accelerator pressed all the way" },
 	{ "Naomi", "P1_Brake_Digital", "The brake pressed all the way" },
 	{ "Naomi", "ViewChange", "The view change button" },
-	{ "Analog", NULL,
-	  "The analog inputs of the games that have their own (Airline Pilots' wheel,\n"
-	  "rudder and thrust levers), read by them alone; _Left and _Right the keys or\n"
-	  "buttons moving one, as the wheel's (Axis_Key_Ramp); a lever stays where it\n"
-	  "is left (Aim_Speed)" },
+	{ "Flight", NULL,
+	  "The flying games' controls (Airline Pilots' control wheel, rudder and\n"
+	  "thrust levers); _Left and _Right the keys or buttons moving one, as the\n"
+	  "wheel's (Axis_Key_Ramp); a lever stays where it is left (Aim_Speed)" },
+	{ "Flight", "P1_Elevator", "The control wheel or stick, pushed and pulled (elevator)" },
+	{ "Flight", "P1_Aileron", "The control wheel or stick, turned (aileron)" },
+	{ "Flight", "P1_Rudder", "The rudder pedals" },
+	{ "Flight", "P1_ThrustL", "The left thrust lever (the only one of a game with one)" },
+	{ "Flight", "P1_ThrustR", "The right thrust lever" },
 	{ "Gaelco", NULL,
 	  "The Gaelco cabinets' own buttons, read by their games alone: ATV Track and\n"
 	  "Smashing Drive read none of the Digital rows (Gaelco Football's sticks and\n"
@@ -718,13 +727,18 @@ Controls::game_file () const
 }
 
 void
-Controls::set_game (const char *name, const std::vector<AnalogInput> &axes)
+Controls::set_game (const char *name, const std::vector<GameInput> &analogs,
+                    const std::vector<GameInput> &switches)
 {
 	std::string own;
 	std::error_code ec;
 
 	game_name = name ? name : "";
-	axes_of_game = axes;
+	inputs_of_game.clear ();
+	for (const GameInput &in : analogs)
+		if (!in.key.empty ())
+			inputs_of_game.push_back (in);
+	inputs_of_game.insert (inputs_of_game.end (), switches.begin (), switches.end ());
 	own = game_file ();
 	if (!own.empty () && std::filesystem::exists (own, ec))
 		read (own.c_str (), NULL);
@@ -801,6 +815,23 @@ Controls::read (const char *path, const char *save_to)
 			}
 	}
 
+	/* [Analog] was the flying games' first section: its rows are
+	 * [Flight]'s, the user's bindings kept */
+	{
+		auto analog = std::find_if (sections.begin (), sections.end (),
+		                            [] (const auto &s) { return !strcasecmp (s.first.c_str (), "Analog"); });
+		auto flight = std::find_if (sections.begin (), sections.end (),
+		                            [] (const auto &s) { return !strcasecmp (s.first.c_str (), "Flight"); });
+
+		if (analog != sections.end () && flight != sections.end ()) {
+			for (const Row &row : analog->second)
+				for (Row &f : flight->second)
+					if (!strcasecmp (f.key.c_str (), row.key.c_str ()))
+						f.value = row.value;
+			sections.erase (analog);
+			added = true;
+		}
+	}
 	if (created)
 		migrate_old_bindings ();
 	parse_all ();

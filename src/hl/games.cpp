@@ -25,6 +25,43 @@
 
 namespace hl {
 
+/* The common roles of the games' own controls (games.json "controls"): the
+ * row of controls.ini each reads, the same in all the games that have it */
+static const GameRole roles[] = {
+	{ "Steering",	"Driving",	"P1_Steer",	GameInput::AXIS },
+	{ "Accelerator", "Driving",	"P1_Gas",	GameInput::PEDAL },
+	{ "Brake",	"Driving",	"P1_Brake",	GameInput::PEDAL },
+	{ "ViewChange",	"Driving",	"ViewChange",	GameInput::SWITCH },
+	{ "ShiftUp",	"Driving",	"GearUp",	GameInput::SWITCH },
+	{ "ShiftDown",	"Driving",	"GearDown",	GameInput::SWITCH },
+	{ "Elevator",	"Flight",	"P1_Elevator",	GameInput::AXIS },
+	{ "Aileron",	"Flight",	"P1_Aileron",	GameInput::AXIS },
+	{ "Rudder",	"Flight",	"P1_Rudder",	GameInput::AXIS },
+	{ "LeverL",	"Flight",	"P1_ThrustL",	GameInput::LEVER },
+	{ "LeverR",	"Flight",	"P1_ThrustR",	GameInput::LEVER },
+	{ "P1_GunX",	"Pointer",	"P1_AimX",	GameInput::LEVER },
+	{ "P1_GunY",	"Pointer",	"P1_AimY",	GameInput::LEVER },
+	{ "P2_GunX",	"Pointer",	"P2_AimX",	GameInput::LEVER },
+	{ "P2_GunY",	"Pointer",	"P2_AimY",	GameInput::LEVER },
+	{ "P1_Trigger",	"Pointer",	"P1_Water",	GameInput::SWITCH },
+	{ "P1_Reload",	"Pointer",	"P1_OffScreen",	GameInput::SWITCH },
+	{ "P2_Trigger",	"Pointer",	"P2_Water",	GameInput::SWITCH },
+	{ "P2_Reload",	"Pointer",	"P2_OffScreen",	GameInput::SWITCH },
+	{ "P1_StickX",	"Pointer",	"P1_StickX",	GameInput::AXIS },
+	{ "P1_StickY",	"Pointer",	"P1_StickY",	GameInput::AXIS },
+	{ "P2_StickX",	"Pointer",	"P2_StickX",	GameInput::AXIS },
+	{ "P2_StickY",	"Pointer",	"P2_StickY",	GameInput::AXIS },
+};
+
+const GameRole *
+game_role (const char *role)
+{
+	for (const GameRole &r : roles)
+		if (!strcmp (r.role, role))
+			return &r;
+	return NULL;
+}
+
 static const unsigned current_version = 1;
 
 enum {
@@ -371,28 +408,45 @@ Game::create (GameList *game_list, const char *path, const char *name, const cha
 		}
 		{
 			/* The clones read their parent's cabinet */
-			json_t *analogs = json_object_get (entry->root, "analogs");
+			json_t *controls = json_object_get (entry->root, "controls");
+			const char *role;
+			json_t *at;
 
-			if (!analogs && entry->parent[0]) {
+			if (!controls && entry->parent[0]) {
 				const GameEntry *parent = game_list->find (entry->parent);
 
 				if (parent)
-					analogs = json_object_get (parent->root, "analogs");
+					controls = json_object_get (parent->root, "controls");
 			}
-			for (size_t k = 0; k < json_array_size (analogs) && k < 8; k++) {
-				json_t *a = json_array_get (analogs, k);
-				AnalogInput in;
-				const char *kind = json_string_value (json_object_get (a, "kind"));
+			json_object_foreach (controls, role, at) {
+				const GameRole *r = game_role (role);
+				const char *where = json_is_object (at) ?
+				                    json_string_value (json_object_get (at, "at")) :
+				                    json_string_value (at);
+				const char *label = json_is_object (at) ?
+				                    json_string_value (json_object_get (at, "label")) : NULL;
+				unsigned player, n;
+				GameInput in;
 
-				if (json_is_object (a)) {
-					in.key = json_string_value (json_object_get (a, "key")) ?
-					         json_string_value (json_object_get (a, "key")) : "";
-					in.label = json_string_value (json_object_get (a, "label")) ?
-					           json_string_value (json_object_get (a, "label")) : in.key;
-					in.kind = kind && !strcmp (kind, "lever") ? AnalogInput::LEVER :
-					          kind && !strcmp (kind, "pedal") ? AnalogInput::PEDAL : AnalogInput::AXIS;
+				if (!r || !where) {
+					HL_PRINT ("games: %s: control '%s' unknown", game->name, role);
+					continue;
 				}
-				game->analogs.push_back (in);
+				in.section = r->section;
+				in.key = r->key;
+				in.label = label ? label : role;
+				in.kind = r->kind;
+				if (sscanf (where, "an:%u", &n) == 1 && n < 8 && r->kind != GameInput::SWITCH) {
+					if (game->analogs.size () <= n)
+						game->analogs.resize (n + 1);
+					game->analogs[n] = in;
+				} else if (sscanf (where, "p%u:%u", &player, &n) == 2 && player >= 1 && player <= 2 &&
+				           n < 16 && r->kind == GameInput::SWITCH) {
+					in.player = player - 1;
+					in.mask = (uint16_t) (1u << n);
+					game->switches.push_back (in);
+				} else
+					HL_PRINT ("games: %s: control '%s' at '%s' not understood", game->name, role, where);
 			}
 		}
 		{
