@@ -62,6 +62,7 @@ set (HL_SRC
 	src/hl/profile.cpp
 	src/hl/ffb.cpp
 	src/hl/gamecontrols.cpp
+	src/hl/deviceprofiles.cpp
 	src/hl/gearbox.cpp
 	src/hl/driveboard.cpp
 	src/hl/cardreader.cpp
@@ -235,7 +236,7 @@ endif ()
 # Keep the game list next to the binary, where hikaruloader looks first; the
 # example of init.lua; the interface's languages (data/lang/*.po); the CRT
 # presets (data/crt, Lola Retro's with its licence); the games' lists of
-# shader programs (data/shaders).
+# shader programs (data/shaders); the devices' profiles (data/devices).
 add_custom_command (TARGET hikaruloader POST_BUILD
 	COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:hikaruloader>/data
 	COMMAND ${CMAKE_COMMAND} -E copy_if_different
@@ -249,7 +250,9 @@ add_custom_command (TARGET hikaruloader POST_BUILD
 	COMMAND ${CMAKE_COMMAND} -E copy_directory
 		${CMAKE_SOURCE_DIR}/data/naomi $<TARGET_FILE_DIR:hikaruloader>/data/naomi
 	COMMAND ${CMAKE_COMMAND} -E copy_directory
-		${CMAKE_SOURCE_DIR}/data/shaders $<TARGET_FILE_DIR:hikaruloader>/data/shaders)
+		${CMAKE_SOURCE_DIR}/data/shaders $<TARGET_FILE_DIR:hikaruloader>/data/shaders
+	COMMAND ${CMAKE_COMMAND} -E copy_directory
+		${CMAKE_SOURCE_DIR}/data/devices $<TARGET_FILE_DIR:hikaruloader>/data/devices)
 
 # The CPU cores' tests: ctest -C RelWithDebInfo
 enable_testing ()
@@ -340,7 +343,7 @@ target_link_libraries (controlstest PRIVATE hl)
 if (TARGET SDL2::SDL2main)
 	target_link_libraries (controlstest PRIVATE SDL2::SDL2main)
 endif ()
-add_test (NAME controls COMMAND controlstest)
+add_test (NAME controls COMMAND controlstest ${CMAKE_SOURCE_DIR}/data/games.json)
 add_executable (driveboardtest tests/driveboard_test.cpp)
 target_link_libraries (driveboardtest PRIVATE hl)
 if (TARGET SDL2::SDL2main)

@@ -13,6 +13,12 @@ Next version
   (Marvel vs. Capcom 2, the fighting games, the two-player cabinets).
 - Fixed: the Atomiswave's player 2 pad sent nothing: its stick and buttons
   1 to 6 reach the games now (the wheel cabinets excepted).
+- Device profiles: a model of device's bindings (a wheel, pedals, a shifter,
+  a stick, a pad) put on a player's bindings the first time that device is
+  connected, and what its *Default* and *Reset...* put back. *Save as a
+  profile...* on a device's page writes one to `devices/` beside
+  `controls.ini`, to share; *Clear...* removes all of a device's bindings.
+  `data/devices/README.txt` gives the file's syntax.
 - Players 3 and 4 (`[Player3]`, `[Player4]` in `controls.ini`: the third and
   fourth controllers; coins 3 and 4 on 7 and 8) for the four-player games:
   Power Stone 2 (its I/O board of four players), WWF Royal Rumble, Virtua

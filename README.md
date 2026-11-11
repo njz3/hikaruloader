@@ -202,6 +202,23 @@ During a game, *Save these bindings for <set> alone* writes them to
 then on, and the changes made while it runs go there; *Use the common
 bindings* removes that file.
 
+**Device profiles.** A profile is a model of device's bindings (a wheel,
+pedals, a shifter, an arcade stick, a pad), made once by someone who has one
+and shared. The first time such a device is connected on a player, its
+profile is put on that player's bindings, the keyboard's and the other
+devices' kept; *Default* and *Reset...* on its page put the profile's back,
+*Clear...* removes all of its bindings, each row's *Bind*, *Add* and *Unbind*
+work as before. *Save as a profile...* writes the device's bindings to
+`devices/<its name>.ini` beside `controls.ini`: give that file to whoever has
+the same device (in their `devices` folder), or send it to be shipped in
+`data/devices`. A profile is found by the device's USB vendor and product,
+else by its name, the user's over the shipped ones; it names the device's
+inputs without a player's number (`JOY_AXIS_0`, `GC_BUTTON_A`), so it works
+whichever player the device is. Once put, a player's bindings are not
+changed again for that device (`P<n>_Profiled` in `[ControllerGUIDs]`); a
+device without a profile taking the place of one with gets the defaults
+back. `data/devices/README.txt` gives the file's syntax.
+
 **Hotkeys.** A controller's Guide button (Xbox, PS or Home), held, turns its
 other buttons into the emulator's commands, as RetroArch has them: Guide +
 Start quits, Guide + B goes back to the picker, Guide + Back opens the

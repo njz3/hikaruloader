@@ -56,6 +56,8 @@ namespace hl {
  * While a game controller's Guide is held, its buttons and its hat (JOY<n>_
  * as well) are the hotkeys' alone, the other bindings see them let go; a
  * button pressed meanwhile stays so until let go, Guide let go first. */
+struct DeviceProfile;
+
 class Controls {
 public:
 	static Controls &get ();
@@ -122,6 +124,9 @@ public:
 		int		 player;
 		bool		 game_controller;
 		std::string	 name;
+		/* A controller's SDL GUID, its profile's name and file ("" none:
+		 * hl::DeviceProfiles) */
+		std::string	 guid, profile, profile_file;
 	};
 	std::vector<Device> devices () const;
 	/* Player n's SDL_Joystick (from 0), NULL when none is connected */
@@ -189,6 +194,12 @@ public:
 	 * JOY0; a joystick further in the list, a wheel after a controller,
 	 * takes them at its own number */
 	static std::string default_for (const std::string &value, int player, bool game_controller);
+	/* A row's default for a device: its profile's when it has one, the
+	 * row's own (default_for) otherwise */
+	std::string	 device_default (const char *section, const char *key, int player, bool game_controller) const;
+	/* Player n's bindings as its device's profile, written to the user's
+	 * profiles (devices/ beside controls.ini): its path, "" when not */
+	std::string	 save_profile (int player);
 	/* A binding's alternatives ("A, B + C" gives "A" and "B + C") */
 	static std::vector<std::string> alternatives (const std::string &value);
 	static std::string join (const std::vector<std::string> &tokens);
@@ -218,6 +229,10 @@ private:
 	double		 axis_before (const SDL_Event *event, int player);
 	void		 open_devices ();
 	void		 close_devices ();
+	/* Each player's profile again (the profiles read again); a new device's
+	 * put on its player's bindings, once (ControllerGUIDs P<n>_Profiled) */
+	void		 match_profiles (bool apply);
+	void		 put_device_defaults (int player);
 
 	std::string	 file;
 	/* controls.ini's paths, read and written; the game's */
@@ -236,6 +251,10 @@ private:
 		void		*joystick;	/* SDL_Joystick * */
 		void		*controller;	/* SDL_GameController *, or NULL */
 		std::string	 name;
+		/* Its SDL GUID, USB vendor and product, profile (NULL none) */
+		std::string	 guid;
+		uint16_t	 vendor = 0, product = 0;
+		const DeviceProfile *profile = NULL;
 		/* The buttons pressed while Guide was held, not let go since:
 		 * by their joystick numbers, and their game controller's */
 		uint64_t	 hidden_joy;

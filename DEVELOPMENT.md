@@ -295,6 +295,17 @@ channel n at 2n), checked in the game's JVS TEST screen.
   the channels a JVS game reads, at each change. The table was made from the
   games' INPUT TESTs and MAME's ports; Lua's `emu.input (role, value)` holds
   a role as the agent does.
+- The devices' profiles (`hl::DeviceProfiles`, `src/hl/deviceprofiles.cpp`):
+  `data/devices/*.ini` beside the program, then `devices/*.ini` beside
+  `controls.ini` (the user's, over them), each `[Device]` `Name` and
+  `VidPid` and controls.ini's rows by the device's inputs (`JOY_`, `GC_`).
+  `Controls::open_devices` finds each player's (`match_profiles`): a device
+  new on its player (its GUID not `P<n>_Profiled`) gets its profile on that
+  player's bindings (`put_device_defaults`), one without where one with was
+  gets the defaults back. `Controls::device_default` is the Controls tab's
+  Default and Reset, `save_profile` its *Save as a profile*. Checked in
+  `tests/controls_test.cpp` (an SDL virtual wheel with its own USB ids), and
+  with vJoy fed by `vJoyInterface.dll` in a normal run (`HR_LOG_INPUTS`).
 - `games/<set>.ini` beside `hikaruloader.ini`: a game's own settings, those
   differing from the common ones (`Config::begin_game`, `save_for_game`);
   `Config::common_only` lists those kept common.

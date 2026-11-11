@@ -2084,3 +2084,42 @@ msgstr "Joueur 4 : bouton 5"
 
 msgid "Player 4: button 6"
 msgstr "Joueur 4 : bouton 6"
+
+msgid "Clear..."
+msgstr "Effacer..."
+
+msgid "Save as a profile..."
+msgstr "Enregistrer comme profil..."
+
+msgid "Its bindings to a file of its own, put on it each time it is first connected, on this PC or another: share it."
+msgstr "Ses assignations dans un fichier à lui, posées sur lui à son premier branchement, sur ce PC ou un autre : à partager."
+
+msgid "Put this device's bindings back to its profile's?"
+msgstr "Remettre les assignations de ce périphérique à celles de son profil ?"
+
+msgid "Remove all of this device's bindings?"
+msgstr "Retirer toutes les assignations de ce périphérique ?"
+
+msgid "Save this device's bindings as its profile, in the devices folder beside controls.ini?"
+msgstr "Enregistrer les assignations de ce périphérique comme son profil, dans le dossier devices à côté de controls.ini ?"
+
+msgid "The profile could not be written: see hikaruloader.log."
+msgstr "Le profil n'a pas pu être écrit : voir hikaruloader.log."
+
+msgid "The profile is in:"
+msgstr "Le profil est dans :"
+
+msgid "Give it to whoever has the same device: in their devices folder, it is put on it the first time it is connected."
+msgstr "Donnez-le à qui a le même périphérique : dans son dossier devices, il est posé dessus à son premier branchement."
+
+msgid "No profile for this device: its defaults are the common ones."
+msgstr "Pas de profil pour ce périphérique : ses défauts sont les communs."
+
+msgid "Profile: %s"
+msgstr "Profil : %s"
+
+msgid "Its bindings when it is first connected, and what Default and Reset put back."
+msgstr "Ses assignations à son premier branchement, et ce que Défaut et Réinitialiser remettent."
+
+msgid "(profile)"
+msgstr "(profil)"

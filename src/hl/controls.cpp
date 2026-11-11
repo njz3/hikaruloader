@@ -25,6 +25,7 @@
 #include <SDL.h>
 
 #include "hl/controls.h"
+#include "hl/deviceprofiles.h"
 #include "hl/pointers.h"
 #include "hl/config.h"
 #include "hl/input.h"
@@ -223,7 +224,9 @@ static const Controls::RowDef row_table[] = {
 
 	{ "ControllerGUIDs", NULL, CF, NULL,
 	  "P<n>_GUID = an SDL joystick GUID: that controller is player n's, JOY<n-1>,\n"
-	  "whatever order Windows lists them in (hikaruloader.log gives the GUIDs)" },
+	  "whatever order Windows lists them in (hikaruloader.log gives the GUIDs).\n"
+	  "P<n>_Profiled = the controller whose profile (data/devices, devices/) was\n"
+	  "put on player n's bindings, once: removed, it is put again" },
 };
 #undef SW
 #undef AX
@@ -655,6 +658,8 @@ Controls::load (const char *path, const char *save_to)
 {
 	base_read = path;
 	base_save = save_to ? save_to : path;
+	/* The devices' profiles: the shipped ones, the user's beside it */
+	DeviceProfiles::get ().load ((std::filesystem::path (base_save).parent_path () / "devices").string ());
 	read (path, save_to);
 }
 
@@ -913,7 +918,7 @@ Controls::open_devices ()
 	close_devices ();
 	if (count <= 0)
 		return;
-	players.assign (count, Player { -1, NULL, NULL, "", 0, 0 });
+	players.assign (count, Player { -1, NULL, NULL, "", "", 0, 0, NULL, 0, 0 });
 
 	/* The players named by their GUID first */
 	for (p = 0; p < count; p++) {
@@ -957,9 +962,127 @@ Controls::open_devices ()
 		pl.instance = pl.joystick ? SDL_JoystickInstanceID ((SDL_Joystick *) pl.joystick) : -1;
 		pl.name = pl.joystick ? SDL_JoystickName ((SDL_Joystick *) pl.joystick) : "";
 		SDL_JoystickGetGUIDString (SDL_JoystickGetDeviceGUID (index), guid, sizeof (guid));
-		HL_PRINT ("controls: player %d = %s (%s, GUID %s)", p + 1, pl.name.c_str (),
-		          pl.controller ? "game controller" : "joystick", guid);
+		pl.guid = guid;
+		pl.vendor = SDL_JoystickGetDeviceVendor (index);
+		pl.product = SDL_JoystickGetDeviceProduct (index);
+		HL_PRINT ("controls: player %d = %s (%s, GUID %s, %04X:%04X)", p + 1, pl.name.c_str (),
+		          pl.controller ? "game controller" : "joystick", guid, pl.vendor, pl.product);
 	}
+	match_profiles (true);
+}
+
+void
+Controls::match_profiles (bool apply)
+{
+	bool changed = false;
+
+	for (size_t p = 0; p < players.size (); p++) {
+		Player &pl = players[p];
+		char key[24];
+
+		pl.profile = pl.joystick ? DeviceProfiles::get ().match (pl.name, pl.vendor, pl.product) : NULL;
+		if (!apply || !pl.joystick)
+			continue;
+		/* A device with a profile new on that player: its profile on the
+		 * player's bindings, once; one without where one with was: the
+		 * defaults back (the other's profile no longer on it) */
+		snprintf (key, sizeof (key), "P%d_Profiled", (int) p + 1);
+		std::string was = value ("ControllerGUIDs", key);
+		if (!strcasecmp (was.c_str (), pl.guid.c_str ()) || (!pl.profile && was.empty ()))
+			continue;
+		put_device_defaults ((int) p);
+		auto it = std::find_if (sections.begin (), sections.end (),
+		                        [] (const auto &s) { return !strcasecmp (s.first.c_str (), "ControllerGUIDs"); });
+		if (it == sections.end ()) {
+			sections.push_back ({ "ControllerGUIDs", {} });
+			it = sections.end () - 1;
+		}
+		auto row = std::find_if (it->second.begin (), it->second.end (),
+		                         [&] (const Row &r) { return !strcasecmp (r.key.c_str (), key); });
+		if (!pl.profile) {
+			if (row != it->second.end ())
+				it->second.erase (row);
+			HL_PRINT ("controls: player %d's bindings back to the defaults (%s, no profile)", (int) p + 1, pl.name.c_str ());
+		} else {
+			if (row == it->second.end ())
+				it->second.push_back ({ key, pl.guid });
+			else
+				row->value = pl.guid;
+			HL_PRINT ("controls: player %d's bindings from the profile of %s ('%s')", (int) p + 1,
+			          pl.profile->name.c_str (), pl.profile->file.c_str ());
+		}
+		changed = true;
+	}
+	if (changed) {
+		parse_all ();
+		save ();
+	}
+}
+
+/* Player n's inputs in every row replaced by its device's defaults (its
+ * profile's, else the rows' own), the others' kept */
+void
+Controls::put_device_defaults (int player)
+{
+	const bool gc = players[player].controller != NULL;
+
+	for (auto &s : sections) {
+		if (!strcasecmp (s.first.c_str (), "Config") || !strcasecmp (s.first.c_str (), "ControllerGUIDs"))
+			continue;
+		for (auto &row : s.second) {
+			std::vector<std::string> kept;
+
+			for (const auto &alt : alternatives (row.value))
+				if (!owns (player, alt))
+					kept.push_back (alt);
+			for (const auto &alt : alternatives (device_default (s.first.c_str (), row.key.c_str (), player, gc)))
+				if (owns (player, alt))
+					kept.push_back (alt);
+			row.value = join (kept);
+		}
+	}
+}
+
+std::string
+Controls::device_default (const char *section, const char *key, int player, bool game_controller) const
+{
+	if (player >= 0 && player < MOUSE_PLAYER && player < (int) players.size () && players[player].profile)
+		return DeviceProfiles::to_player (players[player].profile->value (section, key), player);
+	return default_for (default_value (section, key), player, game_controller);
+}
+
+std::string
+Controls::save_profile (int player)
+{
+	DeviceProfile p;
+	std::string path;
+
+	if (player < 0 || player >= (int) players.size () || !players[player].joystick)
+		return "";
+	p.name = players[player].name;
+	p.vendor = players[player].vendor;
+	p.product = players[player].product;
+	for (const auto &s : sections) {
+		if (!strcasecmp (s.first.c_str (), "Config") || !strcasecmp (s.first.c_str (), "ControllerGUIDs"))
+			continue;
+		std::vector<std::pair<std::string, std::string>> rows;
+		for (const auto &row : s.second) {
+			std::vector<std::string> mine;
+
+			for (const auto &alt : alternatives (row.value))
+				if (owns (player, alt))
+					mine.push_back (alt);
+			if (!mine.empty ())
+				rows.push_back ({ row.key, DeviceProfiles::from_player (join (mine), player) });
+		}
+		if (!rows.empty ())
+			p.sections.push_back ({ s.first, rows });
+	}
+	path = DeviceProfiles::get ().save (p);
+	/* The profiles read again: each player's found again (this one's own
+	 * now, not put on it again) */
+	match_profiles (false);
+	return path;
 }
 
 void
@@ -976,8 +1099,12 @@ Controls::devices () const
 
 	out.push_back ({ -1, false, "" });
 	for (size_t p = 0; p < players.size (); p++)
-		if (players[p].joystick)
-			out.push_back ({ (int) p, players[p].controller != NULL, players[p].name });
+		if (players[p].joystick) {
+			const DeviceProfile *profile = players[p].profile;
+
+			out.push_back ({ (int) p, players[p].controller != NULL, players[p].name, players[p].guid,
+			                 profile ? profile->name : "", profile ? profile->file : "" });
+		}
 	const std::vector<std::string> mice = Pointers::names ();
 	for (size_t m = 0; m < mice.size (); m++)
 		out.push_back ({ MOUSE_PLAYER + (int) m, false, mice[m] });

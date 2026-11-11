@@ -21,6 +21,7 @@
 // page of its own; what the game receives; NASCAR Arcade's gear shifter and
 // Star Wars: Racer Arcade's levers, as sm2-emu's; the dead zones.
 
+#include <filesystem>
 #include "ui/ui_common.h"
 
 #include <algorithm>
@@ -438,8 +439,9 @@ void bindingRow(const char *section, const hl::Controls::Row &row, const char *l
         controls.set_value(section, row.key.c_str(), replaceDeviceTokens(g_mapping.device, row.value, {}));
     ImGui::EndDisabled();
     ImGui::SameLine();
-    // The device's inputs back to the default ones, the others' kept
-    std::vector<std::string> def = deviceTokens(g_mapping.device, hl::Controls::default_for(controls.default_value(section, row.key.c_str()), g_mapping.device.player, g_mapping.device.game_controller), true);
+    // The device's inputs back to the default ones (its profile's when it
+    // has one), the others' kept
+    std::vector<std::string> def = deviceTokens(g_mapping.device, controls.device_default(section, row.key.c_str(), g_mapping.device.player, g_mapping.device.game_controller), true);
     ImGui::BeginDisabled(def == mine);
     if (ImGui::Button(tr("Default")))
         controls.set_value(section, row.key.c_str(), replaceDeviceTokens(g_mapping.device, row.value, def));
@@ -449,17 +451,50 @@ void bindingRow(const char *section, const hl::Controls::Row &row, const char *l
     ImGui::PopID();
 }
 
-// The device's inputs back to the defaults in every row, the others' kept
-void resetDevice()
+// The device's inputs back to the defaults in every row (its profile's when
+// it has one), the others' kept; clear: none
+void resetDevice(bool clear = false)
 {
     hl::Controls &controls = hl::Controls::get();
     for (const Section &s : kSections)
         for (const auto &row : controls.rows(s.name))
         {
-            std::vector<std::string> def = deviceTokens(g_mapping.device, hl::Controls::default_for(controls.default_value(s.name, row.key.c_str()), g_mapping.device.player, g_mapping.device.game_controller), true);
+            std::vector<std::string> def;
+            if (!clear)
+                def = deviceTokens(g_mapping.device, controls.device_default(s.name, row.key.c_str(), g_mapping.device.player, g_mapping.device.game_controller), true);
             if (def != deviceTokens(g_mapping.device, row.value, true))
                 controls.set_value(s.name, row.key.c_str(), replaceDeviceTokens(g_mapping.device, row.value, def));
         }
+}
+
+// The device as the Controls tab lists it now (its profile found again)
+void refreshDevice()
+{
+    for (const auto &d : hl::Controls::get().devices())
+        if (d.player == g_mapping.device.player)
+            g_mapping.device = d;
+}
+
+// A yes or no question over the page: true on Yes
+bool confirm(const char *id, const char *question)
+{
+    bool yes = false;
+    if (ImGui::BeginPopupModal(id, NULL, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoTitleBar))
+    {
+        ImGui::PushTextWrapPos(ImGui::GetFontSize() * 30.0f);
+        ImGui::TextUnformatted(question);
+        ImGui::PopTextWrapPos();
+        if (ImGui::Button(tr("Yes")))
+        {
+            yes = true;
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::SameLine();
+        if (ImGui::Button(tr("No")))
+            ImGui::CloseCurrentPopup();
+        ImGui::EndPopup();
+    }
+    return yes;
 }
 
 // The capture's window: the device's next input, written to the row
@@ -548,23 +583,72 @@ void mappingPage()
         controls.capture_cancel();
         ImGui::CloseCurrentPopup();
     }
-    // On the right, away from Close: the device's bindings back to the defaults
-    const char *resetLabel = tr("Reset...");
-    ImGui::SameLine(right - ImGui::CalcTextSize(resetLabel).x - ImGui::GetStyle().FramePadding.x * 2);
+    // On the right, away from Close: the device's bindings to a profile,
+    // cleared, back to the defaults (its profile's when it has one)
+    const bool controller = g_mapping.device.player >= 0 && g_mapping.device.player < hl::Controls::MOUSE_PLAYER;
+    const char *resetLabel = tr("Reset..."), *clearLabel = tr("Clear..."), *saveLabel = tr("Save as a profile...");
+    const float pad = ImGui::GetStyle().FramePadding.x * 2, gap = ImGui::GetStyle().ItemSpacing.x;
+    float width = ImGui::CalcTextSize(resetLabel).x + pad + gap + ImGui::CalcTextSize(clearLabel).x + pad;
+    if (controller)
+        width += gap + ImGui::CalcTextSize(saveLabel).x + pad;
+    ImGui::SameLine(right - width);
+    static std::string saved;
+    if (controller)
+    {
+        if (ImGui::Button(saveLabel))
+            ImGui::OpenPopup("##saveprofile");
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("%s", tr("Its bindings to a file of its own, put on it each time it is first connected, on this PC or another: share it."));
+        ImGui::SameLine();
+    }
+    if (ImGui::Button(clearLabel))
+        ImGui::OpenPopup("##clear");
+    ImGui::SameLine();
     if (ImGui::Button(resetLabel))
         ImGui::OpenPopup("##reset");
-    if (ImGui::BeginPopupModal("##reset", NULL, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoTitleBar))
+    if (confirm("##reset", g_mapping.device.profile.empty() ? tr("Put this device's bindings back to the defaults?")
+                                                            : tr("Put this device's bindings back to its profile's?")))
+        resetDevice();
+    if (confirm("##clear", tr("Remove all of this device's bindings?")))
+        resetDevice(true);
+    if (confirm("##saveprofile", tr("Save this device's bindings as its profile, in the devices folder beside controls.ini?")))
     {
-        ImGui::TextUnformatted(tr("Put this device's bindings back to the defaults?"));
-        if (ImGui::Button(tr("Yes")))
+        saved = controls.save_profile(g_mapping.device.player);
+        refreshDevice();
+        ImGui::OpenPopup("##savedprofile");
+    }
+    if (ImGui::BeginPopupModal("##savedprofile", NULL, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoTitleBar))
+    {
+        if (saved.empty())
+            ImGui::TextUnformatted(tr("The profile could not be written: see hikaruloader.log."));
+        else
         {
-            resetDevice();
-            ImGui::CloseCurrentPopup();
+            // Its folder's name and its own: the whole path on hover
+            ImGui::TextUnformatted(tr("The profile is in:"));
+            std::string shortName = "devices/" + std::filesystem::path(saved).filename().string();
+            ImGui::TextUnformatted(shortName.c_str());
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("%s", saved.c_str());
+            ImGui::TextDisabled("%s", tr("Give it to whoever has the same device: in their devices folder, it is put on it the first time it is connected."));
         }
-        ImGui::SameLine();
-        if (ImGui::Button(tr("No")))
+        if (ImGui::Button(tr("Close")))
             ImGui::CloseCurrentPopup();
         ImGui::EndPopup();
+    }
+    // Its profile, if any
+    if (controller)
+    {
+        if (g_mapping.device.profile.empty())
+            ImGui::TextDisabled("%s", tr("No profile for this device: its defaults are the common ones."));
+        else
+        {
+            std::filesystem::path file(g_mapping.device.profile_file);
+            std::string shortName = file.parent_path().filename().string() + "/" + file.filename().string();
+            ImGui::TextDisabled(tr("Profile: %s"), shortName.c_str());
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("%s\n%s", tr("Its bindings when it is first connected, and what Default and Reset put back."),
+                                  g_mapping.device.profile_file.c_str());
+        }
     }
 
     if (ImGui::BeginChild("##bindings", ImVec2(0, 0), ImGuiChildFlags_Borders))
@@ -1038,6 +1122,13 @@ void drawControlsTab()
             ImGui::TableSetColumnIndex(0);
             ImGui::AlignTextToFramePadding();
             ImGui::TextUnformatted(deviceName(d));
+            if (!d.profile.empty())
+            {
+                ImGui::SameLine();
+                ImGui::TextDisabled("%s", tr("(profile)"));
+                if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip("%s", d.profile_file.c_str());
+            }
             ImGui::TableSetColumnIndex(1);
             ImGui::AlignTextToFramePadding();
             if (d.player < 0)

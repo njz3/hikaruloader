@@ -105,6 +105,12 @@ driven); the bass shaker's level against a deluxe cabinet's.
 
 The controls (`src/hl/controls.cpp`):
 
+- The devices' profiles: none shipped yet (`data/devices`): to make from real
+  wheels, pedals, shifters and sticks, with *Save as a profile...*.
+- `BACKGROUND_INPUT = true`: vJoy's axes and buttons reached no game while a
+  Windows Security window had the focus (SDL read them from a console
+  program); they did once the window had it again.
+
 - The controllers' hotkeys (Guide + a button) are checked on SDL's virtual
   controller only: to try on real pads (an Xbox pad's Guide through XInput,
   which the Game Bar takes too; a DualShock's PS button). A joystick SDL
