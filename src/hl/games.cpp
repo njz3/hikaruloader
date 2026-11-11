@@ -368,6 +368,8 @@ Game::create (GameList *game_list, const char *path, const char *name, const cha
 
 			for (size_t k = 0; k < json_array_size (io_boards); k++)
 				game->io_boards.push_back (json_string_value (json_array_get (io_boards, k)));
+			if (json_is_integer (json_object_get (entry->root, "io_players")))
+				game->io_players = (unsigned) json_integer_value (json_object_get (entry->root, "io_players"));
 		}
 		{
 			json_t *screens = json_object_get (entry->root, "screens");

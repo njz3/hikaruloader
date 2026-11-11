@@ -183,7 +183,10 @@ windowsloader. Its buttons can be numbered from 1, as Windows and vJoy do.
 Every game reads the same rows, whatever its machine (Hikaru, NAOMI,
 Atomiswave, Gaelco), each control bound once under a common name: the
 cabinet's switches (`[Common]`: Test, Service, coins, the card, the volume),
-the players' start, stick and buttons 1 to 6 (`[Player1]`, `[Player2]`), the
+the players' start, stick and buttons 1 to 6 (`[Player1]` to `[Player4]`:
+players 3 and 4 on the third and fourth controllers, coins 3 and 4 on 7 and
+8, for the four-player games: Power Stone 2, WWF Royal Rumble, Virtua
+Athlete, Beach Spikers, Guilty Gear Isuka, Dirty Pigskin Football), the
 wheel, the pedals, the view change, the gear lever, the horn (`[Driving]`), a
 flying game's control wheel, rudder pedal and thrust levers (`[Flight]`), a
 light gun's sight, trigger and reload, an analog stick (`[Pointer]`). The

@@ -412,11 +412,9 @@ Board::init ()
 		modem = new AwModem (this);
 		/* The wheel's cabinets: its force on the modem's outputs */
 		aw_wheel = hl::GameControls::get ().has ("Steering");
-		if (!strcmp (game->name, "ggisuka"))
-			controllers.count = 4;
 		/* A controller on each Maple port the game's controls are on
 		 * ("p<n>", "a<n>"): the wheel's cabinets have theirs on the
-		 * third, the EX. IO board's */
+		 * third, the EX. IO board's; the four-player games' on all four */
 		for (const hl::GameControls::Place &p : hl::GameControls::get ().places ())
 			if (p.port.size () == 2 && (p.port[0] == 'p' || p.port[0] == 'a') && p.port[1] >= '1' && p.port[1] <= '4')
 				controllers.count = std::max (controllers.count, (unsigned) (p.port[1] - '0'));
@@ -447,15 +445,23 @@ Board::init ()
 	}
 	/* The other boards of a machine of whole systems have no I/O board */
 	else if (!index || !machine->networked) {
+		unsigned units = 1;
+
 		io_board = new hl::SegaIoBoard (machine, jvs);
+		((hl::SegaIoBoard *) io_board)->player_count = game->io_players;
 		/* The cabinet's other boards, each further along the chain (the
-		 * far end gets the first address); the controls stay on the first */
+		 * far end gets the first address): another 837-13551 has players
+		 * 3 and 4 (the far end's, as the four-player games read them) */
 		for (i = 1; i < game->io_boards.size (); i++) {
 			if (game->io_boards[i] == "837-13938")
 				new hl::SegaIoBoard13938 (machine, jvs);
-			else if (game->io_boards[i] == "837-13551")
-				(new hl::SegaIoBoard (machine, jvs))->cabinet = false;
-			else
+			else if (game->io_boards[i] == "837-13551") {
+				hl::SegaIoBoard *more = new hl::SegaIoBoard (machine, jvs);
+
+				more->unit = units;
+				more->first_player = 2 * units++;
+				more->lamps = false;
+			} else
 				HL_ERROR ("naomi: unknown I/O board %s", game->io_boards[i].c_str ());
 		}
 	}

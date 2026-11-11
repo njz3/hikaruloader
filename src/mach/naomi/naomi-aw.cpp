@@ -468,15 +468,18 @@ AwModem::reset (hl::ResetType type)
 uint8_t
 AwModem::coins ()
 {
-	/* The game's coin chutes: "coin:1" and "coin:2" */
+	/* The game's coin chutes: "coin:1" and "coin:2", the EX. IO board's
+	 * "coin:3" and "coin:4" (Guilty Gear Isuka's players 3 and 4) */
 	uint32_t chutes = hl::GameControls::get ().switches ("coin", board->holly->frames);
 	uint8_t val = 0xF;
 
-	for (unsigned i = 0; i < 2; i++) {
+	for (unsigned i = 0; i < 4; i++) {
+		uint8_t &chute = i < 2 ? s.chute[i] : ex_chute[i - 2];
+
 		if (!((chutes >> (i + 1)) & 1))
-			s.chute[i] = 0;
-		else if (s.chute[i] < 8) {
-			s.chute[i]++;
+			chute = 0;
+		else if (chute < 8) {
+			chute++;
 			val &= ~(1u << i);
 		}
 	}

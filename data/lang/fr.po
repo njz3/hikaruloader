@@ -2006,3 +2006,81 @@ msgstr "Embrayage (à fond)"
 
 msgid "The wheel's force: bit 0 its direction, bits 1 to 4 its strength"
 msgstr "La force du volant : bit 0 son sens, bits 1 à 4 sa force"
+
+msgid "Player 3"
+msgstr "Joueur 3"
+
+msgid "Player 4"
+msgstr "Joueur 4"
+
+msgid "Coin 3"
+msgstr "Pièce 3"
+
+msgid "Coin 4"
+msgstr "Pièce 4"
+
+msgid "Player 3: start"
+msgstr "Joueur 3 : start"
+
+msgid "Player 3: up"
+msgstr "Joueur 3 : haut"
+
+msgid "Player 3: down"
+msgstr "Joueur 3 : bas"
+
+msgid "Player 3: left"
+msgstr "Joueur 3 : gauche"
+
+msgid "Player 3: right"
+msgstr "Joueur 3 : droite"
+
+msgid "Player 3: button 1"
+msgstr "Joueur 3 : bouton 1"
+
+msgid "Player 3: button 2"
+msgstr "Joueur 3 : bouton 2"
+
+msgid "Player 3: button 3"
+msgstr "Joueur 3 : bouton 3"
+
+msgid "Player 3: button 4"
+msgstr "Joueur 3 : bouton 4"
+
+msgid "Player 3: button 5"
+msgstr "Joueur 3 : bouton 5"
+
+msgid "Player 3: button 6"
+msgstr "Joueur 3 : bouton 6"
+
+msgid "Player 4: start"
+msgstr "Joueur 4 : start"
+
+msgid "Player 4: up"
+msgstr "Joueur 4 : haut"
+
+msgid "Player 4: down"
+msgstr "Joueur 4 : bas"
+
+msgid "Player 4: left"
+msgstr "Joueur 4 : gauche"
+
+msgid "Player 4: right"
+msgstr "Joueur 4 : droite"
+
+msgid "Player 4: button 1"
+msgstr "Joueur 4 : bouton 1"
+
+msgid "Player 4: button 2"
+msgstr "Joueur 4 : bouton 2"
+
+msgid "Player 4: button 3"
+msgstr "Joueur 4 : bouton 3"
+
+msgid "Player 4: button 4"
+msgstr "Joueur 4 : bouton 4"
+
+msgid "Player 4: button 5"
+msgstr "Joueur 4 : bouton 5"
+
+msgid "Player 4: button 6"
+msgstr "Joueur 4 : bouton 6"

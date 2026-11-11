@@ -140,8 +140,9 @@ void
 GameControls::set_game (GameList *list, const char *name)
 {
 	GameEntry *entry = (list && name) ? list->find (name) : NULL;
-	json_t *layout_name, *layout, *controls, *gearbox, *fixed_list;
-	const char *role, *layout_text;
+	json_t *layout_name, *controls, *gearbox, *fixed_list;
+	const char *role;
+	std::string layout_text;
 	json_t *at;
 
 	game_name = name ? name : "";
@@ -154,19 +155,60 @@ GameControls::set_game (GameList *list, const char *name)
 	if (!entry)
 		return;
 
-	/* The board's usual places, then the game's over them */
+	/* The board's usual places (a layout, or a list of them, each over
+	 * the one before: "jvs" then "jvs_p34"), then the game's over them */
+	std::vector<std::string> layouts;
 	layout_name = field (list, entry, "layout");
-	layout_text = json_string_value (layout_name);
-	if (!layout_text)
-		layout_text = !strcmp (entry->mach, "naomi") && !strcmp (json_string_value (json_object_get (entry->root, "board")) ?
-		              json_string_value (json_object_get (entry->root, "board")) : "", "aw") ? "atomiswave" : "jvs";
-	layout = json_object_get (json_object_get (list->root, "layouts"), layout_text);
-	if (!layout)
-		HL_PRINT ("controls: %s: no layout '%s'", game_name.c_str (), layout_text);
-	/* The game's places take theirs from the layout's roles: a role it
+	if (json_is_string (layout_name))
+		layouts.push_back (json_string_value (layout_name));
+	else if (json_is_array (layout_name)) {
+		size_t k;
+		json_t *one;
+
+		json_array_foreach (layout_name, k, one)
+			if (json_is_string (one))
+				layouts.push_back (json_string_value (one));
+	}
+	if (layouts.empty ()) {
+		const char *board = json_string_value (json_object_get (entry->root, "board"));
+
+		layouts.push_back (!strcmp (entry->mach, "naomi") && board && !strcmp (board, "aw") ? "atomiswave" : "jvs");
+	}
+	/* A later one's places take the earlier's, a place they share or a
+	 * role it lists, as the game's take the layouts' */
+	auto over = [] (std::vector<Place> &under, const std::vector<Place> &top, json_t *roles) {
+		std::vector<Place> kept;
+
+		for (const Place &p : under)
+			if (!json_object_get (roles, p.row->key) &&
+			    std::none_of (top.begin (), top.end (), [&] (const Place &o) { return o.port == p.port && o.index == p.index; }))
+				kept.push_back (p);
+		kept.insert (kept.end (), top.begin (), top.end ());
+		under.swap (kept);
+	};
+	for (const std::string &name_of : layouts) {
+		json_t *layout = json_object_get (json_object_get (list->root, "layouts"), name_of.c_str ());
+		std::vector<Place> top;
+
+		if (!layout) {
+			HL_PRINT ("controls: %s: no layout '%s'", game_name.c_str (), name_of.c_str ());
+			continue;
+		}
+		json_object_foreach (layout, role, at) {
+			const Controls::RowDef *row = Controls::row_def (role);
+
+			if (!row)
+				HL_PRINT ("controls: layout %s: no role '%s'", name_of.c_str (), role);
+			else
+				read_places (game_name.c_str (), row, at, top);
+		}
+		over (all, top, layout);
+		layout_text += (layout_text.empty () ? "" : "+") + name_of;
+	}
+	/* The game's places take theirs from the layouts' roles: a role it
 	 * lists, a place it puts another role on */
 	controls = field (list, entry, "controls");
-	std::vector<Place> own, usual;
+	std::vector<Place> own;
 	json_object_foreach (controls, role, at) {
 		const Controls::RowDef *row = Controls::row_def (role);
 
@@ -175,18 +217,7 @@ GameControls::set_game (GameList *list, const char *name)
 		else if (!json_is_null (at))
 			read_places (game_name.c_str (), row, at, own);
 	}
-	json_object_foreach (layout, role, at) {
-		const Controls::RowDef *row = Controls::row_def (role);
-
-		if (!row)
-			HL_PRINT ("controls: layout %s: no role '%s'", layout_text, role);
-		else if (!json_object_get (controls, role))
-			read_places (game_name.c_str (), row, at, usual);
-	}
-	for (const Place &p : usual)
-		if (std::none_of (own.begin (), own.end (), [&] (const Place &o) { return o.port == p.port && o.index == p.index; }))
-			all.push_back (p);
-	all.insert (all.end (), own.begin (), own.end ());
+	over (all, own, controls);
 
 	/* The gear lever's positions, in their order */
 	gearbox = field (list, entry, "gearbox");
@@ -220,7 +251,7 @@ GameControls::set_game (GameList *list, const char *name)
 				fixed.push_back (p);
 		}
 	}
-	HL_PRINT ("controls: %s: layout %s, %u places%s", game_name.c_str (), layout_text,
+	HL_PRINT ("controls: %s: layout %s, %u places%s", game_name.c_str (), layout_text.c_str (),
 	          (unsigned) all.size (), gear_list.empty () ? "" : ", a gear lever");
 }
 

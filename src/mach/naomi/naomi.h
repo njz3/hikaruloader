@@ -349,6 +349,8 @@ private:
 	struct {
 		uint8_t devices, output, chute[2];
 	} s;
+	/* Chutes 3 and 4 (the EX. IO board's), out of the saved state */
+	uint8_t	 ex_chute[2] = { 0, 0 };
 };
 
 /* The MIE on the Maple bus: a Z80 and its ports; see naomi-mie.cpp */

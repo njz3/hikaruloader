@@ -627,13 +627,23 @@ SegaIoBoard::identity ()
 void
 SegaIoBoard::functions (std::vector<uint8_t> &out)
 {
-	static const uint8_t list[] = {
-		0x01, 2, 13, 0,		/* Switches: 2 players, 13 each */
+	const uint8_t list[] = {
+		0x01, (uint8_t) player_count, 13, 0,	/* Switches: 2 players, 13 each */
 		0x02, 2, 0, 0,		/* Coins: 2 slots */
 		0x03, 8, 16, 0,		/* Analog: 8 channels, 16 bits */
 		0x12, 6, 0, 0,		/* Outputs: 6 */
 	};
 	out.insert (out.end (), list, list + sizeof (list));
+}
+
+/* Its port among the game's controls: the first board's "p1", "p2", "sys",
+ * "an"; the second's (players 3 and 4) "p3", "p4", "sys2", "an2" */
+std::string
+SegaIoBoard::port (const char *kind, unsigned player) const
+{
+	if (!strcmp (kind, "p"))
+		return "p" + std::to_string (first_player + player + 1);
+	return unit ? kind + std::to_string (unit + 1) : std::string (kind);
 }
 
 void
@@ -644,10 +654,11 @@ SegaIoBoard::count_coins ()
 
 	if (!cabinet)
 		return;
-	/* The game's coin chutes: "coin:1" and "coin:2" */
+	/* The game's coin chutes: "coin:1" and "coin:2" (the second board's
+	 * "coin:3" and "coin:4") */
 	slots = GameControls::get ().switches ("coin", mach->frame);
 	for (i = 0; i < 2; i++) {
-		bool held = (slots >> (i + 1)) & 1;
+		bool held = (slots >> (2 * unit + i + 1)) & 1;
 		if (held && !coin_held[i])
 			coin[i] = (coin[i] + 1) & 0x3FFF;
 		coin_held[i] = held;
@@ -659,7 +670,7 @@ SegaIoBoard::switches (unsigned players, unsigned bytes, std::vector<uint8_t> &o
 {
 	unsigned p, i;
 
-	if (players > 2 || bytes > 2)
+	if (players > player_count || bytes > 2)
 		return false;
 	/* Polled each frame: the coins too */
 	count_coins ();
@@ -669,11 +680,11 @@ SegaIoBoard::switches (unsigned players, unsigned bytes, std::vector<uint8_t> &o
 		static uint64_t last = ~0ull;
 		uint64_t now = ((uint64_t) SegaIoBoard::player_bits (1) << 17) |
 		               ((uint64_t) SegaIoBoard::player_bits (0) << 1) | (system_bits () >> 7);
-		if (now != last && cabinet)
+		if (now != last && cabinet && !unit)
 			HL_PRINT ("inputs: frame %llu, test %u, player 1 %04X, player 2 %04X",
 			          (unsigned long long) mach->frame, (unsigned) (now & 1),
 			          (unsigned) ((now >> 1) & 0xFFFF), (unsigned) (now >> 17));
-		if (cabinet)
+		if (cabinet && !unit)
 			last = now;
 	}
 	out.push_back (system_bits ());
@@ -689,17 +700,15 @@ uint8_t
 SegaIoBoard::system_bits ()
 {
 	/* TEST in bit 7: "sys:7" */
-	return cabinet ? (uint8_t) GameControls::get ().switches ("sys", mach->frame) : 0x00;
+	return cabinet ? (uint8_t) GameControls::get ().switches (port ("sys").c_str (), mach->frame) : 0x00;
 }
 
 uint16_t
 SegaIoBoard::player_bits (unsigned player)
 {
-	static const char *ports[2] = { "p1", "p2" };
-
-	if (!cabinet || player > 1)
+	if (!cabinet || player >= player_count)
 		return 0;
-	return (uint16_t) GameControls::get ().switches (ports[player], mach->frame);
+	return (uint16_t) GameControls::get ().switches (port ("p", player).c_str (), mach->frame);
 }
 
 /* The wheel and the pedals read from the controllers once a call for
@@ -762,7 +771,7 @@ SegaIoBoard::read_controls ()
 		return;
 	for (unsigned i = 0; i < 8; i++)
 		if (!analog_set[i])
-			g.analog ("an", i, &analog[i]);
+			g.analog (port ("an").c_str (), i, &analog[i]);
 }
 
 bool
@@ -779,7 +788,7 @@ SegaIoBoard::analogs (unsigned channels, std::vector<uint8_t> &out)
 	}
 	/* HR_LOG_INPUTS=1: the channels' top bytes too, at each change */
 	static const bool log_inputs = getenv ("HR_LOG_INPUTS") != NULL;
-	if (log_inputs && cabinet) {
+	if (log_inputs && cabinet && !unit) {
 		static std::string last;
 		char text[48] = "";
 

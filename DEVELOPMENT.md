@@ -272,14 +272,19 @@ channel n at 2n), checked in the game's JVS TEST screen.
   it for the switches and channels of its ports; each is a role, a row of
   `controls.ini` (`Controls::row_def`, the table in `src/hl/controls.cpp`),
   placed by `data/games.json`: `layouts` (a board's usual places: `jvs`,
-  `atomiswave`, `atomiswave_wheel`, `gaelco_football`, `gaelco_driving`), a
-  game's `layout` (by default `jvs`, `atomiswave` on the Atomiswave) and
-  `controls` over it, `"<role>" : "<port>:<n>"` or `{"at" : ..., "label" :
+  `jvs_p34`, `atomiswave`, `atomiswave_p34`, `atomiswave_wheel`,
+  `gaelco_football`, `gaelco_driving`), a game's `layout` (by default `jvs`,
+  `atomiswave` on the Atomiswave; a list of them, each over the one before:
+  `["jvs", "jvs_p34"]`) and `controls` over it, `"<role>" : "<port>:<n>"` or `{"at" : ..., "label" :
   "<its INPUT TEST's name>", "invert" : true, "range" : ["C000", "4000"]}`
   (null: not there); a place the game lists is taken from the layout's role.
   Ports: `sys`, `p1`, `p2` (a player's 16 switches, bit 15 START ... 4
-  BUTTON6), `coin` (1, 2), `an` (channels); the Atomiswave's `p1` to `p4`
-  and `a1` to `a4`; Gaelco's port selects (`f000`, `e800`, `7000`...).
+  BUTTON6), `coin` (1, 2), `an` (channels); a cabinet's second 837-13551
+  (the far end of its chain) `p3`, `p4`, `coin` 3 and 4, `sys2`, `an2`
+  (`SegaIoBoard::unit`); the Atomiswave's `p1` to `p4` and `a1` to `a4`, a
+  pad answering on each port the game's places use (two at least), coins 3
+  and 4 the EX. IO board's; Gaelco's port selects (`f000`, `e800`,
+  `7000`...).
   `gearbox`: a lever held in its positions, `"R"`, `"N"`, `"1"`... each the
   switches it closes (`hl::Gearbox`); `fixed`: switches always closed. A
   clone reads its parent's. `HR_LOG_INPUTS=1` logs the players' switches and
@@ -291,7 +296,9 @@ channel n at 2n), checked in the game's JVS TEST screen.
   `Config::common_only` lists those kept common.
 - NAOMI: `io_boards` in `data/games.json` lists a cabinet's JVS chain, nearest
   the main board first (the far end takes the first address), with the 837-13938
-  encoder board (`hl::SegaIoBoard13938`); `g2_board` the board on the G2 bus's
+  encoder board (`hl::SegaIoBoard13938`); another 837-13551 has players 3 and
+  4, as the four-player games read them (their JVS TEST's NODE 1);
+  `io_players` the players of the first board (4 on Power Stone 2's); `g2_board` the board on the G2 bus's
   outside (`naomi-g2board.cpp`, the games' 837-14381:
   `machine.devices.g2_board:option ('log', 1)` logs its accesses).
 - SGNASCAR has the I/O board of the racing cabinets, an 837-13844, and on it

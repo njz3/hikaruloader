@@ -208,7 +208,8 @@ protected:
 /* The Sega 837-13551 "I/O BD JVS", the cabinets' usual I/O board: two players
  * of 13 switches, two coin slots, eight analog channels, six outputs. The
  * switches, coins and channels come from the game's controls (hl::GameControls:
- * "sys", "p1", "p2", "coin", "an"), but a channel the shell set: as registers,
+ * "sys", "p1", "p2", "coin", "an"; a cabinet's second board "sys2", "p3",
+ * "p4", coins 3 and 4, "an2"), but a channel the shell set: as registers,
  * channel n at 2n (16 bits), the coins at 10 and 12, the outputs at 14 (read
  * only). */
 class SegaIoBoard : public JvsDevice {
@@ -233,6 +234,13 @@ public:
 	/* The cabinet's controls and lamps are wired to this board: not to the
 	 * others of a chain */
 	bool	 cabinet = true;
+	/* Its place among the cabinet's boards fed by the controls: 0 the
+	 * first (players 1 and 2), 1 the second, which has players 3 and 4
+	 * (Virtua Athlete, WWF Royal Rumble...): its ports (port) */
+	unsigned unit = 0;
+	unsigned first_player = 0;
+	/* The players it has (4 on Power Stone 2's, games.json "io_players") */
+	unsigned player_count = 2;
 	/* Its outputs go to the network outputs (hl::Outputs): not those of
 	 * the other boards of a cabinet of several main boards (Airline Pilots'
 	 * keep theirs at 0), which would put theirs over the first board's */
@@ -247,6 +255,8 @@ public:
 	 * 7 of the first byte) */
 	uint8_t	 system_bits ();
 	virtual uint16_t player_bits (unsigned player);
+	/* Its port of the game's controls for kind ("p", "sys", "an") */
+	std::string port (const char *kind, unsigned player = 0) const;
 	uint16_t analog_bits (unsigned channel);
 	void	 take_coins (unsigned presses[2]);
 	void	 drive_outputs (const uint8_t *data, unsigned bytes) { outputs (bytes, data); }

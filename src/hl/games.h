@@ -126,6 +126,9 @@ public:
 	 * nearest the main board first, by their Sega numbers; none listed: the
 	 * machine's usual board */
 	std::vector<std::string> io_boards;
+	/* The players of its first I/O board (games.json "io_players"): 4 on
+	 * Power Stone 2's, 2 by default */
+	unsigned io_players = 2;
 	/* The board on the G2 bus's outside (games.json "g2_board"), by its
 	 * Sega number; "": none */
 	char g2_board[16] = "";

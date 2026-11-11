@@ -13,6 +13,12 @@ Next version
   (Marvel vs. Capcom 2, the fighting games, the two-player cabinets).
 - Fixed: the Atomiswave's player 2 pad sent nothing: its stick and buttons
   1 to 6 reach the games now (the wheel cabinets excepted).
+- Players 3 and 4 (`[Player3]`, `[Player4]` in `controls.ini`: the third and
+  fourth controllers; coins 3 and 4 on 7 and 8) for the four-player games:
+  Power Stone 2 (its I/O board of four players), WWF Royal Rumble, Virtua
+  Athlete, Beach Spikers and Mahjong MJ (their second I/O board, which
+  answered nothing pressed), Guilty Gear Isuka and Dirty Pigskin Football
+  (the Atomiswave's third and fourth pads).
 - Fixed: Maximum Speed's and Faster Than Speed's wheel and pedals stayed at 0
   (their CONTROLER SETTING SCREEN, 0 mph in a race): they are on the
   Atomiswave's third controller port, not on the second. Their wheel's force
