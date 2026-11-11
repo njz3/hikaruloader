@@ -1285,12 +1285,16 @@ gaelco_init (Gaelco *gaelco)
 	gaelco->fpga_conf = game->section_data ("fpga");
 	gaelco->data_rom = game->section_data ("data");
 
-	if (!strncmp (game->name, "gfootbal", 8))
+	/* Its cabinet's outputs (games.json "cabinet") */
+	if (game->cabinet == "football")
 		gaelco->inputs = Gaelco::INPUTS_FOOTBALL;
-	else if (!strncmp (game->name, "atvtrack", 8))
+	else if (game->cabinet == "atv")
 		gaelco->inputs = Gaelco::INPUTS_ATV;
-	else
+	else {
+		if (game->cabinet != "smashdrv")
+			HL_ERROR ("gaelco: cabinet '%s' not known: Smashing Drive's taken", game->cabinet.c_str ());
 		gaelco->inputs = Gaelco::INPUTS_SMASHDRV;
+	}
 
 	if (nand && gaelco->fpga_conf)
 		gaelco->board = Gaelco::BOARD_ATVTRACK;

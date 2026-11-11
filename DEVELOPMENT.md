@@ -302,7 +302,17 @@ channel n at 2n), checked in the game's JVS TEST screen.
   the main board first (the far end takes the first address), with the 837-13938
   encoder board (`hl::SegaIoBoard13938`); another 837-13551 has players 3 and
   4, as the four-player games read them (their JVS TEST's NODE 1);
-  `io_players` the players of the first board (4 on Power Stone 2's); `g2_board` the board on the G2 bus's
+  `io_players` the players of the first board (4 on Power Stone 2's);
+- A cabinet's other hardware, in `data/games.json` too (a clone's is its
+  parent's, `hl::Game`): `io_boards` `["837-13844"]` the racing cabinets' I/O
+  board (Hikaru and NAOMI), `drive_board` the wheel's drive board on it
+  (`srally2`: NASCAR Arcade's, a Model 3's; `f355`, `18wheeler`),
+  `servo_board` `838-14174` the wheel's servo board on the MIDI port (Club
+  Kart, The King of Route 66, Initial D, Driving Simulator), `card_reader`
+  (`von4` on the Hikaru's MIE, `initiald` and `clubkart` on the NAOMI's
+  SCIF), `hopper` `swp` (Club Kart Prize's medals), `cabinet` a Gaelco
+  cabinet's outputs (`atv`, `smashdrv`, `football`). The log names each one
+  at the start; a value not known is an error there. `g2_board` the board on the G2 bus's
   outside (`naomi-g2board.cpp`, the games' 837-14381:
   `machine.devices.g2_board:option ('log', 1)` logs its accesses).
 - SGNASCAR has the I/O board of the racing cabinets, an 837-13844, and on it

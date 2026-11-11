@@ -129,6 +129,15 @@ public:
 	/* The players of its first I/O board (games.json "io_players"): 4 on
 	 * Power Stone 2's, 2 by default */
 	unsigned io_players = 2;
+	/* Its cabinet's other hardware, "" none (games.json, a clone's its
+	 * parent's): "drive_board" the wheel's drive board on an 837-13844
+	 * ("srally2", Model 3 Sega Rally 2's: NASCAR Arcade; "f355", "18wheeler"),
+	 * "servo_board" the wheel's servo board on the MIDI port ("838-14174"),
+	 * "card_reader" its card reader's protocol ("von4" on the Hikaru's MIE,
+	 * "initiald" and "clubkart" on the NAOMI's SCIF), "hopper" its medal
+	 * hopper ("swp", on the SCIF), "cabinet" a Gaelco cabinet's wiring of
+	 * its outputs ("atv", "smashdrv", "football") */
+	std::string drive_board, servo_board, card_reader, hopper, cabinet;
 	/* The board on the G2 bus's outside (games.json "g2_board"), by its
 	 * Sega number; "": none */
 	char g2_board[16] = "";

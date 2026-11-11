@@ -21,6 +21,10 @@ Next version
   (the Atomiswave's third and fourth pads).
 - The Controls tab's *Levers* part shows with the games that have a pair of
   thrust levers (Star Wars: Racer Arcade), or no game running.
+- The cabinets' other hardware is described in `data/games.json` instead of
+  being chosen by the games' names or titles: the racing I/O board and its
+  drive board, the servo board, the card readers, the medal hopper, the
+  Gaelco cabinets' outputs; the log names them at the start.
 - Fixed: Maximum Speed's and Faster Than Speed's wheel and pedals stayed at 0
   (their CONTROLER SETTING SCREEN, 0 mph in a race): they are on the
   Atomiswave's third controller port, not on the second. Their wheel's force

@@ -1295,8 +1295,8 @@ static void
 hikaru_attach_io_program (Hikaru *hikaru)
 {
 	hl::Game *game = hikaru->game;
-	const char *name = game->parent[0] ? game->parent : game->name;
-	bool nascar = !strcmp (name, "sgnascar");
+	/* The racing cabinet's 837-13844 runs the 837-13741's program */
+	bool nascar = !game->io_boards.empty () && game->io_boards[0] == "837-13844";
 	hl::Buffer *rom = game->section_data ("io_rom");
 	hl::SegaIoBoard *cabinet = (hl::SegaIoBoard *) hikaru->io_board;
 	const char *file = nascar ? "epr-21868.ic7" : "315-6215.bin";
@@ -1415,22 +1415,27 @@ hikaru_init (Hikaru *hikaru)
 		hikaru->comm = new hikaru::Comm (mach);
 
 	/* The cabinet's JVS bus, its I/O board first, then the MIE driving
-	 * it. NASCAR's has the drive board of a Model 3 (Sega Rally 2's) on
-	 * an 837-13844 */
+	 * it. The racing cabinets' I/O board is an 837-13844 ("io_boards"),
+	 * NASCAR's with the drive board of a Model 3 (Sega Rally 2's:
+	 * "drive_board" srally2) on it */
 	hikaru->jvs = new hl::JvsBus (mach);
-	if (!strncmp (game->name, "sgnascar", 8)) {
-		/* Its EPROM (EPR-20512) on its Z80 when the srally2 set has it,
-		 * else simulated; DRIVEBOARD_SIMULATED=1 simulates it anyway */
-		hl::Buffer *drive_rom = game->section_data ("drivebd");
-		hl::DriveBoardProgram *program;
-		if (drive_rom && !hl_util_get_bool_option ("DRIVEBOARD_SIMULATED", false)) {
-			program = new hl::DriveBoardZ80 ((const uint8_t *) drive_rom->ptr (0), drive_rom->size ());
-			HL_PRINT ("drive board: EPR-20512 on its Z80");
-		} else {
-			program = new hl::DriveBoardSr2 ();
-			HL_PRINT ("drive board: simulated%s", drive_rom ? "" : " (no EPR-20512: the srally2 set)");
-		}
-		hikaru->drive_board = new hl::DriveBoard (mach, program);
+	if (!game->io_boards.empty () && game->io_boards[0] == "837-13844") {
+		if (game->drive_board == "srally2") {
+			/* Its EPROM (EPR-20512) on its Z80 when the srally2 set has
+			 * it, else simulated; DRIVEBOARD_SIMULATED=1 simulates it
+			 * anyway */
+			hl::Buffer *drive_rom = game->section_data ("drivebd");
+			hl::DriveBoardProgram *program;
+			if (drive_rom && !hl_util_get_bool_option ("DRIVEBOARD_SIMULATED", false)) {
+				program = new hl::DriveBoardZ80 ((const uint8_t *) drive_rom->ptr (0), drive_rom->size ());
+				HL_PRINT ("drive board: EPR-20512 on its Z80");
+			} else {
+				program = new hl::DriveBoardSr2 ();
+				HL_PRINT ("drive board: simulated%s", drive_rom ? "" : " (no EPR-20512: the srally2 set)");
+			}
+			hikaru->drive_board = new hl::DriveBoard (mach, program);
+		} else if (!game->drive_board.empty ())
+			HL_ERROR ("hikaru: unknown drive board %s", game->drive_board.c_str ());
 		hikaru->io_board = new hl::SegaIoBoard13844 (mach, hikaru->jvs, hikaru->drive_board);
 	} else {
 		/* Its controls on the board's inputs: hl::GameControls */
@@ -1441,16 +1446,19 @@ hikaru_init (Hikaru *hikaru)
 	hikaru->mie = new hikaru::Mie (mach, hikaru->mie_ram, hikaru->jvs);
 	if (!hikaru->mie)
 		return -1;
-	/* VON4's card reader, on the MIE's serial line; the player's card in
-	 * nvram/von4.card (with a write directory, its copy) */
-	if (!strcmp (game->parent[0] ? game->parent : game->name, "von4")) {
+	/* VON4's card reader ("card_reader" von4), on the MIE's serial line;
+	 * the player's card in nvram/von4.card (with a write directory, its
+	 * copy) */
+	if (game->card_reader == "von4") {
 		std::string file = std::string ("nvram/") + game->name + ".card";
 		std::string card = hl::Paths::game_write (game->name, file);
 		if (hl::Paths::has_write_dir () && hl::Paths::seed (file, card))
 			HL_PRINT ("hikaru: '%s' copied from '%s'", card.c_str (), file.c_str ());
 		hikaru->card_reader = new hl::CardReader (mach, card);
 		((Mie *) hikaru->mie)->card_reader = hikaru->card_reader;
-	}
+		HL_PRINT ("hikaru: a card reader (von4) on the MIE's serial line");
+	} else if (!game->card_reader.empty ())
+		HL_ERROR ("hikaru: unknown card reader %s", game->card_reader.c_str ());
 
 	Renderer::set_game (mach->game ? mach->game->name : NULL, mach->game ? mach->game->parent : NULL);
 	hikaru->renderer = new Renderer (hikaru->fb, hikaru->texram);

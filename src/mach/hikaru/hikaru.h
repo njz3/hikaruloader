@@ -129,7 +129,7 @@ public:
 	 * on that, NULL without */
 	hl::JvsBus *jvs;
 	hl::Device *io_board;
-	hl::DriveBoard *drive_board;
+	hl::DriveBoard *drive_board = nullptr;
 	/* VON4's card reader, on the MIE's serial line; NULL without */
 	hl::CardReader *card_reader;
 	hl::Device *aica_m;

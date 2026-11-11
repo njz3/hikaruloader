@@ -435,10 +435,15 @@ Board::init ()
 	if (mie)
 		mie->monitor_15khz = rom_board->size () > 0x42A && *(uint8_t *) rom_board->ptr (0x42A) == 2;
 	jvs = new hl::JvsBus (machine);
-	/* F355 Challenge's cabinets have the drive board's I/O board, the 837-13844 */
-	if (!strncmp (game->name, "f355", 4) || !strncmp (game->name, "18wheel", 7)) {
-		if (!index)
-			drive_board = new hl::DriveBoard (machine, new hl::DriveBoardF355 (machine, game->name[0] == '1'));
+	/* The racing cabinets' I/O board, the 837-13844 ("io_boards"), with the
+	 * wheel's drive board on the first main board (F355 Challenge's, 18
+	 * Wheeler's: "drive_board") */
+	if (!game->io_boards.empty () && game->io_boards[0] == "837-13844") {
+		if (!index && (game->drive_board == "f355" || game->drive_board == "18wheeler")) {
+			drive_board = new hl::DriveBoard (machine, new hl::DriveBoardF355 (machine, game->drive_board == "18wheeler"));
+			HL_PRINT ("naomi: the drive board (%s)", game->drive_board.c_str ());
+		} else if (!index && !game->drive_board.empty ())
+			HL_ERROR ("naomi: unknown drive board %s", game->drive_board.c_str ());
 		hl::SegaIoBoard13844 *board13844 = new hl::SegaIoBoard13844 (machine, jvs, drive_board);
 
 		io_board = board13844;
@@ -691,48 +696,49 @@ Board::reset (hl::ResetType type)
 	main_serial.reset ();
 }
 
-/* The wheels with the servo board 838-14174 on the MIDI port: by the title in
- * the cartridge's header; Driving Simulator's is encrypted */
+/* The wheels with the servo board 838-14174 on the MIDI port ("servo_board"),
+ * the card readers on the SH-4's SCIF ("card_reader") */
 void
 Board::setup_servo ()
 {
 	if (is_atomiswave)
 		return;
-	const char *title = (const char *) rom_image->ptr (0x30);
-
 	if (machine->networked) {
 		/* Its dashboard, on the SCIF (nothing answers) */
 		meters.reset (new DriveSimMeters ());
 		((Sh4 *) sh)->scif_pipe = meters.get ();
 	}
-	if (strncmp (title, "CLUB KART IN JAPAN", 18) && strncmp (title, "THE KING OF ROUTE66", 19) &&
-	    strncmp (title, "INITIAL D", 9) &&
-	    strcmp (game->name, "sgdrvsim"))
-		return;
-	servo.reset (new ServoBoard (this));
-	servo->attach ();
-	HL_PRINT ("naomi: a servo board 838-14174 on the MIDI port");
-	/* Initial D's card reader, on the SH-4's SCIF */
-	if (!strncmp (title, "INITIAL D", 9)) {
+	if (game->servo_board == "838-14174") {
+		servo.reset (new ServoBoard (this));
+		servo->attach ();
+		HL_PRINT ("naomi: a servo board 838-14174 on the MIDI port");
+	} else if (!game->servo_board.empty ())
+		HL_ERROR ("naomi: unknown servo board %s", game->servo_board.c_str ());
+	/* The card readers on the SH-4's SCIF: Initial D's, the first Club
+	 * Kart's */
+	if (game->card_reader == "initiald") {
 		std::string file = std::string ("nvram/") + game->name + ".card";
 
 		sanwa.reset (new SanwaCard (machine, hl::Paths::game_write (game->name, file)));
 		((Sh4 *) sh)->scif_pipe = sanwa.get ();
-	}
-	/* The first Club Kart's card reader */
-	if (!strncmp (game->name, "clubkrt", 7) || !strcmp (game->name, "clubk2k3") ||
-	    !strncmp (game->name, "clubkcyc", 8)) {
+	} else if (game->card_reader == "clubkart") {
 		card.reset (new ClubKartCard (game->name));
 		((Sh4 *) sh)->scif_pipe = card.get ();
-	}
+	} else if (!game->card_reader.empty ())
+		HL_ERROR ("naomi: unknown card reader %s", game->card_reader.c_str ());
+	if (sanwa || card)
+		HL_PRINT ("naomi: a card reader (%s) on the SCIF", game->card_reader.c_str ());
 }
 
 /* The medal games: their hopper board on the SH-4's SCIF */
 void
 Board::setup_hopper ()
 {
-	if (strncmp (game->name, "clubkp", 6))
+	if (game->hopper != "swp") {
+		if (!game->hopper.empty ())
+			HL_ERROR ("naomi: unknown hopper %s", game->hopper.c_str ());
 		return;
+	}
 	hopper.reset (new SwpHopper ());
 	((Sh4 *) sh)->scif_pipe = hopper.get ();
 	HL_PRINT ("naomi: a hopper board on the SCIF");

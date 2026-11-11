@@ -364,12 +364,29 @@ Game::create (GameList *game_list, const char *path, const char *name, const cha
 		game->net_dimm = json_is_true (json_object_get (entry->root, "net_dimm"));
 		game->motion_pc = json_is_true (json_object_get (entry->root, "motion_pc"));
 		{
-			json_t *io_boards = json_object_get (entry->root, "io_boards");
+			/* The cabinet's hardware: a clone's is its parent's */
+			GameEntry *parent = entry->parent[0] ? game_list->find (entry->parent) : NULL;
+			auto inherited = [&] (const char *key) {
+				json_t *v = json_object_get (entry->root, key);
+
+				return (!v && parent) ? json_object_get (parent->root, key) : v;
+			};
+			auto text_of = [&] (const char *key) {
+				const char *v = json_string_value (inherited (key));
+
+				return std::string (v ? v : "");
+			};
+			json_t *io_boards = inherited ("io_boards");
 
 			for (size_t k = 0; k < json_array_size (io_boards); k++)
 				game->io_boards.push_back (json_string_value (json_array_get (io_boards, k)));
-			if (json_is_integer (json_object_get (entry->root, "io_players")))
-				game->io_players = (unsigned) json_integer_value (json_object_get (entry->root, "io_players"));
+			if (json_is_integer (inherited ("io_players")))
+				game->io_players = (unsigned) json_integer_value (inherited ("io_players"));
+			game->drive_board = text_of ("drive_board");
+			game->servo_board = text_of ("servo_board");
+			game->card_reader = text_of ("card_reader");
+			game->hopper = text_of ("hopper");
+			game->cabinet = text_of ("cabinet");
 		}
 		{
 			json_t *screens = json_object_get (entry->root, "screens");
