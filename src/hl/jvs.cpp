@@ -652,8 +652,9 @@ SegaIoBoard::count_coins ()
 }
 
 /* A player's switches, closed at 1. Bits from the top: start, service, up,
- * down, left, right, push 1 to 7; the controls are player 1's;
- * swap_left_right: see SegaIoBoard */
+ * down, left, right, push 1 to 7; player 1's from the actions, buttons 5
+ * and 6 and player 2's from their rows in controls.ini (a NAOMI game's
+ * [Naomi] ones first); swap_left_right: see SegaIoBoard */
 static uint16_t
 switch_word (unsigned player, bool swap_left_right, SegaIoBoard::PointerGame game)
 {
@@ -664,14 +665,28 @@ switch_word (unsigned player, bool swap_left_right, SegaIoBoard::PointerGame gam
 	uint16_t bits = 0;
 	unsigned i;
 
-	if (player == 0)
+	Controls &c = Controls::get ();
+
+	if (player == 0) {
 		for (i = 0; i < NUMELEM (player1); i++)
 			if (Input::action (player1[i]))
 				bits |= 0x8000 >> i;
+		if (c.pressed ("Digital", "P1_Button5"))
+			bits |= 0x0020;
+		if (c.pressed ("Digital", "P1_Button6"))
+			bits |= 0x0010;
+	} else if (player == 1) {
+		static const char *player2[] = {
+			"P2_Start", "P2_Service", "P2_Up", "P2_Down", "P2_Left", "P2_Right",
+			"P2_Button1", "P2_Button2", "P2_Button3", "P2_Button4", "P2_Button5", "P2_Button6",
+		};
+		for (i = 0; i < NUMELEM (player2); i++)
+			if (c.pressed (i < 2 ? "Common" : "Digital", player2[i]))
+				bits |= 0x8000 >> i;
+	}
 	/* A nozzle's or a stick's own buttons: push 1, 2 and 3. Brave
 	 * Firefighters: water, off the screen, fog; Planet Harriers: bullets,
 	 * missiles, bombs */
-	Controls &c = Controls::get ();
 	if (game == SegaIoBoard::POINTER_BRAVEFF && player < 2) {
 		if (c.pressed ("Pointer", player ? "P2_Water" : "P1_Water"))
 			bits |= 0x0200;

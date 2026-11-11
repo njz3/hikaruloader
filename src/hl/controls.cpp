@@ -70,6 +70,9 @@ static const char *default_file =
 	"P2_Button1 = KEY_A, GC1_BUTTON_A\n"
 	"P2_Button2 = KEY_S, GC1_BUTTON_B\n"
 	"P2_Button3 = KEY_Q, GC1_BUTTON_X\n"
+	"P2_Button4 = KEY_W, GC1_BUTTON_Y\n"
+	"P2_Button5 = KEY_I, GC1_BUTTON_LEFTSHOULDER\n"
+	"P2_Button6 = KEY_K, GC1_BUTTON_RIGHTSHOULDER\n"
 	"\n"
 	"[Driving]\n"
 	"P1_Steer = GC0_AXIS_LEFTX, JOY0_AXIS_0\n"
@@ -221,7 +224,7 @@ static const struct {
 	{ "Common", "P1_Coin", "Coin 1" },
 	{ "Common", "P2_Coin", "Coin 2" },
 	{ "Common", "P1_Start", "Start" },
-	{ "Common", "P2_Start", "Player 2's start (Gaelco Football)" },
+	{ "Common", "P2_Start", "Player 2's start (the NAOMI's two-player games, Gaelco Football)" },
 	{ "Common", "ExitGame", "Quits the emulator (Guide + Start on a controller)" },
 	{ "Digital", NULL, "Player 1's stick and buttons" },
 	{ "Digital", "P1_Up", "Up" },
@@ -234,13 +237,16 @@ static const struct {
 	{ "Digital", "P1_Button4", "Button 4" },
 	{ "Digital", "P1_Card1Insert",
 	  "The card, at the card reader's slot (Virtual-On 4), or taken back" },
-	{ "Digital", "P2_Up", "Player 2's stick and buttons (Gaelco Football): up" },
+	{ "Digital", "P2_Up", "Player 2's stick and buttons (the NAOMI's two-player games, Gaelco Football): up" },
 	{ "Digital", "P2_Down", "Down" },
 	{ "Digital", "P2_Left", "Left" },
 	{ "Digital", "P2_Right", "Right" },
 	{ "Digital", "P2_Button1", "Button 1" },
 	{ "Digital", "P2_Button2", "Button 2" },
 	{ "Digital", "P2_Button3", "Button 3" },
+	{ "Digital", "P2_Button4", "Button 4" },
+	{ "Digital", "P2_Button5", "Button 5 (the NAOMI's six-button games)" },
+	{ "Digital", "P2_Button6", "Button 6" },
 	{ "Driving", NULL,
 	  "The wheel and the pedals: the I/O board's analog channels 0, 1 and 2" },
 	{ "Driving", "P1_Steer",
