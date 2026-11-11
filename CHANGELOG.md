@@ -11,6 +11,8 @@ Next version
 - Fixed: the NAOMI games got player 1's controls alone, buttons 1 to 4:
   player 2 (start, stick, buttons 1 to 6) and buttons 5 and 6 reach them now
   (Marvel vs. Capcom 2, the fighting games, the two-player cabinets).
+- Fixed: the Atomiswave's player 2 pad sent nothing: its stick and buttons
+  1 to 6 reach the games now (the wheel cabinets excepted).
 - Widescreen 3D (16:9) switched during a game: applied when the settings close,
   the window's picture 854 or 640 wide at once; the game's own view widened
   from the next time it computes it (Hikaru, NAOMI, Gaelco).

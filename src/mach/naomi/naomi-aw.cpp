@@ -374,6 +374,24 @@ AwControllers::switches (unsigned port) const
 {
 	uint16_t held = 0;
 
+	/* Player 2's pad from controls.ini's P2_ rows ([Naomi]'s first); the
+	 * wheel's has no switch; players 3 and 4 have no rows */
+	if (port == 1 && !wheel) {
+		hl::Controls &c = hl::Controls::get ();
+		static const struct { const char *section, *key; uint16_t bit; } player2[] = {
+			{ "Digital", "P2_Right", 0x0080 }, { "Digital", "P2_Left", 0x0040 },
+			{ "Digital", "P2_Down", 0x0020 }, { "Digital", "P2_Up", 0x0010 },
+			{ "Common", "P2_Start", 0x0008 }, { "Digital", "P2_Button1", 0x0004 },
+			{ "Digital", "P2_Button2", 0x0002 }, { "Digital", "P2_Button3", 0x0001 },
+			{ "Digital", "P2_Button4", 0x0400 }, { "Digital", "P2_Button5", 0x0200 },
+			{ "Digital", "P2_Button6", 0x0100 },
+		};
+
+		for (const auto &b : player2)
+			if (c.pressed (b.section, b.key))
+				held |= b.bit;
+		return (uint16_t) ~held;
+	}
 	if (port != 0)
 		return 0xFFFF;
 	if (hl::Input::action (hl::ACTION_RIGHT)) held |= 0x0080;

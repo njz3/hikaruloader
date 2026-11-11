@@ -410,6 +410,7 @@ Board::init ()
 		flash = new AwFlash (machine, bios);
 		modem = new AwModem (this);
 		aw_wheel = !strcmp (game->name, "maxspeed") || !strcmp (game->name, "ftspeed");
+		controllers.wheel = aw_wheel;
 		if (!strcmp (game->name, "ggisuka"))
 			controllers.count = 4;
 	} else {

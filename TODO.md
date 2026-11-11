@@ -15,6 +15,9 @@ GENERAL
   magnified some 20 times; the texhead committed after it (16x16, repeated, whole texels) would make
   a 16-texel grid of those coordinates, but nothing in the list recalls it (its 0E8 headers have
   bit 16 set, the glyphs' not; taking texhead 1 for that bit did not give a clean grid).
+- Atomiswave wheel games (maxspeed, ftspeed): their CONTROLER SETTING SCREEN shows steering,
+  accelerator and brake at 0 whatever the second pad's analogs say (0.7.2 too); the guns,
+  trackballs and fishing reel on Maple ports 2-3 are not emulated.
 - NAOMI, seen in a pass over the 259 sets (3000 frames, attract only):
   - a jump to code never loaded: vathlete (past its I/O boards, an invalid instruction at
     8C04F88C at frame 973);
