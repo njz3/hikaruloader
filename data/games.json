@@ -62,18 +62,9 @@
 			"Service" : "p1:13",
 			"Coin1" : "coin:1",
 			"Coin2" : "coin:2",
-			"Steering" : [
-				"a2:0",
-				"a2:3"
-			],
-			"Accelerator" : [
-				"a2:1",
-				"a2:4"
-			],
-			"Brake" : [
-				"a2:2",
-				"a2:5"
-			],
+			"Steering" : "a3:2",
+			"Accelerator" : "a3:3",
+			"Brake" : "a3:4",
 			"P1_Right" : "p1:7",
 			"P1_Left" : "p1:6",
 			"P1_Down" : "p1:5",

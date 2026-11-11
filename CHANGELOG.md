@@ -13,6 +13,10 @@ Next version
   (Marvel vs. Capcom 2, the fighting games, the two-player cabinets).
 - Fixed: the Atomiswave's player 2 pad sent nothing: its stick and buttons
   1 to 6 reach the games now (the wheel cabinets excepted).
+- Fixed: Maximum Speed's and Faster Than Speed's wheel and pedals stayed at 0
+  (their CONTROLER SETTING SCREEN, 0 mph in a race): they are on the
+  Atomiswave's third controller port, not on the second. Their wheel's force
+  goes to the network outputs too (`awffb`).
 - Widescreen 3D (16:9) switched during a game: applied when the settings close,
   the window's picture 854 or 640 wide at once; the game's own view widened
   from the next time it computes it (Hikaru, NAOMI, Gaelco).

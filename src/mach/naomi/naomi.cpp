@@ -414,6 +414,12 @@ Board::init ()
 		aw_wheel = hl::GameControls::get ().has ("Steering");
 		if (!strcmp (game->name, "ggisuka"))
 			controllers.count = 4;
+		/* A controller on each Maple port the game's controls are on
+		 * ("p<n>", "a<n>"): the wheel's cabinets have theirs on the
+		 * third, the EX. IO board's */
+		for (const hl::GameControls::Place &p : hl::GameControls::get ().places ())
+			if (p.port.size () == 2 && (p.port[0] == 'p' || p.port[0] == 'a') && p.port[1] >= '1' && p.port[1] <= '4')
+				controllers.count = std::max (controllers.count, (unsigned) (p.port[1] - '0'));
 	} else {
 		mie = new Mie (this, mie_rom);
 		if (index && !machine->networked)

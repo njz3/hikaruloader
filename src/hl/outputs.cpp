@@ -66,6 +66,8 @@ static const struct {
 	{ "pharrier",	"bullet1",	N_("1 while player 1's bullet button is held") },
 	{ "pharrier",	"missile1",	N_("1 while player 1's missile button is held") },
 	{ "pharrier",	"bomb1",	N_("1 while player 1's bomb button is held") },
+	{ "maxspeed",	"awffb",	N_("The wheel's force: bit 0 its direction, bits 1 to 4 its strength") },
+	{ "ftspeed",	"awffb",	N_("The wheel's force: bit 0 its direction, bits 1 to 4 its strength") },
 };
 
 /* The outputs of each game's OUTPUT TEST, by JVS output (from 1), under

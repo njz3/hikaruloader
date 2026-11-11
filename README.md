@@ -73,9 +73,9 @@ Gaelco's games, on another board (two SH-4s and a PowerVR Neon 250), play too:
 
 | Set | Game | Its controls |
 |-----|------|--------------|
-| `atvtrack`, `atvtracka` | ATV Track, 2002 | Handlebar and throttle (the Driving rows); the brake levers (Left brake, Right brake in the Gaelco section) or the brake pedal for both; Volume up and Volume down (Gaelco section) |
-| `gfootbal` | Gaelco Football, 2002 | Two players: stick, buttons A, B and C on Button 1 to 3; player 2's rows in the Digital section (R, F, D, G and A, S, Q on the keyboard, 2 to start, or the second controller) |
-| `smashdrv`, `smashdrvb`, `smashdrvs` | Smashing Drive, 2000 | Wheel, gas and brake as switches (the pedals); the horn (Gaelco section) or Start, which also starts; Volume up and Volume down (Gaelco section). Linked, two cabinets |
+| `atvtrack`, `atvtracka` | ATV Track, 2002 | Handlebar and throttle (the Driving rows); the brake levers (Left brake, Right brake in the Driving section) or the brake pedal for both; Volume up and Volume down (Common section) |
+| `gfootbal` | Gaelco Football, 2002 | Two players: stick, buttons A, B and C on Button 1 to 3; player 2's rows in the Player2 section (R, F, D, G and A, S, Q on the keyboard, 2 to start, or the second controller) |
+| `smashdrv`, `smashdrvb`, `smashdrvs` | Smashing Drive, 2000 | Wheel, gas and brake as switches (the pedals); the horn (Driving section) or Start, which also starts; Volume up and Volume down (Common section). Linked, two cabinets |
 
 They run at `SH4_CLOCK`, as the Hikaru's games (their board's own clock is
 200 MHz). Their settings and scores are kept in
@@ -804,7 +804,9 @@ Two games also send what the player does, 1 while it lasts and 0 after:
 `nozzle1` and `nozzle2` in Brave Firefighters, while water comes out of a
 player's nozzle; `shot1` in Planet Harriers, while the player fires, and
 `bullet1`, `missile1` and `bomb1`, each weapon's button held, whether or not
-the game fires.
+the game fires. The Atomiswave's wheel games, Maximum Speed and Faster Than
+Speed, send their wheel's force as `awffb`: bit 0 its direction, bits 1 to 4
+its strength (0 to 15), as the game writes them.
 
 Brave Firefighters' menu has no OUTPUT TEST: its revolving lights' outputs
 come from Odin's list of the game, not seen in play. NASCAR Arcade's test lights its two lamps in turn: the

@@ -2003,3 +2003,6 @@ msgstr "Embrayage"
 
 msgid "Clutch (all the way)"
 msgstr "Embrayage (à fond)"
+
+msgid "The wheel's force: bit 0 its direction, bits 1 to 4 its strength"
+msgstr "La force du volant : bit 0 son sens, bits 1 à 4 sa force"

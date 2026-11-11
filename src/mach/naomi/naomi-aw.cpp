@@ -350,13 +350,16 @@ AwFlash::load_state (hl::State *state)
  * The Controllers
  * ===============
  *
- * Dreamcast-like controllers on the Maple bus, two (four on Guilty Gear
- * Isuka). Their two bytes of switches, active low, and six analog channels:
- * the game's controls (hl::GameControls), pad n's switches on "p<n>" (bit 7
- * right, 6 left, 5 down, 4 up, 3 start, 2 to 0 buttons 1 to 3; 14 test and 13
- * service on the first's, 10 to 8 buttons 4 to 6), its channels on "a<n>"
- * (Maximum Speed's and Faster Than Speed's wheel on the second's: steering,
- * gas, brake, twice).
+ * Dreamcast-like controllers on the Maple bus: two, and one on each port the
+ * game's controls are on (four on Guilty Gear Isuka). Their two bytes of
+ * switches, active low, and six analog channels: the game's controls
+ * (hl::GameControls), pad n's switches on "p<n>" (bit 7 right, 6 left, 5
+ * down, 4 up, 3 start, 2 to 0 buttons 1 to 3; 14 test and 13 service on the
+ * first's, 10 to 8 buttons 4 to 6), its channels on "a<n>". Maximum Speed's
+ * and Faster Than Speed's wheel is on the third port (the EX. IO board's),
+ * not the second: steering on channel 2, gas on 3, brake on 4, as their
+ * CONTROLER SETTING SCREEN reads them (the second's, MAME's, are never
+ * read).
  */
 
 static const char AW_MODEL[] = "Dreamcast Controller";
