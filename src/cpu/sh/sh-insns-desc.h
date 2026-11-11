@@ -160,6 +160,10 @@ static const idesctype insns_desc_sh2[] = {
 	IDEF(0xF0FF, 0x4016, ldsmmacl),
 	IDEF(0xF0FF, 0x4026, ldsmpr),
 	IDEF(0xFFFF, 0x0009, nop),
+	/* 0000 too: the SH-4 runs it as one (Virtua Athlete has it in the delay
+	 * slot of a jump through a member function pointer; Flycast's nop0,
+	 * MAME's illegal instructions) */
+	IDEF(0xFFFF, 0x0000, nop),
 	IDEF(0xFFFF, 0x002B, rte),
 	IDEF(0xFFFF, 0x0018, sett),
 	IDEF(0xFFFF, 0x001B, sleep),

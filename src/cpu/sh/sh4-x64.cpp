@@ -889,7 +889,7 @@ Sh4X64::native_op (Emitter &e, const Sh4Offsets &o, uint16_t inst)
 	const uint32_t uimm = (uint8_t) inst;
 	Reg a, d;
 
-	if (inst == 0x0009)			/* nop */
+	if (inst == 0x0009 || inst == 0x0000)	/* nop (0000 as one) */
 		return true;
 	if (inst == 0x0008 || inst == 0x0018) {	/* clrt, sett */
 		if (inst == 0x0008)

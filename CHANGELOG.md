@@ -19,6 +19,9 @@ Next version
   as before.
 - Beach Spikers starts as a four-player cabinet on a blank EEPROM (its
   header names no players): a game with players 3 and 4 gets them.
+- Virtua Athletics, Keyboard Maniax and Psyvariar 2 no longer stop at their
+  start (invalid instruction 0000): the SH-4 runs 0000 as a no-op, as the
+  board does (Virtua Athletics has one in the delay slot of a jump).
 - Namco's I/O boards for their NAOMI cabinets: Ninja Assault (no longer
   I/O PCB ERROR: its two guns aim where they point, the trigger off the
   picture reloads), Mazan: Flash of the Blade (no longer black: the sword

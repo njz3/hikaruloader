@@ -19,15 +19,15 @@ GENERAL
   checked in Faster Than Speed's WHEEL FEEDBACK TEST, not yet felt on a real wheel; the
   motor's own lag (its belt, the wheel's weight) is not modelled. The guns' factory aim (a
   blank NVRAM) is off by up to 100 pixels, each game its own: their GUN ADJUST sets it;
-  Extreme Hunting 2 does not boot. The trackballs read a stick's speed, not a mouse's moves.
+  Extreme Hunting 2 shows its monitor test's patterns for ever: it wants the ALL.Net
+  board and its PIC (01000000-0100011F, "G2IFSOJ AM", MAME's notes), not known enough to
+  emulate (MAME patches the game's RAM). The trackballs read a stick's speed, not a mouse's moves.
   Ranger Mission's GUN TEST's "trigger" goes 0 and 1 whether the trigger is pulled or not,
   as its guns' Light-Gun modes come (one every 15 frames or so): the shots register in its
   GUN ADJUST and Sports Shooting's calibration; what that line shows, to see.
 - Controls: the mahjong panel, the card readers' own switches and Club Kart's view button
   are not placed (data/games.json).
 - NAOMI, seen in a pass over the 259 sets (3000 frames, attract only):
-  - a jump to code never loaded: vathlete (past its I/O boards, an invalid instruction at
-    8C04F88C at frame 973);
   - the SWP hopper board (hopper): its RESET switch (TURN ON AND OFF RESET SW.) is on
     the 837-14381, its input not known;
   - the Star Horse sets (shorse*, shors2k1, shors2k2*, shorsep*, shorsepr*): SELF TEST
@@ -38,8 +38,14 @@ GENERAL
     TEST) would be channels 8 to 11 of the V226's twelve, the four players' buttons on
     player 1's switches (Flycast); roles for players 3 and 4's sticks and the kicks
     are missing;
-  - vtennis and vtennisg stay black: from frame 1296 their frame loop waits on a lock
-    that is no longer released (the channel 2 DMA's source moved to 0C0CA380 that frame);
+  - vtennis and vtennisg stay black from frame 1324: their frame loop waits on a lock
+    (bit 0 of 0C287E58) its end-of-render interrupt releases, and that frame's lists stop
+    after the opaque one (no modifier volume or translucent list end), as the scene
+    loaded then has bad data: its models' 80-byte elements give material indices far out
+    of their table (0C0A30CE: reads at 389CFCD8, 17AF3670..., writes near 00000000).
+    Not the cartridge (the GD-ROM version does the same, the M2 board's ROM as MAME's),
+    nor the recompiler (the interpreter does the same), nor the instruction cache; to
+    find by comparing the RAM with a reference at the scene change;
   - spawn, hmgeo, alienfnt want a linked cabinet in their factory settings (blank EEPROM):
     their own test menus change it; mushi2k62 and rhytngk black at frame 2400.
   - f355twin, to check against a real board: its music (a stream on the master) plays in
