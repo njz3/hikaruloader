@@ -247,6 +247,10 @@ public:
 	/* The cabinet's controls and lamps are wired to this board: not to the
 	 * others of a chain */
 	bool	 cabinet = true;
+	/* Its outputs go to the network outputs (hl::Outputs): not those of
+	 * the other boards of a cabinet of several main boards (Airline Pilots'
+	 * keep theirs at 0), which would put theirs over the first board's */
+	bool	 lamps = true;
 
 	/* The cabinet's side, for a board that runs its own program
 	 * (hl::JvsLine) on these same inputs and outputs: the system byte

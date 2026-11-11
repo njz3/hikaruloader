@@ -123,6 +123,22 @@ msgid "Start button lamp"
 msgstr "Lampe du bouton Start"
 
 #: src/hl/outputs.cpp
+msgid "Flap up lamp"
+msgstr "Lampe des volets rentrés"
+
+#: src/hl/outputs.cpp
+msgid "Flap down lamp"
+msgstr "Lampe des volets sortis"
+
+#: src/hl/outputs.cpp
+msgid "Landing gear up lamp"
+msgstr "Lampe du train rentré"
+
+#: src/hl/outputs.cpp
+msgid "Landing gear down lamp"
+msgstr "Lampe du train sorti"
+
+#: src/hl/outputs.cpp
 msgid "Coin counter"
 msgstr "Compteur de pièces"
 

@@ -453,6 +453,9 @@ Board::init ()
 				HL_ERROR ("naomi: unknown I/O board %s", game->io_boards[i].c_str ());
 		}
 	}
+	/* The cabinet's lamps on the first board's I/O board */
+	if (io_board && index)
+		((hl::SegaIoBoard *) io_board)->lamps = false;
 
 	hikaru::Aica *sound = new hikaru::Aica (machine, aica_ram, true);
 	sound->main_irq_hook = aica_irq;

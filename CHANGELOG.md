@@ -17,6 +17,10 @@ Next version
   `Axis_Key_Return` in `controls.ini`, 0 for at once).
 - `--find <text>`: the games whose set, title or maker hold each word of the
   text, whatever the case (`--find "f355 twin"`); with `-L`, those in full.
+- Airline Pilots' lamps on the network outputs, under the names of its
+  OUTPUT TEST: start, flap up and down, view change, landing gear up and
+  down. On the NAOMI cabinets of several boards, the outputs are the first
+  board's only: the others' no longer put theirs over them.
 - Fixed: the Controls tab changed nothing for the NAOMI and Atomiswave games,
   which read rows of their own: those rows are on each device's page now.
 - A game's own bindings: *Save these bindings for <set> alone* in the Controls

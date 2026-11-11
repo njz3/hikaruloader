@@ -120,6 +120,22 @@ msgid "Start button lamp"
 msgstr ""
 
 #: src/hl/outputs.cpp
+msgid "Flap up lamp"
+msgstr ""
+
+#: src/hl/outputs.cpp
+msgid "Flap down lamp"
+msgstr ""
+
+#: src/hl/outputs.cpp
+msgid "Landing gear up lamp"
+msgstr ""
+
+#: src/hl/outputs.cpp
+msgid "Landing gear down lamp"
+msgstr ""
+
+#: src/hl/outputs.cpp
 msgid "Coin counter"
 msgstr ""
 

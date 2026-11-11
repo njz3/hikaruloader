@@ -759,6 +759,10 @@ its last value. The games' names, from their test menus' OUTPUT TEST:
 | | `LampLeftUpper`, `LampRightLower` | 2, 3 | The board's lamps |
 | | `LockMecha` | 4 | The board's lock (LOCK MECHA.), released at 1 |
 | | `LampLeftLower`, `LampRightUpper` | 5, 6 | The board's lamps |
+| Airline Pilots | `LampStart` | 1 | Start button lamp |
+| | `LampFlapUp`, `LampFlapDown` | 2, 3 | The flap switch's lamps |
+| | `LampView` | 4 | View change button lamp |
+| | `LampGearUp`, `LampGearDown` | 5, 6 | The landing gear switch's lamps |
 | Brave Firefighters | `LampStart1`, `LampStart2` | 1, 4 | The players' start lamps |
 | | `NozzleVibration1`, `NozzleVibration2` | 2, 5 | Each player's nozzle shaking as it sprays |
 | | `LampRevolvingLeft`, `LampRevolvingRight` | 3, 6 | The left and right revolving lights |
@@ -779,7 +783,10 @@ the game fires.
 
 Brave Firefighters' menu has no OUTPUT TEST: its revolving lights' outputs
 come from Odin's list of the game, not seen in play. NASCAR Arcade's test lights its two lamps in turn: the
-start lamp is taken on output 1, as in the other games.
+start lamp is taken on output 1, as in the other games. Airline Pilots'
+lamps are its first (master) board's, the middle screen's; its test has
+four more items (warning lamp, cockpit warning LED, head and side panel
+lamps, bass shaker) that change none of the I/O board's outputs: not sent.
 
 
 Telemetry

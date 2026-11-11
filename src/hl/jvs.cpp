@@ -907,7 +907,7 @@ SegaIoBoard::outputs (unsigned bytes, const uint8_t *data)
 	if (bytes != 1)
 		return false;
 	output = data[0] & 0xFC;
-	if (cabinet)
+	if (cabinet && lamps)
 		Outputs::get ()->jvs (&output, 1);
 	return true;
 }
@@ -1201,8 +1201,9 @@ SegaIoBoard13844::outputs (unsigned bytes, const uint8_t *data)
 		drive->write (command);
 		Outputs::get ()->drive_command (command);
 	}
-	uint8_t lamps[2] = { output, output2 };
-	Outputs::get ()->jvs (lamps, 2);
+	uint8_t bytes_out[2] = { output, output2 };
+	if (lamps)
+		Outputs::get ()->jvs (bytes_out, 2);
 	return true;
 }
 

@@ -74,13 +74,28 @@ static const struct {
  * taken on output 1, as in the other games. Brave Firefighters' menu has no
  * OUTPUT TEST: its start lamps blink with credits, its nozzle shakes as it
  * sprays, player 1's on output 2 and player 2's on output 5 (seen in play);
- * the revolving lights' outputs from Odin's game list, unseen */
+ * the revolving lights' outputs from Odin's game list, unseen. Airline
+ * Pilots' test has four more items (warning lamp, cockpit warning LED, head
+ * and side panel lamps, bass shaker) that change none of its I/O board's
+ * outputs: not known */
 static const struct {
 	const char	*family;
 	unsigned	 output;
 	const char	*name;
 	const char	*meaning;
 } game_outputs[] = {
+	{ "alpilot",	1, "LampStart",		N_("Start button lamp") },
+	{ "alpilot",	2, "LampFlapUp",	N_("Flap up lamp") },
+	{ "alpilot",	3, "LampFlapDown",	N_("Flap down lamp") },
+	{ "alpilot",	4, "LampView",		N_("View change button lamp") },
+	{ "alpilot",	5, "LampGearUp",	N_("Landing gear up lamp") },
+	{ "alpilot",	6, "LampGearDown",	N_("Landing gear down lamp") },
+	{ "alpilotj",	1, "LampStart",		N_("Start button lamp") },
+	{ "alpilotj",	2, "LampFlapUp",	N_("Flap up lamp") },
+	{ "alpilotj",	3, "LampFlapDown",	N_("Flap down lamp") },
+	{ "alpilotj",	4, "LampView",		N_("View change button lamp") },
+	{ "alpilotj",	5, "LampGearUp",	N_("Landing gear up lamp") },
+	{ "alpilotj",	6, "LampGearDown",	N_("Landing gear down lamp") },
 	{ "airtrix",	1, "LampStart",		N_("Start button lamp") },
 	{ "atvtrack",	1, "LampStart",		N_("Start button lamp") },
 	{ "atvtrack",	2, "CoinCounter",	N_("Coin counter") },
