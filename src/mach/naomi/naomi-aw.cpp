@@ -439,6 +439,18 @@ AwControllers::reply (unsigned port, const uint32_t *request, uint32_t *out, uin
 
 	if ((me & 0x1F) || port >= count)
 		return 0;
+	/* HR_LOG_GUN=1: the commands a gun or a mouse gets, each new one */
+	static const bool log_devices = getenv ("HR_LOG_GUN") != NULL;
+	if (log_devices && kind[port] != PAD) {
+		static uint32_t seen[4][4];
+
+		if (seen[port][0] != request[0] || seen[port][1] != request[1]) {
+			seen[port][0] = request[0];
+			seen[port][1] = request[1];
+			HL_PRINT ("maple: port %u (%s) command %02X, %08X %08X, frame %llu", port, kind[port] == GUN ? "gun" : "mouse",
+			          command, request[0], request[1], (unsigned long long) frame);
+		}
+	}
 	memset (out + 1, 0, 32);
 	switch (command) {
 	case 0x01:	/* device request */

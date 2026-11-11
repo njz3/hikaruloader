@@ -766,10 +766,12 @@ dac_clock (Gaelco *gaelco, bool cs, bool clk, bool di)
 		dac.bits = 0;
 		dac.word = 0;
 		lamps_tell (gaelco);
-		if (gaelco->inputs != Gaelco::INPUTS_FOOTBALL) {
-			unsigned left = gaelco->inputs == Gaelco::INPUTS_ATV ? 1 : 0;
-			dac.force = (int) dac.side[left] - (int) dac.side[left ^ 1];
-		}
+		/* The motor's two sides: side 1 pushes the wheel to the left (a
+		 * force > 0), side 0 to the right. Smashing Drive's OUTPUT TEST
+		 * (WHEEL MOTOR ON) holds the wheel in the middle with it: the
+		 * wheel to the left (the ADC low), side 0 */
+		if (gaelco->inputs != Gaelco::INPUTS_FOOTBALL)
+			dac.force = (int) dac.side[1] - (int) dac.side[0];
 	}
 	dac.cs = cs;
 	dac.clk = clk;

@@ -13,6 +13,12 @@ Next version
   (Marvel vs. Capcom 2, the fighting games, the two-player cabinets).
 - Fixed: the Atomiswave's player 2 pad sent nothing: its stick and buttons
   1 to 6 reach the games now (the wheel cabinets excepted).
+- Fixed: Smashing Drive's wheel was the wrong way round (the taxi went left
+  when turned right) and so was its motor: both checked in its INPUT TEST
+  and OUTPUT TEST (WHEEL MOTOR holds the wheel in the middle), ATV Track's
+  as before.
+- Beach Spikers starts as a four-player cabinet on a blank EEPROM (its
+  header names no players): a game with players 3 and 4 gets them.
 - The Atomiswave's light guns (Ranger Mission, Sports Shooting USA, Extreme
   Hunting, Sega Clay Challenge) and trackballs (WaiWai Drive, Sega Bass
   Fishing Challenge's reel), on the EX. IO board's controller ports: a gun's

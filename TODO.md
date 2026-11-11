@@ -20,8 +20,9 @@ GENERAL
   motor's own lag (its belt, the wheel's weight) is not modelled. The guns' factory aim (a
   blank NVRAM) is off by up to 100 pixels, each game its own: their GUN ADJUST sets it;
   Extreme Hunting 2 does not boot. The trackballs read a stick's speed, not a mouse's moves.
-  Ranger Mission's GUN TEST shows player 1's "trigger" 1 at rest and 0 pulled (2P's always 0),
-  though its GUN ADJUST and Sports Shooting's calibration take the shots: what it shows, to see.
+  Ranger Mission's GUN TEST's "trigger" goes 0 and 1 whether the trigger is pulled or not,
+  as its guns' Light-Gun modes come (one every 15 frames or so): the shots register in its
+  GUN ADJUST and Sports Shooting's calibration; what that line shows, to see.
 - Controls: the mahjong panel, the card readers' own switches and Club Kart's view button
   are not placed (data/games.json).
 - NAOMI, seen in a pass over the 259 sets (3000 frames, attract only):
@@ -92,11 +93,7 @@ The telemetry (`src/hl/telemetry-games.cpp`), what its decoders lack:
   stage (the game shows none); the second rider seen on screen once only.
 - Smashing Drive: the damage (8C22BF44 probably, a count that followed the
   HUD's bar at two crashes, its range unknown; 8C20144C is the last hit's
-  strength), the fares; a linked game's other taxi; its wheel's
-  way: the agent's Steering 1 (the ADC's 01, as ATV Track's handlebar to
-  the right) turned the taxi left, and the game recalibrates its centre and
-  range as it is played (8C0765EC, 8C0765E4): to check in its INPUT TEST
-  before turning it round (and the motor's side with it).
+  strength), the fares; a linked game's other taxi.
 - Gaelco Football and the other games: no decoder (not racing games).
 
 Star Wars: Racer Arcade's force feedback made from the telemetry
@@ -328,8 +325,9 @@ Still to do:
   colour clamp: the vertices' fog, the table's "mode 2" and the clamp are
   drawn as the PowerVR 2 manual says, checked by forcing them on the games'
   polygons only.
-- The force feedback's direction and strength on a real wheel; Smashing Drive's
-  wheel polarity is taken from what it writes at its ends.
+- The force feedback's strength on a real wheel (its way checked in ATV Track's
+  INPUT/OUTPUT test and Smashing Drive's OUTPUT TEST: the motor holds the wheel
+  in the middle).
 - ATV Track's and Gaelco Football's link, if any: only Smashing Drive's menu has
   one; ATV Track's motion outputs.
 - Gaelco Football's ball sensors: its ball test (sensors, power, height,

@@ -1015,7 +1015,7 @@
 			"link" : false,
 			"ffb" : false,
 			"audio" : "stereo",
-			"layout" : "gaelco_driving", "controls" : {"Accelerator" : {"at" : "e800:7", "label" : "Accelerator"}, "Brake" : {"at" : "e800:8", "label" : "Brake"}, "Horn" : {"at" : "e800:9", "label" : "Horn"}, "P1_Start" : "e800:9"},
+			"layout" : "gaelco_driving", "controls" : {"Steering" : {"at" : "an:0", "label" : "Steering wheel"}, "Accelerator" : {"at" : "e800:7", "label" : "Accelerator"}, "Brake" : {"at" : "e800:8", "label" : "Brake"}, "Horn" : {"at" : "e800:9", "label" : "Horn"}, "P1_Start" : "e800:9"},
 			"sections" : [
 				{
 					"name" : "rom_ab",

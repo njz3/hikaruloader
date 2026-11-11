@@ -648,6 +648,16 @@ Board::configure_eeprom ()
 			eeprom_put (mem, 3 + i, h[0x134 + i]);
 		eeprom_put (mem, 7, 9);
 		eeprom_put (mem, 8, (cabinet & 8) ? 0x30 : (cabinet & 4) ? 0x20 : (cabinet & 2) ? 0x10 : 0);
+		/* A header that names no players: a four-player game's (its
+		 * players 3 and 4 placed, Beach Spikers) four, as its cabinet */
+		if (cabinet == 0) {
+			hl::GameControls &g = hl::GameControls::get ();
+
+			if (g.placed ("P4_Start"))
+				eeprom_put (mem, 8, 0x30);
+			else if (g.placed ("P3_Start"))
+				eeprom_put (mem, 8, 0x20);
+		}
 		if (coin[0] == 1) {
 			eeprom_put (mem, 2, (coin[1] & 1) | 0x10);
 			if (coin[2] == 1)
