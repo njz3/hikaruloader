@@ -19,6 +19,11 @@ Next version
   text, whatever the case (`--find "f355 twin"`); with `-L`, those in full.
 - Fixed: the Controls tab changed nothing for the NAOMI and Atomiswave games,
   which read rows of their own: those rows are on each device's page now.
+- A game's own bindings: *Save these bindings for <set> alone* in the Controls
+  tab writes `controls/<set>.ini`, read instead of `controls.ini` for that game.
+- Airline Pilots' five analog inputs can be bound (control wheel's elevator and
+  aileron, rudder pedal, thrust levers L and R, as its INPUT TEST names them),
+  under *This game's axes*; they were missing or fixed at an end.
 
 
 0.7.2 (2026-11-11)

@@ -441,6 +441,7 @@ Board::init ()
 	/* The other boards of a machine of whole systems have no I/O board */
 	else if (!index || !machine->networked) {
 		io_board = new hl::SegaIoBoard (machine, jvs);
+		((hl::SegaIoBoard *) io_board)->analog_inputs = game->analogs;
 		/* The cabinet's other boards, each further along the chain (the
 		 * far end gets the first address); the controls stay on the first */
 		for (i = 1; i < game->io_boards.size (); i++) {

@@ -370,6 +370,32 @@ Game::create (GameList *game_list, const char *path, const char *name, const cha
 				game->io_boards.push_back (json_string_value (json_array_get (io_boards, k)));
 		}
 		{
+			/* The clones read their parent's cabinet */
+			json_t *analogs = json_object_get (entry->root, "analogs");
+
+			if (!analogs && entry->parent[0]) {
+				const GameEntry *parent = game_list->find (entry->parent);
+
+				if (parent)
+					analogs = json_object_get (parent->root, "analogs");
+			}
+			for (size_t k = 0; k < json_array_size (analogs) && k < 8; k++) {
+				json_t *a = json_array_get (analogs, k);
+				AnalogInput in;
+				const char *kind = json_string_value (json_object_get (a, "kind"));
+
+				if (json_is_object (a)) {
+					in.key = json_string_value (json_object_get (a, "key")) ?
+					         json_string_value (json_object_get (a, "key")) : "";
+					in.label = json_string_value (json_object_get (a, "label")) ?
+					           json_string_value (json_object_get (a, "label")) : in.key;
+					in.kind = kind && !strcmp (kind, "lever") ? AnalogInput::LEVER :
+					          kind && !strcmp (kind, "pedal") ? AnalogInput::PEDAL : AnalogInput::AXIS;
+				}
+				game->analogs.push_back (in);
+			}
+		}
+		{
 			json_t *screens = json_object_get (entry->root, "screens");
 
 			for (size_t k = 0; k < json_array_size (screens) && k < 4; k++)

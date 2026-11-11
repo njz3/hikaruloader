@@ -1081,6 +1081,30 @@ msgstr "Bornes Gaelco"
 msgid "NAOMI and Atomiswave games (their own rows)"
 msgstr "Jeux NAOMI et Atomiswave (leurs propres lignes)"
 
+msgid "This game's axes"
+msgstr "Axes de ce jeu"
+
+msgid " (down, left)"
+msgstr " (bas, gauche)"
+
+msgid " (up, right)"
+msgstr " (haut, droite)"
+
+msgid "%s has bindings of its own."
+msgstr "%s a ses propres assignations."
+
+msgid "Use the common bindings"
+msgstr "Utiliser les assignations communes"
+
+msgid "Its file is removed; the common controls.ini is used for it again."
+msgstr "Son fichier est supprimé ; le controls.ini commun lui sert de nouveau."
+
+msgid "Save these bindings for %s alone"
+msgstr "Enregistrer ces assignations pour %s seul"
+
+msgid "They go to a file of the game's own, read instead of controls.ini when it starts; the changes made from then on go there."
+msgstr "Elles vont dans un fichier propre au jeu, lu à la place de controls.ini à son lancement ; les changements faits ensuite y vont."
+
 #: src/ui/ui_controls.cpp
 msgid "Emulator"
 msgstr "Émulateur"

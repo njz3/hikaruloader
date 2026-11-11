@@ -19,6 +19,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <filesystem>
 #include <fstream>
 
 #include <SDL.h>
@@ -134,6 +135,23 @@ static const char *default_file =
 	"P1_Gas_Digital = KEY_Up\n"
 	"P1_Brake_Digital = KEY_Down\n"
 	"ViewChange = KEY_V, GC0_BUTTON_Y\n"
+	"\n"
+	"[Analog]\n"
+	"P1_Elevator = GC0_AXIS_LEFTY, JOY0_AXIS_1\n"
+	"P1_Elevator_Left = KEY_Up\n"
+	"P1_Elevator_Right = KEY_Down\n"
+	"P1_Aileron = GC0_AXIS_LEFTX, JOY0_AXIS_0\n"
+	"P1_Aileron_Left = KEY_Left\n"
+	"P1_Aileron_Right = KEY_Right\n"
+	"P1_Rudder = GC0_AXIS_RIGHTX, JOY0_AXIS_3\n"
+	"P1_Rudder_Left = KEY_Comma\n"
+	"P1_Rudder_Right = KEY_Period\n"
+	"P1_ThrustL = GC0_AXIS_RIGHTY_INVERTED, JOY0_AXIS_2_INVERTED\n"
+	"P1_ThrustL_Left = KEY_PageDown\n"
+	"P1_ThrustL_Right = KEY_PageUp\n"
+	"P1_ThrustR = GC0_AXIS_RIGHTY_INVERTED, JOY0_AXIS_2_INVERTED\n"
+	"P1_ThrustR_Left = KEY_PageDown\n"
+	"P1_ThrustR_Right = KEY_PageUp\n"
 	"\n"
 	"[Gaelco]\n"
 	"VolumeUp = KEY_PageUp, GC0_BUTTON_DPUP\n"
@@ -291,6 +309,11 @@ static const struct {
 	{ "Naomi", "P1_Gas_Digital", "The accelerator pressed all the way" },
 	{ "Naomi", "P1_Brake_Digital", "The brake pressed all the way" },
 	{ "Naomi", "ViewChange", "The view change button" },
+	{ "Analog", NULL,
+	  "The analog inputs of the games that have their own (Airline Pilots' wheel,\n"
+	  "rudder and thrust levers), read by them alone; _Left and _Right the keys or\n"
+	  "buttons moving one, as the wheel's (Axis_Key_Ramp); a lever stays where it\n"
+	  "is left (Aim_Speed)" },
 	{ "Gaelco", NULL,
 	  "The Gaelco cabinets' own buttons, read by their games alone: ATV Track and\n"
 	  "Smashing Drive read none of the Digital rows (Gaelco Football's sticks and\n"
@@ -674,6 +697,66 @@ parse_ini (const std::string &text)
 
 void
 Controls::load (const char *path, const char *save_to)
+{
+	base_read = path;
+	base_save = save_to ? save_to : path;
+	read (path, save_to);
+}
+
+std::string
+Controls::game_file () const
+{
+	if (game_name.empty () || base_save.empty ())
+		return "";
+	return (std::filesystem::path (base_save).parent_path () / "controls" / (game_name + ".ini")).string ();
+}
+
+void
+Controls::set_game (const char *name, const std::vector<AnalogInput> &axes)
+{
+	std::string own;
+	std::error_code ec;
+
+	game_name = name ? name : "";
+	axes_of_game = axes;
+	own = game_file ();
+	if (!own.empty () && std::filesystem::exists (own, ec))
+		read (own.c_str (), NULL);
+	else if (!base_read.empty () && file != base_save)
+		read (base_read.c_str (), base_save.c_str ());
+}
+
+bool
+Controls::save_for_game ()
+{
+	std::string own = game_file ();
+	std::error_code ec;
+
+	if (own.empty ())
+		return false;
+	std::filesystem::create_directories (std::filesystem::path (own).parent_path (), ec);
+	file = own;
+	save ();
+	HL_PRINT ("controls: %s's own bindings in '%s'", game_name.c_str (), own.c_str ());
+	return true;
+}
+
+void
+Controls::use_common ()
+{
+	std::string own = game_file ();
+	std::error_code ec;
+
+	if (!own.empty ())
+		std::filesystem::remove (own, ec);
+	if (!base_read.empty ())
+		read (base_read.c_str (), base_save.c_str ());
+	HL_PRINT ("controls: the common bindings for %s", game_name.c_str ());
+}
+
+/* A file of bindings: controls.ini, or a game's own */
+void
+Controls::read (const char *path, const char *save_to)
 {
 	auto defaults = parse_ini (default_file);
 	bool created = false, added = false;

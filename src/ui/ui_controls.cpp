@@ -27,6 +27,7 @@
 #include <cctype>
 #include <cstdio>
 #include <cstdlib>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -146,7 +147,41 @@ const char *actionLabel(const std::string &key)
     for (const auto &l : labels)
         if (!strcasecmp(key.c_str(), l.key))
             return tr(l.label);
+    // The game's own axes ([Analog]): their names as its INPUT TEST gives
+    // them, the keys moving them after
+    static std::map<std::string, std::string> made;
+    for (const auto &a : hl::Controls::get().game_axes())
+    {
+        if (a.key.empty())
+            continue;
+        const char *more = !strcasecmp(key.c_str(), a.key.c_str()) ? ""
+                           : !strcasecmp(key.c_str(), (a.key + "_Left").c_str()) ? tr(" (down, left)")
+                           : !strcasecmp(key.c_str(), (a.key + "_Right").c_str()) ? tr(" (up, right)")
+                                                                                     : NULL;
+        if (more)
+            return (made[key] = a.label + more).c_str();
+    }
     return key.c_str();
+}
+
+// The game's own axis whose row it is: the axis itself (not its keys); NULL
+const hl::AnalogInput *gameAxis(const std::string &key)
+{
+    for (const auto &a : hl::Controls::get().game_axes())
+        if (!a.key.empty() && !strcasecmp(key.c_str(), a.key.c_str()))
+            return &a;
+    return NULL;
+}
+
+// The rows of [Analog] the game has: its axes and their keys
+bool isGameAxisRow(const std::string &key)
+{
+    for (const auto &a : hl::Controls::get().game_axes())
+        if (!a.key.empty() && (!strcasecmp(key.c_str(), a.key.c_str()) ||
+                               !strcasecmp(key.c_str(), (a.key + "_Left").c_str()) ||
+                               !strcasecmp(key.c_str(), (a.key + "_Right").c_str())))
+            return true;
+    return false;
 }
 
 bool isSteering(const std::string &key)
@@ -370,8 +405,9 @@ void bindingRow(const char *section, const hl::Controls::Row &row)
         g_capture.append = add;
         g_capture.section = section;
         g_capture.key = row.key;
-        controls.capture(player, isPedal(row.key) ? hl::Controls::CAPTURE_PEDAL
-                                 : (isSteering(row.key) || isPointerAxis(row.key)) ? hl::Controls::CAPTURE_STEERING
+        const hl::AnalogInput *axis = gameAxis(row.key);
+        controls.capture(player, (isPedal(row.key) || (axis && axis->kind == hl::AnalogInput::PEDAL)) ? hl::Controls::CAPTURE_PEDAL
+                                 : (isSteering(row.key) || isPointerAxis(row.key) || axis) ? hl::Controls::CAPTURE_STEERING
                                                        : hl::Controls::CAPTURE_BUTTON);
     }
     ImGui::SameLine();
@@ -510,6 +546,26 @@ void mappingPage()
     }
 
     if (ImGui::BeginChild("##bindings", ImVec2(0, 0), ImGuiChildFlags_Borders))
+    {
+        // The game running's own axes first ([Analog], the rows it reads)
+        std::vector<hl::Controls::Row> own;
+        for (const auto &row : controls.rows("Analog"))
+            if (isGameAxisRow(row.key))
+                own.push_back(row);
+        if (!own.empty())
+        {
+            header(tr("This game's axes"));
+            if (ImGui::BeginTable("Analog", 4, ImGuiTableFlags_SizingStretchProp))
+            {
+                ImGui::TableSetupColumn("##action", ImGuiTableColumnFlags_WidthStretch, 0.34f);
+                ImGui::TableSetupColumn("##binding", ImGuiTableColumnFlags_WidthStretch, 0.30f);
+                ImGui::TableSetupColumn("##now", ImGuiTableColumnFlags_WidthStretch, 0.22f);
+                ImGui::TableSetupColumn("##buttons", ImGuiTableColumnFlags_WidthFixed);
+                for (const auto &row : own)
+                    bindingRow("Analog", row);
+                ImGui::EndTable();
+            }
+        }
         for (const Section &s : kSections)
         {
             std::vector<hl::Controls::Row> rows = controls.rows(s.name);
@@ -527,6 +583,7 @@ void mappingPage()
                 ImGui::EndTable();
             }
         }
+    }
     ImGui::EndChild();
 
     captureWindow();
@@ -975,6 +1032,28 @@ void drawControlsTab()
     ImGui::PushTextWrapPos(0.0f);
     ImGui::TextDisabled(tr("The bindings are in %s, apart from the emulator's settings."), controls.path());
     ImGui::PopTextWrapPos();
+    // A game's own bindings: controls/<set>.ini, read instead for it alone
+    if (controls.game()[0])
+    {
+        if (controls.game_file_in_use())
+        {
+            ImGui::Text(tr("%s has bindings of its own."), controls.game());
+            ImGui::SameLine();
+            if (ImGui::Button(tr("Use the common bindings")))
+                controls.use_common();
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("%s", tr("Its file is removed; the common controls.ini is used for it again."));
+        }
+        else
+        {
+            char label[160];
+            snprintf(label, sizeof(label), tr("Save these bindings for %s alone"), controls.game());
+            if (ImGui::Button(label))
+                controls.save_for_game();
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("%s", tr("They go to a file of the game's own, read instead of controls.ini when it starts; the changes made from then on go there."));
+        }
+    }
 
     header(tr("What the game receives"));
     drawGameInputs();

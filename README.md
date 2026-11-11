@@ -182,6 +182,14 @@ dead zones), to a mouse's or a light gun's, several to each. The bindings go to 
 the first start with a comment on each line, in the syntax of linuxloader and
 windowsloader. Its buttons can be numbered from 1, as Windows and vJoy do.
 
+During a game, *Save these bindings for <set> alone* writes them to
+`controls/<set>.ini` beside `controls.ini`: that game reads them instead from
+then on, and the changes made while it runs go there; *Use the common
+bindings* removes that file. The NAOMI and Atomiswave games read rows of
+their own (`[Naomi]`); a game with analog inputs of its own lists them first,
+under *This game's axes* (`[Analog]`: Airline Pilots' control wheel, rudder
+pedal and thrust levers; a lever stays where the stick or the keys leave it).
+
 **Hotkeys.** A controller's Guide button (Xbox, PS or Home), held, turns its
 other buttons into the emulator's commands, as RetroArch has them: Guide +
 Start quits, Guide + B goes back to the picker, Guide + Back opens the

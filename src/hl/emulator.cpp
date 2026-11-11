@@ -203,6 +203,8 @@ Emulator::load_game (const char *name, const char *log_path)
 				          entry ? entry->description : game->name, game->name);
 				Window::set_title (title);
 				running_machine = mach;
+				/* Its own bindings file if it has one, its own axes */
+				Controls::get ().set_game (game->name, game->analogs);
 				Outputs::get ()->start (game->name, game->parent);
 				telemetry::Service::get ().start (mach);
 				return true;
@@ -221,6 +223,7 @@ void
 Emulator::unload_game ()
 {
 	running_machine = NULL;
+	Controls::get ().set_game (NULL, {});
 	Outputs::get ()->stop ();
 	telemetry::Service::get ().stop ();
 	destroy (mach);

@@ -858,6 +858,23 @@ SegaIoBoard::read_controls ()
 		}
 		return;
 	}
+	/* The game's own inputs: an axis or a lever 8000 in the middle, a pedal
+	 * from 0; the channels it leaves out as they are */
+	if (!analog_inputs.empty ()) {
+		for (unsigned i = 0; i < analog_inputs.size () && i < 8; i++) {
+			const AnalogInput &in = analog_inputs[i];
+
+			if (in.key.empty () || analog_set[i])
+				continue;
+			if (in.kind == AnalogInput::PEDAL)
+				analog[i] = (uint16_t) lround (c.pedal ("Analog", in.key.c_str ()) * 0xFFFF);
+			else
+				analog[i] = (uint16_t) lround (0x8000 + (in.kind == AnalogInput::LEVER ?
+				                                         c.aim ("Analog", in.key.c_str ()) :
+				                                         c.axis ("Analog", in.key.c_str ())) * 0x7FFF);
+		}
+		return;
+	}
 	/* The wheel from 0 (left) to FFFF, its middle 8000; the pedals from 0
 	 * (up) */
 	if (!analog_set[0])
@@ -903,6 +920,9 @@ SegaIoBoard::reset (ResetType type)
 	memset (analog, 0, sizeof (analog));
 	memset (analog_set, 0, sizeof (analog_set));
 	analog[0] = 0x8000;
+	for (unsigned i = 0; i < analog_inputs.size () && i < 8; i++)
+		if (!analog_inputs[i].key.empty () && analog_inputs[i].kind != AnalogInput::PEDAL)
+			analog[i] = 0x8000;
 	coin[0] = coin[1] = 0;
 	coin_held[0] = coin_held[1] = false;
 	output = 0;

@@ -24,6 +24,7 @@
 #include <vector>
 
 #include "hl/core.h"
+#include "hl/games.h"
 
 union SDL_Event;
 
@@ -67,6 +68,20 @@ public:
 	 * read beside the program when it is rejected */
 	void		 load (const char *path, const char *save_to = NULL);
 	const char	*path () const { return file.c_str (); }
+
+	/* The game running (NULL: none) and its own analog inputs, shown in
+	 * the Controls tab: its file, controls/<set>.ini beside controls.ini,
+	 * read instead when there is one */
+	void		 set_game (const char *name, const std::vector<AnalogInput> &axes);
+	const char	*game () const { return game_name.c_str (); }
+	const std::vector<AnalogInput> &game_axes () const { return axes_of_game; }
+	/* That file's path ("" without a game), in use or not */
+	std::string	 game_file () const;
+	bool		 game_file_in_use () const { return !game_name.empty () && file == game_file (); }
+	/* The bindings written to the game's file, used from now on for it */
+	bool		 save_for_game ();
+	/* The game's file removed, the common bindings back */
+	void		 use_common ();
 
 	/* Not in agent mode: the agent alone drives the game */
 	void		 set_enabled (bool on) { enabled = on; }
@@ -200,6 +215,10 @@ private:
 	void		 migrate_old_bindings ();
 
 	std::string	 file;
+	/* controls.ini's paths, read and written; the game's */
+	std::string	 base_read, base_save, game_name;
+	std::vector<AnalogInput> axes_of_game;
+	void		 read (const char *path, const char *save_to);
 	/* The sections in the file's order, each its rows in order */
 	std::vector<std::pair<std::string, std::vector<Row>>> sections;
 	std::map<std::string, Binding *> parsed;

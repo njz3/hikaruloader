@@ -21,11 +21,24 @@
 #ifndef __HL_GAMES_H__
 #define __HL_GAMES_H__
 
+#include <string>
 #include <vector>
 
 #include "hl/buffer.h"
 
 namespace hl {
+
+/* An analog input of a game's own, on a channel of its I/O board (games.json
+ * "analogs", one a channel, null for the machine's usual): its row in
+ * controls.ini's [Analog], its name as the game's INPUT TEST gives it, and
+ * how the controls move it. AXIS: where the stick is, the middle at rest;
+ * LEVER: moved by the stick or the keys and left where it is (a thrust
+ * lever); PEDAL: from 0, at rest */
+struct AnalogInput {
+	enum Kind { AXIS, LEVER, PEDAL };
+	std::string key, label;
+	Kind kind = AXIS;
+};
 
 /* A game of data/games.json: its MAME set, and the sections of its ROMs */
 struct GameEntry {
@@ -136,6 +149,9 @@ public:
 	 * slave alone); none listed: all */
 	unsigned screens[4] = { 0, 0, 0, 0 };
 	unsigned num_screens = 0;
+	/* Its analog inputs of its own, by channel (games.json "analogs", its
+	 * parent's when it has none); none: the machine's usual */
+	std::vector<AnalogInput> analogs;
 	std::vector<GameSection> sections;
 
 private:
