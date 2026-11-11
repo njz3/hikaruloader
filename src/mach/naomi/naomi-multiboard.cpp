@@ -46,6 +46,14 @@ namespace naomi {
  * Here the boards are objects of one process, each run by its thread; they all
  * stop every 8 lines (about 64 times a frame: the BIOS names the slaves with
  * questions they must answer within a millisecond), when sync () runs.
+ *
+ * Within a slice the threads go at their own pace, so what a board sees of
+ * another's moves waits for that stop: a slave reads and writes the bank of
+ * the status it last saw there, and its ready bit's changes reach the master
+ * there. Read live, the exchanges hung on which thread got there first:
+ * Airline Pilots' master waited for its slaves forever in most runs ("Please
+ * Wait until Slaves synchronize..."), so neither the game nor its sound
+ * driver ever started.
  */
 
 enum {
@@ -81,6 +89,7 @@ MultiboardPort::reset (hl::ResetType type)
 	offset = 0;
 	dma_offset = 0;
 	seen_status = 0;
+	ready_due = unready_due = false;
 	if (!master ())
 		link->status.fetch_and ((uint16_t) ~(0x10 << id));
 	else
@@ -95,7 +104,7 @@ MultiboardPort::g1_get (uint32_t addr, uint32_t *val)
 		*val = offset;
 		return true;
 	case G1_DATA: {
-		uint32_t bank = (link->status & 1) ? 0 : 0x80000, at;
+		uint32_t bank = (bank_status () & 1) ? 0 : 0x80000, at;
 
 		if (master ()) {
 			bank = 0x80000 - bank;
@@ -138,7 +147,7 @@ MultiboardPort::g1_put (uint32_t addr, uint32_t val)
 		offset = val;
 		return true;
 	case G1_DATA: {
-		uint32_t bank = (link->status & 1) ? 0 : 0x80000, at;
+		uint32_t bank = (bank_status () & 1) ? 0 : 0x80000, at;
 
 		if (master ()) {
 			bank = 0x80000 - bank;
@@ -157,7 +166,7 @@ MultiboardPort::g1_put (uint32_t addr, uint32_t val)
 			if (val == 3)
 				board->holly->set_external (EXT_GDROM, false);
 			else if (val == 4)
-				link->status.fetch_or ((uint16_t) (0x10 << id));
+				ready_due = true;
 		}
 		return true;
 	case G1_CONFIG_SLOT:
@@ -170,8 +179,10 @@ MultiboardPort::g1_put (uint32_t addr, uint32_t val)
 void
 MultiboardPort::software_reset ()
 {
-	if (!master ())
-		link->status.fetch_and ((uint16_t) ~(0x10 << id));
+	if (!master ()) {
+		ready_due = false;
+		unready_due = true;
+	}
 }
 
 bool
@@ -181,7 +192,7 @@ MultiboardPort::dma (uint32_t size, uint8_t *out)
 
 	if (master () || board->has_cart)
 		return false;
-	bank = (link->status & 1) ? 0 : 0x80000;
+	bank = (bank_status () & 1) ? 0 : 0x80000;
 	from = (id - 1) * 0x10000 + bank / 2 + dma_offset;
 	if (from + size / 2 > MEM_WORDS)
 		size = (MEM_WORDS - from) * 2;
@@ -269,6 +280,11 @@ MultiboardPort::sync ()
 
 	if (master ())
 		return;
+	if (unready_due)
+		link->status.fetch_and ((uint16_t) ~(0x10 << id));
+	if (ready_due)
+		link->status.fetch_or ((uint16_t) (0x10 << id));
+	ready_due = unready_due = false;
 	now = link->status;
 	if (((now ^ seen_status) & 1) && ((1 << id) & now))
 		board->holly->set_external (EXT_GDROM, true);

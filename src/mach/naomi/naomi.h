@@ -774,7 +774,14 @@ private:
 	Multiboard *link;
 	unsigned id;
 	uint32_t offset;
+	/* A slave's view of the master's status, taken between two slices, and
+	 * its ready bit's changes, shown to the master there: what one board does
+	 * reaches another at the same point of the frame each run, whatever the
+	 * threads' pace within a slice */
 	uint16_t dma_offset, seen_status;
+	bool	 ready_due, unready_due;
+	/* The bank this board's G1 bus reads and writes */
+	uint16_t bank_status () const { return master () ? (uint16_t) link->status : seen_status; }
 };
 
 /* What Driving Simulator's master says on the SCIF: the rev counter and the

@@ -24,6 +24,10 @@ Next version
 - Airline Pilots' five analog inputs can be bound (control wheel's elevator and
   aileron, rudder pedal, thrust levers L and R, as its INPUT TEST names them),
   under *This game's axes*; they were missing or fixed at an end.
+- Fixed: Airline Pilots (deluxe, three boards) mostly stayed on "Please Wait
+  until Slaves synchronize...", without a sound after the BIOS's chime; it
+  starts every time now, its music and sounds with it. The boards of a cabinet
+  see each other's link moves at the same moments each run.
 
 
 0.7.2 (2026-11-11)
