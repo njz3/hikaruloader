@@ -42,7 +42,8 @@ class GameList;
  *	PLACE : "<port>:<n>", or { "at" : "<port>:<n>" (or a list of
  *		them), "label" : its INPUT TEST's name, "invert" : true,
  *		"range" : [ "<at rest or left>", "<pressed or right>" ] (16-bit
- *		hex) }, or a list of places;
+ *		hex), "combined" : { "thrust" : "<role>", "turn" : "<role>",
+ *		"side" : "left" or "right" } }, or a list of places;
  *	"gearbox" : { "<gear>" : [ "<port>:<n>", ... ], ... }: a gear lever
  *		held in a position, each gear ("R", "N", "1" to "6") the
  *		switches it closes;
@@ -53,7 +54,10 @@ class GameList;
  * selects "7000", "e800"...), the coin counters ("coin"), the analog
  * channels by number ("an"; "a1" to "a4" an Atomiswave pad's). A switch
  * with an analog role is closed past half its travel; several roles on a
- * place add up. */
+ * place add up. A "combined" place is one of a pair of levers (Star Wars:
+ * Racer Arcade's thrust levers): with TWIN_LEVERS = COMBINED, its role's
+ * own row is not read but the thrust of both levers and the turn their
+ * difference, the lever on the side away from the turn pushing harder. */
 class GameControls {
 public:
 	static GameControls &get ();
@@ -68,12 +72,18 @@ public:
 		unsigned	 index = 0;
 		std::string	 label;		/* the game's name, "" none */
 		uint16_t	 lo = 0x0000, hi = 0xFFFF;
+		/* "combined": its pair's thrust and turn, side 1 the left
+		 * lever's, -1 the right's, 0 none */
+		const Controls::RowDef *thrust = NULL, *turn = NULL;
+		int		 side = 0;
 	};
 	const std::vector<Place> &places () const { return all; }
 	/* The role is on one of the game's places (or its gear lever's) */
 	bool		 has (const char *role) const;
 	/* On one of its places (not the gear lever's) */
 	bool		 placed (const char *role) const;
+	/* It has a pair of levers TWIN_LEVERS combines ("combined") */
+	bool		 combined () const;
 
 	/* A role now: a switch held, an axis -1 (left, up) to 1, a pedal or
 	 * a lever 0 to 1 (a sight's -1 to 1); over the held values of the
@@ -97,6 +107,7 @@ private:
 	GameControls () = default;
 
 	bool		 place_value (const Place &p, uint16_t *value);
+	double		 combined_value (const Place &p);
 	std::string	 game_name;
 	std::vector<Place> all;
 	struct Gear {

@@ -1107,8 +1107,13 @@ void drawControlsTab()
     header(tr("Gear lever"));
     drawShifter();
 
-    header(tr("Levers (Star Wars: Racer Arcade)"));
-    drawLevers();
+    // A pair of levers TWIN_LEVERS combines: shown with no game, or a
+    // game that has one (games.json "combined")
+    if (!hl::GameControls::get().game()[0] || hl::GameControls::get().combined())
+    {
+        header(tr("Levers (Star Wars: Racer Arcade)"));
+        drawLevers();
+    }
 
     header(tr("Force feedback"));
     drawFfbDevice();

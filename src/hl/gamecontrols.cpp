@@ -97,6 +97,17 @@ read_places (const char *game, const Controls::RowDef *row, json_t *at,
 		}
 		if (json_is_true (json_object_get (at, "invert")))
 			std::swap (p.lo, p.hi);
+		if (json_t *pair = json_object_get (at, "combined")) {
+			const char *side = json_string_value (json_object_get (pair, "side"));
+
+			p.thrust = Controls::row_def (json_string_value (json_object_get (pair, "thrust")));
+			p.turn = Controls::row_def (json_string_value (json_object_get (pair, "turn")));
+			p.side = side && !strcmp (side, "left") ? 1 : side && !strcmp (side, "right") ? -1 : 0;
+			if (!p.thrust || !p.turn || !p.side) {
+				HL_PRINT ("controls: %s: %s's combined lever not understood", game, row->key);
+				p.side = 0;
+			}
+		}
 		if (json_is_array (where)) {
 			size_t k;
 			json_t *one;
@@ -265,6 +276,12 @@ GameControls::placed (const char *role) const
 }
 
 bool
+GameControls::combined () const
+{
+	return std::any_of (all.begin (), all.end (), [] (const Place &p) { return p.side != 0; });
+}
+
+bool
 GameControls::has (const char *role) const
 {
 	for (const Place &p : all)
@@ -278,23 +295,6 @@ GameControls::has (const char *role) const
 	return false;
 }
 
-/* Star Wars: Racer Arcade's levers, 0 (at rest) to 1 (pushed all the way):
- * an axis each, or (TWIN_LEVERS = COMBINED) the accelerator the thrust of
- * both and the wheel the difference around it, the engine on the side away
- * from the turn pushing harder (the pod turns right with the left engine's
- * thrust alone, measured) */
-static double
-twin_lever (bool right)
-{
-	Controls &c = Controls::get ();
-
-	if (Config::get ()->twin_levers == TWIN_LEVERS_ORIGINAL)
-		return c.pedal ("Driving", right ? "RightLever" : "LeftLever");
-
-	double thrust = c.pedal ("Driving", "Accelerator"), steer = c.axis ("Driving", "Steering");
-	return std::clamp (thrust * (right ? 1.0 - steer : 1.0 + steer), 0.0, 1.0);
-}
-
 double
 GameControls::value (const char *role)
 {
@@ -303,8 +303,6 @@ GameControls::value (const char *role)
 
 	if (!row)
 		return 0.0;
-	if (!strcmp (row->key, "LeftLever") || !strcmp (row->key, "RightLever"))
-		return twin_lever (row->key[0] == 'R');
 	switch (row->kind) {
 	case Controls::ROW_AXIS: {
 		double v = c.axis (row->section, row->key);
@@ -358,10 +356,22 @@ GameControls::switches (const char *port, uint64_t frame)
 	return bits;
 }
 
+/* A lever of a combined pair, 0 (at rest) to 1 (pushed all the way): the
+ * thrust of both, the turn (-1 left to 1 right) the difference around it, the
+ * engine on the side away from the turn pushing harder (Star Wars: Racer
+ * Arcade's pod turns right with its left engine's thrust alone, measured) */
+double
+GameControls::combined_value (const Place &p)
+{
+	double thrust = value (p.thrust->key), turn = value (p.turn->key);
+
+	return std::clamp (thrust * (1.0 + p.side * turn), 0.0, 1.0);
+}
+
 bool
 GameControls::place_value (const Place &p, uint16_t *out)
 {
-	double v = value (p.row->key), t;
+	double v = p.side && Config::get ()->twin_levers == TWIN_LEVERS_COMBINED ? combined_value (p) : value (p.row->key), t;
 
 	switch (p.row->kind) {
 	case Controls::ROW_AXIS:

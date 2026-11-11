@@ -275,9 +275,13 @@ channel n at 2n), checked in the game's JVS TEST screen.
   `jvs_p34`, `atomiswave`, `atomiswave_p34`, `atomiswave_wheel`,
   `gaelco_football`, `gaelco_driving`), a game's `layout` (by default `jvs`,
   `atomiswave` on the Atomiswave; a list of them, each over the one before:
-  `["jvs", "jvs_p34"]`) and `controls` over it, `"<role>" : "<port>:<n>"` or `{"at" : ..., "label" :
-  "<its INPUT TEST's name>", "invert" : true, "range" : ["C000", "4000"]}`
-  (null: not there); a place the game lists is taken from the layout's role.
+  `["jvs", "jvs_p34"]`) and `controls` over it, `"<role>" : "<port>:<n>"`
+  or `{"at" : ..., "label" : "<its INPUT TEST's name>", "invert" : true,
+  "range" : ["C000", "4000"]}` (null: not there); a place the game lists is
+  taken from the layout's role. `"combined" : {"thrust" : "Accelerator",
+  "turn" : "Steering", "side" : "left"}` makes a place one of a pair of
+  thrust levers that `TWIN_LEVERS = COMBINED` drives from those two roles
+  (Star Wars: Racer Arcade's).
   Ports: `sys`, `p1`, `p2` (a player's 16 switches, bit 15 START ... 4
   BUTTON6), `coin` (1, 2), `an` (channels); a cabinet's second 837-13551
   (the far end of its chain) `p3`, `p4`, `coin` 3 and 4, `sys2`, `an2`

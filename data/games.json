@@ -704,7 +704,7 @@
 			"ffb" : false,
 			"audio" : "quad",
 			"bios" : "hikaru",
-			"controls" : {"LeftLever" : {"at" : "an:0", "range" : ["C000", "4000"], "label" : "LEFT LEVER"}, "RightLever" : {"at" : "an:1", "range" : ["C000", "4000"], "label" : "RIGHT LEVER"}, "Brake" : {"at" : ["p1:8", "an:2"], "label" : "BRAKE"}, "P1_Button1" : {"at" : "p1:9", "label" : "BOOST"}, "P1_Left" : {"at" : "p1:10", "label" : "LEFT BUTTON"}, "P1_Right" : {"at" : "p1:11", "label" : "RIGHT BUTTON"}},
+			"controls" : {"LeftLever" : {"at" : "an:0", "range" : ["C000", "4000"], "label" : "LEFT LEVER", "combined" : {"thrust" : "Accelerator", "turn" : "Steering", "side" : "left"}}, "RightLever" : {"at" : "an:1", "range" : ["C000", "4000"], "label" : "RIGHT LEVER", "combined" : {"thrust" : "Accelerator", "turn" : "Steering", "side" : "right"}}, "Brake" : {"at" : ["p1:8", "an:2"], "label" : "BRAKE"}, "P1_Button1" : {"at" : "p1:9", "label" : "BOOST"}, "P1_Left" : {"at" : "p1:10", "label" : "LEFT BUTTON"}, "P1_Right" : {"at" : "p1:11", "label" : "RIGHT BUTTON"}},
 			"sections" : [
 				{
 					"name" : "bootrom",

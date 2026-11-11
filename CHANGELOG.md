@@ -19,6 +19,8 @@ Next version
   Athlete, Beach Spikers and Mahjong MJ (their second I/O board, which
   answered nothing pressed), Guilty Gear Isuka and Dirty Pigskin Football
   (the Atomiswave's third and fourth pads).
+- The Controls tab's *Levers* part shows with the games that have a pair of
+  thrust levers (Star Wars: Racer Arcade), or no game running.
 - Fixed: Maximum Speed's and Faster Than Speed's wheel and pedals stayed at 0
   (their CONTROLER SETTING SCREEN, 0 mph in a race): they are on the
   Atomiswave's third controller port, not on the second. Their wheel's force
