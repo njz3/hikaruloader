@@ -22,6 +22,7 @@
 #include <cstring>
 
 #include "hl/input.h"
+#include "hl/gamecontrols.h"
 
 #include "mach/naomi/naomi.h"
 
@@ -231,8 +232,8 @@ Mie::in (uint16_t port)
 			return s.gpio[p];
 		if (p == 5)
 			return (switches & (monitor_15khz ? 0x0E : 0x0F)) |
-			       (hl::Input::action (hl::ACTION_TEST) ? 0 : 0x10) |
-			       (hl::Input::action (hl::ACTION_SERVICE) ? 0 : 0x20) | 0x40 |
+			       (hl::GameControls::get ().pressed ("Test") ? 0 : 0x10) |
+			       (hl::GameControls::get ().pressed ("Service") ? 0 : 0x20) | 0x40 |
 			       (eeprom.data_out () ? 0x80 : 0);
 		return 0xFF;
 	}

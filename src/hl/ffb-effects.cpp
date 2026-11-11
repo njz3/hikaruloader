@@ -46,6 +46,7 @@
 #include "hl/ffb-effects.h"
 #include "hl/config.h"
 #include "hl/controls.h"
+#include "hl/gamecontrols.h"
 #include "hl/ffb.h"
 #include "hl/input.h"
 #include "hl/outputs.h"
@@ -223,12 +224,16 @@ static unsigned nozzle_held[2];
 /* Who last held each player's water button */
 static int water_holder[2] = { Controls::NOBODY, Controls::NOBODY };
 
-/* A button of Planet Harriers' stick: the keyboard's or a controller's, or a
- * mouse's */
+/* A button of Planet Harriers' stick, 1 to 3: the player's, or a mouse's
+ * (the roles on its switches: data/games.json) */
 static bool
-harriers_button (Action action, const char *pointer_row)
+harriers_button (unsigned n)
 {
-	return Input::action (action) || Controls::get ().pressed ("Pointer", pointer_row);
+	static const char *player[3] = { "P1_Button1", "P1_Button2", "P1_Button3" };
+	static const char *pointer[3] = { "P1_Trigger", "P1_Fire2", "P1_Fire3" };
+	GameControls &g = GameControls::get ();
+
+	return g.pressed (player[n - 1]) || g.pressed (pointer[n - 1]);
 }
 
 /* shot1, shot2, nozzle1, nozzle2 for the outputs' clients: whatever the
@@ -239,13 +244,13 @@ send_signals (bool harriers, bool firefighters)
 	Outputs *out = Outputs::get ();
 
 	if (harriers) {
-		bool bullet = harriers_button (ACTION_BUTTON1, "P1_Bullet");
-		bool missile = harriers_button (ACTION_BUTTON2, "P1_Missile");
+		bool bullet = harriers_button (1);
+		bool missile = harriers_button (2);
 
 		out->signal ("shot1", bullet || missile);
 		out->signal ("bullet1", bullet);
 		out->signal ("missile1", missile);
-		out->signal ("bomb1", harriers_button (ACTION_BUTTON3, "P1_Bomb"));
+		out->signal ("bomb1", harriers_button (3));
 	}
 	if (firefighters) {
 		/* NOZZLE VIBRATION: outputs 2 and 5, held over their gaps */
@@ -279,9 +284,9 @@ GameRumble::frame (Machine *mach, uint64_t frame)
 		return;
 	}
 	if (harriers) {
-		bool bullet = harriers_button (ACTION_BUTTON1, "P1_Bullet");
-		bool missile = harriers_button (ACTION_BUTTON2, "P1_Missile");
-		bool bomb = harriers_button (ACTION_BUTTON3, "P1_Bomb");
+		bool bullet = harriers_button (1);
+		bool missile = harriers_button (2);
+		bool bomb = harriers_button (3);
 		float shots = cfg->ffb_shots / 100.0f * shot;
 		float missiles, bombs;
 
@@ -340,10 +345,10 @@ GameRumble::frame (Machine *mach, uint64_t frame)
 		 * that sprays (send_signals) takes it: a controller's motors, a
 		 * wheel's vibration; a mouse or a key, nothing */
 		for (unsigned i = 0; i < 2; i++) {
-			int who = c.holder ("Pointer", i ? "P2_Water" : "P1_Water");
+			int who = c.holder ("Pointer", i ? "P2_Trigger" : "P1_Trigger");
 
 			if (who == Controls::NOBODY && i == 0)
-				who = c.holder ("Digital", "P1_Button1");
+				who = c.holder ("Player1", "P1_Button1");
 			if (who != Controls::NOBODY)
 				water_holder[i] = who;
 			if (!nozzle_held[i] || water_holder[i] < 0 || water_holder[i] >= Controls::MOUSE_PLAYER)

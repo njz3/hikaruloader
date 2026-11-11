@@ -85,12 +85,10 @@ Drive's seat motor, go to the network outputs. Smashing Drive starts silent,
 as its board does (its volume is kept nowhere): Volume Up is held for it at
 each start, a second and a half, then Volume up and Volume down change it.
 
-The Gaelco cabinets' own buttons are in the *Gaelco cabinets* section of the
-Controls tab (`[Gaelco]` in `controls.ini`): volume, ATV Track's brake levers,
-Smashing Drive's horn. ATV Track and Smashing Drive read none of the *Stick
-and buttons* rows, which are the Hikaru games' (NASCAR Arcade's view change is
-player 1's down there): a binding for one platform changes nothing in the
-other's games. Gaelco Football, a stick and buttons game, reads those rows.
+The Gaelco cabinets' own buttons are bound as every game's (see Controls):
+the volume buttons (*All games*), ATV Track's brake levers and Smashing
+Drive's horn (*Driving*); Smashing Drive's pedals are switches, pressed past
+half their travel.
 
 To link two Smashing Drive cabinets, set its *Link* setting in the test menu
 (master on one, slave on the other, then *Exit and save*), and the `[Network]`
@@ -182,21 +180,24 @@ dead zones), to a mouse's or a light gun's, several to each. The bindings go to 
 the first start with a comment on each line, in the syntax of linuxloader and
 windowsloader. Its buttons can be numbered from 1, as Windows and vJoy do.
 
+Every game reads the same rows, whatever its machine (Hikaru, NAOMI,
+Atomiswave, Gaelco), each control bound once under a common name: the
+cabinet's switches (`[Common]`: Test, Service, coins, the card, the volume),
+the players' start, stick and buttons 1 to 6 (`[Player1]`, `[Player2]`), the
+wheel, the pedals, the view change, the gear lever, the horn (`[Driving]`), a
+flying game's control wheel, rudder pedal and thrust levers (`[Flight]`), a
+light gun's sight, trigger and reload, an analog stick (`[Pointer]`). The
+running game shows its own first, under *This game's controls*, with the
+names its INPUT TEST gives them (Initial D's VIEW CHANGE and GEAR POSITION,
+Airline Pilots' CONTROL WHEEL(ELEVATOR), Virtua Fighter 4's PUNCH, KICK and
+GUARD...); the others are folded under *All the controls*. Which control is
+where on each game's board is in `data/games.json`. A lever and a sight stay
+where the stick or the keys leave them.
+
 During a game, *Save these bindings for <set> alone* writes them to
 `controls/<set>.ini` beside `controls.ini`: that game reads them instead from
 then on, and the changes made while it runs go there; *Use the common
-bindings* removes that file. The NAOMI and Atomiswave games read rows of
-their own (`[Naomi]`).
-
-The controls a game has beyond the stick and the buttons are bound once for
-all the games that have them, under a common name: the wheel and the pedals,
-the view change and the gear lever (`[Driving]`), a flying game's control
-wheel, rudder pedal and thrust levers (`[Flight]`), a light gun's sight,
-trigger and reload, an analog stick (`[Pointer]`). The running game shows
-them first, under *This game's controls*, with the names its INPUT TEST gives
-them: Initial D's VIEW CHANGE and GEAR POSITION, Airline Pilots' CONTROL
-WHEEL(ELEVATOR), Confidential Mission's GUN-X and SCREEN-IN... A lever stays
-where the stick or the keys leave it.
+bindings* removes that file.
 
 **Hotkeys.** A controller's Guide button (Xbox, PS or Home), held, turns its
 other buttons into the emulator's commands, as RetroArch has them: Guide +
@@ -205,10 +206,8 @@ settings, Guide + R1 and L1 save and load the state, Guide + X pauses,
 Guide + Y takes Virtual-On 4's card. While Guide is held the game sees none
 of the controller's buttons, nor one pressed then until it is let go: Guide
 + B does not also press button 2. They are bindings like the others
-(`ExitGame = KEY_F9, GC0_BUTTON_GUIDE + GC0_BUTTON_START` in `controls.ini`);
-in the Controls tab, hold Guide and press a button to bind one. A
-`controls.ini` of an earlier version keeps its bindings as they are: bind
-the hotkeys in the Controls tab, or delete the file to get the defaults.
+(`Quit = KEY_F9, GC0_BUTTON_GUIDE + GC0_BUTTON_START` in `controls.ini`);
+in the Controls tab, hold Guide and press a button to bind one.
 On Windows, Guide also opens the Xbox Game Bar: Windows' settings (Gaming,
 Xbox Game Bar) turn its controller button off.
 
@@ -228,17 +227,19 @@ wheel's driver (Logitech G HUB, Thrustmaster's or Fanatec's control panel),
 (`JOY<n>_AXIS_<a>`), not a game controller's stick. In `hikaruloader.ini`:
 `[Input]` `WHEEL_ROTATION` and `WHEEL_RANGE`.
 
-**NASCAR Arcade's gears.** The cabinet has a four-speed H shifter; the game
-asks for AUTOMATIC or MANUAL at the start of a race. Shift up and Shift
-down (`GearUp`, `GearDown` in `controls.ini`, linuxloader's names) move a
-gear at each press, from neutral to 4; an H shifter binds its positions
-(`Gear1` to `Gear4`, `GearNeutral`), as sm2-emu has them. The Controls
-tab's *Gear shifter*: *Neutral when no gear is engaged*, an H shifter's
-lever in none of its gears in neutral, as on the cabinet (else the last
-gear stays); *Neutral between gears*, Shift up and down going through
-neutral that long, as a real lever (`[Input]` `SHIFTER_NEUTRAL`,
-`SHIFT_NEUTRAL_MS`). The gear the game reads shows in *What the game
-receives*.
+**Gear levers.** Some cabinets have a lever that stays where it is put,
+each position closing switches the game decodes: NASCAR Arcade's and
+F355's four-speed H, 18 Wheeler's low, high and reverse, Crazy Taxi's drive
+and reverse (`gearbox` in `data/games.json`). Shift up and Shift down
+(`ShiftUp`, `ShiftDown` in `controls.ini`) move it a position at each
+press; an H shifter binds its positions (`GearReverse`, `GearNeutral`,
+`Gear1` to `Gear4`), as sm2-emu has them. Initial D's lever, which springs
+back, is the same two rows, read as they are pressed. The Controls tab's
+*Gear lever*: *Neutral when no gear is engaged*, an H shifter's lever in
+none of its gears in neutral, as on the cabinet (else the last gear stays);
+*Neutral between gears*, Shift up and down going through neutral that
+long, as a real lever (`[Input]` `SHIFTER_NEUTRAL`, `SHIFT_NEUTRAL_MS`). The
+gear the game reads shows in *What the game receives*.
 
 **Star Wars: Racer Arcade's levers.** The cabinet has two levers, each the
 thrust of one of the pod's engines, pushed forward: even, the pod goes
@@ -247,8 +248,8 @@ stops. The Controls tab's *Levers*: *Combined* (the default), the
 accelerator gives the thrust of both and the wheel the difference, the pod
 turning to the side steered, for a wheel and pedals or a controller's
 stick and trigger; *Original*, an axis each, as on the cabinet
-(`P1_LeftLever`, `P1_RightLever`: a controller's two sticks pushed up by
-default) (`[Input]` `TWIN_LEVERS`). Button 1 is the boost, button 2 the
+(`LeftLever`, `RightLever`: a controller's two sticks pushed up by
+default) (`[Input]` `TWIN_LEVERS`). Button 1 is the boost, the brake its
 brake; Left and Right are the game's left and right buttons (◁ ▷, the
 menus).
 
@@ -618,7 +619,7 @@ Virtual-On 4's cards
 Outside the USA region, Virtual-On 4 has a card reader, emulated: a VO4 card
 keeps a pilot's name, rank, Virtual-roid and records. The card is a file,
 `nvram/von4.card` (with a write directory, its copy). F7 (*Card*,
-`P1_Card1Insert` in `controls.ini`) puts it in the reader's slot, or takes it
+`Card` in `controls.ini`) puts it in the reader's slot, or takes it
 back: the game takes it in when it asks for it (at the choice of the
 Virtual-roid), and gives it back at the end; it is taken 3 seconds later.
 Without a card, the game plays as usual.
@@ -705,11 +706,16 @@ over the game, with the options applied.
 Mice and light guns
 -------------------
 
-Brave Firefighters' two nozzles and Planet Harriers' stick can be played with
-a mouse or a light gun, each read on its own (on Windows; elsewhere the
-system's one pointer). The Controls tab lists them, with their names, to bind
-their buttons and axes as a controller's, in the "Mouse and light gun games"
-section (`[Pointer]` in `controls.ini`, `hikaruloader.log` lists them too).
+The light gun games (Confidential Mission, The Maze of the Kings...), Brave
+Firefighters' two nozzles and the analog sticks (Planet Harriers, Monkey
+Ball...) can be played with a mouse or a light gun, each read on its own (on
+Windows; elsewhere the system's one pointer). The Controls tab lists them,
+with their names, to bind their buttons and axes as a controller's, in the
+*Guns, mice and analog sticks* section (`[Pointer]` in `controls.ini`:
+`P1_GunX`, `P1_Trigger`, `P1_Reload`, `P1_Fire2`... `hikaruloader.log` lists
+the devices too). The *Game* tab's *Invert the stick's up and down*
+(`INVERT_STICK_Y`) turns the analog sticks' up and down over, a game's own
+setting to save for it alone.
 `MOUSE0` is the first device and `MOUSE1` the second, numbered by their names
 in the system; their inputs are `MOUSE0_X` and `MOUSE0_Y`, `MOUSE0_BUTTON_LEFT`,
 `_RIGHT`, `_MIDDLE`, `_X1` and `_X2`, and `MOUSE0_OFFSCREEN`, a gun aimed off

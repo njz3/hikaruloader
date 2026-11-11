@@ -18,6 +18,10 @@ GENERAL
 - Atomiswave wheel games (maxspeed, ftspeed): their CONTROLER SETTING SCREEN shows steering,
   accelerator and brake at 0 whatever the second pad's analogs say (0.7.2 too); the guns,
   trackballs and fishing reel on Maple ports 2-3 are not emulated.
+- Controls: the positions of 18 Wheeler's reverse (p2:12+p2:11 from the old code, p2:11 alone
+  in the survey), F355's lever (an H of four, as before) and Jambo! Safari's lever (ShiftUp and
+  ShiftDown) to check in their INPUT TESTs; the mahjong panel, the card readers' own switches and
+  Club Kart's view button are not placed (data/games.json).
 - NAOMI, seen in a pass over the 259 sets (3000 frames, attract only):
   - a jump to code never loaded: vathlete (past its I/O boards, an invalid instruction at
     8C04F88C at frame 973);

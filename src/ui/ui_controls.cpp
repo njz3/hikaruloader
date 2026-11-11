@@ -36,6 +36,7 @@
 #include "hl/pointers.h"
 #include "hl/config.h"
 #include "hl/controls.h"
+#include "hl/gamecontrols.h"
 #include "hl/ffb.h"
 #include "hl/gearbox.h"
 #include "hl/input.h"
@@ -53,13 +54,11 @@ struct Section
 };
 const Section kSections[] = {
     {"Common", N_("All games")},
-    {"Digital", N_("Stick and buttons")},
+    {"Player1", N_("Player 1")},
+    {"Player2", N_("Player 2")},
     {"Driving", N_("Driving")},
-    {"Pointer", N_("Mouse, light gun and analog stick games")},
-    {"Flight", N_("Flying games")},
-    {"Gaelco", N_("Gaelco cabinets")},
-    // Read by the NAOMI and Atomiswave games instead of the rows above
-    {"Naomi", N_("NAOMI and Atomiswave games (their own rows)")},
+    {"Flight", N_("Flying")},
+    {"Pointer", N_("Guns, mice and analog sticks")},
     {"Emulator", N_("Emulator")},
 };
 
@@ -70,12 +69,13 @@ const char *actionLabel(const std::string &key)
         const char *key, *label;
     } labels[] = {
         {"Test", N_("Test button")},
-        {"P1_Service", N_("Service button")},
-        {"P1_Coin", N_("Coin 1")},
-        {"P2_Coin", N_("Coin 2")},
+        {"Service", N_("Service button")},
+        {"Coin1", N_("Coin 1")},
+        {"Coin2", N_("Coin 2")},
+        {"Card", N_("Card: insert or take back")},
+        {"VolumeUp", N_("Volume up")},
+        {"VolumeDown", N_("Volume down")},
         {"P1_Start", N_("Start")},
-        {"P2_Start", N_("Player 2: start")},
-        {"ExitGame", N_("Quit")},
         {"P1_Up", N_("Up")},
         {"P1_Down", N_("Down")},
         {"P1_Left", N_("Left")},
@@ -86,7 +86,7 @@ const char *actionLabel(const std::string &key)
         {"P1_Button4", N_("Button 4")},
         {"P1_Button5", N_("Button 5")},
         {"P1_Button6", N_("Button 6")},
-        {"P1_Card1Insert", N_("Card: insert or take back")},
+        {"P2_Start", N_("Player 2: start")},
         {"P2_Up", N_("Player 2: up")},
         {"P2_Down", N_("Player 2: down")},
         {"P2_Left", N_("Player 2: left")},
@@ -94,50 +94,49 @@ const char *actionLabel(const std::string &key)
         {"P2_Button1", N_("Player 2: button 1")},
         {"P2_Button2", N_("Player 2: button 2")},
         {"P2_Button3", N_("Player 2: button 3")},
-        {"P1_Steer", N_("Steering wheel")},
-        {"P1_Gas", N_("Accelerator")},
-        {"P1_Brake", N_("Brake")},
-        {"P1_Steer_Left", N_("Steer left (all the way)")},
-        {"P1_Steer_Right", N_("Steer right (all the way)")},
-        {"P1_Gas_Digital", N_("Accelerator (all the way)")},
-        {"P1_Brake_Digital", N_("Brake (all the way)")},
+        {"P2_Button4", N_("Player 2: button 4")},
+        {"P2_Button5", N_("Player 2: button 5")},
+        {"P2_Button6", N_("Player 2: button 6")},
+        {"Steering", N_("Steering wheel")},
+        {"Accelerator", N_("Accelerator")},
+        {"Brake", N_("Brake")},
+        {"Accelerator_Digital", N_("Accelerator (all the way)")},
+        {"Brake_Digital", N_("Brake (all the way)")},
         {"ViewChange", N_("Change view")},
-        {"GearUp", N_("Shift up")},
-        {"GearDown", N_("Shift down")},
+        {"ShiftUp", N_("Shift up")},
+        {"ShiftDown", N_("Shift down")},
+        {"GearReverse", N_("Reverse")},
+        {"GearNeutral", N_("Neutral")},
         {"Gear1", N_("Gear 1")},
         {"Gear2", N_("Gear 2")},
         {"Gear3", N_("Gear 3")},
         {"Gear4", N_("Gear 4")},
-        {"GearNeutral", N_("Neutral")},
-        {"P1_LeftLever", N_("Left lever (its engine's thrust)")},
-        {"P1_RightLever", N_("Right lever (its engine's thrust)")},
-        {"VolumeUp", N_("Volume up (ATV Track, Smashing Drive)")},
-        {"VolumeDown", N_("Volume down (ATV Track, Smashing Drive)")},
-        {"LeftBrake", N_("Left brake lever (ATV Track)")},
-        {"RightBrake", N_("Right brake lever (ATV Track)")},
-        {"Horn", N_("Horn, also start (Smashing Drive)")},
-        {"P1_AimX", N_("Sight or gun left and right")},
-        {"P1_AimY", N_("Sight or gun up and down")},
-        {"P1_Water", N_("Trigger (Brave Firefighters: water)")},
-        {"P1_Fog", N_("Fog (Brave Firefighters)")},
-        {"P1_OffScreen", N_("Gun off the screen, reload")},
-        {"P2_AimX", N_("Player 2's sight or gun left and right")},
-        {"P2_AimY", N_("Player 2's sight or gun up and down")},
-        {"P2_Water", N_("Player 2's trigger")},
-        {"P2_Fog", N_("Player 2's fog")},
-        {"P2_OffScreen", N_("Player 2's gun off the screen")},
+        {"Horn", N_("Horn")},
+        {"LeftBrake", N_("Left brake lever")},
+        {"RightBrake", N_("Right brake lever")},
+        {"LeftLever", N_("Left lever (its engine's thrust)")},
+        {"RightLever", N_("Right lever (its engine's thrust)")},
+        {"Elevator", N_("Elevator (wheel pushed, pulled)")},
+        {"Aileron", N_("Aileron (wheel turned)")},
+        {"Rudder", N_("Rudder pedals")},
+        {"ThrustL", N_("Left thrust lever")},
+        {"ThrustR", N_("Right thrust lever")},
+        {"P1_GunX", N_("Sight or gun left and right")},
+        {"P1_GunY", N_("Sight or gun up and down")},
+        {"P1_Trigger", N_("Trigger")},
+        {"P1_Reload", N_("Gun off the screen, reload")},
+        {"P1_Fire2", N_("Second button")},
+        {"P1_Fire3", N_("Third button")},
+        {"P2_GunX", N_("Player 2's sight or gun left and right")},
+        {"P2_GunY", N_("Player 2's sight or gun up and down")},
+        {"P2_Trigger", N_("Player 2's trigger")},
+        {"P2_Reload", N_("Player 2's gun off the screen")},
+        {"P2_Fire2", N_("Player 2's second button")},
+        {"P2_Fire3", N_("Player 2's third button")},
         {"P1_StickX", N_("Analog stick left and right")},
         {"P1_StickY", N_("Analog stick up and down")},
         {"P2_StickX", N_("Player 2's analog stick left and right")},
         {"P2_StickY", N_("Player 2's analog stick up and down")},
-        {"P1_Elevator", N_("Elevator (wheel pushed, pulled)")},
-        {"P1_Aileron", N_("Aileron (wheel turned)")},
-        {"P1_Rudder", N_("Rudder pedals")},
-        {"P1_ThrustL", N_("Left thrust lever")},
-        {"P1_ThrustR", N_("Right thrust lever")},
-        {"P1_Bullet", N_("Bullets (Planet Harriers)")},
-        {"P1_Missile", N_("Missiles (Planet Harriers)")},
-        {"P1_Bomb", N_("Bombs (Planet Harriers)")},
         {"Pause", N_("Pause")},
         {"SaveState", N_("Save the state")},
         {"LoadState", N_("Load the state")},
@@ -145,12 +144,10 @@ const char *actionLabel(const std::string &key)
         {"StateOlder", N_("Older save state")},
         {"Menu", N_("Settings (this window)")},
         {"Back", N_("Back to the picker, or quit")},
+        {"Quit", N_("Quit")},
         {"ShowFps", N_("Show the frame rate")},
         {"NextScreen", N_("Next board's picture (several boards)")},
-        {"Steer", N_("Steering wheel")},
         {"Aim", N_("Stick moving a sight")},
-        {"Gas", N_("Accelerator")},
-        {"Brake", N_("Brake")},
     };
     for (const auto &l : labels)
         if (!strcasecmp(key.c_str(), l.key))
@@ -171,32 +168,27 @@ const char *actionLabel(const std::string &key)
     return key.c_str();
 }
 
-// The game's own control whose row it is (the control itself, not its
-// keys); NULL
-const hl::GameInput *gameInput(const std::string &section, const std::string &key)
+// How a row moves (a switch when unknown)
+hl::Controls::RowKind rowKind(const std::string &key)
 {
-    for (const auto &a : hl::Controls::get().game_inputs())
-        if (!strcasecmp(section.c_str(), a.section.c_str()) && !strcasecmp(key.c_str(), a.key.c_str()))
-            return &a;
-    return NULL;
+    const hl::Controls::RowDef *row = hl::Controls::row_def(key.c_str());
+    return row ? row->kind : hl::Controls::ROW_SWITCH;
 }
 
 bool isSteering(const std::string &key)
 {
-    return !strcasecmp(key.c_str(), "P1_Steer");
+    return !strcasecmp(key.c_str(), "Steering");
 }
 
-// The sights and the stick: an axis each, without a dead zone
+// The sights and the sticks: an axis each, without a dead zone
 bool isPointerAxis(const std::string &key)
 {
-    for (const char *name : {"P1_AimX", "P1_AimY", "P2_AimX", "P2_AimY", "P1_StickX", "P1_StickY"})
-        if (!strcasecmp(key.c_str(), name))
-            return true;
-    return false;
+    const hl::Controls::RowDef *row = hl::Controls::row_def(key.c_str());
+    return row && !strcmp(row->section, "Pointer") && (row->kind == hl::Controls::ROW_LEVER || row->kind == hl::Controls::ROW_AXIS);
 }
 bool isPedal(const std::string &key)
 {
-    return !strcasecmp(key.c_str(), "P1_Gas") || !strcasecmp(key.c_str(), "P1_Brake");
+    return rowKind(key) == hl::Controls::ROW_PEDAL;
 }
 
 // A title bar across the page
@@ -268,7 +260,7 @@ float pedalLevel(const std::string &token, int raw)
     return level < 0 ? 0 : level > 1 ? 1 : level;
 }
 
-// [Config] <Action>_DeadZone of a row, P1_Steer's being Steer_DeadZone
+// [Config] <Row>_DeadZone of a row, a player's without its P<n>_
 double deadzoneOf(const std::string &key)
 {
     std::string k = key;
@@ -403,12 +395,10 @@ void bindingRow(const char *section, const hl::Controls::Row &row, const char *l
         g_capture.append = add;
         g_capture.section = section;
         g_capture.key = row.key;
-        const hl::GameInput *axis = gameInput(section, row.key);
-        if (axis && axis->kind == hl::GameInput::SWITCH)
-            axis = NULL;
-        controls.capture(player, (isPedal(row.key) || (axis && axis->kind == hl::GameInput::PEDAL)) ? hl::Controls::CAPTURE_PEDAL
-                                 : (isSteering(row.key) || isPointerAxis(row.key) || axis) ? hl::Controls::CAPTURE_STEERING
-                                                       : hl::Controls::CAPTURE_BUTTON);
+        hl::Controls::RowKind kind = rowKind(row.key);
+        controls.capture(player, kind == hl::Controls::ROW_PEDAL ? hl::Controls::CAPTURE_PEDAL
+                                 : (kind == hl::Controls::ROW_AXIS || kind == hl::Controls::ROW_LEVER) ? hl::Controls::CAPTURE_STEERING
+                                                                                                         : hl::Controls::CAPTURE_BUTTON);
     }
     ImGui::SameLine();
     ImGui::BeginDisabled(mine.empty());
@@ -548,27 +538,40 @@ void mappingPage()
     if (ImGui::BeginChild("##bindings", ImVec2(0, 0), ImGuiChildFlags_Borders))
     {
         // The game running's own controls first, under its names: the rows
-        // they read, and an axis's keys
+        // they read (each once), and an axis's keys
         struct Own
         {
             std::string section, label;
             hl::Controls::Row row;
         };
         std::vector<Own> own;
-        for (const auto &in : controls.game_inputs())
+        std::vector<const hl::Controls::RowDef *> seen;
+        std::vector<std::pair<const hl::Controls::RowDef *, std::string>> roles;
+        for (const auto &p : hl::GameControls::get().places())
+            if (std::find(seen.begin(), seen.end(), p.row) == seen.end())
+            {
+                seen.push_back(p.row);
+                roles.push_back({p.row, p.label});
+            }
+        if (!hl::GameControls::get().gears().empty())
+            for (const char *key : {"ShiftUp", "ShiftDown", "GearReverse", "GearNeutral", "Gear1", "Gear2", "Gear3", "Gear4"})
+                roles.push_back({hl::Controls::row_def(key), ""});
+        for (const auto &r : roles)
         {
             static const struct
             {
                 const char *suffix, *more;
             } parts[] = {{"", ""}, {"_Left", N_(" (down, left)")}, {"_Right", N_(" (up, right)")}, {"_Digital", N_(" (a key)")}};
+            if (!r.first)
+                continue;
             for (const auto &part : parts)
             {
-                if (*part.suffix && in.kind == hl::GameInput::SWITCH)
-                    break;
-                std::string key = in.key + part.suffix;
-                for (const auto &row : controls.rows(in.section.c_str()))
+                std::string key = std::string(r.first->key) + part.suffix;
+                std::string name = r.second.empty() ? std::string(actionLabel(key))
+                                                     : r.second + (*part.more ? tr(part.more) : "") + "  (" + actionLabel(r.first->key) + ")";
+                for (const auto &row : controls.rows(r.first->section))
                     if (!strcasecmp(row.key.c_str(), key.c_str()))
-                        own.push_back({in.section, in.label + (*part.more ? tr(part.more) : "") + "  (" + actionLabel(key) + ")", row});
+                        own.push_back({r.first->section, name, row});
             }
         }
         if (!own.empty())
@@ -588,9 +591,14 @@ void mappingPage()
                 }
                 ImGui::EndTable();
             }
+            ImGui::Spacing();
         }
+        // The others, all the games' rows: folded while a game runs
+        bool all = own.empty() || ImGui::CollapsingHeader(tr("All the controls"));
         for (const Section &s : kSections)
         {
+            if (!all)
+                break;
             std::vector<hl::Controls::Row> rows = controls.rows(s.name);
             if (rows.empty())
                 continue;
@@ -736,9 +744,9 @@ void drawShifter()
                                    "gear to another passes through neutral this long, as a\n"
                                    "real lever does."));
     ImGui::PushTextWrapPos(0.0f);
-    ImGui::TextDisabled("%s", tr("NASCAR Arcade's four gears: Shift up and Shift down a gear at each press, or an H shifter's "
-                                 "positions (Gear 1 to 4, Neutral), in the Driving section of a device's bindings. The game "
-                                 "asks for AUTOMATIC or MANUAL at the start of a race."));
+    ImGui::TextDisabled("%s", tr("The gear levers held in their positions (NASCAR Arcade, 18 Wheeler, Crazy Taxi...): Shift up and "
+                                 "Shift down a position at each press, or an H shifter's positions (Reverse, Neutral, Gear 1 to "
+                                 "4), in the Driving section of a device's bindings."));
     ImGui::PopTextWrapPos();
     if (!changed)
         return;
@@ -886,79 +894,59 @@ void drawBackgroundInput()
                                    "works with the focus."));
 }
 
-// What the game reads now: the switches, the wheel and the pedals
+// What the game reads now: its controls, each once, and its gear
 void drawGameInputs()
 {
-    static const hl::Action switches[] = {
-        hl::ACTION_TEST,    hl::ACTION_SERVICE, hl::ACTION_COIN1,   hl::ACTION_COIN2,   hl::ACTION_START1,
-        hl::ACTION_UP,      hl::ACTION_DOWN,    hl::ACTION_LEFT,    hl::ACTION_RIGHT,   hl::ACTION_BUTTON1,
-        hl::ACTION_BUTTON2, hl::ACTION_BUTTON3, hl::ACTION_BUTTON4, hl::ACTION_CARD,    hl::ACTION_VIEW_CHANGE,
-        hl::ACTION_VOLUME_UP, hl::ACTION_VOLUME_DOWN, hl::ACTION_LEFT_BRAKE, hl::ACTION_RIGHT_BRAKE, hl::ACTION_HORN,
-    };
-    hl::Controls &controls = hl::Controls::get();
+    hl::GameControls &game = hl::GameControls::get();
+    std::vector<const hl::Controls::RowDef *> seen;
     if (!ImGui::BeginTable("##game", 2, ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_RowBg))
         return;
     ImGui::TableSetupColumn("##input", ImGuiTableColumnFlags_WidthStretch, 0.4f);
     ImGui::TableSetupColumn("##value", ImGuiTableColumnFlags_WidthStretch, 0.6f);
-    for (hl::Action a : switches)
+    for (const auto &p : game.places())
     {
-        const char *section, *key;
-        if (!hl::Input::row_of(a, &section, &key))
+        if (std::find(seen.begin(), seen.end(), p.row) != seen.end())
             continue;
+        seen.push_back(p.row);
+        ImGui::PushID(p.row->key);
         ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(0);
         ImGui::AlignTextToFramePadding();
-        ImGui::TextUnformatted(actionLabel(key));
+        ImGui::TextUnformatted(p.label.empty() ? actionLabel(p.row->key) : p.label.c_str());
         ImGui::TableSetColumnIndex(1);
-        pressDot(controls.pressed(section, key));
+        double v = game.value(p.row->key);
+        switch (p.row->kind)
+        {
+            case hl::Controls::ROW_AXIS:
+            case hl::Controls::ROW_LEVER:
+                centreBar("##axis", v, 0.0);
+                break;
+            case hl::Controls::ROW_PEDAL:
+            {
+                char text[16];
+                snprintf(text, sizeof text, "%d%%", (int)(v * 100.0 + 0.5));
+                ImGui::ProgressBar((float)v, ImVec2(-FLT_MIN, 0), text);
+                break;
+            }
+            default:
+                pressDot(v > 0.5);
+                break;
+        }
+        ImGui::PopID();
     }
-    ImGui::TableNextRow();
-    ImGui::TableSetColumnIndex(0);
-    ImGui::AlignTextToFramePadding();
-    ImGui::TextUnformatted(tr("Steering wheel"));
-    ImGui::TableSetColumnIndex(1);
-    centreBar("##steer", controls.axis("Driving", "P1_Steer"), 0.0);
-    static const char *pedals[2] = {"P1_Gas", "P1_Brake"};
-    for (const char *p : pedals)
+    // The gear lever's gear, as the game last read it
+    if (!game.gears().empty())
     {
         ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(0);
         ImGui::AlignTextToFramePadding();
-        ImGui::TextUnformatted(actionLabel(p));
+        ImGui::TextUnformatted(tr("Gear"));
         ImGui::TableSetColumnIndex(1);
-        float v = (float)controls.pedal("Driving", p);
-        char text[16];
-        snprintf(text, sizeof text, "%d%%", (int)(v * 100.0f + 0.5f));
-        ImGui::ProgressBar(v, ImVec2(-FLT_MIN, 0), text);
-    }
-    // NASCAR Arcade's gear, as the game last read it
-    ImGui::TableNextRow();
-    ImGui::TableSetColumnIndex(0);
-    ImGui::AlignTextToFramePadding();
-    ImGui::TextUnformatted(tr("Gear (NASCAR Arcade)"));
-    ImGui::TableSetColumnIndex(1);
-    {
-        unsigned gear = hl::Gearbox::get().engaged();
-        if (gear)
-            ImGui::Text("%u", gear);
+        int gear = hl::Gearbox::get().engaged();
+        if (gear > 0)
+            ImGui::Text("%d", gear);
         else
-            ImGui::TextUnformatted(tr("N"));
-    }
-    // Star Wars: Racer Arcade's levers, as TWIN_LEVERS makes them
-    double levers[2];
-    hl::twin_lever_thrusts(&levers[0], &levers[1]);
-    static const char *leverLabels[2] = {N_("Left lever (Star Wars: Racer Arcade)"),
-                                         N_("Right lever (Star Wars: Racer Arcade)")};
-    for (int i = 0; i < 2; i++)
-    {
-        ImGui::TableNextRow();
-        ImGui::TableSetColumnIndex(0);
-        ImGui::AlignTextToFramePadding();
-        ImGui::TextUnformatted(tr(leverLabels[i]));
-        ImGui::TableSetColumnIndex(1);
-        char text[16];
-        snprintf(text, sizeof text, "%d%%", (int)(levers[i] * 100.0 + 0.5));
-        ImGui::ProgressBar((float)levers[i], ImVec2(-FLT_MIN, 0), text);
+            ImGui::TextUnformatted(gear < 0 ? tr("R") : tr("N"));
     }
     ImGui::EndTable();
 }
@@ -1084,7 +1072,7 @@ void drawControlsTab()
     header(tr("Steering wheel"));
     drawWheel();
 
-    header(tr("Gear shifter (NASCAR Arcade)"));
+    header(tr("Gear lever"));
     drawShifter();
 
     header(tr("Levers (Star Wars: Racer Arcade)"));

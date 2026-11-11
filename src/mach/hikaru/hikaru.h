@@ -94,7 +94,6 @@ public:
 	~Hikaru ();
 
 	int run_frame () override;
-	bool has_invertible_stick () const override;
 	void on_reset (hl::ResetType type) override;
 	int on_load_state (hl::State *state) override;
 	int on_save_state (hl::State *state) override;

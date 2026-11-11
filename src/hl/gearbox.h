@@ -20,44 +20,43 @@
 #define __HL_GEARBOX_H__
 
 #include <cstdint>
+#include <vector>
 
 namespace hl {
 
-/* A cabinet's gear lever, four gears and neutral (NASCAR Arcade's), from the
- * player's controls, as sm2-emu has it: an H shifter's positions (Gear1 to
- * Gear4, GearNeutral in controls.ini), a button held each while the lever is
- * there; paddles (GearUp, GearDown) a gear up or down each press. A position
- * held wins. With none held, an H shifter's lever is in neutral
+/* A cabinet's gear lever, held in its positions: the gears the game's
+ * "gearbox" has (-1 reverse, 0 neutral, 1 to 4: GameControls::gears), from
+ * the player's controls, as sm2-emu has them. An H shifter's positions
+ * (controls.ini's GearReverse, GearNeutral, Gear1 to Gear4), a button held
+ * each while the lever is there; paddles (ShiftUp, ShiftDown) a position up
+ * or down each press, in the gears' order. A position held wins. With none
+ * held, an H shifter's lever is in neutral when the game has one
  * (SHIFTER_NEUTRAL), else the last gear stays; a paddle's shift from a gear
  * to another goes through neutral SHIFT_NEUTRAL_MS. Looked at once a frame
  * of the machine's, as the game polls its switches. */
 class Gearbox {
 public:
 	static Gearbox	&get ();
-
-	/* The gear engaged in that frame, 0 (neutral) to 4 */
-	unsigned	 gear (uint64_t frame);
+	/* The gear engaged in that frame, among gears (empty: 0) */
+	int		 gear (uint64_t frame, const std::vector<int> &gears);
 	/* The one of the last frame looked at, for the settings' page */
-	unsigned	 engaged () const { return current_out; }
-	/* In neutral, as a game starts */
+	int		 engaged () const { return current_out; }
+	/* In neutral (or the first gear without one), as a game starts */
 	void		 reset ();
-	/* The agent's gear, 0 to 4, over the controls; -1 the controls' again */
+	/* The agent's gear over the controls; NO_GEAR the controls' again */
+	enum { NO_GEAR = -100 };
 	void		 hold (int gear) { agent_gear = gear; }
 	int		 held () const { return agent_gear; }
-	/* A cabinet with one, its I/O board's (the agent's "Gear" input) */
-	void		 attach (bool on) { present = on; }
-	bool		 attached () const { return present; }
 
 private:
 	Gearbox () = default;
 
-	unsigned	 current = 0;		/* the paddles' gear */
-	unsigned	 current_out = 0;	/* the gear the game got */
+	int		 current = 0;		/* the paddles' gear */
+	int		 current_out = 0;	/* the gear the game got */
 	unsigned	 crossing = 0;		/* frames left in neutral */
 	bool		 up_held = false, down_held = false;
 	uint64_t	 last_frame = ~0ull;
-	int		 agent_gear = -1;
-	bool		 present = false;
+	int		 agent_gear = NO_GEAR;
 };
 
 } /* namespace hl */

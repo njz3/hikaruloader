@@ -23,6 +23,7 @@
 #include <cstring>
 
 #include "hl/core.h"
+#include "hl/gamecontrols.h"
 #include "hl/input.h"
 #include "hl/paths.h"
 
@@ -104,7 +105,7 @@ ClubKartCard::save ()
 void
 ClubKartCard::frame ()
 {
-	bool held = hl::Input::action (hl::ACTION_CARD);
+	bool held = hl::GameControls::get ().pressed ("Card");
 
 	if (held && !was_held) {
 		inserted = load ();

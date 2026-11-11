@@ -1913,3 +1913,75 @@ msgstr "Manette des gaz gauche"
 
 msgid "Right thrust lever"
 msgstr "Manette des gaz droite"
+
+msgid "Player 1"
+msgstr "Joueur 1"
+
+msgid "Player 2"
+msgstr "Joueur 2"
+
+msgid "Flying"
+msgstr "Avion"
+
+msgid "Guns, mice and analog sticks"
+msgstr "Pistolets, souris et manches analogiques"
+
+msgid "Volume up"
+msgstr "Volume plus"
+
+msgid "Volume down"
+msgstr "Volume moins"
+
+msgid "Player 2: button 4"
+msgstr "Joueur 2 : bouton 4"
+
+msgid "Player 2: button 5"
+msgstr "Joueur 2 : bouton 5"
+
+msgid "Player 2: button 6"
+msgstr "Joueur 2 : bouton 6"
+
+msgid "Reverse"
+msgstr "Marche arrière"
+
+msgid "Horn"
+msgstr "Klaxon"
+
+msgid "Left brake lever"
+msgstr "Levier de frein gauche"
+
+msgid "Right brake lever"
+msgstr "Levier de frein droit"
+
+msgid "Trigger"
+msgstr "Gâchette"
+
+msgid "Second button"
+msgstr "Deuxième bouton"
+
+msgid "Third button"
+msgstr "Troisième bouton"
+
+msgid "Player 2's second button"
+msgstr "Deuxième bouton du joueur 2"
+
+msgid "Player 2's third button"
+msgstr "Troisième bouton du joueur 2"
+
+msgid "Next board's picture (several boards)"
+msgstr "Image de la carte suivante (plusieurs cartes)"
+
+msgid "All the controls"
+msgstr "Tous les contrôles"
+
+msgid "The gear levers held in their positions (NASCAR Arcade, 18 Wheeler, Crazy Taxi...): Shift up and Shift down a position at each press, or an H shifter's positions (Reverse, Neutral, Gear 1 to 4), in the Driving section of a device's bindings."
+msgstr "Les leviers de vitesses qui restent en position (NASCAR Arcade, 18 Wheeler, Crazy Taxi...) : Rapport sup. et Rapport inf. changent de position à chaque appui, ou les positions d'une grille en H (Marche arrière, Point mort, Rapports 1 à 4), dans la section Conduite des associations d'un périphérique."
+
+msgid "Gear"
+msgstr "Rapport"
+
+msgid "R"
+msgstr "R"
+
+msgid "Gear lever"
+msgstr "Levier de vitesses"

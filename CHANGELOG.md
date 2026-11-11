@@ -26,16 +26,28 @@ Next version
   OUTPUT TEST: start, flap up and down, view change, landing gear up and
   down. On the NAOMI cabinets of several boards, the outputs are the first
   board's only: the others' no longer put theirs over them.
-- Fixed: the Controls tab changed nothing for the NAOMI and Atomiswave games,
-  which read rows of their own: those rows are on each device's page now.
 - A game's own bindings: *Save these bindings for <set> alone* in the Controls
   tab writes `controls/<set>.ini`, read instead of `controls.ini` for that game.
 - Airline Pilots' five analog inputs can be bound (control wheel's elevator and
   aileron, rudder pedal, thrust levers L and R, as its INPUT TEST names them);
   they were missing or fixed at an end.
-- The NAOMI games' own controls bound once for all of them, under common
-  names, and shown first in the Controls tab under the game's names: the view
-  change (it reached no NAOMI game: Initial D, King of Route 66, 18 Wheeler,
+- The controls unified: every game reads the same rows of `controls.ini`,
+  whatever its machine (Hikaru, NAOMI, Atomiswave, Gaelco); `[Naomi]` and
+  `[Gaelco]` are gone, `[Digital]` is `[Player1]` and `[Player2]`, the rows
+  have their common names (`Steering`, `Accelerator`, `Coin1`, `Card`,
+  `ShiftUp`, `P1_GunX`, `P1_Trigger`...). Which control is where on each
+  game's board is in `data/games.json` (`layouts`, `controls`, `gearbox`).
+  An earlier `controls.ini` is not read as it was: delete it for the new
+  defaults, and bind again.
+- The gear levers held in their positions emulated from Shift up and down
+  or an H shifter's positions: NASCAR Arcade's and F355's H, 18 Wheeler's
+  low, high and reverse, Crazy Taxi's drive and reverse (reverse new:
+  `GearReverse`). Their switches no longer take a player's stick.
+- Air Trix's yaw and roll on an analog stick (its roll stayed at 00).
+- `INVERT_STICK_Y` (was `PHARRIER_INVERT_Y`): every analog stick game's, a
+  game's own setting to save for it alone.
+- The games' own controls shown first in the Controls tab, under the game's
+  names: the view change (it reached no NAOMI game: Initial D, King of Route 66, 18 Wheeler,
   Club Kart Cycraft, Wave Runner GP...), the gear lever (Initial D, 18 Wheeler,
   Crazy Taxi, Jambo! Safari), the flying games' controls (`[Flight]`: Airline
   Pilots, Strike Fighter), the light guns' sights, trigger and reload
@@ -46,7 +58,7 @@ Next version
   swapped (its brake on the second channel, its accelerator on the third).
 - The agent mode presses the gear lever (ShiftUp, ShiftDown), player 2's start
   (Start2) and the game's own controls: a flying game's (Elevator, Aileron,
-  Rudder, LeverL, LeverR), the light guns' (GunX, GunY, Trigger, Offscreen, and
+  Rudder, ThrustL, ThrustR), the light guns' (GunX, GunY, Trigger, Offscreen, and
   GunX2... for player 2), the analog sticks' (StickX, StickY); `inputs` lists
   those of the game running.
 - A game's own settings: *Save for <set> alone* in the settings writes those

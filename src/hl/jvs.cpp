@@ -27,6 +27,7 @@
 #include "hl/state.h"
 #include "hl/outputs.h"
 #include "hl/gearbox.h"
+#include "hl/gamecontrols.h"
 #include "hl/machine.h"
 #include "hl/config.h"
 
@@ -638,90 +639,19 @@ SegaIoBoard::functions (std::vector<uint8_t> &out)
 void
 SegaIoBoard::count_coins ()
 {
-	static const Action slots[2] = { ACTION_COIN1, ACTION_COIN2 };
+	uint32_t slots;
 	unsigned i;
 
 	if (!cabinet)
 		return;
+	/* The game's coin chutes: "coin:1" and "coin:2" */
+	slots = GameControls::get ().switches ("coin", mach->frame);
 	for (i = 0; i < 2; i++) {
-		bool held = Input::action (slots[i]);
+		bool held = (slots >> (i + 1)) & 1;
 		if (held && !coin_held[i])
 			coin[i] = (coin[i] + 1) & 0x3FFF;
 		coin_held[i] = held;
 	}
-}
-
-/* A player's switches, closed at 1. Bits from the top: start, service, up,
- * down, left, right, push 1 to 7; player 1's from the actions, buttons 5
- * and 6 and player 2's from their rows in controls.ini (a NAOMI game's
- * [Naomi] ones first); swap_left_right: see SegaIoBoard */
-static uint16_t
-switch_word (unsigned player, bool swap_left_right, SegaIoBoard::PointerGame game)
-{
-	static const Action player1[] = {
-		ACTION_START1, ACTION_SERVICE, ACTION_UP, ACTION_DOWN, ACTION_LEFT,
-		ACTION_RIGHT, ACTION_BUTTON1, ACTION_BUTTON2, ACTION_BUTTON3, ACTION_BUTTON4,
-	};
-	uint16_t bits = 0;
-	unsigned i;
-
-	Controls &c = Controls::get ();
-
-	if (player == 0) {
-		for (i = 0; i < NUMELEM (player1); i++)
-			if (Input::action (player1[i]))
-				bits |= 0x8000 >> i;
-		if (c.pressed ("Digital", "P1_Button5"))
-			bits |= 0x0020;
-		if (c.pressed ("Digital", "P1_Button6"))
-			bits |= 0x0010;
-	} else if (player == 1) {
-		static const char *player2[] = {
-			"P2_Start", "P2_Service", "P2_Up", "P2_Down", "P2_Left", "P2_Right",
-			"P2_Button1", "P2_Button2", "P2_Button3", "P2_Button4", "P2_Button5", "P2_Button6",
-		};
-		for (i = 0; i < NUMELEM (player2); i++)
-			if (c.pressed (i < 2 ? "Common" : "Digital", player2[i]))
-				bits |= 0x8000 >> i;
-	}
-	/* A nozzle's or a stick's own buttons: push 1, 2 and 3. Brave
-	 * Firefighters: water, off the screen, fog; Planet Harriers: bullets,
-	 * missiles, bombs */
-	if (game == SegaIoBoard::POINTER_BRAVEFF && player < 2) {
-		if (c.pressed ("Pointer", player ? "P2_Water" : "P1_Water"))
-			bits |= 0x0200;
-		if (c.pressed ("Pointer", player ? "P2_OffScreen" : "P1_OffScreen"))
-			bits |= 0x0100;
-		if (c.pressed ("Pointer", player ? "P2_Fog" : "P1_Fog"))
-			bits |= 0x0080;
-		if (player == 1 && c.pressed ("Common", "P2_Start"))
-			bits |= 0x8000;
-	} else if (game == SegaIoBoard::POINTER_PHARRIER && player == 0) {
-		if (c.pressed ("Pointer", "P1_Bullet"))
-			bits |= 0x0200;
-		if (c.pressed ("Pointer", "P1_Missile"))
-			bits |= 0x0100;
-		if (c.pressed ("Pointer", "P1_Bomb"))
-			bits |= 0x0080;
-	}
-	if (swap_left_right)
-		bits = (bits & ~0x0C00) | ((bits & 0x0800) >> 1) | ((bits & 0x0400) << 1);
-	return bits;
-}
-
-/* A row of controls.ini held: through its action when it has one (the
- * shell's and the agent's presses, the platform's rows: hl::Input), else
- * its bindings */
-static bool
-row_pressed (const char *section, const char *key)
-{
-	for (int a = 0; a < NUM_ACTIONS; a++) {
-		const char *s, *k;
-
-		if (Input::row_of ((Action) a, &s, &k) && !strcasecmp (s, section) && !strcasecmp (k, key))
-			return Input::action ((Action) a);
-	}
-	return Controls::get ().pressed (section, key);
 }
 
 bool
@@ -736,12 +666,15 @@ SegaIoBoard::switches (unsigned players, unsigned bytes, std::vector<uint8_t> &o
 	/* HR_LOG_INPUTS=1: what the game reads, at each change */
 	static const bool log_inputs = getenv ("HR_LOG_INPUTS") != NULL;
 	if (log_inputs) {
-		static uint32_t last = ~0u;
-		uint32_t now = ((uint32_t) SegaIoBoard::player_bits (0) << 1) | (Input::action (ACTION_TEST) ? 1 : 0);
-		if (now != last)
-			HL_PRINT ("inputs: frame %llu, test %u, player 1 %04X",
-			          (unsigned long long) mach->frame, now & 1, now >> 1);
-		last = now;
+		static uint64_t last = ~0ull;
+		uint64_t now = ((uint64_t) SegaIoBoard::player_bits (1) << 17) |
+		               ((uint64_t) SegaIoBoard::player_bits (0) << 1) | (system_bits () >> 7);
+		if (now != last && cabinet)
+			HL_PRINT ("inputs: frame %llu, test %u, player 1 %04X, player 2 %04X",
+			          (unsigned long long) mach->frame, (unsigned) (now & 1),
+			          (unsigned) ((now >> 1) & 0xFFFF), (unsigned) (now >> 17));
+		if (cabinet)
+			last = now;
 	}
 	out.push_back (system_bits ());
 	for (p = 0; p < players; p++) {
@@ -755,21 +688,18 @@ SegaIoBoard::switches (unsigned players, unsigned bytes, std::vector<uint8_t> &o
 uint8_t
 SegaIoBoard::system_bits ()
 {
-	return (cabinet && Input::action (ACTION_TEST)) ? 0x80 : 0x00;
+	/* TEST in bit 7: "sys:7" */
+	return cabinet ? (uint8_t) GameControls::get ().switches ("sys", mach->frame) : 0x00;
 }
 
 uint16_t
 SegaIoBoard::player_bits (unsigned player)
 {
-	uint16_t bits;
+	static const char *ports[2] = { "p1", "p2" };
 
-	if (!cabinet)
+	if (!cabinet || player > 1)
 		return 0;
-	bits = switch_word (player, swap_left_right, pointer_game);
-	for (const GameInput &in : game_switches)
-		if (in.player == player && row_pressed (in.section.c_str (), in.key.c_str ()))
-			bits |= in.mask;
-	return bits;
+	return (uint16_t) GameControls::get ().switches (ports[player], mach->frame);
 }
 
 /* The wheel and the pedals read from the controllers once a call for
@@ -821,107 +751,18 @@ SegaIoBoard::coin_change (unsigned slot, int count)
 	return true;
 }
 
-/* COMBINED: the accelerator the thrust of both, the wheel the difference
- * around it, the engine on the side away from the turn pushing harder (the
- * pod turns right with the left engine's thrust alone, measured); the
- * accelerator up, no thrust, as with the levers at rest */
-void
-twin_lever_thrusts (double *left, double *right)
-{
-	Controls &c = Controls::get ();
-
-	if (Config::get ()->twin_levers == TWIN_LEVERS_ORIGINAL) {
-		*left = c.pedal ("Driving", "P1_LeftLever");
-		*right = c.pedal ("Driving", "P1_RightLever");
-	} else {
-		double thrust = c.pedal ("Driving", "P1_Gas"), steer = c.axis ("Driving", "P1_Steer");
-
-		*left = std::clamp (thrust * (1.0 + steer), 0.0, 1.0);
-		*right = std::clamp (thrust * (1.0 - steer), 0.0, 1.0);
-	}
-}
-
+/* The game's channels from its controls (GameControls), those the shell or
+ * the agent set kept */
 void
 SegaIoBoard::read_controls ()
 {
-	Controls &c = Controls::get ();
+	GameControls &g = GameControls::get ();
 
 	if (!cabinet)
 		return;
-	/* Star Wars: Racer Arcade's levers: C000 at rest, 4000 pushed all the
-	 * way, as the game's CALIBRATION has them from the factory (MAX C0,
-	 * MIN 40); the thrust grows from C0 to 50 (468 km/h from 50). At rest
-	 * while the agent drives (the controls not read) */
-	if (twin_levers) {
-		double left = 0.0, right = 0.0;
-
-		if (c.is_enabled ())
-			twin_lever_thrusts (&left, &right);
-		if (!analog_set[0])
-			analog[0] = (uint16_t) lround (0xC000 - left * 0x8000);
-		if (!analog_set[1])
-			analog[1] = (uint16_t) lround (0xC000 - right * 0x8000);
-		if (!analog_set[2] && c.is_enabled ())
-			analog[2] = (uint16_t) lround (c.pedal ("Driving", "P1_Brake") * 0xFFFF);
-		return;
-	}
-	if (!c.is_enabled ())
-		return;
-	if (pointer_game != POINTER_NONE) {
-		/* From the cabinets, as Odin's game list has them. Brave
-		 * Firefighters: each player's sight on 2 channels, low to the
-		 * left and the top; Planet Harriers: its stick, channel 0 low
-		 * towards the player, 1 low to the left */
-		static const struct { const char *key; int sign; } braveff[4] = {
-			{ "P1_AimX", 1 }, { "P1_AimY", 1 }, { "P2_AimX", 1 }, { "P2_AimY", 1 },
-		}, pharrier[2] = {
-			{ "P1_StickY", -1 }, { "P1_StickX", 1 },
-		};
-		const auto *map = pointer_game == POINTER_BRAVEFF ? braveff : pharrier;
-		unsigned n = pointer_game == POINTER_BRAVEFF ? 4 : 2;
-
-		/* A controller moves Brave Firefighters' sights (Controls::aim),
-		 * a mouse places them; Planet Harriers' stick is where the
-		 * controller's stick is (moved, the game makes its hero jump
-		 * once at the edge) */
-		for (unsigned i = 0; i < n; i++) {
-			int sign = map[i].sign;
-
-			if (pointer_game == POINTER_PHARRIER && i == 0 && Config::get ()->pharrier_invert_y)
-				sign = -sign;
-			if (!analog_set[i])
-				analog[i] = (uint16_t) lround (0x8000 + (pointer_game == POINTER_BRAVEFF ?
-				                                         c.aim ("Pointer", map[i].key) :
-				                                         c.axis ("Pointer", map[i].key)) * sign * 0x7FFF);
-		}
-		return;
-	}
-	/* The game's own inputs: an axis or a lever 8000 in the middle, a pedal
-	 * from 0; the channels it leaves out as they are */
-	if (!analog_inputs.empty ()) {
-		for (unsigned i = 0; i < analog_inputs.size () && i < 8; i++) {
-			const GameInput &in = analog_inputs[i];
-			const char *section = in.section.c_str (), *key = in.key.c_str ();
-
-			if (in.key.empty () || analog_set[i])
-				continue;
-			if (in.kind == GameInput::PEDAL)
-				analog[i] = (uint16_t) lround (c.pedal (section, key) * 0xFFFF);
-			else
-				analog[i] = (uint16_t) lround (0x8000 + (in.kind == GameInput::LEVER ?
-				                                         c.aim (section, key) :
-				                                         c.axis (section, key)) * 0x7FFF);
-		}
-		return;
-	}
-	/* The wheel from 0 (left) to FFFF, its middle 8000; the pedals from 0
-	 * (up) */
-	if (!analog_set[0])
-		analog[0] = (uint16_t) lround (0x8000 + c.axis ("Driving", "P1_Steer") * 0x7FFF);
-	if (!analog_set[1])
-		analog[1] = (uint16_t) lround (c.pedal ("Driving", "P1_Gas") * 0xFFFF);
-	if (!analog_set[2])
-		analog[2] = (uint16_t) lround (c.pedal ("Driving", "P1_Brake") * 0xFFFF);
+	for (unsigned i = 0; i < 8; i++)
+		if (!analog_set[i])
+			g.analog ("an", i, &analog[i]);
 }
 
 bool
@@ -971,9 +812,6 @@ SegaIoBoard::reset (ResetType type)
 	memset (analog, 0, sizeof (analog));
 	memset (analog_set, 0, sizeof (analog_set));
 	analog[0] = 0x8000;
-	for (unsigned i = 0; i < analog_inputs.size () && i < 8; i++)
-		if (!analog_inputs[i].key.empty () && analog_inputs[i].kind != GameInput::PEDAL)
-			analog[i] = 0x8000;
 	coin[0] = coin[1] = 0;
 	coin_held[0] = coin_held[1] = false;
 	output = 0;
@@ -1146,13 +984,10 @@ SegaIoBoard13844::SegaIoBoard13844 (Machine *mach, JvsBus *bus, DriveBoard *driv
 	output2 = 0;
 	/* Outputs 15 to 22 are the drive board's */
 	Outputs::get ()->board (14, drive != NULL);
-	Gearbox::get ().attach (true);
 }
 
 SegaIoBoard13844::~SegaIoBoard13844 ()
 {
-	Gearbox::get ().attach (false);
-	Gearbox::get ().hold (-1);
 }
 
 const char *
@@ -1190,10 +1025,6 @@ SegaIoBoard13844::switches (unsigned players, unsigned bytes, std::vector<uint8_
 
 	if (!SegaIoBoard::switches (players, bytes, out))
 		return false;
-	if (players >= 1 && bytes >= 1)
-		out[first + 1] |= (uint8_t) (view_bits () >> 8);
-	if (players >= 2 && bytes >= 1)
-		out[first + 1 + bytes] |= (uint8_t) (shifter_bits () >> 8);
 	if (!drive || bytes < 2)
 		return true;
 	drive->set_wheel ((uint8_t) (analog[0] >> 8));
@@ -1222,10 +1053,6 @@ SegaIoBoard13844::player_bits (unsigned player)
 	uint16_t bits = SegaIoBoard::player_bits (player);
 	unsigned k;
 
-	if (player == 0)
-		bits |= view_bits ();
-	if (player == 1)
-		bits |= shifter_bits ();
 	if (!drive || player > 1)
 		return bits;
 	if (player == 0) {
@@ -1279,28 +1106,6 @@ SegaIoBoard13844::reset (ResetType type)
 	 * times the square root of its top byte over 256, silent under 8) */
 	analog[4] = 0xFFFF;
 	Gearbox::get ().reset ();
-}
-
-/* NASCAR Arcade's gear lever on player 2's switches, as its INPUT TEST's
- * GEAR POSITION reads them: up for gears 1 and 3, down for 2 and 4, left
- * with them for 1 and 2 (the H's left half); none in neutral */
-uint16_t
-SegaIoBoard13844::shifter_bits ()
-{
-	static const uint16_t bits[5] = { 0x0000, 0x2800, 0x1800, 0x2000, 0x1000 };
-	/* As the INPUT TEST reads them: low on down, high on up, reverse
-	 * on down and left */
-	static const uint16_t three[5] = { 0x0000, 0x1000, 0x2000, 0x1800, 0x0000 };
-
-	return (three_position_lever ? three : bits)[Gearbox::get ().gear (mach->frame) % 5];
-}
-
-/* NASCAR Arcade's view change button: player 1's down, as its INPUT TEST's
- * VIEW CHANGE reads it */
-uint16_t
-SegaIoBoard13844::view_bits ()
-{
-	return Input::action (ACTION_VIEW_CHANGE) ? 0x1000 : 0x0000;
 }
 
 int

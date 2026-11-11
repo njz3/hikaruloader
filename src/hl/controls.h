@@ -24,7 +24,6 @@
 #include <vector>
 
 #include "hl/core.h"
-#include "hl/games.h"
 
 union SDL_Event;
 
@@ -34,8 +33,8 @@ namespace hl {
  * a file of its own beside hikaruloader.ini, in linuxloader's syntax (the
  * other loaders read the same file):
  *
- *	[Common], [Digital], [Driving], [Emulator]
- *		ACTION = BINDING, BINDING + BINDING, ...
+ *	[Common], [Player1], [Player2], [Driving], [Flight], [Pointer], [Emulator]
+ *		ROLE = BINDING, BINDING + BINDING, ... (the rows: row_def)
  *	KEY_<name>		a key, read while the window has the focus
  *	JOY<n>_BUTTON_<b>, JOY<n>_HAT<h>_<UP|DOWN|LEFT|RIGHT>, JOY<n>_AXIS_<a>[suffix]
  *	GC<n>_BUTTON_<name>, GC<n>_AXIS_<name>[suffix]
@@ -61,22 +60,30 @@ class Controls {
 public:
 	static Controls &get ();
 
-	/* Reads path, written with the defaults when missing (the bindings of
-	 * the old [Controls] of hikaruloader.ini carried over); a file without
+	/* Reads path, written with the defaults when missing; a file without
 	 * a newer default line gets it, the user's lines untouched. Saved to
 	 * save_to when not NULL: the write directory's (hl::Paths), the file
 	 * read beside the program when it is rejected */
 	void		 load (const char *path, const char *save_to = NULL);
 	const char	*path () const { return file.c_str (); }
 
-	/* The game running (NULL: none) and its own controls (Game::analogs
-	 * and switches), shown first in the Controls tab under its names: its
-	 * file, controls/<set>.ini beside controls.ini, read instead when
-	 * there is one */
-	void		 set_game (const char *name, const std::vector<GameInput> &analogs,
-		                   const std::vector<GameInput> &switches);
+	/* A row: its section, its key (a game's role: GameControls), how it
+	 * moves, its default bindings and what it is. KEYS: an axis's or a
+	 * pedal's keys (_Left, _Right, _Digital); CONFIG: a setting */
+	enum RowKind { ROW_SWITCH, ROW_AXIS, ROW_LEVER, ROW_PEDAL, ROW_KEYS, ROW_CONFIG };
+	struct RowDef {
+		const char	*section, *key;
+		RowKind		 kind;
+		const char	*bindings, *note;
+	};
+	/* The row of that key (any section's), NULL none; all of them */
+	static const RowDef *row_def (const char *key);
+	static const RowDef *row_defs (size_t *count);
+
+	/* The game running (NULL: none): its file, controls/<set>.ini beside
+	 * controls.ini, read instead when there is one */
+	void		 set_game (const char *name);
 	const char	*game () const { return game_name.c_str (); }
-	const std::vector<GameInput> &game_inputs () const { return inputs_of_game; }
 	/* That file's path ("" without a game), in use or not */
 	std::string	 game_file () const;
 	bool		 game_file_in_use () const { return !game_name.empty () && file == game_file (); }
@@ -135,11 +142,8 @@ public:
 	 * of one of its bindings, the binding's other inputs held */
 	bool		 pressed_by (const char *section, const char *key, const SDL_Event *event);
 	/* An axis's row: -1 (left) ... +1 (right), its dead zone applied; its
-	 * _Left and _Right rows add the keys' full turns. [Driving] P1_Steer's
+	 * _Left and _Right rows add the keys' full turns. [Driving] Steering's
 	 * joystick axes (a wheel's) go Config::wheel_scale () times further */
-	/* The board running: its section ([Naomi]) is looked at first for
-	 * Digital, Common and Driving's rows; "" none */
-	void		 set_platform (const char *section) { platform = section; }
 	double		 axis (const char *section, const char *key);
 	/* A sight's row, -1 ... +1: a mouse or a light gun puts it where it
 	 * points, a stick and the row's _Left and _Right keys move it, faster
@@ -208,19 +212,16 @@ private:
 	bool		 hidden (const Source &s) const;
 	bool		 guide_held (int player) const;
 	int		 player_of (int instance) const;
-	std::string	 platform;
 	double		 source_axis (const Source &s);
 	double		 source_pedal (const Source &s);
 	double		 deadzone (const char *key) const;
 	double		 axis_before (const SDL_Event *event, int player);
 	void		 open_devices ();
 	void		 close_devices ();
-	void		 migrate_old_bindings ();
 
 	std::string	 file;
 	/* controls.ini's paths, read and written; the game's */
 	std::string	 base_read, base_save, game_name;
-	std::vector<GameInput> inputs_of_game;
 	void		 read (const char *path, const char *save_to);
 	/* The sections in the file's order, each its rows in order */
 	std::vector<std::pair<std::string, std::vector<Row>>> sections;

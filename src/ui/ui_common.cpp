@@ -187,7 +187,7 @@ void drawGameTab(int screens, bool stick)
 
     if (stick)
     {
-        ImGui::Checkbox(tr("Invert the stick's up and down"), &cfg->pharrier_invert_y);
+        ImGui::Checkbox(tr("Invert the stick's up and down"), &cfg->invert_stick_y);
         wrappedNote(tr("A controller moves the stick, and it stays where it is left; a mouse places it."));
     }
     if (screens < 2)

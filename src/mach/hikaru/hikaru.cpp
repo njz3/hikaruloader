@@ -791,12 +791,6 @@ hikaru_keep_nvram (Hikaru *hikaru)
 		hikaru->save_nvram ();
 }
 
-bool
-Hikaru::has_invertible_stick () const
-{
-	return io_board && ((hl::SegaIoBoard *) io_board)->pointer_game == hl::SegaIoBoard::POINTER_PHARRIER;
-}
-
 int
 Hikaru::run_frame ()
 {
@@ -1439,17 +1433,8 @@ hikaru_init (Hikaru *hikaru)
 		hikaru->drive_board = new hl::DriveBoard (mach, program);
 		hikaru->io_board = new hl::SegaIoBoard13844 (mach, hikaru->jvs, hikaru->drive_board);
 	} else {
+		/* Its controls on the board's inputs: hl::GameControls */
 		hikaru->io_board = new hl::SegaIoBoard (mach, hikaru->jvs);
-		/* Its two levers, a pod engine's thrust each, on channels 0
-		 * and 1; its left and right buttons */
-		if (!strcmp (game->name, "swracer")) {
-			((hl::SegaIoBoard *) hikaru->io_board)->twin_levers = true;
-			((hl::SegaIoBoard *) hikaru->io_board)->swap_left_right = true;
-		}
-		if (!strcmp (game->name, "braveff") || !strcmp (game->parent, "braveff"))
-			((hl::SegaIoBoard *) hikaru->io_board)->pointer_game = hl::SegaIoBoard::POINTER_BRAVEFF;
-		if (!strcmp (game->name, "pharrier") || !strcmp (game->parent, "pharrier"))
-			((hl::SegaIoBoard *) hikaru->io_board)->pointer_game = hl::SegaIoBoard::POINTER_PHARRIER;
 	}
 	if (hl::Config::get ()->io_board_program)
 		hikaru_attach_io_program (hikaru);

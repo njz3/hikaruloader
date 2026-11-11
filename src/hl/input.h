@@ -25,46 +25,9 @@
 
 namespace hl {
 
-/* What the player can bind on the controls page: the cabinet's switches and
- * controls the machine reads (the main board's, the JVS I/O board's), and the
- * emulator's own commands. */
+/* The emulator's own commands, rows of controls.ini's [Emulator] (the
+ * game's controls are its roles: hl::GameControls) */
 enum Action {
-	ACTION_TEST,
-	ACTION_SERVICE,
-	ACTION_COIN1,
-	ACTION_COIN2,
-	ACTION_START1,
-	ACTION_UP,
-	ACTION_DOWN,
-	ACTION_LEFT,
-	ACTION_RIGHT,
-	ACTION_BUTTON1,
-	ACTION_BUTTON2,
-	ACTION_BUTTON3,
-	ACTION_BUTTON4,
-	/* The player's card, at a card reader's slot (VON4's) */
-	ACTION_CARD,
-	/* NASCAR Arcade's view change button (player 1's down on its I/O
-	 * board) */
-	ACTION_VIEW_CHANGE,
-	/* A gear lever (NASCAR Arcade's, hl::Gearbox): a gear up or down
-	 * (paddles), an H shifter's positions */
-	ACTION_GEAR_UP,
-	ACTION_GEAR_DOWN,
-	ACTION_GEAR1,
-	ACTION_GEAR2,
-	ACTION_GEAR3,
-	ACTION_GEAR4,
-	ACTION_GEAR_NEUTRAL,
-	/* The Gaelco cabinets' own controls, in a section of their own: never
-	 * the Hikaru's rows, whose buttons mean other things there. ATV Track's
-	 * and Smashing Drive's volume buttons, ATV Track's two brake levers,
-	 * Smashing Drive's horn */
-	ACTION_VOLUME_UP,
-	ACTION_VOLUME_DOWN,
-	ACTION_LEFT_BRAKE,
-	ACTION_RIGHT_BRAKE,
-	ACTION_HORN,
 	ACTION_PAUSE,
 	ACTION_SAVE_STATE,
 	ACTION_LOAD_STATE,
@@ -82,32 +45,19 @@ enum Action {
 	NUM_ACTIONS
 };
 
-/* hikaruloader.ini's old [Controls]: a keyboard key (SDL_Keycode) and a game
- * controller button (SDL_GameControllerButton), SDLK_UNKNOWN and -1 when
- * unbound. Read once, into the new controls.ini (hl::Controls). */
-struct Binding {
-	int key;
-	int button;
-};
-
-/* The actions' state: their inputs in controls.ini (hl::Controls), or the Lua
- * shell's and the agent's. */
+/* The commands' state, and the events' */
 class Input {
 public:
 	/* The raw keys the renderers' debug controls read */
 	static bool		 key (unsigned key);
 	static void		 set_key (unsigned key, bool state);
 
-	/* The name the shell and the agent use, e.g. "TEST" */
-	static const char	*action_name (Action action);
-	/* The old [Controls]'s default, to tell the bindings the user changed */
-	static Binding		 default_binding (Action action);
-	/* The action's row in controls.ini, e.g. "Common" and "Test" */
+	/* The command's row in controls.ini, e.g. "Emulator" and "Pause" */
 	static bool		 row_of (Action action, const char **section, const char **key);
 
-	/* True while one of the action's inputs is held */
+	/* True while one of the command's inputs is held */
 	static bool		 action (Action action);
-	/* The action the SDL event presses (not a key repeat), or -1; with a
+	/* The command the SDL event presses (not a key repeat), or -1; with a
 	 * controller's Guide held, its hotkey's (hl::Controls) */
 	static int		 event_action (const SDL_Event *event);
 
@@ -120,14 +70,9 @@ public:
 
 	/* The game sees no input while the settings window is open */
 	static void		 suspend (bool on);
-	/* Forgets the keys held, and the shell's inputs */
+	static bool		 suspended ();
+	/* Forgets the keys held */
 	static void		 release_all ();
-
-	/* Holds or releases an action for the Lua shell, as if its input
-	 * were */
-	static void		 set_action (Action action, bool state);
-	/* The action named name ("TEST"), or -1 */
-	static int		 find_action (const char *name);
 };
 
 } /* namespace hl */

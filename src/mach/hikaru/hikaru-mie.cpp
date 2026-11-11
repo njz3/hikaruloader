@@ -22,6 +22,7 @@
 #include <functional>
 
 #include "hl/input.h"
+#include "hl/gamecontrols.h"
 #include "hl/config.h"
 #include "hl/state.h"
 
@@ -447,8 +448,8 @@ Mie::gpio_read (unsigned port)
 		 * BIOS took a press for two */
 		bool mainbd = !jvs->line_mode ();
 		return 0xF2 | (eeprom.data_out () ? 0x01 : 0) |
-		       ((mainbd && hl::Input::action (hl::ACTION_SERVICE)) ? 0 : 0x04) |
-		       ((mainbd && hl::Input::action (hl::ACTION_TEST)) ? 0 : 0x08);
+		       ((mainbd && hl::GameControls::get ().pressed ("Service")) ? 0 : 0x04) |
+		       ((mainbd && hl::GameControls::get ().pressed ("Test")) ? 0 : 0x08);
 	}
 	default:
 		/* A: no DIP switches */

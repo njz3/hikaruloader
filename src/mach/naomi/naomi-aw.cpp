@@ -34,6 +34,7 @@
 
 #include <algorithm>
 
+#include "hl/gamecontrols.h"
 #include "hl/controls.h"
 #include "hl/ffb.h"
 #include "hl/input.h"
@@ -350,10 +351,12 @@ AwFlash::load_state (hl::State *state)
  * ===============
  *
  * Dreamcast-like controllers on the Maple bus, two (four on Guilty Gear
- * Isuka). Their two bytes of switches, active low: right, left, down, up,
- * start, 1, 2, 3; then test and service on the first controller's, 4, 5, 6.
- * Maximum Speed and Faster Than Speed have their wheel on the second
- * controller's analogs: steering, gas, brake, twice.
+ * Isuka). Their two bytes of switches, active low, and six analog channels:
+ * the game's controls (hl::GameControls), pad n's switches on "p<n>" (bit 7
+ * right, 6 left, 5 down, 4 up, 3 start, 2 to 0 buttons 1 to 3; 14 test and 13
+ * service on the first's, 10 to 8 buttons 4 to 6), its channels on "a<n>"
+ * (Maximum Speed's and Faster Than Speed's wheel on the second's: steering,
+ * gas, brake, twice).
  */
 
 static const char AW_MODEL[] = "Dreamcast Controller";
@@ -369,49 +372,8 @@ copy_spaces (uint8_t *to, const char *text, unsigned size)
 		to[i] = i < n ? (uint8_t) text[i] : ' ';
 }
 
-uint16_t
-AwControllers::switches (unsigned port) const
-{
-	uint16_t held = 0;
-
-	/* Player 2's pad from controls.ini's P2_ rows ([Naomi]'s first); the
-	 * wheel's has no switch; players 3 and 4 have no rows */
-	if (port == 1 && !wheel) {
-		hl::Controls &c = hl::Controls::get ();
-		static const struct { const char *section, *key; uint16_t bit; } player2[] = {
-			{ "Digital", "P2_Right", 0x0080 }, { "Digital", "P2_Left", 0x0040 },
-			{ "Digital", "P2_Down", 0x0020 }, { "Digital", "P2_Up", 0x0010 },
-			{ "Common", "P2_Start", 0x0008 }, { "Digital", "P2_Button1", 0x0004 },
-			{ "Digital", "P2_Button2", 0x0002 }, { "Digital", "P2_Button3", 0x0001 },
-			{ "Digital", "P2_Button4", 0x0400 }, { "Digital", "P2_Button5", 0x0200 },
-			{ "Digital", "P2_Button6", 0x0100 },
-		};
-
-		for (const auto &b : player2)
-			if (c.pressed (b.section, b.key))
-				held |= b.bit;
-		return (uint16_t) ~held;
-	}
-	if (port != 0)
-		return 0xFFFF;
-	if (hl::Input::action (hl::ACTION_RIGHT)) held |= 0x0080;
-	if (hl::Input::action (hl::ACTION_LEFT)) held |= 0x0040;
-	if (hl::Input::action (hl::ACTION_DOWN)) held |= 0x0020;
-	if (hl::Input::action (hl::ACTION_UP)) held |= 0x0010;
-	if (hl::Input::action (hl::ACTION_START1)) held |= 0x0008;
-	if (hl::Input::action (hl::ACTION_BUTTON1)) held |= 0x0004;
-	if (hl::Input::action (hl::ACTION_BUTTON2)) held |= 0x0002;
-	if (hl::Input::action (hl::ACTION_BUTTON3)) held |= 0x0001;
-	if (hl::Input::action (hl::ACTION_TEST)) held |= 0x4000;
-	if (hl::Input::action (hl::ACTION_SERVICE)) held |= 0x2000;
-	if (hl::Input::action (hl::ACTION_BUTTON4)) held |= 0x0400;
-	if (hl::Controls::get ().pressed ("Naomi", "P1_Button5")) held |= 0x0200;
-	if (hl::Controls::get ().pressed ("Naomi", "P1_Button6")) held |= 0x0100;
-	return (uint16_t) ~held;
-}
-
 unsigned
-AwControllers::reply (unsigned port, const uint32_t *request, uint32_t *out)
+AwControllers::reply (unsigned port, const uint32_t *request, uint32_t *out, uint64_t frame)
 {
 	const uint8_t command = (uint8_t) request[0];
 	const uint32_t sender = (request[0] >> 16) & 0xFF;
@@ -449,19 +411,18 @@ AwControllers::reply (unsigned port, const uint32_t *request, uint32_t *out)
 		break;
 	case 0x09: {	/* get condition */
 		uint8_t analog[6] = { 0x80, 0x00, 0x00, 0x80, 0x00, 0x00 };
+		hl::GameControls &g = hl::GameControls::get ();
+		char pad[4];
+		uint16_t held, v;
 
-		if (port == 1) {
-			hl::Controls &c = hl::Controls::get ();
-			float steer = std::max (-1.0f, std::min (1.0f, (float) c.axis ("Driving", "P1_Steer")));
-			float gas = std::max (0.0f, std::min (1.0f, (float) c.pedal ("Driving", "P1_Gas")));
-			float brake = std::max (0.0f, std::min (1.0f, (float) c.pedal ("Driving", "P1_Brake")));
-
-			analog[0] = analog[3] = (uint8_t) (127.5f + steer * 127.5f);
-			analog[1] = analog[4] = (uint8_t) (gas * 255.0f);
-			analog[2] = analog[5] = (uint8_t) (brake * 255.0f);
-		}
+		snprintf (pad, sizeof (pad), "p%u", port + 1);
+		held = (uint16_t) g.switches (pad, frame);
+		pad[0] = 'a';
+		for (unsigned i = 0; i < 6; i++)
+			if (g.analog (pad, i, &v))
+				analog[i] = (uint8_t) (v >> 8);
 		out[1] = 0x01000000;
-		out[2] = switches (port) | ((uint32_t) analog[0] << 16) | ((uint32_t) analog[1] << 24);
+		out[2] = (uint16_t) ~held | ((uint32_t) analog[0] << 16) | ((uint32_t) analog[1] << 24);
 		out[3] = analog[2] | ((uint32_t) analog[3] << 8) | ((uint32_t) analog[4] << 16) | ((uint32_t) analog[5] << 24);
 		words = 3;
 		out[0] = 8;
@@ -504,11 +465,12 @@ AwModem::reset (hl::ResetType type)
 uint8_t
 AwModem::coins ()
 {
-	static const hl::Action chutes[2] = { hl::ACTION_COIN1, hl::ACTION_COIN2 };
+	/* The game's coin chutes: "coin:1" and "coin:2" */
+	uint32_t chutes = hl::GameControls::get ().switches ("coin", board->holly->frames);
 	uint8_t val = 0xF;
 
 	for (unsigned i = 0; i < 2; i++) {
-		if (!hl::Input::action (chutes[i]))
+		if (!((chutes >> (i + 1)) & 1))
 			s.chute[i] = 0;
 		else if (s.chute[i] < 8) {
 			s.chute[i]++;

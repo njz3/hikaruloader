@@ -25,6 +25,7 @@
 #include <iterator>
 
 #include "hl/core.h"
+#include "hl/gamecontrols.h"
 #include "hl/input.h"
 #include "hl/state.h"
 
@@ -240,7 +241,7 @@ SwpHopper::send (uint8_t cmd, const std::vector<uint32_t> &payload)
 void
 SwpHopper::frame ()
 {
-	bool held = hl::Input::action (hl::ACTION_COIN1);
+	bool held = hl::GameControls::get ().pressed ("Coin1");
 
 	if (held && !coin_held && started)
 		coin_in ();

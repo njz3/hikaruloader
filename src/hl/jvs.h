@@ -207,10 +207,10 @@ protected:
 
 /* The Sega 837-13551 "I/O BD JVS", the cabinets' usual I/O board: two players
  * of 13 switches, two coin slots, eight analog channels, six outputs. The
- * switches come from the controls (hl::Input); the wheel and the pedals
- * (channels 0, 1, 2) from controls.ini's [Driving] (hl::Controls), but a
- * channel the shell set: as registers, channel n at 2n (16 bits), the coins
- * at 10 and 12, the outputs at 14 (read only). */
+ * switches, coins and channels come from the game's controls (hl::GameControls:
+ * "sys", "p1", "p2", "coin", "an"), but a channel the shell set: as registers,
+ * channel n at 2n (16 bits), the coins at 10 and 12, the outputs at 14 (read
+ * only). */
 class SegaIoBoard : public JvsDevice {
 public:
 	SegaIoBoard (Machine *mach, JvsBus *bus);
@@ -225,22 +225,6 @@ public:
 
 	/* 16 bits each, the top ones meaningful: a wheel's middle is 8000 */
 	uint16_t analog[8];
-	/* Channels 0 and 1 Star Wars: Racer Arcade's levers, from the
-	 * controls as TWIN_LEVERS says (twin_lever_thrusts ()) */
-	bool	 twin_levers = false;
-	/* Star Wars: Racer Arcade reads the left switch as its right button
-	 * and the right one as its left (its input test): swapped, for the
-	 * controls' names to be the game's */
-	bool	 swap_left_right = false;
-	/* The games aimed with a mouse or a light gun, or flown with a stick:
-	 * the channels and switches of [Pointer] in controls.ini */
-	enum PointerGame { POINTER_NONE, POINTER_BRAVEFF, POINTER_PHARRIER };
-	PointerGame pointer_game = POINTER_NONE;
-	/* The game's own analog inputs, by channel (Game::analogs): from
-	 * their rows of controls.ini instead of the wheel and pedals */
-	std::vector<GameInput> analog_inputs;
-	/* The game's own switches (Game::switches), added to the players' */
-	std::vector<GameInput> game_switches;
 	/* Set by the shell (or the agent): no longer the controllers' */
 	bool	 analog_set[8];
 	/* The coins counted, and the outputs (lamps) the game drives */
@@ -277,7 +261,7 @@ protected:
 	bool	 coins (unsigned slots, std::vector<uint8_t> &out) override;
 	bool	 coin_change (unsigned slot, int count) override;
 	bool	 analogs (unsigned channels, std::vector<uint8_t> &out) override;
-	/* The wheel and the pedals from the controllers */
+	/* The game's channels from its controls */
 	void	 read_controls ();
 	bool	 outputs (unsigned bytes, const uint8_t *data) override;
 
@@ -338,13 +322,7 @@ public:
 	DriveBoard *drive;
 	/* Outputs 9 to 14, in bits 7 to 2 */
 	uint8_t	 output2;
-	/* The cabinet's lever: an H of four gears, or three positions (18
-	 * Wheeler's low, high and reverse: gears 1, 2 and 3) */
-	bool	 three_position_lever = false;
-
-	/* With the drive board's reply in bits 7-4, as on the cabinet; the
-	 * view change button on player 1's (view_bits ()), the gear lever on
-	 * player 2's (shifter_bits ()) */
+	/* With the drive board's reply in bits 7-4, as on the cabinet */
 	uint16_t player_bits (unsigned player) override;
 
 protected:
@@ -356,17 +334,7 @@ protected:
 private:
 	/* The drive board's reply player_bits (0) read, for player 2's */
 	uint8_t	 line_reply;
-
-	/* The gear lever's (hl::Gearbox), on player 2's switches */
-	uint16_t shifter_bits ();
-	/* The view change button's, on player 1's */
-	uint16_t view_bits ();
 };
-
-/* Star Wars: Racer Arcade's levers from the controls, 0 (at rest) to 1
- * (pushed forward, the engine's whole thrust): an axis each, or the
- * accelerator and the wheel (Config::twin_levers) */
-void	 twin_lever_thrusts (double *left, double *right);
 
 } /* namespace hl */
 

@@ -31,152 +31,204 @@
 
 namespace hl {
 
-/* A new controls.ini: our keys as they were in hikaruloader.ini's [Controls],
- * the controllers' as linuxloader and windowsloader have them (the pedals on
- * half an axis: a game controller's stick at rest is not half a throttle) */
-static const char *default_file =
-	"[Config]\n"
-	"Steer_DeadZone = 500\n"
-	"Gas_DeadZone = 500\n"
-	"Brake_DeadZone = 500\n"
-	"Aim_DeadZone = 4000\n"
-	"Aim_Speed = 100\n"
-	"Axis_Key_Ramp = 250\n"
-	"Axis_Key_Return = 100\n"
-	"\n"
-	"[Common]\n"
-	"Test = KEY_F5\n"
-	"P1_Service = KEY_F6\n"
-	"P1_Coin = KEY_5\n"
-	"P2_Coin = KEY_6\n"
-	"P1_Start = KEY_Return, GC0_BUTTON_START\n"
-	"P2_Start = KEY_2, GC1_BUTTON_START\n"
-	"ExitGame = KEY_F9, GC0_BUTTON_GUIDE + GC0_BUTTON_START\n"
-	"\n"
-	"[Digital]\n"
-	"P1_Up = KEY_Up, GC0_BUTTON_DPUP, GC0_AXIS_LEFTY_NEGATIVE, JOY0_HAT0_UP\n"
-	"P1_Down = KEY_Down, GC0_BUTTON_DPDOWN, GC0_AXIS_LEFTY_POSITIVE, JOY0_HAT0_DOWN\n"
-	"P1_Left = KEY_Left, GC0_BUTTON_DPLEFT, GC0_AXIS_LEFTX_NEGATIVE, JOY0_HAT0_LEFT\n"
-	"P1_Right = KEY_Right, GC0_BUTTON_DPRIGHT, GC0_AXIS_LEFTX_POSITIVE, JOY0_HAT0_RIGHT\n"
-	"P1_Button1 = KEY_LeftCtrl, GC0_BUTTON_A\n"
-	"P1_Button2 = KEY_LeftAlt, GC0_BUTTON_B\n"
-	"P1_Button3 = KEY_LeftShift, GC0_BUTTON_X\n"
-	"P1_Button4 = KEY_Z, GC0_BUTTON_Y\n"
-	"P1_Card1Insert = KEY_F7, GC0_BUTTON_GUIDE + GC0_BUTTON_Y\n"
-	"P2_Up = KEY_R, GC1_BUTTON_DPUP, GC1_AXIS_LEFTY_NEGATIVE\n"
-	"P2_Down = KEY_F, GC1_BUTTON_DPDOWN, GC1_AXIS_LEFTY_POSITIVE\n"
-	"P2_Left = KEY_D, GC1_BUTTON_DPLEFT, GC1_AXIS_LEFTX_NEGATIVE\n"
-	"P2_Right = KEY_G, GC1_BUTTON_DPRIGHT, GC1_AXIS_LEFTX_POSITIVE\n"
-	"P2_Button1 = KEY_A, GC1_BUTTON_A\n"
-	"P2_Button2 = KEY_S, GC1_BUTTON_B\n"
-	"P2_Button3 = KEY_Q, GC1_BUTTON_X\n"
-	"P2_Button4 = KEY_W, GC1_BUTTON_Y\n"
-	"P2_Button5 = KEY_I, GC1_BUTTON_LEFTSHOULDER\n"
-	"P2_Button6 = KEY_K, GC1_BUTTON_RIGHTSHOULDER\n"
-	"\n"
-	"[Driving]\n"
-	"P1_Steer = GC0_AXIS_LEFTX, JOY0_AXIS_0\n"
-	"P1_Gas = GC0_AXIS_RIGHTTRIGGER, JOY0_AXIS_1_NEGATIVE_SIDE\n"
-	"P1_Brake = GC0_AXIS_LEFTTRIGGER, JOY0_AXIS_2_NEGATIVE_SIDE\n"
-	"P1_Steer_Left = KEY_Left\n"
-	"P1_Steer_Right = KEY_Right\n"
-	"P1_Gas_Digital = KEY_Up\n"
-	"P1_Brake_Digital = KEY_Down\n"
-	"ViewChange = KEY_V, GC0_BUTTON_Y\n"
-	"GearUp = KEY_PageUp, GC0_BUTTON_RIGHTSHOULDER\n"
-	"GearDown = KEY_PageDown, GC0_BUTTON_LEFTSHOULDER\n"
-	"Gear1 =\n"
-	"Gear2 =\n"
-	"Gear3 =\n"
-	"Gear4 =\n"
-	"GearNeutral =\n"
-	"P1_LeftLever = GC0_AXIS_LEFTY_NEGATIVE_SIDE\n"
-	"P1_RightLever = GC0_AXIS_RIGHTY_NEGATIVE_SIDE\n"
-	"\n"
-	"[Pointer]\n"
-	"P1_AimX = MOUSE0_X, GC0_AXIS_LEFTX\n"
-	"P1_AimY = MOUSE0_Y, GC0_AXIS_LEFTY\n"
-	"P1_AimX_Left = KEY_Left\n"
-	"P1_AimX_Right = KEY_Right\n"
-	"P1_AimY_Left = KEY_Up\n"
-	"P1_AimY_Right = KEY_Down\n"
-	"P1_Water = MOUSE0_BUTTON_LEFT\n"
-	"P1_Fog = MOUSE0_BUTTON_RIGHT\n"
-	"P1_OffScreen = MOUSE0_OFFSCREEN\n"
-	"P2_AimX = MOUSE1_X, GC1_AXIS_LEFTX\n"
-	"P2_AimY = MOUSE1_Y, GC1_AXIS_LEFTY\n"
-	"P2_Water = MOUSE1_BUTTON_LEFT, GC1_BUTTON_A\n"
-	"P2_Fog = MOUSE1_BUTTON_RIGHT, GC1_BUTTON_B\n"
-	"P2_OffScreen = MOUSE1_OFFSCREEN\n"
-	"P1_StickX = MOUSE0_X, GC0_AXIS_LEFTX\n"
-	"P1_StickY = MOUSE0_Y, GC0_AXIS_LEFTY\n"
-	"P1_StickX_Left = KEY_Left\n"
-	"P1_StickX_Right = KEY_Right\n"
-	"P1_StickY_Left = KEY_Up\n"
-	"P1_StickY_Right = KEY_Down\n"
-	"P2_StickX = GC1_AXIS_LEFTX\n"
-	"P2_StickY = GC1_AXIS_LEFTY\n"
-	"P1_Bullet = MOUSE0_BUTTON_LEFT\n"
-	"P1_Missile = MOUSE0_BUTTON_RIGHT\n"
-	"P1_Bomb = MOUSE0_BUTTON_MIDDLE\n"
-	"\n"
-	"[Naomi]\n"
-	"P1_Start = KEY_Return, GC0_BUTTON_START\n"
-	"P1_Up = KEY_Up, GC0_BUTTON_DPUP\n"
-	"P1_Down = KEY_Down, GC0_BUTTON_DPDOWN\n"
-	"P1_Left = KEY_Left, GC0_BUTTON_DPLEFT\n"
-	"P1_Right = KEY_Right, GC0_BUTTON_DPRIGHT\n"
-	"P1_Button1 = KEY_LeftCtrl, GC0_BUTTON_A\n"
-	"P1_Button2 = KEY_LeftAlt, GC0_BUTTON_B\n"
-	"P1_Button3 = KEY_LeftShift, GC0_BUTTON_X\n"
-	"P1_Button4 = KEY_Z, GC0_BUTTON_Y\n"
-	"P1_Button5 = KEY_X, GC0_BUTTON_LEFTSHOULDER\n"
-	"P1_Button6 = KEY_C, GC0_BUTTON_RIGHTSHOULDER\n"
-	"P1_Steer = GC0_AXIS_LEFTX, JOY0_AXIS_0\n"
-	"P1_Gas = GC0_AXIS_RIGHTTRIGGER, JOY0_AXIS_1_NEGATIVE_SIDE\n"
-	"P1_Brake = GC0_AXIS_LEFTTRIGGER, JOY0_AXIS_2_NEGATIVE_SIDE\n"
-	"P1_Steer_Left = KEY_Left\n"
-	"P1_Steer_Right = KEY_Right\n"
-	"P1_Gas_Digital = KEY_Up\n"
-	"P1_Brake_Digital = KEY_Down\n"
-	"ViewChange = KEY_V, GC0_BUTTON_Y\n"
-	"\n"
-	"[Flight]\n"
-	"P1_Elevator = GC0_AXIS_LEFTY, JOY0_AXIS_1\n"
-	"P1_Elevator_Left = KEY_Up\n"
-	"P1_Elevator_Right = KEY_Down\n"
-	"P1_Aileron = GC0_AXIS_LEFTX, JOY0_AXIS_0\n"
-	"P1_Aileron_Left = KEY_Left\n"
-	"P1_Aileron_Right = KEY_Right\n"
-	"P1_Rudder = GC0_AXIS_RIGHTX, JOY0_AXIS_3\n"
-	"P1_Rudder_Left = KEY_Comma\n"
-	"P1_Rudder_Right = KEY_Period\n"
-	"P1_ThrustL = GC0_AXIS_RIGHTY_INVERTED, JOY0_AXIS_2_INVERTED\n"
-	"P1_ThrustL_Left = KEY_PageDown\n"
-	"P1_ThrustL_Right = KEY_PageUp\n"
-	"P1_ThrustR = GC0_AXIS_RIGHTY_INVERTED, JOY0_AXIS_2_INVERTED\n"
-	"P1_ThrustR_Left = KEY_PageDown\n"
-	"P1_ThrustR_Right = KEY_PageUp\n"
-	"\n"
-	"[Gaelco]\n"
-	"VolumeUp = KEY_PageUp, GC0_BUTTON_DPUP\n"
-	"VolumeDown = KEY_PageDown, GC0_BUTTON_DPDOWN\n"
-	"LeftBrake = KEY_LeftCtrl, GC0_BUTTON_LEFTSHOULDER\n"
-	"RightBrake = KEY_LeftAlt, GC0_BUTTON_RIGHTSHOULDER\n"
-	"Horn = KEY_LeftShift, GC0_BUTTON_X\n"
-	"\n"
-	"[Emulator]\n"
-	"Pause = KEY_P, GC0_BUTTON_GUIDE + GC0_BUTTON_X\n"
-	"SaveState = KEY_F4, GC0_BUTTON_GUIDE + GC0_BUTTON_RIGHTSHOULDER\n"
-	"LoadState = KEY_F1, GC0_BUTTON_GUIDE + GC0_BUTTON_LEFTSHOULDER\n"
-	"StateNewer = KEY_F2\n"
-	"StateOlder = KEY_F3\n"
-	"Menu = KEY_Tab, GC0_BUTTON_BACK, GC0_BUTTON_GUIDE + GC0_BUTTON_BACK\n"
-	"Back = KEY_Escape, GC0_BUTTON_GUIDE + GC0_BUTTON_B\n"
-	"ShowFps = KEY_F12\n"
-	"NextScreen = KEY_F8\n"
-	"\n"
-	"[ControllerGUIDs]\n";
+/* controls.ini's rows, in the file's order: a section's line (key NULL) its
+ * note, then its rows, each its default bindings (the controllers' as
+ * linuxloader and windowsloader have them, the pedals on half an axis: a
+ * game controller's stick at rest is not half a throttle) and its note. The
+ * game's roles are these rows' keys (GameControls), unique in the file */
+#define SW Controls::ROW_SWITCH
+#define AX Controls::ROW_AXIS
+#define LV Controls::ROW_LEVER
+#define PD Controls::ROW_PEDAL
+#define KY Controls::ROW_KEYS
+#define CF Controls::ROW_CONFIG
+static const Controls::RowDef row_table[] = {
+	{ "Config", NULL, CF, NULL,
+	  "Dead zones, 0 to 32767: the part of an axis's travel around its middle, or\n"
+	  "of a pedal's from its rest, read as nothing" },
+	{ "Config", "Steering_DeadZone", CF, "500", "The steering wheel's dead zone" },
+	{ "Config", "Accelerator_DeadZone", CF, "500", "The accelerator's dead zone" },
+	{ "Config", "Brake_DeadZone", CF, "500", "The brake's dead zone" },
+	{ "Config", "Aim_DeadZone", CF, "4000", "The dead zone of a stick moving a sight" },
+	{ "Config", "Aim_Speed", CF, "100", "How fast a stick moves a sight or a lever, in percent" },
+	{ "Config", "Axis_Key_Ramp", CF, "250",
+	  "A key or a button on an axis (the wheel, a pedal): milliseconds to go all the way, 0 at once" },
+	{ "Config", "Axis_Key_Return", CF, "100", "The same, back to the middle when let go or turned the other way" },
+
+	{ "Common", NULL, SW, NULL, "The cabinet's switches" },
+	{ "Common", "Test", SW, "KEY_F5", "The Test button" },
+	{ "Common", "Service", SW, "KEY_F6", "The Service button" },
+	{ "Common", "Coin1", SW, "KEY_5", "Coin 1" },
+	{ "Common", "Coin2", SW, "KEY_6", "Coin 2" },
+	{ "Common", "Card", SW, "KEY_F7, GC0_BUTTON_GUIDE + GC0_BUTTON_Y",
+	  "The player's card in the reader's slot, or taken back (Virtual-On 4, Club Kart...)" },
+	{ "Common", "VolumeUp", SW, "KEY_PageUp, GC0_BUTTON_GUIDE + GC0_BUTTON_DPUP", "The cabinet's volume up button" },
+	{ "Common", "VolumeDown", SW, "KEY_PageDown, GC0_BUTTON_GUIDE + GC0_BUTTON_DPDOWN", "The volume down button" },
+
+	{ "Player1", NULL, SW, NULL, "Player 1's start, stick and buttons" },
+	{ "Player1", "P1_Start", SW, "KEY_Return, GC0_BUTTON_START", "Start" },
+	{ "Player1", "P1_Up", SW, "KEY_Up, GC0_BUTTON_DPUP, GC0_AXIS_LEFTY_NEGATIVE, JOY0_HAT0_UP", "Up" },
+	{ "Player1", "P1_Down", SW, "KEY_Down, GC0_BUTTON_DPDOWN, GC0_AXIS_LEFTY_POSITIVE, JOY0_HAT0_DOWN", "Down" },
+	{ "Player1", "P1_Left", SW, "KEY_Left, GC0_BUTTON_DPLEFT, GC0_AXIS_LEFTX_NEGATIVE, JOY0_HAT0_LEFT", "Left" },
+	{ "Player1", "P1_Right", SW, "KEY_Right, GC0_BUTTON_DPRIGHT, GC0_AXIS_LEFTX_POSITIVE, JOY0_HAT0_RIGHT", "Right" },
+	{ "Player1", "P1_Button1", SW, "KEY_LeftCtrl, GC0_BUTTON_A", "Button 1" },
+	{ "Player1", "P1_Button2", SW, "KEY_LeftAlt, GC0_BUTTON_B", "Button 2" },
+	{ "Player1", "P1_Button3", SW, "KEY_LeftShift, GC0_BUTTON_X", "Button 3" },
+	{ "Player1", "P1_Button4", SW, "KEY_Z, GC0_BUTTON_Y", "Button 4" },
+	{ "Player1", "P1_Button5", SW, "KEY_X, GC0_BUTTON_LEFTSHOULDER", "Button 5" },
+	{ "Player1", "P1_Button6", SW, "KEY_C, GC0_BUTTON_RIGHTSHOULDER", "Button 6" },
+
+	{ "Player2", NULL, SW, NULL, "Player 2's start, stick and buttons" },
+	{ "Player2", "P2_Start", SW, "KEY_2, GC1_BUTTON_START", "Start" },
+	{ "Player2", "P2_Up", SW, "KEY_R, GC1_BUTTON_DPUP, GC1_AXIS_LEFTY_NEGATIVE", "Up" },
+	{ "Player2", "P2_Down", SW, "KEY_F, GC1_BUTTON_DPDOWN, GC1_AXIS_LEFTY_POSITIVE", "Down" },
+	{ "Player2", "P2_Left", SW, "KEY_D, GC1_BUTTON_DPLEFT, GC1_AXIS_LEFTX_NEGATIVE", "Left" },
+	{ "Player2", "P2_Right", SW, "KEY_G, GC1_BUTTON_DPRIGHT, GC1_AXIS_LEFTX_POSITIVE", "Right" },
+	{ "Player2", "P2_Button1", SW, "KEY_A, GC1_BUTTON_A", "Button 1" },
+	{ "Player2", "P2_Button2", SW, "KEY_S, GC1_BUTTON_B", "Button 2" },
+	{ "Player2", "P2_Button3", SW, "KEY_Q, GC1_BUTTON_X", "Button 3" },
+	{ "Player2", "P2_Button4", SW, "KEY_W, GC1_BUTTON_Y", "Button 4" },
+	{ "Player2", "P2_Button5", SW, "KEY_I, GC1_BUTTON_LEFTSHOULDER", "Button 5" },
+	{ "Player2", "P2_Button6", SW, "KEY_K, GC1_BUTTON_RIGHTSHOULDER", "Button 6" },
+
+	{ "Driving", NULL, SW, NULL,
+	  "The driving games: the wheel and the pedals, their keys (the wheel all the way in\n"
+	  "Axis_Key_Ramp), the view change, the gear lever (its positions held, or a\n"
+	  "position up and down each press)" },
+	{ "Driving", "Steering", AX, "GC0_AXIS_LEFTX, JOY0_AXIS_0",
+	  "The wheel: an axis (a wheel's goes WHEEL_ROTATION's times further)" },
+	{ "Driving", "Steering_Left", KY, "KEY_Left", "The wheel turned to the left" },
+	{ "Driving", "Steering_Right", KY, "KEY_Right", "The wheel turned to the right" },
+	{ "Driving", "Accelerator", PD, "GC0_AXIS_RIGHTTRIGGER, JOY0_AXIS_1_NEGATIVE_SIDE",
+	  "The accelerator: a trigger, an axis or half of one" },
+	{ "Driving", "Accelerator_Digital", KY, "KEY_Up", "The accelerator pressed" },
+	{ "Driving", "Brake", PD, "GC0_AXIS_LEFTTRIGGER, JOY0_AXIS_2_NEGATIVE_SIDE",
+	  "The brake: a trigger, an axis or half of one" },
+	{ "Driving", "Brake_Digital", KY, "KEY_Down", "The brake pressed" },
+	{ "Driving", "ViewChange", SW, "KEY_V, GC0_BUTTON_Y", "The view change button" },
+	{ "Driving", "ShiftUp", SW, "KEY_PageUp, GC0_BUTTON_RIGHTSHOULDER", "Shift up (a paddle, or the lever pushed)" },
+	{ "Driving", "ShiftDown", SW, "KEY_PageDown, GC0_BUTTON_LEFTSHOULDER", "Shift down" },
+	{ "Driving", "GearReverse", SW, "", "An H shifter's reverse, held" },
+	{ "Driving", "GearNeutral", SW, "", "Neutral, held" },
+	{ "Driving", "Gear1", SW, "", "Gear 1, held (an H shifter's positions)" },
+	{ "Driving", "Gear2", SW, "", "Gear 2, held" },
+	{ "Driving", "Gear3", SW, "", "Gear 3, held" },
+	{ "Driving", "Gear4", SW, "", "Gear 4, held" },
+	{ "Driving", "Horn", SW, "KEY_H, GC0_BUTTON_X", "The horn" },
+	{ "Driving", "LeftBrake", SW, "KEY_Q, GC0_BUTTON_LEFTSHOULDER", "A handlebar's left brake lever (the brake pulls both)" },
+	{ "Driving", "RightBrake", SW, "KEY_E, GC0_BUTTON_RIGHTSHOULDER", "Its right brake lever" },
+	{ "Driving", "LeftLever", PD, "GC0_AXIS_LEFTY_NEGATIVE_SIDE",
+	  "A pod's left thrust lever, 0 at rest (TWIN_LEVERS = ORIGINAL; COMBINED: the\n"
+	  "accelerator and the wheel)" },
+	{ "Driving", "RightLever", PD, "GC0_AXIS_RIGHTY_NEGATIVE_SIDE", "Its right thrust lever" },
+
+	{ "Flight", NULL, SW, NULL,
+	  "The flying games: _Left and _Right the keys moving an axis (Axis_Key_Ramp);\n"
+	  "a thrust lever stays where it is left (Aim_Speed)" },
+	{ "Flight", "Elevator", AX, "GC0_AXIS_LEFTY, JOY0_AXIS_1", "The control wheel or stick, pushed and pulled" },
+	{ "Flight", "Elevator_Left", KY, "KEY_Up", "Pushed" },
+	{ "Flight", "Elevator_Right", KY, "KEY_Down", "Pulled" },
+	{ "Flight", "Aileron", AX, "GC0_AXIS_LEFTX, JOY0_AXIS_0", "The control wheel or stick, turned" },
+	{ "Flight", "Aileron_Left", KY, "KEY_Left", "To the left" },
+	{ "Flight", "Aileron_Right", KY, "KEY_Right", "To the right" },
+	{ "Flight", "Rudder", AX, "GC0_AXIS_RIGHTX, JOY0_AXIS_3", "The rudder pedals" },
+	{ "Flight", "Rudder_Left", KY, "KEY_Comma", "To the left" },
+	{ "Flight", "Rudder_Right", KY, "KEY_Period", "To the right" },
+	{ "Flight", "ThrustL", LV, "GC0_AXIS_RIGHTY_INVERTED, JOY0_AXIS_2_INVERTED",
+	  "The left thrust lever (the only one of a game with one)" },
+	{ "Flight", "ThrustL_Left", KY, "KEY_PageDown", "Back" },
+	{ "Flight", "ThrustL_Right", KY, "KEY_PageUp", "Forward" },
+	{ "Flight", "ThrustR", LV, "GC0_AXIS_RIGHTY_INVERTED, JOY0_AXIS_2_INVERTED", "The right thrust lever" },
+	{ "Flight", "ThrustR_Left", KY, "KEY_PageDown", "Back" },
+	{ "Flight", "ThrustR_Right", KY, "KEY_PageUp", "Forward" },
+
+	{ "Pointer", NULL, SW, NULL,
+	  "The games aimed at the screen (light guns, Brave Firefighters' nozzles) or\n"
+	  "played with an analog stick, a mouse or a light gun too: MOUSE0 is the first\n"
+	  "mouse or gun, MOUSE1 the second (hikaruloader.log lists them). A sight stays\n"
+	  "where the stick or the keys leave it (Aim_Speed)" },
+	{ "Pointer", "P1_GunX", LV, "MOUSE0_X, GC0_AXIS_LEFTX", "Player 1's sight, left to right" },
+	{ "Pointer", "P1_GunX_Left", KY, "KEY_Left", "To the left" },
+	{ "Pointer", "P1_GunX_Right", KY, "KEY_Right", "To the right" },
+	{ "Pointer", "P1_GunY", LV, "MOUSE0_Y, GC0_AXIS_LEFTY", "Player 1's sight, top to bottom" },
+	{ "Pointer", "P1_GunY_Left", KY, "KEY_Up", "Up" },
+	{ "Pointer", "P1_GunY_Right", KY, "KEY_Down", "Down" },
+	{ "Pointer", "P1_Trigger", SW, "MOUSE0_BUTTON_LEFT, GC0_BUTTON_A", "Player 1's trigger" },
+	{ "Pointer", "P1_Reload", SW, "MOUSE0_OFFSCREEN, GC0_BUTTON_B", "Player 1's gun off the screen, to reload" },
+	{ "Pointer", "P1_Fire2", SW, "MOUSE0_BUTTON_RIGHT, GC0_BUTTON_X", "Player 1's second button" },
+	{ "Pointer", "P1_Fire3", SW, "MOUSE0_BUTTON_MIDDLE, GC0_BUTTON_Y", "Player 1's third button" },
+	{ "Pointer", "P2_GunX", LV, "MOUSE1_X, GC1_AXIS_LEFTX", "Player 2's sight, left to right" },
+	{ "Pointer", "P2_GunY", LV, "MOUSE1_Y, GC1_AXIS_LEFTY", "Player 2's sight, top to bottom" },
+	{ "Pointer", "P2_Trigger", SW, "MOUSE1_BUTTON_LEFT, GC1_BUTTON_A", "Player 2's trigger" },
+	{ "Pointer", "P2_Reload", SW, "MOUSE1_OFFSCREEN, GC1_BUTTON_B", "Player 2's gun off the screen" },
+	{ "Pointer", "P2_Fire2", SW, "MOUSE1_BUTTON_RIGHT, GC1_BUTTON_X", "Player 2's second button" },
+	{ "Pointer", "P2_Fire3", SW, "MOUSE1_BUTTON_MIDDLE, GC1_BUTTON_Y", "Player 2's third button" },
+	{ "Pointer", "P1_StickX", AX, "GC0_AXIS_LEFTX, JOY0_AXIS_0, MOUSE0_X", "Player 1's analog stick, left to right" },
+	{ "Pointer", "P1_StickX_Left", KY, "KEY_Left", "To the left" },
+	{ "Pointer", "P1_StickX_Right", KY, "KEY_Right", "To the right" },
+	{ "Pointer", "P1_StickY", AX, "GC0_AXIS_LEFTY, JOY0_AXIS_1, MOUSE0_Y", "Player 1's analog stick, up to down (INVERT_STICK_Y)" },
+	{ "Pointer", "P1_StickY_Left", KY, "KEY_Up", "Up" },
+	{ "Pointer", "P1_StickY_Right", KY, "KEY_Down", "Down" },
+	{ "Pointer", "P2_StickX", AX, "GC1_AXIS_LEFTX", "Player 2's analog stick, left to right" },
+	{ "Pointer", "P2_StickY", AX, "GC1_AXIS_LEFTY", "Player 2's analog stick, up to down" },
+
+	{ "Emulator", NULL, SW, NULL, "The emulator's commands" },
+	{ "Emulator", "Pause", SW, "KEY_P, GC0_BUTTON_GUIDE + GC0_BUTTON_X", "Pauses and resumes the game" },
+	{ "Emulator", "SaveState", SW, "KEY_F4, GC0_BUTTON_GUIDE + GC0_BUTTON_RIGHTSHOULDER",
+	  "Saves the state, as the latest of the five kept" },
+	{ "Emulator", "LoadState", SW, "KEY_F1, GC0_BUTTON_GUIDE + GC0_BUTTON_LEFTSHOULDER",
+	  "Loads the state chosen, the latest by default" },
+	{ "Emulator", "StateNewer", SW, "KEY_F2", "Chooses the state to load: a newer one" },
+	{ "Emulator", "StateOlder", SW, "KEY_F3", "Chooses the state to load: an older one" },
+	{ "Emulator", "Menu", SW, "KEY_Tab, GC0_BUTTON_BACK, GC0_BUTTON_GUIDE + GC0_BUTTON_BACK", "Opens and closes the settings" },
+	{ "Emulator", "Back", SW, "KEY_Escape, GC0_BUTTON_GUIDE + GC0_BUTTON_B",
+	  "Back to the picker the game was started from, else quits" },
+	{ "Emulator", "Quit", SW, "KEY_F9, GC0_BUTTON_GUIDE + GC0_BUTTON_START", "Quits the emulator" },
+	{ "Emulator", "ShowFps", SW, "KEY_F12", "Shows and hides the frame rate" },
+	{ "Emulator", "NextScreen", SW, "KEY_F8", "NAOMI cabinets of several boards: the next board's picture" },
+
+	{ "ControllerGUIDs", NULL, CF, NULL,
+	  "P<n>_GUID = an SDL joystick GUID: that controller is player n's, JOY<n-1>,\n"
+	  "whatever order Windows lists them in (hikaruloader.log gives the GUIDs)" },
+};
+#undef SW
+#undef AX
+#undef LV
+#undef PD
+#undef KY
+#undef CF
+
+const Controls::RowDef *
+Controls::row_def (const char *key)
+{
+	for (const RowDef &r : row_table)
+		if (r.key && !strcasecmp (r.key, key))
+			return &r;
+	return NULL;
+}
+
+const Controls::RowDef *
+Controls::row_defs (size_t *count)
+{
+	*count = sizeof (row_table) / sizeof (row_table[0]);
+	return row_table;
+}
+
+/* A new file's text, from the table */
+static const std::string &
+default_file ()
+{
+	static std::string text;
+
+	if (text.empty ())
+		for (const auto &r : row_table) {
+			if (!r.key)
+				text += std::string (text.empty () ? "" : "\n") + "[" + r.section + "]\n";
+			else
+				text += std::string (r.key) + " = " + (r.bindings ? r.bindings : "") + "\n";
+		}
+	return text;
+}
 
 /* The file's comments, written again at each save: the syntax, then above
  * each section and each row what it is (and the row's default) */
@@ -184,7 +236,8 @@ static const char *file_notes =
 	"# Hikaruloader's controls, in linuxloader's syntax (windowsloader's too).\n"
 	"# Written by the Controls page (Tab, Controls): each change writes the whole\n"
 	"# file again, these comments with it; comments of your own would be lost.\n"
-	"# A line left out takes its default, given above it.\n"
+	"# A line left out takes its default, given above it. Each game reads the rows\n"
+	"# of the controls it has (data/games.json), whatever its machine.\n"
 	"#\n"
 	"# ACTION = BINDING, BINDING...    any of them; A + B: both held together\n"
 	"#   KEY_<name>                    a key, by SDL's name: KEY_F5, KEY_Return...\n"
@@ -196,6 +249,8 @@ static const char *file_notes =
 	"#                                 START, BACK, DPUP, LEFTSHOULDER...\n"
 	"#   GC<n>_AXIS_<name>             its axis: LEFTX, LEFTY, RIGHTX, RIGHTY,\n"
 	"#                                 LEFTTRIGGER, RIGHTTRIGGER\n"
+	"#   MOUSE<n>_X, MOUSE<n>_Y, MOUSE<n>_BUTTON_<LEFT|RIGHT|MIDDLE|X1|X2>,\n"
+	"#   MOUSE<n>_OFFSCREEN            a mouse's or a light gun's\n"
 	"# After an axis: _POSITIVE or _NEGATIVE, half the axis as a button;\n"
 	"#   _POSITIVE_SIDE or _NEGATIVE_SIDE, half the axis as a pedal (at rest in\n"
 	"#   the middle); _INVERTED, the axis the other way round.\n"
@@ -207,162 +262,13 @@ static const char *file_notes =
 	"#   hotkeys' alone: the game sees none of them (a button pressed then stays\n"
 	"#   hidden until let go).\n";
 
-static const struct {
-	const char *section, *key, *note;
-} notes[] = {
-	{ "Config", NULL,
-	  "Dead zones, 0 to 32767: the part of the wheel's travel around its middle,\n"
-	  "or of a pedal's from its rest, read as nothing" },
-	{ "Config", "Steer_DeadZone", "The steering wheel's dead zone" },
-	{ "Config", "Gas_DeadZone", "The accelerator's dead zone" },
-	{ "Config", "Brake_DeadZone", "The brake's dead zone" },
-	{ "Config", "Aim_DeadZone", "The dead zone of a stick moving a sight" },
-	{ "Config", "Aim_Speed", "How fast a stick moves a sight, in percent" },
-	{ "Config", "Axis_Key_Ramp", "A key or a button on an axis (the wheel, a pedal): milliseconds to go all the way, 0 at once" },
-	{ "Config", "Axis_Key_Return", "The same, back to the middle when let go or turned the other way" },
-	{ "Common", NULL, "The cabinet's switches, in every game" },
-	{ "Common", "Test", "The Test button" },
-	{ "Common", "P1_Service", "The Service button" },
-	{ "Common", "P1_Coin", "Coin 1" },
-	{ "Common", "P2_Coin", "Coin 2" },
-	{ "Common", "P1_Start", "Start" },
-	{ "Common", "P2_Start", "Player 2's start (the NAOMI's two-player games, Gaelco Football)" },
-	{ "Common", "ExitGame", "Quits the emulator (Guide + Start on a controller)" },
-	{ "Digital", NULL, "Player 1's stick and buttons" },
-	{ "Digital", "P1_Up", "Up" },
-	{ "Digital", "P1_Down", "Down" },
-	{ "Digital", "P1_Left", "Left" },
-	{ "Digital", "P1_Right", "Right" },
-	{ "Digital", "P1_Button1", "Button 1" },
-	{ "Digital", "P1_Button2", "Button 2" },
-	{ "Digital", "P1_Button3", "Button 3" },
-	{ "Digital", "P1_Button4", "Button 4" },
-	{ "Digital", "P1_Card1Insert",
-	  "The card, at the card reader's slot (Virtual-On 4), or taken back" },
-	{ "Digital", "P2_Up", "Player 2's stick and buttons (the NAOMI's two-player games, Gaelco Football): up" },
-	{ "Digital", "P2_Down", "Down" },
-	{ "Digital", "P2_Left", "Left" },
-	{ "Digital", "P2_Right", "Right" },
-	{ "Digital", "P2_Button1", "Button 1" },
-	{ "Digital", "P2_Button2", "Button 2" },
-	{ "Digital", "P2_Button3", "Button 3" },
-	{ "Digital", "P2_Button4", "Button 4" },
-	{ "Digital", "P2_Button5", "Button 5 (the NAOMI's six-button games)" },
-	{ "Digital", "P2_Button6", "Button 6" },
-	{ "Driving", NULL,
-	  "The wheel and the pedals: the I/O board's analog channels 0, 1 and 2" },
-	{ "Driving", "P1_Steer",
-	  "The steering wheel: an axis, to the left negative. hikaruloader.ini's\n"
-	  "[Input] WHEEL_ROTATION sets how far a wheel turns for the game's" },
-	{ "Driving", "P1_Gas", "The accelerator: a trigger, an axis or half of one" },
-	{ "Driving", "P1_Brake", "The brake: a trigger, an axis or half of one" },
-	{ "Driving", "P1_Steer_Left", "The wheel turned all the way to the left" },
-	{ "Driving", "P1_Steer_Right", "The wheel turned all the way to the right" },
-	{ "Driving", "P1_Gas_Digital", "The accelerator pressed all the way" },
-	{ "Driving", "P1_Brake_Digital", "The brake pressed all the way" },
-	{ "Driving", "ViewChange",
-	  "NASCAR Arcade's view change button (player 1's down, as linuxloader has\n"
-	  "it for a racing game); in the other games, nothing" },
-	{ "Driving", "GearUp",
-	  "NASCAR Arcade's gear lever: a gear up (a paddle), from neutral to 4" },
-	{ "Driving", "GearDown", "A gear down (a paddle), to neutral" },
-	{ "Driving", "Gear1",
-	  "An H shifter's positions, as sm2-emu has them: a button each, held while\n"
-	  "the lever is in that gear (hikaruloader.ini's [Input] SHIFTER_NEUTRAL: in\n"
-	  "none of them, neutral)" },
-	{ "Driving", "GearNeutral", "Neutral, at once" },
-	{ "Driving", "P1_LeftLever",
-	  "Star Wars: Racer Arcade's levers, a pod engine's thrust each, pushed\n"
-	  "forward: an axis or half of one each, with hikaruloader.ini's [Input]\n"
-	  "TWIN_LEVERS = ORIGINAL (COMBINED: P1_Gas and P1_Steer)" },
-	{ "Driving", "P1_RightLever", "The right lever, the right engine's thrust" },
-	{ "Pointer", NULL,
-	  "The games aimed at the screen or played with an analog stick, which a mouse\n"
-	  "or a light gun can play: the sights (Aim), their trigger (Water) and reload\n"
-	  "(OffScreen) of Brave Firefighters' nozzles and of the light gun games, the\n"
-	  "sticks of Planet Harriers, Monkey Ball... (Stick). MOUSE0 is the first\n"
-	  "mouse or gun, MOUSE1 the second (hikaruloader.log lists them)" },
-	{ "Pointer", "P1_AimX", "Player 1's sight or light gun, left to right (Brave Firefighters, the gun games)" },
-	{ "Pointer", "P1_AimY", "Player 1's sight or light gun, top to bottom" },
-	{ "Pointer", "P1_Water", "Player 1's trigger (Brave Firefighters: its water)" },
-	{ "Pointer", "P1_Fog", "Brave Firefighters: player 1's fog" },
-	{ "Pointer", "P1_OffScreen", "Player 1's gun aimed off the screen, to reload (Brave Firefighters: the nozzle)" },
-	{ "Pointer", "P2_AimX", "Player 2's sight or light gun, left to right" },
-	{ "Pointer", "P2_AimY", "Player 2's sight or light gun, top to bottom" },
-	{ "Pointer", "P2_Water", "Player 2's trigger (Brave Firefighters: its water)" },
-	{ "Pointer", "P2_Fog", "Brave Firefighters: player 2's fog" },
-	{ "Pointer", "P2_OffScreen", "Brave Firefighters: player 2's nozzle aimed off the screen" },
-	{ "Pointer", "P1_StickX", "Player 1's analog stick, left to right (Planet Harriers, Monkey Ball...)" },
-	{ "Pointer", "P1_StickY", "Player 1's analog stick, up to down" },
-	{ "Pointer", "P2_StickX", "Player 2's analog stick, left to right" },
-	{ "Pointer", "P2_StickY", "Player 2's analog stick, up to down" },
-	{ "Pointer", "P1_Bullet", "Planet Harriers: bullets, as P1_Button1" },
-	{ "Pointer", "P1_Missile", "Planet Harriers: missiles, as P1_Button2" },
-	{ "Pointer", "P1_Bomb", "Planet Harriers: bombs, as P1_Button3" },
-	{ "Naomi", NULL,
-	  "NAOMI and Atomiswave's own controls: Hikaru and Gaelco keep theirs" },
-	{ "Naomi", "P1_Start", "Start" },
-	{ "Naomi", "P1_Up", "Up" },
-	{ "Naomi", "P1_Down", "Down" },
-	{ "Naomi", "P1_Left", "Left" },
-	{ "Naomi", "P1_Right", "Right" },
-	{ "Naomi", "P1_Button1", "Button 1" },
-	{ "Naomi", "P1_Button2", "Button 2" },
-	{ "Naomi", "P1_Button3", "Button 3" },
-	{ "Naomi", "P1_Button4", "Button 4" },
-	{ "Naomi", "P1_Button5", "Button 5 (Atomiswave's fighting games)" },
-	{ "Naomi", "P1_Button6", "Button 6 (Atomiswave's fighting games)" },
-	{ "Naomi", "P1_Steer", "The wheel" },
-	{ "Naomi", "P1_Gas", "The accelerator" },
-	{ "Naomi", "P1_Brake", "The brake" },
-	{ "Naomi", "P1_Steer_Left", "The wheel turned all the way to the left" },
-	{ "Naomi", "P1_Steer_Right", "The wheel turned all the way to the right" },
-	{ "Naomi", "P1_Gas_Digital", "The accelerator pressed all the way" },
-	{ "Naomi", "P1_Brake_Digital", "The brake pressed all the way" },
-	{ "Naomi", "ViewChange", "The view change button" },
-	{ "Flight", NULL,
-	  "The flying games' controls (Airline Pilots' control wheel, rudder and\n"
-	  "thrust levers); _Left and _Right the keys or buttons moving one, as the\n"
-	  "wheel's (Axis_Key_Ramp); a lever stays where it is left (Aim_Speed)" },
-	{ "Flight", "P1_Elevator", "The control wheel or stick, pushed and pulled (elevator)" },
-	{ "Flight", "P1_Aileron", "The control wheel or stick, turned (aileron)" },
-	{ "Flight", "P1_Rudder", "The rudder pedals" },
-	{ "Flight", "P1_ThrustL", "The left thrust lever (the only one of a game with one)" },
-	{ "Flight", "P1_ThrustR", "The right thrust lever" },
-	{ "Gaelco", NULL,
-	  "The Gaelco cabinets' own buttons, read by their games alone: ATV Track and\n"
-	  "Smashing Drive read none of the Digital rows (Gaelco Football's sticks and\n"
-	  "buttons are there)" },
-	{ "Gaelco", "VolumeUp", "The volume up button (ATV Track, Smashing Drive)" },
-	{ "Gaelco", "VolumeDown", "The volume down button" },
-	{ "Gaelco", "LeftBrake",
-	  "ATV Track's left brake lever (P1_Brake pulls both)" },
-	{ "Gaelco", "RightBrake", "ATV Track's right brake lever" },
-	{ "Gaelco", "Horn", "Smashing Drive's horn, which also starts (as P1_Start)" },
-	{ "Emulator", NULL,
-	  "The emulator's commands: Hikaruloader's own section, the other loaders\n"
-	  "leave it alone" },
-	{ "Emulator", "Pause", "Pauses and resumes the game" },
-	{ "Emulator", "SaveState", "Saves the state, as the latest of the five kept" },
-	{ "Emulator", "LoadState", "Loads the state chosen, the latest by default" },
-	{ "Emulator", "StateNewer", "Chooses the state to load: a newer one" },
-	{ "Emulator", "StateOlder", "Chooses the state to load: an older one" },
-	{ "Emulator", "Menu", "Opens and closes the settings" },
-	{ "Emulator", "Back", "Back to the picker the game was started from, else quits" },
-	{ "Emulator", "ShowFps", "Shows and hides the frame rate" },
-	{ "Emulator", "NextScreen", "NAOMI cabinets of several boards: the next board's picture" },
-	{ "ControllerGUIDs", NULL,
-	  "P<n>_GUID = an SDL joystick GUID: that controller is player n's, JOY<n-1>,\n"
-	  "whatever order Windows lists them in (hikaruloader.log gives the GUIDs)" },
-};
-
 static const char *
 note_of (const std::string &section, const char *key)
 {
-	for (const auto &n : notes)
-		if (!strcasecmp (n.section, section.c_str ()) &&
-		    (key ? n.key && !strcasecmp (n.key, key) : !n.key))
-			return n.note;
+	for (const auto &r : row_table)
+		if (!strcasecmp (r.section, section.c_str ()) &&
+		    (key ? r.key && !strcasecmp (r.key, key) : !r.key))
+			return r.note;
 	return NULL;
 }
 
@@ -727,18 +633,12 @@ Controls::game_file () const
 }
 
 void
-Controls::set_game (const char *name, const std::vector<GameInput> &analogs,
-                    const std::vector<GameInput> &switches)
+Controls::set_game (const char *name)
 {
 	std::string own;
 	std::error_code ec;
 
 	game_name = name ? name : "";
-	inputs_of_game.clear ();
-	for (const GameInput &in : analogs)
-		if (!in.key.empty ())
-			inputs_of_game.push_back (in);
-	inputs_of_game.insert (inputs_of_game.end (), switches.begin (), switches.end ());
 	own = game_file ();
 	if (!own.empty () && std::filesystem::exists (own, ec))
 		read (own.c_str (), NULL);
@@ -778,7 +678,7 @@ Controls::use_common ()
 void
 Controls::read (const char *path, const char *save_to)
 {
-	auto defaults = parse_ini (default_file);
+	auto defaults = parse_ini (default_file ());
 	bool created = false, added = false;
 
 	file = path;
@@ -815,25 +715,6 @@ Controls::read (const char *path, const char *save_to)
 			}
 	}
 
-	/* [Analog] was the flying games' first section: its rows are
-	 * [Flight]'s, the user's bindings kept */
-	{
-		auto analog = std::find_if (sections.begin (), sections.end (),
-		                            [] (const auto &s) { return !strcasecmp (s.first.c_str (), "Analog"); });
-		auto flight = std::find_if (sections.begin (), sections.end (),
-		                            [] (const auto &s) { return !strcasecmp (s.first.c_str (), "Flight"); });
-
-		if (analog != sections.end () && flight != sections.end ()) {
-			for (const Row &row : analog->second)
-				for (Row &f : flight->second)
-					if (!strcasecmp (f.key.c_str (), row.key.c_str ()))
-						f.value = row.value;
-			sections.erase (analog);
-			added = true;
-		}
-	}
-	if (created)
-		migrate_old_bindings ();
 	parse_all ();
 	open_devices ();
 	if (created || added) {
@@ -924,7 +805,7 @@ Controls::set_value (const char *section, const char *key, const std::string &va
 std::string
 Controls::default_value (const char *section, const char *key) const
 {
-	for (const auto &s : parse_ini (default_file))
+	for (const auto &s : parse_ini (default_file ()))
 		if (!strcasecmp (s.first.c_str (), section))
 			for (const auto &row : s.second)
 				if (!strcasecmp (row.key.c_str (), key))
@@ -972,85 +853,9 @@ Controls::parse_all ()
 const Controls::Binding *
 Controls::binding (const char *section, const char *key)
 {
-	if (!platform.empty () && (!strcasecmp (section, "Digital") || !strcasecmp (section, "Driving") ||
-	                           !strcasecmp (section, "Common"))) {
-		auto own = parsed.find (normalize (platform.c_str ()) + "/" + normalize (key));
-
-		if (own != parsed.end ())
-			return own->second;
-	}
-
 	auto it = parsed.find (normalize (section) + "/" + normalize (key));
 	return (it != parsed.end ()) ? it->second : NULL;
 }
-
-/* The old [Controls] of hikaruloader.ini, read by Config: its keys and
- * buttons that differ from the old defaults replace the new file's */
-void
-Controls::migrate_old_bindings ()
-{
-	const Config *cfg = Config::get ();
-	unsigned i;
-
-	for (i = 0; i < NUM_ACTIONS; i++) {
-		const char *section, *key;
-		hl::Binding old = cfg->bindings[i], def = Input::default_binding ((Action) i);
-		if (!Input::row_of ((Action) i, &section, &key))
-			continue;
-		if (old.key == def.key && old.button == def.button)
-			continue;
-
-		std::vector<std::string> tokens = alternatives (value (section, key)), out;
-		bool key_done = false, button_done = false;
-		for (const auto &t : tokens) {
-			if (!strncasecmp (t.c_str (), "KEY_", 4)) {
-				if (old.key != def.key) {
-					if (!key_done && old.key != SDLK_UNKNOWN) {
-						std::string n = SDL_GetKeyName (old.key);
-						n.erase (std::remove (n.begin (), n.end (), ' '), n.end ());
-						out.push_back ("KEY_" + n);
-					}
-					key_done = true;
-					continue;
-				}
-			} else if (!strncasecmp (t.c_str (), "GC0_BUTTON_", 11)) {
-				if (old.button != def.button) {
-					const char *n = old.button >= 0 ?
-						SDL_GameControllerGetStringForButton ((SDL_GameControllerButton) old.button) : NULL;
-					if (!button_done && n) {
-						std::string u = n;
-						std::transform (u.begin (), u.end (), u.begin (), ::toupper);
-						out.push_back ("GC0_BUTTON_" + u);
-					}
-					button_done = true;
-					continue;
-				}
-			}
-			out.push_back (t);
-		}
-		if (!key_done && old.key != def.key && old.key != SDLK_UNKNOWN) {
-			std::string n = SDL_GetKeyName (old.key);
-			n.erase (std::remove (n.begin (), n.end (), ' '), n.end ());
-			out.insert (out.begin (), "KEY_" + n);
-		}
-		if (!button_done && old.button != def.button && old.button >= 0) {
-			std::string u = SDL_GameControllerGetStringForButton ((SDL_GameControllerButton) old.button);
-			std::transform (u.begin (), u.end (), u.begin (), ::toupper);
-			out.push_back ("GC0_BUTTON_" + u);
-		}
-		for (auto &s : sections)
-			if (!strcasecmp (s.first.c_str (), section))
-				for (auto &row : s.second)
-					if (!strcasecmp (row.key.c_str (), key))
-						row.value = join (out);
-		HL_PRINT ("controls: %s from hikaruloader.ini's [Controls]: %s", key, join (out).c_str ());
-	}
-}
-
-/****************************************************************************
- Devices: player n is the device whose GUID is P<n+1>_GUID, then the others
- in SDL's order
-****************************************************************************/
 
 void
 Controls::close_devices ()
@@ -1563,7 +1368,7 @@ Controls::axis (const char *section, const char *key)
 	bool plus = false, minus = false;
 	/* The steering wheel: a wheel's axis goes that much further ([Input]
 	 * WHEEL_ROTATION), a game controller's stick its own way */
-	double scale = (!strcasecmp (section, "Driving") && !strcasecmp (key, "P1_Steer")) ?
+	double scale = (!strcasecmp (section, "Driving") && !strcasecmp (key, "Steering")) ?
 	               Config::get ()->wheel_scale () : 1.0;
 
 	/* The input turned furthest wins; the keys and buttons are ramped */

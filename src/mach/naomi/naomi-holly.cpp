@@ -484,7 +484,7 @@ Holly::maple_step ()
 				if (board->is_atomiswave) {
 					/* The controllers answer at once */
 					uint32_t reply[64];
-					unsigned words = board->controllers.reply (mp.port, data, reply);
+					unsigned words = board->controllers.reply (mp.port, data, reply, board->holly->frames);
 
 					if (!words)
 						mp.state = MP_TIMEOUT;

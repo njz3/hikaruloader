@@ -184,7 +184,7 @@ Config::set_defaults ()
 	 * poses the skater before the GPU draws him (57 before November 2026) */
 	cfg->sh4_clock = 150;
 	cfg->naomi_sh4_clock = 200;
-	cfg->pharrier_invert_y = false;
+	cfg->invert_stick_y = false;
 	/* The country the board's EEPROM holds */
 	cfg->region = 2;	/* Export */
 	/* The simulations, which every game plays with */
@@ -243,8 +243,6 @@ Config::set_defaults ()
 	 * drive the pod at once */
 	cfg->twin_levers = TWIN_LEVERS_COMBINED;
 	cfg->background_input = false;
-	for (i = 0; i < NUM_ACTIONS; i++)
-		cfg->bindings[i] = Input::default_binding ((Action) i);
 }
 
 Config *
@@ -482,8 +480,8 @@ Config::set_value (const char *section, const char *key, const char *value)
 			cfg->sh4_clock = (unsigned) MAX2 (20, MIN2 (200, atoi (value)));
 		else if (!strcasecmp (key, "NAOMI_SH4_CLOCK"))
 			cfg->naomi_sh4_clock = (unsigned) MAX2 (20, MIN2 (200, atoi (value)));
-		else if (!strcasecmp (key, "PHARRIER_INVERT_Y"))
-			cfg->pharrier_invert_y = parse_bool (value);
+		else if (!strcasecmp (key, "INVERT_STICK_Y"))
+			cfg->invert_stick_y = parse_bool (value);
 		else if (!strcasecmp (key, "REGION"))
 			cfg->region = parse_name (value, region_names, (int) NUMELEM (region_names), cfg->region + 1) - 1;
 		else if (!strcasecmp (key, "IO_BOARD_PROGRAM"))
@@ -605,18 +603,6 @@ Config::set_value (const char *section, const char *key, const char *value)
 			                                             cfg->twin_levers);
 		else if (!strcasecmp (key, "BACKGROUND_INPUT"))
 			cfg->background_input = parse_bool (value);
-	} else if (!strcasecmp (section, "Controls")) {
-		for (i = 0; i < NUM_ACTIONS; i++) {
-			const char *name = Input::action_name ((Action) i);
-			size_t len = strlen (name);
-			if (strncasecmp (key, name, len))
-				continue;
-			if (!key[len])
-				cfg->bindings[i].key = value[0] ? SDL_GetKeyFromName (value) : SDLK_UNKNOWN;
-			else if (!strcasecmp (key + len, "_PAD"))
-				cfg->bindings[i].button = value[0] ? SDL_GameControllerGetButtonFromString (value)
-				                                   : SDL_CONTROLLER_BUTTON_INVALID;
-		}
 	}
 }
 
@@ -763,7 +749,7 @@ entry_name (const char *section, const char *key)
 bool
 Config::common_only (const char *section, const char *key)
 {
-	static const char *sections[] = { "Picker", "Network", "Outputs", "Telemetry", "Controls" };
+	static const char *sections[] = { "Picker", "Network", "Outputs", "Telemetry" };
 	static const char *keys[] = { "Input/BUTTONS_FROM_ONE", "Input/BACKGROUND_INPUT", "Display/GRAPHICS_API" };
 	std::string name = entry_name (section, key);
 
@@ -1202,9 +1188,10 @@ Config::write (FILE *fp) const
 	         "# leaves: slower, pictures show before they are complete. From the game's\n"
 	         "# start. Default: %u\n", def.naomi_sh4_clock);
 	fprintf (fp, "NAOMI_SH4_CLOCK = %u\n", cfg->naomi_sh4_clock);
-	fprintf (fp, "\n# Planet Harriers: the stick's up and down inverted. Default: %s\n",
-	         bool_name (def.pharrier_invert_y));
-	fprintf (fp, "PHARRIER_INVERT_Y = %s\n", bool_name (cfg->pharrier_invert_y));
+	fprintf (fp, "\n# The analog sticks' up and down inverted (Planet Harriers, Monkey Ball...;\n"
+	         "# a game's own setting, saved for it alone). Default: %s\n",
+	         bool_name (def.invert_stick_y));
+	fprintf (fp, "INVERT_STICK_Y = %s\n", bool_name (cfg->invert_stick_y));
 	fprintf (fp,
 	         "\n# The board's country, which the games read for their language and\n"
 	         "# texts: AUTO, the one its EEPROM holds (the BIOS's COUNTRY SETTING);\n"
@@ -1427,20 +1414,20 @@ Config::write (FILE *fp) const
 	         "# WHEEL_ROTATION is taken from, 90 to 3600. Default: %d\n", def.wheel_range);
 	fprintf (fp, "WHEEL_RANGE = %d\n", cfg->wheel_range);
 	fprintf (fp,
-	         "\n# NASCAR Arcade's gear lever, an H shifter (controls.ini's Gear1 to Gear4):\n"
+	         "\n# A gear lever held in its positions, an H shifter (controls.ini's Gear1 to Gear4):\n"
 	         "# true, its lever in none of the gears is in neutral, as on the cabinet;\n"
 	         "# false, the last gear stays until another or GearNeutral. Default: %s\n",
 	         bool_name (def.shifter_neutral));
 	fprintf (fp, "SHIFTER_NEUTRAL = %s\n", bool_name (cfg->shifter_neutral));
 	fprintf (fp,
-	         "\n# GearUp and GearDown from a gear to another go through neutral that\n"
+	         "\n# ShiftUp and ShiftDown from a gear to another go through neutral that\n"
 	         "# long, as a real lever does, 0 to 500 ms. Default: %d\n", def.shift_neutral_ms);
 	fprintf (fp, "SHIFT_NEUTRAL_MS = %d\n", cfg->shift_neutral_ms);
 	fprintf (fp,
 	         "\n# Star Wars: Racer Arcade's two levers, a pod engine's thrust each:\n"
-	         "# ORIGINAL, an axis each, as on the cabinet (controls.ini's P1_LeftLever\n"
-	         "# and P1_RightLever); COMBINED, the accelerator (P1_Gas) the thrust of both\n"
-	         "# and the wheel (P1_Steer) the difference, the pod turning to the side\n"
+	         "# ORIGINAL, an axis each, as on the cabinet (controls.ini's LeftLever\n"
+	         "# and RightLever); COMBINED, the accelerator the thrust of both\n"
+	         "# and the wheel (Steering) the difference, the pod turning to the side\n"
 	         "# steered. Default: %s\n", twin_levers_names[def.twin_levers]);
 	fprintf (fp, "TWIN_LEVERS = %s\n", twin_levers_names[cfg->twin_levers]);
 	fprintf (fp,
@@ -1449,8 +1436,7 @@ Config::write (FILE *fp) const
 	         "# with the focus. Default: %s\n", bool_name (def.background_input));
 	fprintf (fp, "BACKGROUND_INPUT = %s\n", bool_name (cfg->background_input));
 
-	/* The controls are controls.ini's (hl::Controls): the old [Controls]
-	 * is read once, into it, and no longer written */
+	/* The controls are controls.ini's (hl::Controls) */
 	return true;
 }
 

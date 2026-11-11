@@ -22,6 +22,7 @@
 #include <filesystem>
 
 #include "hl/cardreader.h"
+#include "hl/gamecontrols.h"
 #include "hl/input.h"
 #include "hl/state.h"
 
@@ -299,7 +300,7 @@ CardReader::toggle_card ()
 void
 CardReader::frame ()
 {
-	bool now = Input::action (ACTION_CARD);
+	bool now = GameControls::get ().pressed ("Card");
 
 	if (now && !held)
 		toggle_card ();

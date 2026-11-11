@@ -26,6 +26,7 @@
 #include <cstring>
 
 #include "hl/config.h"
+#include "hl/gamecontrols.h"
 #include "hl/core.h"
 #include "hl/machine.h"
 #include "hl/paths.h"
@@ -409,8 +410,8 @@ Board::init ()
 	if (is_atomiswave) {
 		flash = new AwFlash (machine, bios);
 		modem = new AwModem (this);
-		aw_wheel = !strcmp (game->name, "maxspeed") || !strcmp (game->name, "ftspeed");
-		controllers.wheel = aw_wheel;
+		/* The wheel's cabinets: its force on the modem's outputs */
+		aw_wheel = hl::GameControls::get ().has ("Steering");
 		if (!strcmp (game->name, "ggisuka"))
 			controllers.count = 4;
 	} else {
@@ -436,14 +437,11 @@ Board::init ()
 			drive_board = new hl::DriveBoard (machine, new hl::DriveBoardF355 (machine, game->name[0] == '1'));
 		hl::SegaIoBoard13844 *board13844 = new hl::SegaIoBoard13844 (machine, jvs, drive_board);
 
-		board13844->three_position_lever = game->name[0] == '1';
 		io_board = board13844;
 	}
 	/* The other boards of a machine of whole systems have no I/O board */
 	else if (!index || !machine->networked) {
 		io_board = new hl::SegaIoBoard (machine, jvs);
-		((hl::SegaIoBoard *) io_board)->analog_inputs = game->analogs;
-		((hl::SegaIoBoard *) io_board)->game_switches = game->switches;
 		/* The cabinet's other boards, each further along the chain (the
 		 * far end gets the first address); the controls stay on the first */
 		for (i = 1; i < game->io_boards.size (); i++) {

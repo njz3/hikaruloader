@@ -29,32 +29,6 @@
 
 namespace hl {
 
-/* A control of a game's own, placed by games.json "controls" on a switch or
- * a channel of its I/O board: a common role (Steering, ViewChange, Elevator,
- * P1_GunX...: GameRole) read from its row of controls.ini, under the name
- * the game's INPUT TEST gives it. AXIS: where the stick is, the middle at
- * rest; LEVER: moved by the stick or the keys and left where it is (a
- * thrust lever, a sight); PEDAL: from 0, at rest; SWITCH: a bit of a
- * player's switches */
-struct GameInput {
-	enum Kind { AXIS, LEVER, PEDAL, SWITCH };
-	/* Its role (games.json's name), its row, its INPUT TEST's name */
-	std::string role, section, key, label;
-	Kind kind = AXIS;
-	/* SWITCH: the player (from 0) and the bit in its 16 (START 0x8000) */
-	unsigned player = 0;
-	uint16_t mask = 0;
-};
-/* The analog inputs were the first of them */
-typedef GameInput AnalogInput;
-
-/* A common role: its row and how it moves; NULL for an unknown one */
-struct GameRole {
-	const char *role, *section, *key;
-	GameInput::Kind kind;
-};
-const GameRole *game_role (const char *role);
-
 /* A game of data/games.json: its MAME set, and the sections of its ROMs */
 struct GameEntry {
 	char name[32];
@@ -164,12 +138,6 @@ public:
 	 * slave alone); none listed: all */
 	unsigned screens[4] = { 0, 0, 0, 0 };
 	unsigned num_screens = 0;
-	/* Its controls of its own (games.json "controls", its parent's when
-	 * it has none): the analog ones by channel (key "" for the machine's
-	 * usual), the switches added to the players'; none: the machine's
-	 * usual alone */
-	std::vector<GameInput> analogs;
-	std::vector<GameInput> switches;
 	std::vector<GameSection> sections;
 
 private:

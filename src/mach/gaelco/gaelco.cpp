@@ -116,6 +116,7 @@
 #include <deque>
 #include <vector>
 
+#include "hl/gamecontrols.h"
 #include "hl/core.h"
 #include "hl/config.h"
 #include "hl/controls.h"
@@ -685,23 +686,17 @@ Gaelco::control_put (uint32_t val)
  * Port A and the ADC
  */
 
-/* The ADC's channels: the wheel or the handlebar, high to the left; ATV Track's
- * throttle */
+/* The ADC's channels: the game's controls on "an" (the wheel or the
+ * handlebar, high to the left; ATV Track's throttle), the middle for the
+ * others */
 static uint8_t
 adc_sample (unsigned channel)
 {
-	hl::Controls &c = hl::Controls::get ();
+	uint16_t v;
 
-	if (!c.is_enabled ())
-		return (channel == 0) ? 0x80 : 0x00;
-	switch (channel) {
-	case 0:
-		return (uint8_t) lround (0x80 - c.axis ("Driving", "P1_Steer") * 0x7F);
-	case 1:
-		return (uint8_t) lround (c.pedal ("Driving", "P1_Gas") * 0xFF);
-	default:
-		return 0x80;
-	}
+	if (hl::GameControls::get ().analog ("an", channel, &v))
+		return (uint8_t) (v >> 8);
+	return (channel == 1) ? 0x00 : 0x80;
 }
 
 /* An ADC0834's serial protocol: CS low; on CLK's rising edges, DI's start
@@ -834,8 +829,10 @@ low_if (bool on, unsigned bit)
 static uint16_t
 port_inputs (Gaelco *gaelco, unsigned select)
 {
-	using hl::Input;
-	uint16_t in = 0xFFFF;
+	/* The game's controls on the port its select reads ("f000",
+	 * "e800"...), active low */
+	char port[8];
+	uint16_t in;
 	/* Smashing Drive starts silent: its volume is a float in its RAM (World
 	 * set: 8C0733FC), cleared with the rest at power on, that the cabinet's
 	 * buttons change; nothing on the board keeps it. Held up for it at the
@@ -843,79 +840,13 @@ port_inputs (Gaelco *gaelco, unsigned select)
 	bool volume_up = gaelco->inputs == Gaelco::INPUTS_SMASHDRV &&
 	                 gaelco->frame >= 300 && gaelco->frame < 411;
 
-	if (gaelco->inputs == Gaelco::INPUTS_FOOTBALL) {
-		switch (select) {
-		case 0x7000:
-			in &= low_if (Input::action (hl::ACTION_SERVICE), 4);
-			in &= low_if (Input::action (hl::ACTION_TEST), 6);
-			in &= low_if (Input::action (hl::ACTION_COIN1), 8);
-			break;
-		case 0x6800:
-			/* Player 1 */
-			in &= low_if (Input::action (hl::ACTION_UP), 3);
-			in &= low_if (Input::action (hl::ACTION_DOWN), 4);
-			in &= low_if (Input::action (hl::ACTION_RIGHT), 5);
-			in &= low_if (Input::action (hl::ACTION_LEFT), 6);
-			in &= low_if (Input::action (hl::ACTION_BUTTON1), 7);
-			in &= low_if (Input::action (hl::ACTION_BUTTON2), 8);
-			in &= low_if (Input::action (hl::ACTION_BUTTON3), 9);
-			in &= low_if (Input::action (hl::ACTION_START1), 10);
-			break;
-		case 0x5800: {
-			/* Player 2 */
-			hl::Controls &c = hl::Controls::get ();
-			if (!c.is_enabled ())
-				break;
-			in &= low_if (c.pressed ("Digital", "P2_Up"), 3);
-			in &= low_if (c.pressed ("Digital", "P2_Down"), 4);
-			in &= low_if (c.pressed ("Digital", "P2_Right"), 5);
-			in &= low_if (c.pressed ("Digital", "P2_Left"), 6);
-			in &= low_if (c.pressed ("Digital", "P2_Button1"), 7);
-			in &= low_if (c.pressed ("Digital", "P2_Button2"), 8);
-			in &= low_if (c.pressed ("Digital", "P2_Button3"), 9);
-			in &= low_if (c.pressed ("Common", "P2_Start"), 10);
-			break;
-		}
-		}
-		return in;
-	}
-
-	/* ATV Track's and Smashing Drive's own buttons: controls.ini's [Gaelco]
-	 * rows, never the Hikaru's [Digital] ones (its up, down and buttons are
-	 * NASCAR Arcade's view change, Star Wars: Racer Arcade's boost...) */
-	switch (select) {
-	case 0xF000:
-		/* JP10; up and down are the volume buttons */
+	snprintf (port, sizeof (port), "%04x", select);
+	in = (uint16_t) ~hl::GameControls::get ().switches (port, gaelco->frame);
+	if (select == 0xF000) {
+		/* JP10: the ADC's DO on bit 9 */
 		if (!gaelco->adc.out)
 			in &= ~(1 << 9);
-		in &= low_if (Input::action (hl::ACTION_COIN1), 8);
-		in &= low_if (Input::action (hl::ACTION_TEST), 6);
-		in &= low_if (Input::action (hl::ACTION_VOLUME_DOWN), 5);
-		in &= low_if (Input::action (hl::ACTION_SERVICE), 4);
-		in &= low_if (Input::action (hl::ACTION_VOLUME_UP) || volume_up, 3);
-		break;
-	case 0xE800:
-		/* JP8, the game's own */
-		if (gaelco->inputs == Gaelco::INPUTS_ATV) {
-			/* The levers, or the pedal for both */
-			bool brake = hl::Controls::get ().is_enabled () &&
-			             hl::Controls::get ().pedal ("Driving", "P1_Brake") > 0.5;
-			in &= low_if (Input::action (hl::ACTION_LEFT_BRAKE) || brake, 7);
-			in &= low_if (Input::action (hl::ACTION_RIGHT_BRAKE) || brake, 8);
-			/* The emergency stop's contact, closed while it is not
-			 * pressed */
-			in &= (uint16_t) ~(1 << 9);
-			in &= low_if (Input::action (hl::ACTION_START1), 10);
-		} else {
-			/* Smashing Drive's pedals are switches; its horn starts */
-			hl::Controls &c = hl::Controls::get ();
-			bool gas = c.is_enabled () && c.pedal ("Driving", "P1_Gas") > 0.5;
-			bool brake = c.is_enabled () && c.pedal ("Driving", "P1_Brake") > 0.5;
-			in &= low_if (gas, 7);
-			in &= low_if (brake, 8);
-			in &= low_if (Input::action (hl::ACTION_START1) || Input::action (hl::ACTION_HORN), 9);
-		}
-		break;
+		in &= low_if (volume_up, 3);
 	}
 	return in;
 }

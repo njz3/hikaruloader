@@ -16,14 +16,15 @@
  * along with Hikaruloader.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <algorithm>
+
 #include "hl/gearbox.h"
 #include "hl/config.h"
 #include "hl/controls.h"
-#include "hl/input.h"
 
 namespace hl {
 
-/* The machine's frames a second (the Hikaru's 31 kHz screen) */
+/* The machine's frames a second */
 static const double FRAME_HZ = 60.0;
 
 Gearbox &
@@ -36,50 +37,58 @@ Gearbox::get ()
 void
 Gearbox::reset ()
 {
-	current = current_out = crossing = 0;
+	current = current_out = 0;
+	crossing = 0;
 	up_held = down_held = false;
 	last_frame = ~0ull;
 }
 
-unsigned
-Gearbox::gear (uint64_t frame)
+int
+Gearbox::gear (uint64_t frame, const std::vector<int> &gears)
 {
-	static const Action positions[4] = { ACTION_GEAR1, ACTION_GEAR2, ACTION_GEAR3, ACTION_GEAR4 };
+	static const struct { const char *key; int gear; } positions[] = {
+		{ "GearReverse", -1 }, { "GearNeutral", 0 }, { "Gear1", 1 },
+		{ "Gear2", 2 }, { "Gear3", 3 }, { "Gear4", 4 },
+	};
 	const Config *cfg = Config::get ();
-	bool h_shifter = false, held = false;
+	Controls &c = Controls::get ();
+	bool h_shifter = false, held = false, neutral;
 	bool up, down;
-	unsigned g, from;
+	int from;
 
+	if (gears.empty ())
+		return 0;
 	if (frame == last_frame)
 		return current_out;
 	last_frame = frame;
+	neutral = std::find (gears.begin (), gears.end (), 0) != gears.end ();
+	if (std::find (gears.begin (), gears.end (), current) == gears.end ())
+		current = neutral ? 0 : gears.front () == -1 && gears.size () > 1 ? gears[1] : gears.front ();
 
-	/* An H shifter's position held: that gear (neutral too) */
-	for (g = 0; g < 4; g++) {
-		const char *section, *key;
-
-		if (Input::row_of (positions[g], &section, &key) && !Controls::get ().value (section, key).empty ())
+	/* An H shifter's position held: that gear */
+	for (const auto &p : positions) {
+		if (std::find (gears.begin (), gears.end (), p.gear) == gears.end ())
+			continue;
+		if (p.gear && !c.value ("Driving", p.key).empty ())
 			h_shifter = true;
-		if (Input::action (positions[g])) {
-			current = g + 1;
+		if (c.pressed ("Driving", p.key)) {
+			current = p.gear;
 			held = true;
 		}
 	}
-	if (Input::action (ACTION_GEAR_NEUTRAL)) {
-		current = 0;
-		held = true;
-	}
 
-	/* The paddles: a gear each press, through neutral between two */
-	up = Input::action (ACTION_GEAR_UP);
-	down = Input::action (ACTION_GEAR_DOWN);
+	/* The paddles: a position each press, through neutral between two */
+	up = c.pressed ("Driving", "ShiftUp");
+	down = c.pressed ("Driving", "ShiftDown");
 	from = current;
 	if (!held) {
-		if (up && !up_held && current < 4)
-			current++;
-		if (down && !down_held && current > 0)
-			current--;
-		if (current != from && from && current)
+		size_t at = std::find (gears.begin (), gears.end (), current) - gears.begin ();
+
+		if (up && !up_held && at + 1 < gears.size ())
+			current = gears[at + 1];
+		if (down && !down_held && at > 0)
+			current = gears[at - 1];
+		if (current != from && from && current && neutral)
 			crossing = (unsigned) (cfg->shift_neutral_ms * FRAME_HZ / 1000.0 + 0.999);
 	}
 	up_held = up;
@@ -88,15 +97,16 @@ Gearbox::gear (uint64_t frame)
 	if (held) {
 		crossing = 0;
 		current_out = current;
-	} else if (h_shifter && cfg->shifter_neutral) {
+	} else if (h_shifter && neutral && cfg->shifter_neutral) {
 		/* The lever in none of its gears */
-		current = current_out = crossing = 0;
+		current = current_out = 0;
+		crossing = 0;
 	} else
 		current_out = crossing ? 0 : current;
 	if (crossing)
 		crossing--;
-	if (agent_gear >= 0)
-		current_out = (unsigned) agent_gear;
+	if (agent_gear != NO_GEAR && std::find (gears.begin (), gears.end (), agent_gear) != gears.end ())
+		current_out = agent_gear;
 	return current_out;
 }
 

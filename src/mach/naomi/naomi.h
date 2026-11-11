@@ -326,14 +326,9 @@ class AwControllers {
 public:
 	/* How many are plugged */
 	unsigned count = 2;
-	/* The second is the wheel and pedals' device, without switches (MAME's
-	 * aw1w cabinet): not player 2's pad */
-	bool	 wheel = false;
-	/* The reply to a frame at port, in out (at most 64 words): its words, 0 for none */
-	unsigned reply (unsigned port, const uint32_t *request, uint32_t *out);
-
-private:
-	uint16_t switches (unsigned port) const;
+	/* The reply to a frame at port, in out (at most 64 words): its words,
+	 * 0 for none; the machine's frame, for the game's gear lever */
+	unsigned reply (unsigned port, const uint32_t *request, uint32_t *out, uint64_t frame);
 };
 
 /* The Atomiswave's "modem" area: coins, digital outputs */

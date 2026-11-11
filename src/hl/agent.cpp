@@ -40,6 +40,7 @@
 #include "hl/cpu.h"
 #include "hl/ffb.h"
 #include "hl/gearbox.h"
+#include "hl/gamecontrols.h"
 #include "hl/input.h"
 #include "hl/pointers.h"
 #include "hl/telemetry.h"
@@ -58,128 +59,82 @@ struct Agent::Queue {
 /* The machine's picture: "ready" and obs's default size */
 static const int frame_width = 640, frame_height = 480;
 
-/* The inputs the machine reads: the cabinet's switches, by the names
- * sm2-emu gives them */
+/* The inputs, by the game's roles (rows of controls.ini: Test, Steering,
+ * P1_Button1, Elevator...: hl::GameControls), or by the names sm2-emu and
+ * Supermodel give them */
 static const struct {
-	const char *name;
-	Action action;
-} inputs[] = {
-	{ "Test",	ACTION_TEST },
-	{ "Service",	ACTION_SERVICE },
-	{ "Coin1",	ACTION_COIN1 },
-	{ "Coin2",	ACTION_COIN2 },
-	{ "Start1",	ACTION_START1 },
-	{ "Up",		ACTION_UP },
-	{ "Down",	ACTION_DOWN },
-	{ "Left",	ACTION_LEFT },
-	{ "Right",	ACTION_RIGHT },
-	{ "Button1",	ACTION_BUTTON1 },
-	{ "Button2",	ACTION_BUTTON2 },
-	{ "Button3",	ACTION_BUTTON3 },
-	{ "Button4",	ACTION_BUTTON4 },
-	{ "Card",	ACTION_CARD },
-	/* linuxloader's name */
-	{ "ViewChange",	ACTION_VIEW_CHANGE },
-	/* The Gaelco cabinets' own (controls.ini's [Gaelco]) */
-	{ "VolumeUp",	ACTION_VOLUME_UP },
-	{ "VolumeDown",	ACTION_VOLUME_DOWN },
-	{ "LeftBrake",	ACTION_LEFT_BRAKE },
-	{ "RightBrake",	ACTION_RIGHT_BRAKE },
-	{ "Horn",	ACTION_HORN },
+	const char *name, *role;
+} aliases[] = {
+	{ "Start1", "P1_Start" }, { "Start2", "P2_Start" },
+	{ "Up", "P1_Up" }, { "Down", "P1_Down" }, { "Left", "P1_Left" }, { "Right", "P1_Right" },
+	{ "Button1", "P1_Button1" }, { "Button2", "P1_Button2" }, { "Button3", "P1_Button3" },
+	{ "Button4", "P1_Button4" }, { "Button5", "P1_Button5" }, { "Button6", "P1_Button6" },
+	{ "GunX", "P1_GunX" }, { "GunY", "P1_GunY" }, { "Trigger", "P1_Trigger" }, { "Offscreen", "P1_Reload" },
+	{ "Fire2", "P1_Fire2" }, { "Fire3", "P1_Fire3" },
+	{ "GunX2", "P2_GunX" }, { "GunY2", "P2_GunY" }, { "Trigger2", "P2_Trigger" }, { "Offscreen2", "P2_Reload" },
+	{ "StickX", "P1_StickX" }, { "StickY", "P1_StickY" }, { "StickX2", "P2_StickX" }, { "StickY2", "P2_StickY" },
 };
 
-/* The analog controls, as sm2-emu and Supermodel name them: the wheel from
- * -1 (left) to 1, the pedals and Star Wars: Racer Arcade's levers from 0 to
- * 1; held over controls.ini's rows (hl::Controls::hold) */
-static const struct {
-	const char *name;
-	const char *section, *key;
-	bool axis;
-} analogs[] = {
-	{ "Steering",	"Driving",	"P1_Steer",	 true },
-	{ "Accelerator", "Driving",	"P1_Gas",	 false },
-	{ "Brake",	"Driving",	"P1_Brake",	 false },
-	{ "LeftLever",	"Driving",	"P1_LeftLever",	 false },
-	{ "RightLever",	"Driving",	"P1_RightLever", false },
-};
-
-static int
-find_analog (const char *name)
+/* The row of an input's name: a role (not a setting, an axis's keys or the
+ * emulator's commands), or its alias; NULL none */
+static const Controls::RowDef *
+find_role (const char *name)
 {
-	unsigned i;
+	const Controls::RowDef *row;
 
-	for (i = 0; i < NUMELEM (analogs); i++)
-		if (!strcasecmp (analogs[i].name, name))
-			return (int) i;
-	return -1;
+	for (const auto &a : aliases)
+		if (!strcasecmp (a.name, name))
+			name = a.role;
+	row = Controls::row_def (name);
+	if (!row || row->kind == Controls::ROW_CONFIG || row->kind == Controls::ROW_KEYS ||
+	    !strcmp (row->section, "Emulator"))
+		return NULL;
+	return row;
 }
 
-/* The rows held by name: the gear lever's paddles and player 2's start (sm2-emu's
- * names), then the game's own controls (games.json "controls"), by their
- * role, Supermodel's names for the guns and sm2-emu's for the sticks */
-static int find_input (const char *name);
-
-struct AgentRow {
-	std::string name;
-	const char *section, *key;
-	GameInput::Kind kind;
-};
-
-static std::string
-agent_name (const std::string &role)
+/* The name the agent gives a role: its alias, else the role */
+static const char *
+agent_name (const char *role)
 {
-	static const struct { const char *role, *name; } names[] = {
-		{ "P1_GunX", "GunX" }, { "P1_GunY", "GunY" }, { "P1_Trigger", "Trigger" },
-		{ "P1_Reload", "Offscreen" }, { "P2_GunX", "GunX2" }, { "P2_GunY", "GunY2" },
-		{ "P2_Trigger", "Trigger2" }, { "P2_Reload", "Offscreen2" },
-		{ "P1_StickX", "StickX" }, { "P1_StickY", "StickY" },
-		{ "P2_StickX", "StickX2" }, { "P2_StickY", "StickY2" },
-	};
-	for (const auto &n : names)
-		if (role == n.role)
-			return n.name;
+	for (const auto &a : aliases)
+		if (!strcmp (a.role, role))
+			return a.name;
 	return role;
 }
 
-static std::vector<AgentRow>
-agent_rows ()
+/* The game's inputs: the cabinet's switches, then its controls' roles, once
+ * each; "Gear" with a gear lever (in its place) */
+static std::vector<const Controls::RowDef *>
+game_roles ()
 {
-	std::vector<AgentRow> rows = {
-		{ "ShiftUp", "Driving", "GearUp", GameInput::SWITCH },
-		{ "ShiftDown", "Driving", "GearDown", GameInput::SWITCH },
-		{ "Start2", "Common", "P2_Start", GameInput::SWITCH },
+	std::vector<const Controls::RowDef *> roles;
+	auto add = [&] (const Controls::RowDef *row) {
+		if (row && std::find (roles.begin (), roles.end (), row) == roles.end ())
+			roles.push_back (row);
 	};
 
-	for (const GameInput &in : Controls::get ().game_inputs ()) {
-		std::string name = agent_name (in.role);
+	for (const char *r : { "Test", "Service", "Coin1", "Coin2" })
+		add (Controls::row_def (r));
+	for (const auto &p : GameControls::get ().places ())
+		add (p.row);
+	if (!GameControls::get ().gears ().empty ())
+		for (const char *r : { "ShiftUp", "ShiftDown" })
+			add (Controls::row_def (r));
+	return roles;
+}
 
-		/* Those named already: the wheel's and the pedals' (analogs[]) */
-		if (find_analog (name.c_str ()) >= 0 || find_input (name.c_str ()) >= 0 ||
-		    std::any_of (rows.begin (), rows.end (), [&] (const AgentRow &r) { return !strcasecmp (r.name.c_str (), name.c_str ()); }))
-			continue;
-		rows.push_back ({ name, in.section.c_str (), in.key.c_str (), in.kind });
+static const char *
+kind_name (const Controls::RowDef *row)
+{
+	switch (row->kind) {
+	case Controls::ROW_AXIS:
+	case Controls::ROW_LEVER:
+		return "axis";
+	case Controls::ROW_PEDAL:
+		return "analog";
+	default:
+		return "switch";
 	}
-	return rows;
-}
-
-static int
-find_row (const std::vector<AgentRow> &rows, const char *name)
-{
-	for (size_t i = 0; i < rows.size (); i++)
-		if (!strcasecmp (rows[i].name.c_str (), name))
-			return (int) i;
-	return -1;
-}
-
-static int
-find_input (const char *name)
-{
-	unsigned i;
-
-	for (i = 0; i < NUMELEM (inputs); i++)
-		if (!strcasecmp (inputs[i].name, name))
-			return (int) i;
-	return -1;
 }
 
 Agent::Agent (Emulator *emu) :
@@ -438,7 +393,6 @@ Agent::run (const std::string &line)
 	char name[64];
 	double value;
 	int input;
-	const std::vector<AgentRow> rows = agent_rows ();
 
 	while (*args == ' ')
 		args++;
@@ -449,89 +403,66 @@ Agent::run (const std::string &line)
 		step (args);
 	else if ((!strcmp (cmd, "set") || !strcmp (cmd, "setraw")) &&
 	         sscanf (args, "%63s %lf", name, &value) == 2 && !strcasecmp (name, "Gear") &&
-	         Gearbox::get ().attached ()) {
-		/* NASCAR Arcade's gear lever, as sm2-emu's: 0 (neutral) to 4 */
-		if (value < 0 || value > 4)
-			reply ("err usage: %s Gear 0..4", cmd);
+	         !GameControls::get ().gears ().empty ()) {
+		/* The gear lever, as sm2-emu's: -1 reverse, 0 neutral, 1 to 4,
+		 * those the game has */
+		const std::vector<int> &gears = GameControls::get ().gears ();
+
+		if (std::find (gears.begin (), gears.end (), (int) value) == gears.end ())
+			reply ("err %s Gear: %d..%d", cmd, gears.front (), gears.back ());
 		else {
 			Gearbox::get ().hold ((int) value);
 			reply ("ok");
 		}
 	} else if (!strcmp (cmd, "set") || !strcmp (cmd, "setraw")) {
 		/* A switch: pressed from 0.5, or any raw value but 0 */
+		const Controls::RowDef *row;
+
 		if (sscanf (args, "%63s %lf", name, &value) != 2)
 			reply ("err usage: %s INPUT VALUE", cmd);
-		else if ((input = find_analog (name)) >= 0) {
-			Controls::get ().hold (analogs[input].section, analogs[input].key, value);
-			reply ("ok");
-		} else if ((input = find_row (rows, name)) >= 0) {
-			const AgentRow &r = rows[input];
-
-			if (r.kind == GameInput::SWITCH)
-				value = (strcmp (cmd, "set") ? value != 0.0 : value >= 0.5) ? 1.0 : 0.0;
-			Controls::get ().hold (r.section, r.key, value);
-			reply ("ok");
-		} else if ((input = find_input (name)) < 0)
+		else if (!(row = find_role (name)))
 			reply ("err unknown input %s", name);
 		else {
-			Input::set_action (inputs[input].action,
-			                   strcmp (cmd, "set") ? value != 0.0 : value >= 0.5);
+			if (row->kind == Controls::ROW_SWITCH)
+				value = (strcmp (cmd, "set") ? value != 0.0 : value >= 0.5) ? 1.0 : 0.0;
+			Controls::get ().hold (row->section, row->key, value);
 			reply ("ok");
 		}
 	} else if (!strcmp (cmd, "get")) {
-		if (!strcasecmp (args, "Gear") && Gearbox::get ().attached ())
-			reply ("value %u", Gearbox::get ().gear (emu->mach->frame));
-		else if ((input = find_analog (args)) >= 0)
-			reply ("value %.4f", analogs[input].axis ?
-			       Controls::get ().axis (analogs[input].section, analogs[input].key) :
-			       Controls::get ().pedal (analogs[input].section, analogs[input].key));
-		else if ((input = find_row (rows, args)) >= 0) {
-			const AgentRow &r = rows[input];
-			Controls &c = Controls::get ();
+		const Controls::RowDef *row;
 
-			if (r.kind == GameInput::SWITCH)
-				reply ("value %d", c.pressed (r.section, r.key) ? 1 : 0);
-			else
-				reply ("value %.4f", r.kind == GameInput::PEDAL ? c.pedal (r.section, r.key) :
-				                     r.kind == GameInput::LEVER ? c.aim (r.section, r.key) :
-				                     c.axis (r.section, r.key));
-		} else if ((input = find_input (args)) < 0)
+		if (!strcasecmp (args, "Gear") && !GameControls::get ().gears ().empty ())
+			reply ("value %d", Gearbox::get ().gear (emu->mach->frame, GameControls::get ().gears ()));
+		else if (!(row = find_role (args)))
 			reply ("err unknown input %s", args);
+		else if (row->kind == Controls::ROW_SWITCH)
+			reply ("value %d", GameControls::get ().pressed (row->key) ? 1 : 0);
 		else
-			reply ("value %d", Input::action (inputs[input].action) ? 1 : 0);
+			reply ("value %.4f", GameControls::get ().value (row->key));
 	} else if (!strcmp (cmd, "release")) {
+		const Controls::RowDef *row;
+
 		if (!strcmp (args, "all")) {
-			for (const auto &in : inputs)
-				Input::set_action (in.action, false);
-			Gearbox::get ().hold (-1);
+			Gearbox::get ().hold (Gearbox::NO_GEAR);
 			Controls::get ().release_held (NULL, NULL);
 			reply ("ok");
-		} else if (!strcasecmp (args, "Gear") && Gearbox::get ().attached ()) {
-			Gearbox::get ().hold (-1);
+		} else if (!strcasecmp (args, "Gear")) {
+			Gearbox::get ().hold (Gearbox::NO_GEAR);
 			reply ("ok");
-		} else if ((input = find_analog (args)) >= 0) {
-			Controls::get ().release_held (analogs[input].section, analogs[input].key);
-			reply ("ok");
-		} else if ((input = find_row (rows, args)) >= 0) {
-			Controls::get ().release_held (rows[input].section, rows[input].key);
-			reply ("ok");
-		} else if ((input = find_input (args)) < 0)
+		} else if (!(row = find_role (args)))
 			reply ("err unknown input %s", args);
 		else {
-			Input::set_action (inputs[input].action, false);
+			Controls::get ().release_held (row->section, row->key);
 			reply ("ok");
 		}
 	} else if (!strcmp (cmd, "inputs")) {
-		reply ("inputs %u", (unsigned) (NUMELEM (analogs) + NUMELEM (inputs) + rows.size ()) +
-		                    (Gearbox::get ().attached () ? 1 : 0));
-		for (const auto &a : analogs)
-			reply ("%s %s", a.name, a.axis ? "axis" : "analog");
-		for (const auto &in : inputs)
-			reply ("%s switch", in.name);
-		for (const auto &r : rows)
-			reply ("%s %s", r.name.c_str (), r.kind == GameInput::SWITCH ? "switch" :
-			                                  r.kind == GameInput::PEDAL ? "analog" : "axis");
-		if (Gearbox::get ().attached ())
+		std::vector<const Controls::RowDef *> roles = game_roles ();
+		bool gear = !GameControls::get ().gears ().empty ();
+
+		reply ("inputs %u", (unsigned) roles.size () + (gear ? 1 : 0));
+		for (const auto *r : roles)
+			reply ("%s %s", agent_name (r->key), kind_name (r));
+		if (gear)
 			reply ("Gear other");
 	} else if (!strcmp (cmd, "obs"))
 		obs (args);

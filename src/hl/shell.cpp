@@ -31,6 +31,7 @@
 #include "hl/emulator.h"
 #include "hl/cpu.h"
 #include "hl/input.h"
+#include "hl/controls.h"
 #include "hl/window.h"
 
 namespace hl {
@@ -801,17 +802,23 @@ emu_screenshot (lua_State *L)
 	return result (L, Window::screenshot (path), "save the last frame to", path);
 }
 
-/* emu.input (name [, held]): holds (true, by default) or releases an input,
- * e.g. "TEST" */
+/* emu.input (role [, value]): holds a control, a row of controls.ini (a
+ * switch: true, by default, or false; an axis or a pedal: its value), e.g.
+ * "Test", "Steering"; emu.input (role, nil) gives it back to its bindings */
 static int
 emu_input (lua_State *L)
 {
 	const char *name = luaL_checkstring (L, 1);
-	int action = Input::find_action (name);
+	const Controls::RowDef *row = Controls::row_def (name);
 
-	if (action < 0)
-		return luaL_error (L, "no input named '%s'", name);
-	Input::set_action ((Action) action, lua_isnone (L, 2) || lua_toboolean (L, 2));
+	if (!row || row->kind == Controls::ROW_CONFIG)
+		return luaL_error (L, "no control named '%s'", name);
+	if (!lua_isnone (L, 2) && lua_isnil (L, 2))
+		Controls::get ().release_held (row->section, row->key);
+	else
+		Controls::get ().hold (row->section, row->key,
+		                       lua_isnone (L, 2) ? 1.0 : lua_isboolean (L, 2) ? (lua_toboolean (L, 2) ? 1.0 : 0.0) :
+		                       lua_tonumber (L, 2));
 	return 0;
 }
 

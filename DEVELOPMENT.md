@@ -266,17 +266,26 @@ channel n at 2n), checked in the game's JVS TEST screen.
   the game's last write, the backup RAM every ten seconds when it changed,
   both on the way out. A `nvram/<game>.eeprom` of the earlier versions is
   read when the game has no `.nvram` yet.
-- `controls` in `data/games.json`: a game's own controls, each a common role
-  (`hl::game_role`, `src/hl/games.cpp`: Steering, Accelerator, Brake,
-  ViewChange, ShiftUp, ShiftDown, Elevator, Aileron, Rudder, LeverL, LeverR,
-  P1_GunX, P1_Trigger, P1_Reload, P1_StickX... the row of `controls.ini` it
-  reads) at a place of its I/O board: `"an:<channel>"` or `"p<player>:<bit>"`
-  (bit 15 START ... 9 BUTTON1, as SWITCH_INPUTS gives them), with the name of
-  its INPUT TEST: `"ViewChange" : {"at" : "p1:12", "label" : "VIEW CHANGE"}`.
-  A game with an analog one gets those it lists alone (none: the wheel and
-  pedals on channels 0 to 2); a switch is added to the player's. A clone
-  reads its parent's. NAOMI's 837-13551 alone so far. `HR_LOG_INPUTS=1` logs
-  player 1's switches and the channels the game reads, at each change.
+- The controls (`hl::GameControls`, `src/hl/gamecontrols.cpp`): every board
+  (the JVS I/O boards of the Hikaru and the NAOMI, the Atomiswave's pads,
+  Gaelco's ports and ADC, the MIEs' Test and Service, the card readers) asks
+  it for the switches and channels of its ports; each is a role, a row of
+  `controls.ini` (`Controls::row_def`, the table in `src/hl/controls.cpp`),
+  placed by `data/games.json`: `layouts` (a board's usual places: `jvs`,
+  `atomiswave`, `atomiswave_wheel`, `gaelco_football`, `gaelco_driving`), a
+  game's `layout` (by default `jvs`, `atomiswave` on the Atomiswave) and
+  `controls` over it, `"<role>" : "<port>:<n>"` or `{"at" : ..., "label" :
+  "<its INPUT TEST's name>", "invert" : true, "range" : ["C000", "4000"]}`
+  (null: not there); a place the game lists is taken from the layout's role.
+  Ports: `sys`, `p1`, `p2` (a player's 16 switches, bit 15 START ... 4
+  BUTTON6), `coin` (1, 2), `an` (channels); the Atomiswave's `p1` to `p4`
+  and `a1` to `a4`; Gaelco's port selects (`f000`, `e800`, `7000`...).
+  `gearbox`: a lever held in its positions, `"R"`, `"N"`, `"1"`... each the
+  switches it closes (`hl::Gearbox`); `fixed`: switches always closed. A
+  clone reads its parent's. `HR_LOG_INPUTS=1` logs the players' switches and
+  the channels a JVS game reads, at each change. The table was made from the
+  games' INPUT TESTs and MAME's ports; Lua's `emu.input (role, value)` holds
+  a role as the agent does.
 - `games/<set>.ini` beside `hikaruloader.ini`: a game's own settings, those
   differing from the common ones (`Config::begin_game`, `save_for_game`);
   `Config::common_only` lists those kept common.
@@ -412,10 +421,10 @@ shared: change it only together with Supermodel and sm2-emu.
 | Command | Answer |
 |---|---|
 | `step [N]` | N frames (1): `ok FRAME`; `err break: ...` or `err abort: ...` when the machine stopped |
-| `set INPUT VALUE`, `setraw INPUT RAW` | Holds an input (a switch: 0 or 1; the analog controls, as sm2-emu's and Supermodel's: `Steering` -1 left to 1, `Accelerator`, `Brake`, `LeftLever`, `RightLever` 0 to 1, over controls.ini's rows; NASCAR Arcade's `Gear`, 0 for neutral to 4, as sm2-emu's): `ok` |
+| `set INPUT VALUE`, `setraw INPUT RAW` | Holds an input, a role of the game's (a row of controls.ini) over its bindings (a switch: 0 or 1; the analog controls, as sm2-emu's and Supermodel's: `Steering` -1 left to 1, `Accelerator`, `Brake`, `LeftLever`, `RightLever` 0 to 1; `Gear` the gear lever's, -1 reverse, 0 neutral, 1 to 4, those the game has, as sm2-emu's): `ok` |
 | `get INPUT` | `value RAW` (`Gear`: the gear the game reads) |
 | `release INPUT\|all` | `ok` |
-| `inputs` | `inputs N`, then N lines `NAME TYPE`: Test, Service..., ViewChange (NASCAR Arcade's view change, linuxloader's name), VolumeUp, VolumeDown, LeftBrake, RightBrake, Horn (the Gaelco cabinets' `[Gaelco]` rows); ShiftUp, ShiftDown (the gear lever's up and down, sm2-emu's names) and Start2 (player 2's start); the game's own controls (games.json `controls`), by their role: Elevator, Aileron, Rudder, LeverL, LeverR (axis, -1 to 1), GunX, GunY, Trigger, Offscreen and GunX2... (Supermodel's names), StickX, StickY, StickX2, StickY2 (sm2-emu's); `Gear other` with NASCAR Arcade's gear lever |
+| `inputs` | `inputs N`, then N lines `NAME TYPE`: the game's controls (games.json), by the names sm2-emu and Supermodel give them where they have one (Start1, Start2, Up, Button1..., GunX, Trigger, Offscreen, GunX2..., StickX, StickY...), else by their role (Test, Coin1, ViewChange, ShiftUp, Elevator, ThrustL, P2_Button3...); `Gear other` with a gear lever |
 | `obs [W H]` | The picture box-scaled to W x H (640 x 480): `obs W H`, then W*H*3 bytes, RGB, top row first |
 | `shot PATH` | The picture as a 24-bit BMP: `ok` |
 | `save PATH`, `load PATH` | Save states: `ok` |

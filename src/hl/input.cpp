@@ -36,62 +36,24 @@ static const unsigned keymap[] = {
 
 static bool keystate[NUMELEM (keymap)];
 
-/* Each action's name for the shell and the agent, its row in controls.ini
- * (linuxloader's names), and the old [Controls]'s default */
+/* Each command's row in controls.ini */
 static const struct {
-	const char *name;
 	const char *section;
 	const char *key;
-	Binding binding;
 } actions[NUM_ACTIONS] = {
-	{ "TEST",	"Common",	"Test",		{ SDLK_F5,	-1 } },
-	{ "SERVICE",	"Common",	"P1_Service",	{ SDLK_F6,	-1 } },
-	/* MAME's keys, but where the renderer's debug keys are (1, 2, 3...) */
-	{ "COIN1",	"Common",	"P1_Coin",	{ SDLK_5,	-1 } },
-	{ "COIN2",	"Common",	"P2_Coin",	{ SDLK_6,	-1 } },
-	{ "START1",	"Common",	"P1_Start",	{ SDLK_RETURN,	SDL_CONTROLLER_BUTTON_START } },
-	{ "UP",		"Digital",	"P1_Up",	{ SDLK_UP,	SDL_CONTROLLER_BUTTON_DPAD_UP } },
-	{ "DOWN",	"Digital",	"P1_Down",	{ SDLK_DOWN,	SDL_CONTROLLER_BUTTON_DPAD_DOWN } },
-	{ "LEFT",	"Digital",	"P1_Left",	{ SDLK_LEFT,	SDL_CONTROLLER_BUTTON_DPAD_LEFT } },
-	{ "RIGHT",	"Digital",	"P1_Right",	{ SDLK_RIGHT,	SDL_CONTROLLER_BUTTON_DPAD_RIGHT } },
-	{ "BUTTON1",	"Digital",	"P1_Button1",	{ SDLK_LCTRL,	SDL_CONTROLLER_BUTTON_A } },
-	{ "BUTTON2",	"Digital",	"P1_Button2",	{ SDLK_LALT,	SDL_CONTROLLER_BUTTON_B } },
-	{ "BUTTON3",	"Digital",	"P1_Button3",	{ SDLK_LSHIFT,	SDL_CONTROLLER_BUTTON_X } },
-	{ "BUTTON4",	"Digital",	"P1_Button4",	{ SDLK_z,	SDL_CONTROLLER_BUTTON_Y } },
-	/* linuxloader's name and key */
-	{ "CARD",	"Digital",	"P1_Card1Insert", { SDLK_F7,	-1 } },
-	/* linuxloader's and windowsloader's name and key */
-	{ "VIEW_CHANGE", "Driving",	"ViewChange",	{ SDLK_v,	-1 } },
-	/* linuxloader's names for the paddles, sm2-emu's positions */
-	{ "GEAR_UP",	"Driving",	"GearUp",	{ SDLK_UNKNOWN,	-1 } },
-	{ "GEAR_DOWN",	"Driving",	"GearDown",	{ SDLK_UNKNOWN,	-1 } },
-	{ "GEAR1",	"Driving",	"Gear1",	{ SDLK_UNKNOWN,	-1 } },
-	{ "GEAR2",	"Driving",	"Gear2",	{ SDLK_UNKNOWN,	-1 } },
-	{ "GEAR3",	"Driving",	"Gear3",	{ SDLK_UNKNOWN,	-1 } },
-	{ "GEAR4",	"Driving",	"Gear4",	{ SDLK_UNKNOWN,	-1 } },
-	{ "GEAR_NEUTRAL", "Driving",	"GearNeutral",	{ SDLK_UNKNOWN,	-1 } },
-	/* The Gaelco cabinets', new in controls.ini: no old binding */
-	{ "VOLUME_UP",	"Gaelco",	"VolumeUp",	{ SDLK_UNKNOWN,	-1 } },
-	{ "VOLUME_DOWN", "Gaelco",	"VolumeDown",	{ SDLK_UNKNOWN,	-1 } },
-	{ "LEFT_BRAKE",	"Gaelco",	"LeftBrake",	{ SDLK_UNKNOWN,	-1 } },
-	{ "RIGHT_BRAKE", "Gaelco",	"RightBrake",	{ SDLK_UNKNOWN,	-1 } },
-	{ "HORN",	"Gaelco",	"Horn",		{ SDLK_UNKNOWN,	-1 } },
-	{ "PAUSE",	"Emulator",	"Pause",	{ SDLK_p,	-1 } },
-	{ "SAVE_STATE",	"Emulator",	"SaveState",	{ SDLK_F4,	-1 } },
-	{ "LOAD_STATE",	"Emulator",	"LoadState",	{ SDLK_F1,	-1 } },
-	{ "STATE_NEWER", "Emulator",	"StateNewer",	{ SDLK_F2,	-1 } },
-	{ "STATE_OLDER", "Emulator",	"StateOlder",	{ SDLK_F3,	-1 } },
-	{ "SETTINGS",	"Emulator",	"Menu",		{ SDLK_TAB,	SDL_CONTROLLER_BUTTON_BACK } },
-	{ "SHOW_FPS",	"Emulator",	"ShowFps",	{ SDLK_F12,	-1 } },
-	{ "NEXT_SCREEN", "Emulator",	"NextScreen",	{ SDLK_F8,	-1 } },
-	{ "QUIT",	"Common",	"ExitGame",	{ SDLK_F9,	-1 } },
-	/* Escape alone until November 2026 */
-	{ "BACK",	"Emulator",	"Back",		{ SDLK_ESCAPE,	-1 } },
+	{ "Emulator",	"Pause" },
+	{ "Emulator",	"SaveState" },
+	{ "Emulator",	"LoadState" },
+	{ "Emulator",	"StateNewer" },
+	{ "Emulator",	"StateOlder" },
+	{ "Emulator",	"Menu" },
+	{ "Emulator",	"ShowFps" },
+	{ "Emulator",	"NextScreen" },
+	{ "Emulator",	"Quit" },
+	{ "Emulator",	"Back" },
 };
 
-/* The shell's and the agent's inputs */
-static bool shell_held[NUM_ACTIONS];
-static bool suspended;
+static bool is_suspended;
 
 bool
 Input::key (unsigned key)
@@ -112,18 +74,6 @@ Input::set_key (unsigned key, bool state)
 			keystate[i] = state;
 }
 
-const char *
-Input::action_name (Action action)
-{
-	return actions[action].name;
-}
-
-Binding
-Input::default_binding (Action action)
-{
-	return actions[action].binding;
-}
-
 bool
 Input::row_of (Action action, const char **section, const char **key)
 {
@@ -137,9 +87,7 @@ Input::row_of (Action action, const char **section, const char **key)
 bool
 Input::action (Action action)
 {
-	if (shell_held[action])
-		return true;
-	return !suspended && Controls::get ().pressed (actions[action].section, actions[action].key);
+	return !is_suspended && Controls::get ().pressed (actions[action].section, actions[action].key);
 }
 
 int
@@ -156,32 +104,21 @@ Input::event_action (const SDL_Event *event)
 }
 
 void
-Input::set_action (Action action, bool state)
-{
-	shell_held[action] = state;
-}
-
-void
 Input::suspend (bool on)
 {
-	suspended = on;
+	is_suspended = on;
 }
 
-int
-Input::find_action (const char *name)
+bool
+Input::suspended ()
 {
-	unsigned i;
-	for (i = 0; i < NUM_ACTIONS; i++)
-		if (!strcasecmp (actions[i].name, name))
-			return i;
-	return -1;
+	return is_suspended;
 }
 
 void
 Input::release_all ()
 {
 	memset (keystate, 0, sizeof (keystate));
-	memset (shell_held, 0, sizeof (shell_held));
 }
 
 bool

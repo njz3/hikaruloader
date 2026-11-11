@@ -48,6 +48,7 @@
 #include "mach/gaelco/gaelco.h"
 #include "mach/naomi/naomi.h"
 #include "hl/controls.h"
+#include "hl/gamecontrols.h"
 #endif
 
 namespace hl {
@@ -143,7 +144,6 @@ Emulator::create_machine ()
 		return hikaru::Hikaru::create (game);
 	if (!strcmp (game->mach, "gaelco"))
 		return gaelco::Gaelco::create (game);
-	Controls::get ().set_platform (!strcmp (game->mach, "naomi") ? "Naomi" : "");
 	if (!strcmp (game->mach, "naomi"))
 		return naomi::Naomi::create (game);
 	return NULL;
@@ -160,7 +160,7 @@ Emulator::game_screens ()
 bool
 Emulator::game_has_stick ()
 {
-	return running_machine && running_machine->has_invertible_stick ();
+	return running_machine && (GameControls::get ().has ("P1_StickY") || GameControls::get ().has ("P2_StickY"));
 }
 
 bool
@@ -193,6 +193,8 @@ Emulator::load_game (const char *name, const char *log_path)
 			/* Its own settings over the common ones, before its
 			 * machine reads them */
 			Config::begin_game (game->name);
+			/* Its controls, on its boards' inputs (data/games.json) */
+			GameControls::get ().set_game (game_list, game->name);
 			/* The machine's I/O board declares its outputs */
 			Outputs::get ()->stop ();
 			/* Its bezel picture (BEZEL = IMAGE), read at its first frame */
@@ -206,8 +208,8 @@ Emulator::load_game (const char *name, const char *log_path)
 				          entry ? entry->description : game->name, game->name);
 				Window::set_title (title);
 				running_machine = mach;
-				/* Its own bindings file if it has one, its own axes */
-				Controls::get ().set_game (game->name, game->analogs, game->switches);
+				/* Its own bindings file if it has one */
+				Controls::get ().set_game (game->name);
 				Outputs::get ()->start (game->name, game->parent);
 				telemetry::Service::get ().start (mach);
 				return true;
@@ -227,7 +229,8 @@ void
 Emulator::unload_game ()
 {
 	running_machine = NULL;
-	Controls::get ().set_game (NULL, {}, {});
+	Controls::get ().set_game (NULL);
+	GameControls::get ().set_game (NULL, NULL);
 	Outputs::get ()->stop ();
 	telemetry::Service::get ().stop ();
 	destroy (mach);
