@@ -5,8 +5,8 @@ What each version brings, for those who play. How the versions are numbered
 and released: [DEVELOPMENT.md](DEVELOPMENT.md), "Versions and releases".
 
 
-Next version
-------------
+0.8.0 (2026-11-12)
+------------------
 
 - Fixed: the NAOMI games got player 1's controls alone, buttons 1 to 4:
   player 2 (start, stick, buttons 1 to 6) and buttons 5 and 6 reach them now
