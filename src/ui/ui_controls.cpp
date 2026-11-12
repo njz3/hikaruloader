@@ -845,39 +845,33 @@ void drawWheel()
     hl::ForceFeedback::wheel_changed();
 }
 
-// [Input] SHIFTER_NEUTRAL and SHIFT_NEUTRAL_MS, as sm2-emu's gear shifter:
-// saved at once to hikaruloader.ini, alone, as the wheel's
+// [Input] SHIFT_NEUTRAL_MS, as sm2-emu's gear shifter: saved at once to
+// hikaruloader.ini, alone, as the wheel's
 void drawShifter()
 {
     hl::Config *cfg = hl::Config::get();
-    bool neutral = cfg->shifter_neutral, changed = false;
+    bool changed = false;
     int ms = cfg->shift_neutral_ms;
-    changed |= ImGui::Checkbox(tr("Neutral when no gear is engaged"), &neutral);
-    if (ImGui::IsItemHovered())
-        ImGui::SetTooltip("%s", tr("With an H shifter bound to Gear 1..4: its lever in none\n"
-                                   "of the gears is in neutral, as on the cabinet. Off, the\n"
-                                   "last gear stays engaged until another is selected or\n"
-                                   "Neutral is pressed."));
     if (ImGui::SliderInt(tr("Neutral between gears"), &ms, 0, 500, "%d ms"))
     {
         ms = std::clamp(((ms + 5) / 10) * 10, 0, 500);
         changed = true;
     }
     if (ImGui::IsItemHovered())
-        ImGui::SetTooltip("%s", tr("With Shift up and Shift down: a shift from one\n"
-                                   "gear to another passes through neutral this long, as a\n"
-                                   "real lever does."));
+        ImGui::SetTooltip("%s", tr("A shift from one gear to another, by Shift up and\n"
+                                   "Shift down or an H shifter's buttons, passes through\n"
+                                   "neutral this long, as a real lever does."));
     ImGui::PushTextWrapPos(0.0f);
-    ImGui::TextDisabled("%s", tr("The gear levers held in their positions (NASCAR Arcade, F355, 18 Wheeler, Crazy Taxi...): Shift up and "
-                                 "Shift down a position at each press, or an H shifter's positions (Reverse, Neutral, Gear 1 to "
-                                 "6), in the Driving section of a device's bindings."));
+    ImGui::TextDisabled("%s", tr("The gear levers held in their positions (NASCAR Arcade, F355, 18 Wheeler, Crazy Taxi, The King "
+                                 "of Route 66...): Shift up and Shift down engage the next gear at each press; an H shifter's "
+                                 "buttons (Reverse, Neutral, Gear 1 to 6, in the Driving section of a device's bindings) engage "
+                                 "theirs when pressed, kept once let go. Neutral only by its button."));
     ImGui::PopTextWrapPos();
     if (!changed)
         return;
     hl::Config onDisk;
     onDisk.set_defaults();
     onDisk.load();
-    onDisk.shifter_neutral = cfg->shifter_neutral = neutral;
     onDisk.shift_neutral_ms = cfg->shift_neutral_ms = ms;
     onDisk.save();
 }

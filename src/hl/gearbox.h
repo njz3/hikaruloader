@@ -26,17 +26,17 @@ namespace hl {
 
 /* A cabinet's gear lever, held in its positions: the gears the game's
  * "gearbox" has (-1 reverse, 0 neutral, 1 to 6: GameControls::gears), from
- * the player's controls, as sm2-emu has them. An H shifter's positions
- * (controls.ini's GearReverse, GearNeutral, Gear1 to Gear6), a button held
- * each while the lever is there; paddles (ShiftUp, ShiftDown) a position up
- * or down each press, in the gears' order, unless the cabinet has paddles
- * of its own (paddles false: F355's). A position held wins. With none
- * held, an H shifter's lever is in neutral when the game has one
- * (SHIFTER_NEUTRAL), else the last gear stays; that once a position was
- * held, until the paddles' next shift (both bound, an H shifter never
- * moved leaves the paddles' gear); a paddle's shift from a gear
- * to another goes through neutral SHIFT_NEUTRAL_MS. Looked at once a frame
- * of the machine's, as the game polls its switches. */
+ * the player's controls, as SPECS.md has them ("The gear lever"). Events,
+ * not levels: an H shifter's button (controls.ini's GearReverse,
+ * GearNeutral, Gear1 to Gear6) pressed engages its gear, kept once let go;
+ * held, it gives no other; of several, the last pressed (the highest, in
+ * the same frame). Shift up and Shift down engage the next gear up or down
+ * at each press, neutral not one of them, unless the cabinet has paddles of
+ * its own (paddles false: F355's). Neutral only by its button, or for
+ * SHIFT_NEUTRAL_MS from a gear to another. At the game's start, the gear of
+ * a button already held (the highest), else neutral, else the first
+ * forward gear. Looked at once a frame of the machine's, as the game polls
+ * its switches. */
 class Gearbox {
 public:
 	static Gearbox	&get ();
@@ -44,7 +44,7 @@ public:
 	int		 gear (uint64_t frame, const std::vector<int> &gears, bool paddles = true);
 	/* The one of the last frame looked at, for the settings' page */
 	int		 engaged () const { return current_out; }
-	/* In neutral (or the first gear without one), as a game starts */
+	/* As a game starts: its first frame looks at the buttons held */
 	void		 reset ();
 	/* The agent's gear over the controls; NO_GEAR the controls' again */
 	enum { NO_GEAR = -100 };
@@ -54,11 +54,12 @@ public:
 private:
 	Gearbox () = default;
 
-	int		 current = 0;		/* the paddles' gear */
+	int		 current = 0;		/* the gear engaged */
 	int		 current_out = 0;	/* the gear the game got */
 	unsigned	 crossing = 0;		/* frames left in neutral */
 	bool		 up_held = false, down_held = false;
-	bool		 lever_used = false;	/* an H position held since the paddles' last shift */
+	unsigned	 positions_held = 0;	/* the H buttons held at the last frame */
+	bool		 started = false;	/* a frame looked at since reset () */
 	uint64_t	 last_frame = ~0ull;
 	int		 agent_gear = NO_GEAR;
 };

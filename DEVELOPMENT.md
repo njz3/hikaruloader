@@ -6,7 +6,9 @@ GNU GPL v3 or later: see LICENSE.
 
 Notes on the emulator's insides and its debugging tools, for those who work
 on it. The user's manual is [README.md](README.md); building the program is
-in [INSTALL.md](INSTALL.md); what is left to do in [TODO.md](TODO.md).
+in [INSTALL.md](INSTALL.md); what is left to do in [TODO.md](TODO.md); how
+some controls must behave, rule by rule with their tests (the gear lever,
+Star Wars: Racer Arcade's levers), in [SPECS.md](SPECS.md).
 
 
 SH-4 dynamic recompiler

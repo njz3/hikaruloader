@@ -237,7 +237,6 @@ Config::set_defaults ()
 	cfg->wheel_rotation = 0;
 	cfg->wheel_range = 900;
 	/* sm2-emu's defaults */
-	cfg->shifter_neutral = true;
 	cfg->shift_neutral_ms = 0;
 	/* A wheel and its pedals, or a game controller's stick and trigger,
 	 * drive the pod at once */
@@ -596,8 +595,6 @@ Config::set_value (const char *section, const char *key, const char *value)
 			cfg->wheel_rotation = (degrees <= 0) ? 0 : MAX2 (90, MIN2 (3600, degrees));
 		} else if (!strcasecmp (key, "WHEEL_RANGE"))
 			cfg->wheel_range = MAX2 (90, MIN2 (3600, atoi (value)));
-		else if (!strcasecmp (key, "SHIFTER_NEUTRAL"))
-			cfg->shifter_neutral = parse_bool (value);
 		else if (!strcasecmp (key, "SHIFT_NEUTRAL_MS"))
 			cfg->shift_neutral_ms = MAX2 (0, MIN2 (500, atoi (value)));
 		else if (!strcasecmp (key, "TWIN_LEVERS"))
@@ -1417,15 +1414,9 @@ Config::write (FILE *fp) const
 	         "# WHEEL_ROTATION is taken from, 90 to 3600. Default: %d\n", def.wheel_range);
 	fprintf (fp, "WHEEL_RANGE = %d\n", cfg->wheel_range);
 	fprintf (fp,
-	         "\n# A gear lever held in its positions, an H shifter (controls.ini's Gear1 to Gear6):\n"
-	         "# true, its lever in none of the gears is in neutral, as on the cabinet (once a\n"
-	         "# gear was held, until ShiftUp or ShiftDown: both can be bound);\n"
-	         "# false, the last gear stays until another or GearNeutral. Default: %s\n",
-	         bool_name (def.shifter_neutral));
-	fprintf (fp, "SHIFTER_NEUTRAL = %s\n", bool_name (cfg->shifter_neutral));
-	fprintf (fp,
-	         "\n# ShiftUp and ShiftDown from a gear to another go through neutral that\n"
-	         "# long, as a real lever does, 0 to 500 ms. Default: %d\n", def.shift_neutral_ms);
+	         "\n# A shift from a gear to another, by ShiftUp and ShiftDown or an H shifter's\n"
+	         "# buttons (controls.ini's Gear1 to Gear6, kept once let go), goes through\n"
+	         "# neutral that long, as a real lever does, 0 to 500 ms. Default: %d\n", def.shift_neutral_ms);
 	fprintf (fp, "SHIFT_NEUTRAL_MS = %d\n", cfg->shift_neutral_ms);
 	fprintf (fp,
 	         "\n# Star Wars: Racer Arcade's two levers, a pod engine's thrust each:\n"

@@ -40,7 +40,8 @@ Gearbox::reset ()
 	current = current_out = 0;
 	crossing = 0;
 	up_held = down_held = false;
-	lever_used = false;
+	positions_held = 0;
+	started = false;
 	last_frame = ~0ull;
 }
 
@@ -51,11 +52,12 @@ Gearbox::gear (uint64_t frame, const std::vector<int> &gears, bool paddles)
 		{ "GearReverse", -1 }, { "GearNeutral", 0 }, { "Gear1", 1 },
 		{ "Gear2", 2 }, { "Gear3", 3 }, { "Gear4", 4 }, { "Gear5", 5 }, { "Gear6", 6 },
 	};
+	const int NONE = -100;
 	const Config *cfg = Config::get ();
 	Controls &c = Controls::get ();
-	bool h_shifter = false, held = false, neutral;
-	bool up, down;
-	int from;
+	unsigned held_now = 0;
+	int pressed = NONE, highest = NONE, from;
+	bool neutral, up, down;
 
 	if (gears.empty ())
 		return 0;
@@ -63,54 +65,63 @@ Gearbox::gear (uint64_t frame, const std::vector<int> &gears, bool paddles)
 		return current_out;
 	last_frame = frame;
 	neutral = std::find (gears.begin (), gears.end (), 0) != gears.end ();
-	if (std::find (gears.begin (), gears.end (), current) == gears.end ())
-		current = neutral ? 0 : gears.front () == -1 && gears.size () > 1 ? gears[1] : gears.front ();
 
-	/* An H shifter's position held: that gear */
-	for (const auto &p : positions) {
-		if (std::find (gears.begin (), gears.end (), p.gear) == gears.end ())
+	/* The H shifter's buttons the game has a gear for: those pressed
+	 * since the last frame (the highest of them, pressed in the same
+	 * frame), the highest held */
+	for (unsigned i = 0; i < sizeof (positions) / sizeof (positions[0]); i++) {
+		if (std::find (gears.begin (), gears.end (), positions[i].gear) == gears.end () ||
+		    !c.pressed ("Driving", positions[i].key))
 			continue;
-		if (p.gear && !c.value ("Driving", p.key).empty ())
-			h_shifter = true;
-		if (c.pressed ("Driving", p.key)) {
-			current = p.gear;
-			held = true;
-		}
+		held_now |= 1u << i;
+		highest = std::max (highest, positions[i].gear);
+		if (!(positions_held & (1u << i)))
+			pressed = std::max (pressed, positions[i].gear);
 	}
-
-	/* The paddles: a position each press, through neutral between two */
 	up = paddles && c.pressed ("Driving", "ShiftUp");
 	down = paddles && c.pressed ("Driving", "ShiftDown");
-	from = current;
-	if (!held) {
-		size_t at = std::find (gears.begin (), gears.end (), current) - gears.begin ();
 
-		if (up && !up_held && at + 1 < gears.size ())
-			current = gears[at + 1];
-		if (down && !down_held && at > 0)
-			current = gears[at - 1];
+	if (!started) {
+		/* The game's start: the gear of a button already held (the
+		 * highest), else neutral, else the first forward gear */
+		started = true;
+		if (highest != NONE)
+			current = highest;
+		else
+			current = neutral ? 0 : gears.front () == -1 && gears.size () > 1 ? gears[1] : gears.front ();
+		crossing = 0;
+	} else {
+		if (std::find (gears.begin (), gears.end (), current) == gears.end ())
+			current = neutral ? 0 : gears.front ();
+		from = current;
+		if (pressed != NONE)
+			/* A button pressed: its gear, kept once let go */
+			current = pressed;
+		else if (up && !up_held) {
+			/* Shift up and down: the next gear, neutral not one */
+			for (int g : gears)
+				if (g > current && g) {
+					current = g;
+					break;
+				}
+		} else if (down && !down_held) {
+			for (auto g = gears.rbegin (); g != gears.rend (); ++g)
+				if (*g < current && *g) {
+					current = *g;
+					break;
+				}
+		}
+		/* From a gear to another, through neutral SHIFT_NEUTRAL_MS */
 		if (current != from && from && current && neutral)
 			crossing = (unsigned) (cfg->shift_neutral_ms * FRAME_HZ / 1000.0 + 0.999);
+		else if (current != from)
+			crossing = 0;
 	}
-	/* The H lever in use from a position held to the paddles' next
-	 * shift: a cabinet's controls.ini may bind both, each panel sending
-	 * one or the other */
-	if (held)
-		lever_used = true;
-	else if ((up && !up_held) || (down && !down_held))
-		lever_used = false;
+	positions_held = held_now;
 	up_held = up;
 	down_held = down;
 
-	if (held) {
-		crossing = 0;
-		current_out = current;
-	} else if (h_shifter && lever_used && neutral && cfg->shifter_neutral) {
-		/* The lever in none of its gears */
-		current = current_out = 0;
-		crossing = 0;
-	} else
-		current_out = crossing ? 0 : current;
+	current_out = crossing ? 0 : current;
 	if (crossing)
 		crossing--;
 	if (agent_gear != NO_GEAR && std::find (gears.begin (), gears.end (), agent_gear) != gears.end ())

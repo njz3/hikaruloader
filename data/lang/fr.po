@@ -1531,20 +1531,12 @@ msgid "Your wheel turns %d degrees: the game's wheel takes its whole turn."
 msgstr "Votre volant tourne de %d degrés : le volant du jeu prend toute sa rotation."
 
 #: src/ui/ui_controls.cpp
-msgid "Neutral when no gear is engaged"
-msgstr "Point mort quand aucune vitesse n'est engagée"
-
-#: src/ui/ui_controls.cpp
-msgid "With an H shifter bound to Gear 1..4: its lever in none\nof the gears is in neutral, as on the cabinet. Off, the\nlast gear stays engaged until another is selected or\nNeutral is pressed."
-msgstr "Avec un levier en H associé à Vitesse 1..4 : son levier\nhors de toute vitesse est au point mort, comme sur la borne.\nDésactivé : la dernière vitesse reste engagée jusqu'à ce\nqu'une autre soit choisie ou que Point mort soit appuyé."
-
-#: src/ui/ui_controls.cpp
 msgid "Neutral between gears"
 msgstr "Point mort entre deux vitesses"
 
 #: src/ui/ui_controls.cpp
-msgid "With Shift up and Shift down: a shift from one\ngear to another passes through neutral this long, as a\nreal lever does."
-msgstr "Avec Rapport sup. et Rapport inf. : d'une vitesse à\nl'autre, passage par le point mort pendant ce temps,\ncomme avec un vrai levier."
+msgid "A shift from one gear to another, by Shift up and\nShift down or an H shifter's buttons, passes through\nneutral this long, as a real lever does."
+msgstr "D'une vitesse à l'autre, par Rapport sup. et Rapport inf.\nou les boutons d'un levier en H, passage par le point mort\npendant ce temps, comme avec un vrai levier."
 
 #: src/ui/ui_controls.cpp
 msgid "NASCAR Arcade's four gears: Shift up and Shift down a gear at each press, or an H shifter's positions (Gear 1 to 4, Neutral), in the Driving section of a device's bindings. The game asks for AUTOMATIC or MANUAL at the start of a race."
@@ -1998,8 +1990,8 @@ msgstr "Image de la carte suivante (plusieurs cartes)"
 msgid "All the controls"
 msgstr "Tous les contrôles"
 
-msgid "The gear levers held in their positions (NASCAR Arcade, F355, 18 Wheeler, Crazy Taxi...): Shift up and Shift down a position at each press, or an H shifter's positions (Reverse, Neutral, Gear 1 to 6), in the Driving section of a device's bindings."
-msgstr "Les leviers de vitesses qui restent en position (NASCAR Arcade, F355, 18 Wheeler, Crazy Taxi...) : Rapport sup. et Rapport inf. changent de position à chaque appui, ou les positions d'une grille en H (Marche arrière, Point mort, Rapports 1 à 6), dans la section Conduite des associations d'un périphérique."
+msgid "The gear levers held in their positions (NASCAR Arcade, F355, 18 Wheeler, Crazy Taxi, The King of Route 66...): Shift up and Shift down engage the next gear at each press; an H shifter's buttons (Reverse, Neutral, Gear 1 to 6, in the Driving section of a device's bindings) engage theirs when pressed, kept once let go. Neutral only by its button."
+msgstr "Les leviers de vitesses qui restent en position (NASCAR Arcade, F355, 18 Wheeler, Crazy Taxi, The King of Route 66...) : Rapport sup. et Rapport inf. engagent la vitesse suivante à chaque appui ; les boutons d'une grille en H (Marche arrière, Point mort, Rapports 1 à 6, dans la section Conduite des associations d'un périphérique) engagent la leur quand on les appuie, gardée une fois relâchés. Le point mort seulement par son bouton."
 
 msgid "Gear"
 msgstr "Rapport"

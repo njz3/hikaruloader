@@ -126,8 +126,8 @@ static const Controls::RowDef row_table[] = {
 
 	{ "Driving", NULL, SW, NULL,
 	  "The driving games: the wheel and the pedals, their keys (the wheel all the way in\n"
-	  "Axis_Key_Ramp), the view change, the gear lever (its positions held, or a\n"
-	  "position up and down each press)" },
+	  "Axis_Key_Ramp), the view change, the gear lever (an H shifter's buttons, each\n"
+	  "engaging its gear, kept once let go; or a gear up and down each press)" },
 	{ "Driving", "Steering", AX, "GC0_AXIS_LEFTX, JOY0_AXIS_0",
 	  "The wheel: an axis (a wheel's goes WHEEL_ROTATION's times further)" },
 	{ "Driving", "Steering_Left", KY, "KEY_Left", "The wheel turned to the left" },
@@ -141,14 +141,14 @@ static const Controls::RowDef row_table[] = {
 	{ "Driving", "ViewChange", SW, "KEY_V, GC0_BUTTON_Y", "The view change button" },
 	{ "Driving", "ShiftUp", SW, "KEY_PageUp, GC0_BUTTON_RIGHTSHOULDER", "Shift up (a paddle, or the lever pushed)" },
 	{ "Driving", "ShiftDown", SW, "KEY_PageDown, GC0_BUTTON_LEFTSHOULDER", "Shift down" },
-	{ "Driving", "GearReverse", SW, "", "An H shifter's reverse, held" },
-	{ "Driving", "GearNeutral", SW, "", "Neutral, held" },
-	{ "Driving", "Gear1", SW, "", "Gear 1, held (an H shifter's positions)" },
-	{ "Driving", "Gear2", SW, "", "Gear 2, held" },
-	{ "Driving", "Gear3", SW, "", "Gear 3, held" },
-	{ "Driving", "Gear4", SW, "", "Gear 4, held" },
-	{ "Driving", "Gear5", SW, "", "Gear 5, held" },
-	{ "Driving", "Gear6", SW, "", "Gear 6, held" },
+	{ "Driving", "GearReverse", SW, "", "An H shifter's reverse, engaged when pressed, kept once let go" },
+	{ "Driving", "GearNeutral", SW, "", "Neutral, engaged when pressed, kept until another gear" },
+	{ "Driving", "Gear1", SW, "", "Gear 1, engaged when pressed, kept once let go (SPECS.md)" },
+	{ "Driving", "Gear2", SW, "", "Gear 2" },
+	{ "Driving", "Gear3", SW, "", "Gear 3" },
+	{ "Driving", "Gear4", SW, "", "Gear 4" },
+	{ "Driving", "Gear5", SW, "", "Gear 5" },
+	{ "Driving", "Gear6", SW, "", "Gear 6" },
 	{ "Driving", "Clutch", PD, "", "The clutch pedal (F355 Challenge)" },
 	{ "Driving", "Clutch_Digital", KY, "", "The clutch pressed all the way" },
 	{ "Driving", "Horn", SW, "KEY_H, GC0_BUTTON_X", "The horn" },

@@ -8,11 +8,20 @@ and released: [DEVELOPMENT.md](DEVELOPMENT.md), "Versions and releases".
 Next version
 ------------
 
-- Fixed: with an H shifter's gears bound (`Gear1` to `Gear6`) and Shift up
-  and down too, as a cabinet's `controls.ini` for both kinds of panel, Shift
-  up and down changed no gear (NASCAR Arcade's GEAR POSITION stayed N): the
-  lever was put in neutral at each frame, never moved. Neutral now once one
-  of its gears was held, until Shift up or down is pressed.
+- The gear lever's new rule (NASCAR Arcade, F355, 18 Wheeler, Crazy Taxi,
+  The King of Route 66; written down in [SPECS.md](https://github.com/njz3/hikaruloader/blob/main/SPECS.md)): an H
+  shifter's button (`Gear1` to `Gear6`, `GearReverse`, `GearNeutral`)
+  pressed engages its gear, kept once let go; of several held, the last
+  pressed; Shift up and down the next gear, neutral not one of them;
+  neutral only by its button, or while shifting for `SHIFT_NEUTRAL_MS`
+  (now from a button too); at the start, the gear of a button already held
+  (the highest), else neutral. `SHIFTER_NEUTRAL` is gone (the lever let go
+  went to neutral).
+- Fixed: with an H shifter's buttons bound and Shift up and down too, as a
+  cabinet's `controls.ini` for both kinds of panel, Shift up and down
+  changed no gear (NASCAR Arcade's GEAR POSITION stayed N).
+- The King of Route 66's lever, drive and reverse (its SHIFT [D] and
+  SHIFT [R]): it had none.
 
 
 0.8.0 (2026-11-12)

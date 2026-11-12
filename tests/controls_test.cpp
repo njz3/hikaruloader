@@ -20,8 +20,8 @@
  * Controls::steer, the force feedback's spring), the controllers' hotkeys
  * added to an older controls.ini, and the hotkeys and the wheel read from
  * SDL's virtual joysticks, a game controller with its Guide and a wheel, as
- * a player would press them; the gear lever (hl::Gearbox) and the view
- * change button, Star Wars: Racer Arcade's levers combined from data/
+ * a player would press them; the view change button (the gear lever:
+ * gearbox_test.cpp), Star Wars: Racer Arcade's levers combined from data/
  * games.json (hl::GameControls), the players 3 and 4, the devices'
  * profiles (hl::DeviceProfiles). Run by ctest, or alone: controlstest
  * <data/games.json>. */
@@ -360,96 +360,6 @@ test_levers (hl::GameList *list)
 	g.set_game (NULL, NULL);
 }
 
-/* The gear lever, as sm2-emu's: the paddles a gear each press, through
- * neutral between two gears SHIFT_NEUTRAL_MS; an H shifter's positions,
- * its lever in none of them in neutral (SHIFTER_NEUTRAL); the agent's gear
- * over the controls; looked at once a frame */
-static void
-test_gearbox (void)
-{
-	hl::Gearbox &g = hl::Gearbox::get ();
-	hl::Config *cfg = hl::Config::get ();
-	hl::Controls &c = hl::Controls::get ();
-	const std::vector<int> four = { 0, 1, 2, 3, 4 }, trucker = { -1, 0, 1, 2 };
-	uint64_t frame = 1;
-	unsigned gear, neutral;
-	int i;
-
-	/* A row held (or let go) as a player would, then the frame's gear */
-	auto press = [&] (const char *key, bool on, const std::vector<int> &gears = { 0, 1, 2, 3, 4 }) {
-		if (on)
-			c.hold ("Driving", key, 1.0);
-		else
-			c.release_held ("Driving", key);
-		return g.gear (frame++, gears);
-	};
-
-	g.reset ();
-	cfg->shift_neutral_ms = 0;
-	cfg->shifter_neutral = true;
-	check ("gears: neutral at first", g.gear (frame++, four) == 0);
-	check ("gears: a gear up, 1", press ("ShiftUp", true) == 1);
-	check ("gears: held, still 1", press ("ShiftUp", true) == 1);
-	press ("ShiftUp", false);
-	for (i = 0; i < 5; i++) {
-		press ("ShiftUp", true);
-		press ("ShiftUp", false);
-	}
-	check ("gears: 4 at most", g.gear (frame++, four) == 4);
-	check ("gears: a gear down, 3", press ("ShiftDown", true) == 3);
-	c.release_held ("Driving", "ShiftDown");
-	check ("gears: a frame looked at once", g.gear (frame - 1, four) == 3);
-
-	/* 100 ms through neutral: six frames */
-	cfg->shift_neutral_ms = 100;
-	gear = press ("ShiftUp", true);
-	c.release_held ("Driving", "ShiftUp");
-	for (neutral = gear ? 0 : 1; neutral < 20 && (gear = g.gear (frame++, four)) == 0; neutral++)
-		;
-	check ("gears: through neutral six frames", neutral == 6 && gear == 4);
-	cfg->shift_neutral_ms = 0;
-
-	/* An H shifter bound and never moved: the paddles' gears stay (a
-	 * cabinet's controls.ini for both panels) */
-	c.set_value ("Driving", "Gear1", "KEY_1");
-	g.reset ();
-	press ("ShiftUp", true);
-	press ("ShiftUp", false);
-	press ("ShiftUp", true);
-	check ("H unused: the paddles' 2", press ("ShiftUp", false) == 2);
-	press ("ShiftDown", true);
-	check ("H unused: the paddles' 1", press ("ShiftDown", false) == 1);
-
-	/* An H shifter */
-	check ("H: gear 3 held", press ("Gear3", true) == 3);
-	check ("H: let go, neutral", press ("Gear3", false) == 0);
-	press ("ShiftUp", true);
-	check ("H then the paddles: 1 from neutral", press ("ShiftUp", false) == 1);
-	check ("H then the paddles: 1 kept", g.gear (frame++, four) == 1);
-	cfg->shifter_neutral = false;
-	press ("Gear2", true);
-	check ("H: let go, the gear kept", press ("Gear2", false) == 2);
-	check ("H: neutral pressed", press ("GearNeutral", true) == 0);
-	press ("GearNeutral", false);
-	c.set_value ("Driving", "Gear1", "");
-	cfg->shifter_neutral = true;
-
-	/* 18 Wheeler's: reverse below neutral, an H shifter's reverse */
-	g.reset ();
-	check ("reverse: neutral at first", g.gear (frame++, trucker) == 0);
-	check ("reverse: a gear down", press ("ShiftDown", true, trucker) == -1);
-	press ("ShiftDown", false, trucker);
-	check ("reverse: its position held", press ("GearReverse", true, trucker) == -1);
-	press ("GearReverse", false, trucker);
-
-	/* The agent's */
-	g.hold (4);
-	check ("agent: its gear", g.gear (frame++, four) == 4);
-	g.hold (hl::Gearbox::NO_GEAR);
-	g.reset ();
-	check ("reset: neutral", g.gear (frame++, four) == 0);
-}
-
 /* NASCAR Arcade's view change: linuxloader's ViewChange, in [Driving], V and
  * a controller's Y by default */
 static void
@@ -640,7 +550,6 @@ main (int argc, char **argv)
 		test_upgrade (dir.generic_string ());
 		test_devices (dir.generic_string ());
 		test_levers (list);
-		test_gearbox ();
 		test_view_change ();
 		test_players ();
 		test_pointers ();

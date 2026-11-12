@@ -379,10 +379,10 @@ public:
 	 * wheel_range degrees it turns end to end, as its driver is set */
 	int		wheel_rotation;
 	int		wheel_range;
-	/* NASCAR Arcade's gear lever (hl::Gearbox): an H shifter in none of
-	 * its gears in neutral, else the last gear kept; a shift from a gear
-	 * to another through neutral that long, in ms (as sm2-emu) */
-	bool		shifter_neutral;
+	/* The gear lever (hl::Gearbox, SPECS.md): a shift from a gear to
+	 * another through neutral that long, in ms (as sm2-emu). The H
+	 * shifter's gears are kept once let go (SHIFTER_NEUTRAL, which put
+	 * the lever in neutral, is gone) */
 	int		shift_neutral_ms;
 	TwinLevers	twin_levers;
 	/* The joysticks, wheels and controllers read without the window's

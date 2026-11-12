@@ -250,22 +250,23 @@ wheel's driver (Logitech G HUB, Thrustmaster's or Fanatec's control panel),
 **Gear levers.** Some cabinets have a lever that stays where it is put,
 each position closing switches the game decodes, as their INPUT TESTs read
 them: NASCAR Arcade's four-speed H, F355's six-speed H, 18 Wheeler's low,
-high and reverse, Crazy Taxi's drive and reverse (`gearbox` in
-`data/games.json`). Shift up and Shift down (`ShiftUp`, `ShiftDown` in
-`controls.ini`) move it a position at each press; an H shifter binds its
-positions (`GearReverse`, `GearNeutral`, `Gear1` to `Gear6`), as sm2-emu has
-them. F355's wing paddles are Shift up and Shift down themselves (its H then
-only by an H shifter's positions); its assist switches SC, TC, ABS and IBS
-are buttons 1 to 4, its clutch `Clutch`. Initial D's lever, which springs
-back, is the same two rows, read as they are pressed. The Controls tab's
-*Gear lever*: *Neutral when no gear is engaged*, an H shifter's lever in
-none of its gears in neutral, as on the cabinet (else the last gear stays),
-once one of its positions was held and until Shift up or down is pressed:
-both can be bound, an H shifter never moved leaving the gears to Shift up
-and down;
-*Neutral between gears*, Shift up and down going through neutral that
-long, as a real lever (`[Input]` `SHIFTER_NEUTRAL`, `SHIFT_NEUTRAL_MS`). The
-gear the game reads shows in *What the game receives*.
+high and reverse, Crazy Taxi's and The King of Route 66's drive and reverse
+(`gearbox` in `data/games.json`). Shift up and Shift down (`ShiftUp`,
+`ShiftDown` in `controls.ini`) engage the next gear up or down at each
+press, neutral not one of them; an H shifter's buttons (`GearReverse`,
+`GearNeutral`, `Gear1` to `Gear6`) engage their gear when pressed, kept
+once let go; of several held, the last pressed. Neutral only by its button.
+At a game's start, the gear of a button already held (the highest), else
+neutral (drive in a game without one). Both kinds can be bound at once.
+The whole rule, scenario by scenario: [SPECS.md](https://github.com/njz3/hikaruloader/blob/main/SPECS.md). F355's wing
+paddles are Shift up and Shift down themselves (its H then only by an H
+shifter's buttons); its assist switches SC, TC, ABS and IBS are buttons 1
+to 4, its clutch `Clutch`. Initial D's lever, which springs back, is the
+same two rows, read as they are pressed. The Controls tab's *Gear lever*:
+*Neutral between gears*, a shift from a gear to another (by Shift up and
+down or the buttons) going through neutral that long, as a real lever
+(`[Input]` `SHIFT_NEUTRAL_MS`, 0 by default: at once). The gear the game
+reads shows in *What the game receives*.
 
 **Star Wars: Racer Arcade's levers.** The cabinet has two levers, each the
 thrust of one of the pod's engines, pushed forward: even, the pod goes
