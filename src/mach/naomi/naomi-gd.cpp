@@ -443,7 +443,7 @@ public:
 			total = t.start + frames - in_file;
 			t.end = total - 1;
 			t.offset = (int32_t) (offset + in_file) - (int32_t) t.start;
-			t.raw = strcmp (type, "MODE1") && strcmp (type, "MODE1/2048") != 0;
+			t.data = user_data_offset (type);
 			tracks.push_back (t);
 			offset += (frames + 3) / 4 * 4;
 		}
@@ -465,7 +465,7 @@ public:
 					return false;
 				current = which;
 			}
-			memcpy (out, hunk.data () + (at % per_hunk) * (2352 + 96) + (t.raw ? 16 : 0), 2048);
+			memcpy (out, hunk.data () + (at % per_hunk) * (2352 + 96) + t.data, 2048);
 			return true;
 		}
 		return false;
@@ -475,8 +475,25 @@ private:
 	struct Track {
 		uint32_t start, end;
 		int32_t offset;
-		bool raw;
+		uint32_t data;	/* where a sector's 2048 bytes start in its frame */
 	};
+
+	/* The 2048 bytes of user data in a frame of the track's type, as
+	 * MAME's cdrom.cpp reads them: after the sync and header of a raw
+	 * mode 1 sector (16), also after the subheader of a raw mode 2 one
+	 * (24, the Mahjong MJ update disc CDP-10002A), after the subheader
+	 * alone in a 2336-byte mode 2 sector (8); at the start of a 2048-byte
+	 * one */
+	static uint32_t user_data_offset (const char *type)
+	{
+		if (!strcmp (type, "MODE1_RAW") || !strcmp (type, "MODE1/2352"))
+			return 16;
+		if (!strcmp (type, "MODE2_RAW") || !strcmp (type, "MODE2/2352") || !strcmp (type, "CDI/2352"))
+			return 24;
+		if (!strcmp (type, "MODE2") || !strcmp (type, "MODE2/2336") || !strcmp (type, "MODE2_FORM_MIX"))
+			return 8;
+		return 0;
+	}
 
 	chd_file *chd = NULL;
 	std::vector<uint8_t> hunk;

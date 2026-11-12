@@ -19,6 +19,9 @@ Next version
   as before.
 - Beach Spikers starts as a four-player cabinet on a blank EEPROM (its
   header names no players): a game with players 3 and 4 gets them.
+- Sega Yonin Uchi Mahjong MJ's Update Disc Ver.1.007 (CDP-10002A) starts:
+  its CD is in mode 2, whose sectors' data were read 8 bytes too soon (the
+  game's file not found); it gets to its network wait, as the other discs.
 - Mushiking The King Of Beetles 2006 Second no longer black after the NAOMI
   logo: the G1 bus's DMA gives its end address and length done (SB_GDSTARD,
   SB_GDLEND), by which the game counts the sectors it has read. Mushiking IV
