@@ -19,6 +19,10 @@ Next version
   as before.
 - Beach Spikers starts as a four-player cabinet on a blank EEPROM (its
   header names no players): a game with players 3 and 4 gets them.
+- Mushiking The King Of Beetles 2006 Second no longer black after the NAOMI
+  logo: the G1 bus's DMA gives its end address and length done (SB_GDSTARD,
+  SB_GDLEND), by which the game counts the sectors it has read. Mushiking IV
+  gets to its RFID reader's error, as Mushiking II.
 - The SH-4's floating point rounds as the games set it (FPSCR: toward zero
   from the reset, the denormals as zeros), no longer always to the nearest:
   Virtua Tennis's numbers no longer a last bit apart; a few attracts run a

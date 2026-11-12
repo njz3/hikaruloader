@@ -416,6 +416,11 @@ Holly::g1_dma ()
 		/* From the RAM to the communication board's */
 		board->comm.dma_from_ram ((const uint8_t *) board->ram->ptr (offs), len);
 	}
+	/* Where it got to and what it moved, in 32 bytes (SB_GDSTARD and
+	 * SB_GDLEND, read only): Mushiking 2006's reads count their sectors by
+	 * them, a read done when its interrupt comes */
+	g1[0xF8 / 4] = (g1[0x08 / 4] + 31) & ~31u;
+	g1[0xF4 / 4] = star + g1[0xF8 / 4];
 	after (1 + (len >> 16), IST_DMA_GDROM);
 }
 
@@ -1610,6 +1615,9 @@ Holly::put (unsigned size, uint32_t addr, uint64_t val_)
 		unsigned reg = (offs - 0x5F7400) / 4;
 		uint32_t old = g1[reg];
 
+		/* SB_GDSTARD and SB_GDLEND are read only */
+		if (offs == 0x5F74F4 || offs == 0x5F74F8)
+			return 0;
 		g1[reg] = val;
 		if (offs == 0x5F7418 && !(old & 1) && (val & 1) && (g1[0x14 / 4] & 1)) {
 			g1_dma ();
