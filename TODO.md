@@ -38,14 +38,6 @@ GENERAL
     TEST) would be channels 8 to 11 of the V226's twelve, the four players' buttons on
     player 1's switches (Flycast); roles for players 3 and 4's sticks and the kicks
     are missing;
-  - vtennis and vtennisg stay black from frame 1324: their frame loop waits on a lock
-    (bit 0 of 0C287E58) its end-of-render interrupt releases, and that frame's lists stop
-    after the opaque one (no modifier volume or translucent list end), as the scene
-    loaded then has bad data: its models' 80-byte elements give material indices far out
-    of their table (0C0A30CE: reads at 389CFCD8, 17AF3670..., writes near 00000000).
-    Not the cartridge (the GD-ROM version does the same, the M2 board's ROM as MAME's),
-    nor the recompiler (the interpreter does the same), nor the instruction cache; to
-    find by comparing the RAM with a reference at the scene change;
   - spawn, hmgeo, alienfnt want a linked cabinet in their factory settings (blank EEPROM):
     their own test menus change it; mushi2k62 and rhytngk black at frame 2400.
   - f355twin, to check against a real board: its music (a stream on the master) plays in
@@ -200,6 +192,10 @@ HIKARU
 SH-4
 ----
 
+- The SH-4's FPU rounds to nearest whatever FPSCR.RM says: FPSCR's reset value, 00040001,
+  has RM = 1 (to zero), and a game that keeps it gets floats a last bit apart (Virtua
+  Tennis: 400CCCCD where the board makes 400CCCCC); DN (denormals as 0) not done either. MXCSR's RC (and FTZ, DAZ)
+  around the SH-4's slices would give both, in the interpreter and the translations.
 - The translations: T in the host's flags; registers kept across chained
   blocks; DIV1, ADDC and the FPU's doubles written out. Odin's master SH-4
   still takes less time than ours (SWRACER about 0.57 ms a frame, ours about

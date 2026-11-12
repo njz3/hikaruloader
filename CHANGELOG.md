@@ -19,6 +19,10 @@ Next version
   as before.
 - Beach Spikers starts as a four-player cabinet on a blank EEPROM (its
   header names no players): a game with players 3 and 4 gets them.
+- Virtua Tennis (the cartridge and the GD-ROM) no longer black after the
+  Sega logo: the G1 bus's DMA starts on a 32-byte boundary, as the board's
+  (its scenes load in chunks of 66666 bytes, each one over the end of the
+  one before).
 - Virtua Athletics, Keyboard Maniax and Psyvariar 2 no longer stop at their
   start (invalid instruction 0000): the SH-4 runs 0000 as a no-op, as the
   board does (Virtua Athletics has one in the delay slot of a jump).

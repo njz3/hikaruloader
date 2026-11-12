@@ -392,7 +392,11 @@ Holly::ch2_dma ()
 void
 Holly::g1_dma ()
 {
-	uint32_t star = g1[0x04 / 4], len = (g1[0x08 / 4] + 30) & ~30u;
+	/* From a 32-byte boundary: the address's bits 4-0 are not used (Virtua
+	 * Tennis loads its scenes in chunks of 66666 bytes, to 0D066666 then
+	 * 0D0CCCCC...: each from 0D066660, over the end of the one before, as
+	 * Flycast has it) */
+	uint32_t star = g1[0x04 / 4] & ~31u, len = (g1[0x08 / 4] + 30) & ~30u;
 	uint32_t offs = star & (board->ram->size () - 1);
 	/* Aimed elsewhere (0: Strike Fighter's), the data read goes nowhere */
 	bool in_ram = (star & 0x1C000000) == 0x0C000000;
