@@ -39,7 +39,13 @@ GENERAL
     player 1's switches (Flycast); roles for players 3 and 4's sticks and the kicks
     are missing;
   - spawn, hmgeo, alienfnt want a linked cabinet in their factory settings (blank EEPROM):
-    their own test menus change it; mushi2k62 and rhytngk black at frame 2400.
+    their own test menus change it;
+  - mushi2k62 and mushik4e black after the NAOMI logo: mushi2k62 loads as Flycast does up
+    to its PVM 06S_Fire (cartridge 033B1000), then streams 24000 bytes of it in 4000-byte
+    chunks (to 033D5800, past the next PVM at 033C3000, which Flycast loads next) and stops
+    there, its tasks all waiting; the size it streams, from its file table, is to find;
+    mushik4e (MKG TKOB) wants the RFID reader/writers on Maple ports B and C (838-14243),
+    as mushik2e (ERROR 100 RFID READER NOT READY).
   - f355twin, to check against a real board: its music (a stream on the master) plays in
     the attract, the menus and Race mode, not in Training (voice guidance there); its
     screen board plays the race's effects only; its first 50 s are silent (the boot: a

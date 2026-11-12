@@ -19,6 +19,9 @@ Next version
   as before.
 - Beach Spikers starts as a four-player cabinet on a blank EEPROM (its
   header names no players): a game with players 3 and 4 gets them.
+- Rhythm Tengoku no longer black after the NAOMI logo: an M4 cartridge
+  reads FF past its chips, as erased flash (the game looks for a table of
+  files at the top of the cartridge and stopped on none).
 - Virtua Tennis (the cartridge and the GD-ROM) no longer black after the
   Sega logo: the G1 bus's DMA starts on a 32-byte boundary, as the board's
   (its scenes load in chunks of 66666 bytes, each one over the end of the

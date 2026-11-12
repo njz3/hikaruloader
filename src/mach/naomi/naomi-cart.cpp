@@ -227,7 +227,10 @@ Cart::read (uint8_t *out, uint32_t size)
 				}
 			}
 			if (at >= rom_size) {
-				memset (out, type == TYPE_M4 ? 0 : 0xFF, n);
+				/* Past the chips: FF, as erased flash (Rhythm
+				 * Tengoku looks for a table of files at the top
+				 * of an M4's 512 MB and stops on an FFFFFFFF) */
+				memset (out, 0xFF, n);
 			} else {
 				n = std::min (n, rom_size - at);
 				memcpy (out, rom + at, n);
