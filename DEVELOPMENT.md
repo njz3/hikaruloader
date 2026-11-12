@@ -231,7 +231,7 @@ In the environment:
   waits).
 
 The unit tests run with `ctest -C RelWithDebInfo` in `build` (the SH-4's
-MMU and its FPU's moves, the Z80, the TLCS-90, the 68000, the ARM7, the AICA's arithmetic, the sound output, the EEPROM,
+MMU and its FPU's moves and rounding, the Z80, the TLCS-90, the 68000, the ARM7, the AICA's arithmetic, the sound output, the EEPROM,
 the X76F100, the nvram file, the write directory, the games folders and their 7z, the
 controls' hotkeys and wheel rotation on SDL's virtual joysticks, the drive
 board, the card reader, the aspect ratio's layouts, the CRT presets' reader

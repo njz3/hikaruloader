@@ -19,6 +19,10 @@ Next version
   as before.
 - Beach Spikers starts as a four-player cabinet on a blank EEPROM (its
   header names no players): a game with players 3 and 4 gets them.
+- The SH-4's floating point rounds as the games set it (FPSCR: toward zero
+  from the reset, the denormals as zeros), no longer always to the nearest:
+  Virtua Tennis's numbers no longer a last bit apart; a few attracts run a
+  little differently (Crazy Taxi, Sports Jam).
 - Spawn and Heavy Metal: Geomatrix start alone on a new save: their own first
   settings made the cabinet a slave, waiting for its master (`LINK = AUTO`
   now gives such a game `NO_LINK`, as a new cabinet's owner would; the others

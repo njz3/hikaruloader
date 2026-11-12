@@ -346,6 +346,10 @@ public:
 	bool		use_jit = true;
 	std::unique_ptr<Sh4X64> jit;
 
+	/* Inside run (): the host's SSE rounding (MXCSR) is FPSCR's, set again
+	 * when FPSCR is written. See sh4.cpp, "The FPU's rounding" */
+	bool		host_fp = false;
+
 	~Sh4 ();
 
 	/* A loop that waits for the rest of the machine (a flag an interrupt

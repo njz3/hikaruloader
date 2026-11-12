@@ -35,7 +35,9 @@
 /* TODO: propagate get/put and instruction errors to the main loop */
 /* TODO: the exceptions but the MMU's and TRAPA (see "MMU"): the illegal
  * instructions, the FPU disabled, the address errors without the MMU */
-/* TODO: handle FP exceptions and rounding mode */
+/* TODO: handle FP exceptions */
+
+#include <xmmintrin.h>
 
 #include "hl/core.h"
 #include "hl/cpu.h"
@@ -280,6 +282,49 @@ Sh4::scif_update (unsigned cycles)
 		set_irq_state (SH4_IESOURCE_RXIF, hl::IRQ_STATE_RAISED);
 }
 
+/*
+ * The FPU's rounding
+ * ==================
+ *
+ * FPSCR.RM 1 rounds toward zero, 0 to the nearest; DN set, the denormals are
+ * zeros (taken and made). FPSCR's reset value, 00040001, has both, and the
+ * games keep it (Virtua Tennis makes 400CCCCC where the nearest is 400CCCCD).
+ * The interpreter's and the translations' floats are the host's SSE ones:
+ * run () gives MXCSR the FPSCR's mode (RC toward zero, FTZ and DAZ for DN)
+ * and puts the host's back at its end, as set_fpscr () does when FPSCR is
+ * written meanwhile. RM 2 and 3 are reserved: to the nearest.
+ */
+
+static unsigned
+host_fp_mode (const Sh4 *ctx)
+{
+	unsigned csr = 0x1F80;	/* the exceptions masked, to the nearest */
+
+	if (FPSCR.bit.rm == 1)
+		csr |= 0x6000;	/* RC: toward zero */
+	if (FPSCR.bit.dn)
+		csr |= 0x8040;	/* FTZ, DAZ */
+	return csr;
+}
+
+/* run ()'s: the host's MXCSR set for the SH-4, then put back */
+class HostFpMode {
+public:
+	HostFpMode (Sh4 *ctx_) : ctx (ctx_), saved (_mm_getcsr ())
+	{
+		_mm_setcsr (host_fp_mode (ctx));
+		ctx->host_fp = true;
+	}
+	~HostFpMode ()
+	{
+		ctx->host_fp = false;
+		_mm_setcsr (saved);
+	}
+private:
+	Sh4 *ctx;
+	unsigned saved;
+};
+
 static void
 set_fpscr (Sh4 *ctx, uint32_t val)
 {
@@ -289,6 +334,8 @@ set_fpscr (Sh4 *ctx, uint32_t val)
 	/* Swap FR banks if required */
 	if (old.bit.fr != FPSCR.bit.fr)
 		swap_f_banks (ctx);
+	if (ctx->host_fp && (old.bit.rm != FPSCR.bit.rm || old.bit.dn != FPSCR.bit.dn))
+		_mm_setcsr (host_fp_mode (ctx));
 
 	/* SZ and PR both set is only undefined for the FPU's arithmetic: the
 	 * moves do as SZ says, and Strike Fighter's kernel sets SZ to save the
@@ -2290,6 +2337,8 @@ sh4_step (Sh4 *ctx, uint32_t pc)
 void
 Sh4::step_one ()
 {
+	HostFpMode fp (this);
+
 	sh4_step (this, regs.pc);
 	regs.pc += 2;
 }
@@ -2931,6 +2980,7 @@ Sh4::run (int cycles)
 	if (cpu->break_hit)
 		return 0;
 
+	HostFpMode fp (ctx);
 	cpu->remaining = cycles;
 	/* SLEEP ends with the first interrupt it may take */
 	if (cpu->state == hl::CPU_STATE_SLEEP && irq_ready)

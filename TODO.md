@@ -195,10 +195,6 @@ HIKARU
 SH-4
 ----
 
-- The SH-4's FPU rounds to nearest whatever FPSCR.RM says: FPSCR's reset value, 00040001,
-  has RM = 1 (to zero), and a game that keeps it gets floats a last bit apart (Virtua
-  Tennis: 400CCCCD where the board makes 400CCCCC); DN (denormals as 0) not done either. MXCSR's RC (and FTZ, DAZ)
-  around the SH-4's slices would give both, in the interpreter and the translations.
 - The translations: T in the host's flags; registers kept across chained
   blocks; DIV1, ADDC and the FPU's doubles written out. Odin's master SH-4
   still takes less time than ours (SWRACER about 0.57 ms a frame, ours about

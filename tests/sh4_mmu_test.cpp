@@ -19,13 +19,16 @@
 /* The SH-4 MMU's tests (sh4.cpp, "MMU"): small programs run from P2, the
  * TLBs loaded by LDTLB or through their arrays, the misses served by a
  * handler that loads the entry and runs the instruction again, the other
- * exceptions by one that notes EXPEVT and skips it; and the FPU's moves.
+ * exceptions by one that notes EXPEVT and skips it; and the FPU's moves and
+ * rounding.
  * Run by ctest, or alone: sh4mmutest. */
 
 #include <stdio.h>
 #include <string.h>
 
 #include <initializer_list>
+
+#include <xmmintrin.h>
 
 #include "hl/core.h"
 #include "hl/machine.h"
@@ -409,6 +412,32 @@ test_fmov (void)
 	CHECK ("fmov SZ store", ram->get (4, (base + 0x14) & 0xFFFFFF), 0x40000000);
 }
 
+/* The FPU's rounding as FPSCR.RM says: 1/3 to the nearest 3EAAAAAB, toward
+ * zero (FPSCR's reset value, 00040001) 3EAAAAAA; the host's own mode back
+ * after the slice */
+static void
+test_fround (void)
+{
+	static const uint32_t base = 0x0C000100;
+	static const struct {
+		uint32_t fpscr, want;
+	} cases[] = { { 0x00000000, 0x3EAAAAAB }, { 0x00040001, 0x3EAAAAAA } };
+
+	for (const auto &c : cases) {
+		start (CODE);
+		ram->put (4, base & 0xFFFFFF, 0x3F800000);
+		ram->put (4, (base + 4) & 0xFFFFFF, 0x40400000);
+		cpu->regs.fpscr.full = c.fpscr;
+		cpu->regs.r[0] = base;
+		/* fmov.s @r0+,fr4; fmov.s @r0+,fr5; fdiv fr5,fr4 */
+		code (CODE, { 0xF409, 0xF509, 0xF453, STOP, NOP });
+		unsigned host = _mm_getcsr ();
+		run ();
+		CHECK ("fdiv rounding", fpu_reg ("fr4"), c.want);
+		CHECK ("host's MXCSR back", _mm_getcsr (), host);
+	}
+}
+
 int
 main (int argc, char **argv)
 {
@@ -433,6 +462,7 @@ main (int argc, char **argv)
 	test_trapa ();
 	test_off ();
 	test_fmov ();
+	test_fround ();
 
 	printf ("sh4mmutest: %d checks, %d failures\n", checks, failures);
 	return failures ? 1 : 0;
