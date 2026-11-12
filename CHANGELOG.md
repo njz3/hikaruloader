@@ -19,6 +19,10 @@ Next version
   as before.
 - Beach Spikers starts as a four-player cabinet on a blank EEPROM (its
   header names no players): a game with players 3 and 4 gets them.
+- World Kicks on its Namco V226 I/O board: the four players' sticks, buttons
+  and kicks at the ball (`P1_Kick` to `P4_Kick`: a trigger, how hard), checked
+  in its SWITCH TEST and in a match; new controls for players 3 and 4's
+  analog sticks (`P3_StickX`...).
 - Rhythm Tengoku no longer black after the NAOMI logo: an M4 cartridge
   reads FF past its chips, as erased flash (the game looks for a table of
   files at the top of the cartridge and stopped on none).

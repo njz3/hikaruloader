@@ -80,6 +80,7 @@ static const Controls::RowDef row_table[] = {
 	{ "Player1", "P1_Button4", SW, "KEY_Z, GC0_BUTTON_Y", "Button 4" },
 	{ "Player1", "P1_Button5", SW, "KEY_X, GC0_BUTTON_LEFTSHOULDER", "Button 5" },
 	{ "Player1", "P1_Button6", SW, "KEY_C, GC0_BUTTON_RIGHTSHOULDER", "Button 6" },
+	{ "Player1", "P1_Kick", PD, "KEY_Space, GC0_AXIS_RIGHTTRIGGER", "A kick at the ball, its strength (World Kicks)" },
 
 	{ "Player2", NULL, SW, NULL, "Player 2's start, stick and buttons" },
 	{ "Player2", "P2_Start", SW, "KEY_2, GC1_BUTTON_START", "Start" },
@@ -93,6 +94,7 @@ static const Controls::RowDef row_table[] = {
 	{ "Player2", "P2_Button4", SW, "KEY_W, GC1_BUTTON_Y", "Button 4" },
 	{ "Player2", "P2_Button5", SW, "KEY_I, GC1_BUTTON_LEFTSHOULDER", "Button 5" },
 	{ "Player2", "P2_Button6", SW, "KEY_K, GC1_BUTTON_RIGHTSHOULDER", "Button 6" },
+	{ "Player2", "P2_Kick", PD, "GC1_AXIS_RIGHTTRIGGER", "A kick at the ball, its strength" },
 
 	{ "Player3", NULL, SW, NULL, "Player 3's start, stick and buttons (the four-player games)" },
 	{ "Player3", "P3_Start", SW, "GC2_BUTTON_START", "Start" },
@@ -106,6 +108,7 @@ static const Controls::RowDef row_table[] = {
 	{ "Player3", "P3_Button4", SW, "GC2_BUTTON_Y", "Button 4" },
 	{ "Player3", "P3_Button5", SW, "GC2_BUTTON_LEFTSHOULDER", "Button 5" },
 	{ "Player3", "P3_Button6", SW, "GC2_BUTTON_RIGHTSHOULDER", "Button 6" },
+	{ "Player3", "P3_Kick", PD, "GC2_AXIS_RIGHTTRIGGER", "A kick at the ball, its strength" },
 
 	{ "Player4", NULL, SW, NULL, "Player 4's start, stick and buttons (the four-player games)" },
 	{ "Player4", "P4_Start", SW, "GC3_BUTTON_START", "Start" },
@@ -119,6 +122,7 @@ static const Controls::RowDef row_table[] = {
 	{ "Player4", "P4_Button4", SW, "GC3_BUTTON_Y", "Button 4" },
 	{ "Player4", "P4_Button5", SW, "GC3_BUTTON_LEFTSHOULDER", "Button 5" },
 	{ "Player4", "P4_Button6", SW, "GC3_BUTTON_RIGHTSHOULDER", "Button 6" },
+	{ "Player4", "P4_Kick", PD, "GC3_AXIS_RIGHTTRIGGER", "A kick at the ball, its strength" },
 
 	{ "Driving", NULL, SW, NULL,
 	  "The driving games: the wheel and the pedals, their keys (the wheel all the way in\n"
@@ -206,6 +210,10 @@ static const Controls::RowDef row_table[] = {
 	{ "Pointer", "P1_StickY_Right", KY, "KEY_Down", "Down" },
 	{ "Pointer", "P2_StickX", AX, "GC1_AXIS_LEFTX", "Player 2's analog stick, left to right" },
 	{ "Pointer", "P2_StickY", AX, "GC1_AXIS_LEFTY", "Player 2's analog stick, up to down" },
+	{ "Pointer", "P3_StickX", AX, "GC2_AXIS_LEFTX", "Player 3's analog stick, left to right" },
+	{ "Pointer", "P3_StickY", AX, "GC2_AXIS_LEFTY", "Player 3's analog stick, up to down" },
+	{ "Pointer", "P4_StickX", AX, "GC3_AXIS_LEFTX", "Player 4's analog stick, left to right" },
+	{ "Pointer", "P4_StickY", AX, "GC3_AXIS_LEFTY", "Player 4's analog stick, up to down" },
 
 	{ "Emulator", NULL, SW, NULL, "The emulator's commands" },
 	{ "Emulator", "Pause", SW, "KEY_P, GC0_BUTTON_GUIDE + GC0_BUTTON_X", "Pauses and resumes the game" },

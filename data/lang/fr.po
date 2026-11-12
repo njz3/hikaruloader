@@ -1899,6 +1899,30 @@ msgstr "Manche analogique du joueur 2, gauche et droite"
 msgid "Player 2's analog stick up and down"
 msgstr "Manche analogique du joueur 2, haut et bas"
 
+msgid "Player 3's analog stick left and right"
+msgstr "Manche analogique du joueur 3, gauche et droite"
+
+msgid "Player 3's analog stick up and down"
+msgstr "Manche analogique du joueur 3, haut et bas"
+
+msgid "Player 4's analog stick left and right"
+msgstr "Manche analogique du joueur 4, gauche et droite"
+
+msgid "Player 4's analog stick up and down"
+msgstr "Manche analogique du joueur 4, haut et bas"
+
+msgid "Kick (its strength)"
+msgstr "Tir (sa force)"
+
+msgid "Player 2's kick"
+msgstr "Tir du joueur 2"
+
+msgid "Player 3's kick"
+msgstr "Tir du joueur 3"
+
+msgid "Player 4's kick"
+msgstr "Tir du joueur 4"
+
 msgid "Elevator (wheel pushed, pulled)"
 msgstr "Profondeur (manche poussé, tiré)"
 

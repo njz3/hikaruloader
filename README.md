@@ -757,12 +757,15 @@ hidden; Tab, Alt, the Windows key or another window let it go.
 | Ninja Assault | `MOUSE0` for player 1, `MOUSE1` for player 2: left button the trigger, off the picture and the trigger to reload |
 | Mazan: Flash of the Blade | `MOUSE0` the sword: a quick swing slashes (to start, to choose, to fight); `P1_Reload` takes it out of the sensors, `P1_Button2` puts it in its holder |
 | Gun Survivor 2 Biohazard Code: Veronica | The gun's yaw and pitch on the sight (`P1_GunX`, `P1_GunY`: the mouse, the left stick), its roll on `Rudder` (the right stick); the trigger, the gun button (`P1_Fire2`, `P1_Start` too) to start and walk |
+| World Kicks | Four players: each one's analog stick (`P1_StickX`, `P1_StickY` to `P4_`, the controllers' left sticks), button (`P1_Button1` to `P4_`: to join, to change player) and kick at the ball (`P1_Kick` to `P4_`: the right trigger, the further it goes the harder the kick; Space for player 1); ENTER `P1_Button2` |
 
 The Atomiswave's guns aim as the cabinet's do: once each, shoot the centre
 mark of the game's GUN ADJUST (Sports Shooting USA: its three targets) in its
 test menu; the game keeps it. Ninja Assault's guns and Mazan's sword aim
 where they point from the start (their GUN INITIALIZE and SWORD ADJUSTMENT
-can still change it); Gun Survivor 2's I/F INITIALIZE takes the gun's middle.
+can still change it); Gun Survivor 2's I/F INITIALIZE takes the gun's middle,
+as World Kicks' takes its sticks' (once: its I/O TEST, HOW TO [I/F
+INITIALIZE], the sticks left in the middle, SERVICE).
 
 A mouse moves its sight from where it was. A gun that sends absolute positions
 aims at the game's 4:3 picture in the middle of the window. A controller's

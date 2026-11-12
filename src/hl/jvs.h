@@ -321,7 +321,9 @@ private:
  * JYU-PCB (Ninja Assault: two players, two guns), the FCB (Mazan: the place
  * where the sword crosses one of its two sensors, a board each), the FCA-1
  * (Gun Survivor 2: one player, the gun's yaw, pitch and roll on its
- * channels). Their switches, coins and channels on the 837-13551's ports
+ * channels), the V226 (World Kicks: an 837-13551's identity, the four
+ * players' buttons on one player's switches, twelve channels, the kick
+ * sensors on 8 to 11). Their switches, coins and channels on the 837-13551's ports
  * (port: a cabinet's next board the next ones); the screen position of its
  * channel n (command 25) on "pos<first_player + n>": 0 left to right, 1 top
  * to bottom, 2 off the picture (then 0, 0), in the board's counts (Model).

@@ -33,11 +33,8 @@ GENERAL
   - the Star Horse sets (shorse*, shors2k1, shors2k2*, shorsep*, shorsepr*): SELF TEST
     says I/O BAD; they want the 837-13785 ARCNET&IO board, of which nothing is known
     (no access on the G2 bus: it is not the same board as the medal games');
-  - World Kicks runs on an 837-13551 (its menus, its four sticks on channels 0 to 7),
-    not its own Namco V226 board: its kick sensors (KICK, FRONT/BACK in its SWITCH
-    TEST) would be channels 8 to 11 of the V226's twelve, the four players' buttons on
-    player 1's switches (Flycast); roles for players 3 and 4's sticks and the kicks
-    are missing;
+  - World Kicks' FRONT/BACK sensors (p1:7 to p1:0, active low, its SWITCH TEST's), left
+    closed as Flycast has them: what they see on the cabinet is not known;
   - spawn, hmgeo, alienfnt want a linked cabinet in their factory settings (blank EEPROM):
     their own test menus change it;
   - mushi2k62 and mushik4e black after the NAOMI logo: mushi2k62 loads as Flycast does up

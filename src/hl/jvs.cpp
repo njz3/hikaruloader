@@ -1005,6 +1005,10 @@ static const NamcoIoBoard::Model namco_models[] = {
 	{ "namco-jyu", "namco ltd.;JYU-PCB;Ver1.00;JPN,2Coins 2Guns", 2, 12, 2, 0, 0, 2, 16, false, 56, 358, 68, 475 },
 	{ "namco-fcb", "namco ltd.;FCB;Ver1.0;JPN,Touch Panel & Multipurpose", 1, 16, 2, 7, 2, 1, 6, true, -9840, 22900, 28370, -20340 },
 	{ "namco-fca", "namco ltd.;FCA-1;Ver1.01;JPN,Multipurpose + Rotary Encoder", 1, 16, 1, 7, 2, 0, 6, false, 0, 0, 0, 0 },
+	/* World Kicks' V226: an 837-13551's identity, one player of 16
+	 * switches (the four players' buttons there), twelve channels: the
+	 * four sticks on 0 to 7, the four kick sensors on 8 to 11 */
+	{ "namco-v226", "SEGA ENTERPRISES,LTD.;I/O BD JVS;837-13551 ;Ver1.00;98/10", 1, 16, 1, 12, 0, 0, 6, false, 0, 0, 0, 0 },
 };
 
 const NamcoIoBoard::Model *
@@ -1088,8 +1092,22 @@ NamcoIoBoard::analogs (unsigned channels, std::vector<uint8_t> &out)
 	unsigned x, y, i;
 	uint16_t v;
 
-	if (!model->presence)
+	if (!model->presence && channels <= 8)
 		return SegaIoBoard::analogs (channels, out);
+	if (!model->presence) {
+		/* Past the 837-13551's eight (the V226's twelve): from the
+		 * game's controls, 0 where none is */
+		if (channels > model->analogs)
+			return false;
+		SegaIoBoard::analogs (8, out);
+		for (i = 8; i < channels; i++) {
+			v = 0;
+			if (cabinet)
+				GameControls::get ().analog (port ("an").c_str (), i, &v);
+			out.insert (out.end (), { (uint8_t) (v >> 8), (uint8_t) v });
+		}
+		return true;
+	}
 	if (channels > 8)
 		return false;
 	v = (!starting && position (first_player, &x, &y)) ? 0x8000 : 0;

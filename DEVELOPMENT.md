@@ -326,7 +326,11 @@ channel n at 2n), checked in the game's JVS TEST screen.
   Namco's boards (`hl::NamcoIoBoard`, as Flycast has them): `namco-jyu`
   (Ninja Assault: two players, two guns), `namco-fcb` (Mazan: two, one per
   sensor of the sword, the first node 1), `namco-fca` (Gun Survivor 2: the
-  gun's yaw, pitch and roll on `an` 0 to 2). Their screen position (JVS
+  gun's yaw, pitch and roll on `an` 0 to 2), `namco-v226` (World Kicks: an
+  837-13551's identity, one player whose switches are the four players'
+  buttons, twelve channels: the sticks on `an` 0 to 7, the kick sensors on 8
+  to 11, as the SWITCH TEST reads them; its FRONT/BACK sensors, p1:7 to
+  p1:0 active low, left closed). Their screen position (JVS
   command 25) in the counts the games' factory settings take (the shots land
   where they aim before any GUN INITIALIZE or SWORD ADJUSTMENT: measured in
   the tests, `HR_LOG_GUN=1` logs the positions read); command 70, Namco's
