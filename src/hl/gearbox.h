@@ -32,7 +32,9 @@ namespace hl {
  * or down each press, in the gears' order, unless the cabinet has paddles
  * of its own (paddles false: F355's). A position held wins. With none
  * held, an H shifter's lever is in neutral when the game has one
- * (SHIFTER_NEUTRAL), else the last gear stays; a paddle's shift from a gear
+ * (SHIFTER_NEUTRAL), else the last gear stays; that once a position was
+ * held, until the paddles' next shift (both bound, an H shifter never
+ * moved leaves the paddles' gear); a paddle's shift from a gear
  * to another goes through neutral SHIFT_NEUTRAL_MS. Looked at once a frame
  * of the machine's, as the game polls its switches. */
 class Gearbox {
@@ -56,6 +58,7 @@ private:
 	int		 current_out = 0;	/* the gear the game got */
 	unsigned	 crossing = 0;		/* frames left in neutral */
 	bool		 up_held = false, down_held = false;
+	bool		 lever_used = false;	/* an H position held since the paddles' last shift */
 	uint64_t	 last_frame = ~0ull;
 	int		 agent_gear = NO_GEAR;
 };

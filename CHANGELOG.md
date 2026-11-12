@@ -5,6 +5,16 @@ What each version brings, for those who play. How the versions are numbered
 and released: [DEVELOPMENT.md](DEVELOPMENT.md), "Versions and releases".
 
 
+Next version
+------------
+
+- Fixed: with an H shifter's gears bound (`Gear1` to `Gear6`) and Shift up
+  and down too, as a cabinet's `controls.ini` for both kinds of panel, Shift
+  up and down changed no gear (NASCAR Arcade's GEAR POSITION stayed N): the
+  lever was put in neutral at each frame, never moved. Neutral now once one
+  of its gears was held, until Shift up or down is pressed.
+
+
 0.8.0 (2026-11-12)
 ------------------
 

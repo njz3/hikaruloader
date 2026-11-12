@@ -409,10 +409,23 @@ test_gearbox (void)
 	check ("gears: through neutral six frames", neutral == 6 && gear == 4);
 	cfg->shift_neutral_ms = 0;
 
-	/* An H shifter */
+	/* An H shifter bound and never moved: the paddles' gears stay (a
+	 * cabinet's controls.ini for both panels) */
 	c.set_value ("Driving", "Gear1", "KEY_1");
+	g.reset ();
+	press ("ShiftUp", true);
+	press ("ShiftUp", false);
+	press ("ShiftUp", true);
+	check ("H unused: the paddles' 2", press ("ShiftUp", false) == 2);
+	press ("ShiftDown", true);
+	check ("H unused: the paddles' 1", press ("ShiftDown", false) == 1);
+
+	/* An H shifter */
 	check ("H: gear 3 held", press ("Gear3", true) == 3);
 	check ("H: let go, neutral", press ("Gear3", false) == 0);
+	press ("ShiftUp", true);
+	check ("H then the paddles: 1 from neutral", press ("ShiftUp", false) == 1);
+	check ("H then the paddles: 1 kept", g.gear (frame++, four) == 1);
 	cfg->shifter_neutral = false;
 	press ("Gear2", true);
 	check ("H: let go, the gear kept", press ("Gear2", false) == 2);

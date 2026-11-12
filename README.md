@@ -259,7 +259,10 @@ only by an H shifter's positions); its assist switches SC, TC, ABS and IBS
 are buttons 1 to 4, its clutch `Clutch`. Initial D's lever, which springs
 back, is the same two rows, read as they are pressed. The Controls tab's
 *Gear lever*: *Neutral when no gear is engaged*, an H shifter's lever in
-none of its gears in neutral, as on the cabinet (else the last gear stays);
+none of its gears in neutral, as on the cabinet (else the last gear stays),
+once one of its positions was held and until Shift up or down is pressed:
+both can be bound, an H shifter never moved leaving the gears to Shift up
+and down;
 *Neutral between gears*, Shift up and down going through neutral that
 long, as a real lever (`[Input]` `SHIFTER_NEUTRAL`, `SHIFT_NEUTRAL_MS`). The
 gear the game reads shows in *What the game receives*.

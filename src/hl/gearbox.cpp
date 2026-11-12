@@ -40,6 +40,7 @@ Gearbox::reset ()
 	current = current_out = 0;
 	crossing = 0;
 	up_held = down_held = false;
+	lever_used = false;
 	last_frame = ~0ull;
 }
 
@@ -91,13 +92,20 @@ Gearbox::gear (uint64_t frame, const std::vector<int> &gears, bool paddles)
 		if (current != from && from && current && neutral)
 			crossing = (unsigned) (cfg->shift_neutral_ms * FRAME_HZ / 1000.0 + 0.999);
 	}
+	/* The H lever in use from a position held to the paddles' next
+	 * shift: a cabinet's controls.ini may bind both, each panel sending
+	 * one or the other */
+	if (held)
+		lever_used = true;
+	else if ((up && !up_held) || (down && !down_held))
+		lever_used = false;
 	up_held = up;
 	down_held = down;
 
 	if (held) {
 		crossing = 0;
 		current_out = current;
-	} else if (h_shifter && neutral && cfg->shifter_neutral) {
+	} else if (h_shifter && lever_used && neutral && cfg->shifter_neutral) {
 		/* The lever in none of its gears */
 		current = current_out = 0;
 		crossing = 0;

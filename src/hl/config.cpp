@@ -1418,7 +1418,8 @@ Config::write (FILE *fp) const
 	fprintf (fp, "WHEEL_RANGE = %d\n", cfg->wheel_range);
 	fprintf (fp,
 	         "\n# A gear lever held in its positions, an H shifter (controls.ini's Gear1 to Gear6):\n"
-	         "# true, its lever in none of the gears is in neutral, as on the cabinet;\n"
+	         "# true, its lever in none of the gears is in neutral, as on the cabinet (once a\n"
+	         "# gear was held, until ShiftUp or ShiftDown: both can be bound);\n"
 	         "# false, the last gear stays until another or GearNeutral. Default: %s\n",
 	         bool_name (def.shifter_neutral));
 	fprintf (fp, "SHIFTER_NEUTRAL = %s\n", bool_name (cfg->shifter_neutral));
