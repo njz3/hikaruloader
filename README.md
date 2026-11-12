@@ -543,7 +543,9 @@ joined in a ring over the network, as the boards' optical fibres were: the
 
 - `LINK`: the BIOS's COMMUNICATION MODE, `MASTER`, `SLAVE`, `RELAY` or
   `NO_LINK`, written to the game's EEPROM at its start (`AUTO` keeps the
-  EEPROM's; a new board has `NO_LINK`). One master per ring.
+  EEPROM's; a new board has `NO_LINK`, and a game whose first settings make
+  its cabinet a slave, as Spawn's and Heavy Metal: Geomatrix's, gets
+  `NO_LINK` too, the game restarted that once). One master per ring.
 - Each instance listens on `PORT_IN` for the previous one, and connects to
   the next one at `ADDRESS_OUT` and `PORT_OUT`; the last one connects back
   to the master.
@@ -568,7 +570,9 @@ communication board (Club Kart, Initial D, Virtual-On Oratorio Tangram and
 more). `LINK = MASTER`, `SLAVE` or `NO_LINK` writes the game's own setting at
 its start (a game not known has it set in its test menu); `LINK_NODE`, 1 to
 7, is a slave's number on the ring, its car or its seat. `AUTO` leaves the
-game's backup as it is: F355 Twin then starts alone, unlinked. Driving
+game's backup as it is: F355 Twin then starts alone, unlinked. Alien Front
+has no setting without the link: it looks for the other cabinets at its
+start, START skips it. Driving
 Simulator's three systems are all in one Hikaruloader, no `[Network]` needed.
 
 The GD-ROM games of a Net DIMM board (Virtua Fighter 4, Dragon Treasure, World

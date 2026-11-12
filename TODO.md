@@ -35,8 +35,8 @@ GENERAL
     (no access on the G2 bus: it is not the same board as the medal games');
   - World Kicks' FRONT/BACK sensors (p1:7 to p1:0, active low, its SWITCH TEST's), left
     closed as Flycast has them: what they see on the cabinet is not known;
-  - spawn, hmgeo, alienfnt want a linked cabinet in their factory settings (blank EEPROM):
-    their own test menus change it;
+  - alienfnt looks for its link at each start (160 s, START skips it): its settings have
+    a master and a slave, no setting without the link;
   - mushi2k62 and mushik4e black after the NAOMI logo: mushi2k62 loads as Flycast does up
     to its PVM 06S_Fire (cartridge 033B1000), then streams 24000 bytes of it in 4000-byte
     chunks (to 033D5800, past the next PVM at 033C3000, which Flycast loads next) and stops

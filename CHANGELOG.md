@@ -19,6 +19,10 @@ Next version
   as before.
 - Beach Spikers starts as a four-player cabinet on a blank EEPROM (its
   header names no players): a game with players 3 and 4 gets them.
+- Spawn and Heavy Metal: Geomatrix start alone on a new save: their own first
+  settings made the cabinet a slave, waiting for its master (`LINK = AUTO`
+  now gives such a game `NO_LINK`, as a new cabinet's owner would; the others
+  keep theirs).
 - World Kicks on its Namco V226 I/O board: the four players' sticks, buttons
   and kicks at the ball (`P1_Kick` to `P4_Kick`: a trigger, how hard), checked
   in its SWITCH TEST and in a match; new controls for players 3 and 4's

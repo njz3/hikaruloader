@@ -1058,8 +1058,10 @@ public:
 	bool	 vblank_due = false;
 	/* [Network] LINK could not be set yet: the record is not there */
 	bool	 link_settings_due = false;
-	/* Seconds left to watch for the game's first record */
+	/* Seconds left to watch for the game's first record, and the EEPROM
+	 * seen a second before (the record taken once it stays) */
 	unsigned link_watch = 0;
+	std::vector<uint8_t> link_seen;
 	hl::Device *aica;
 	hl::JvsBus *jvs;
 	hl::Device *io_board;

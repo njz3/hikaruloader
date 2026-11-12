@@ -627,6 +627,11 @@ Board::eeprom_write (unsigned offs, uint8_t val)
 	/* No record: 0, or the bytes of a blank EEPROM */
 	if (offs < 44 || offs - 44 >= padded || padded >= 0x7F || offs + padded >= sizeof (mie->eeprom.mem))
 		return false;
+	/* Nor the BIOS's default image's (MAME's, 30 at 24 to 2F): the
+	 * game's record has its CRC */
+	crc = eeprom_crc (mem + 44, (int) padded);
+	if (memcmp (mem + 36, &crc, 2))
+		return false;
 	mem[offs] = val;
 	mem[offs + padded] = val;
 	crc = eeprom_crc (mem + 44, (int) padded);

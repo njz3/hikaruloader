@@ -630,7 +630,10 @@ apply_game_settings (Board *b, int node, bool satellite)
 		title[i] = 0;
 
 	if (title_is (title, "ALIEN FRONT")) {
-		ok = b->eeprom_write (0x3F, node == 0 ? 0 : 1);
+		/* A master or a slave: no setting without the link, the
+		 * game waits for it (START skips that) */
+		if (node != -1)
+			ok = b->eeprom_write (0x3F, node == 0 ? 0 : 1);
 	} else if (title_is (title, "MOBILE SUIT GUNDAM JAPAN") ||
 	           title_is (title, "MOBILE SUIT GUNDAM DELUXE JAPAN")) {
 		ok = b->eeprom_write (0x38, node == -1 ? 2 : node == 0 ? 0 : 1);
@@ -714,23 +717,47 @@ Board::link_settings ()
 
 /* A fresh save: the game's first start writes its record over the link's
  * setting, having already read it. Once it has, the setting put back and,
- * that one time, the machine restarted so that the game reads it */
+ * that one time, the machine restarted so that the game reads it. With AUTO,
+ * a record that makes the cabinet a slave (Spawn's and Heavy Metal:
+ * Geomatrix's own, on the export BIOS) gets NO_LINK, as a new cabinet's owner
+ * would set it: a slave alone waits for its master; any other is kept */
 void
 Board::watch_link_settings ()
 {
 	const hl::Config *cfg = hl::Config::get ();
 	int node;
 
-	if (cfg->link <= 0 || is_atomiswave || index) {
+	if (is_atomiswave || index) {
 		link_watch = 0;
 		return;
 	}
-	node = cfg->link == 1 ? 0 : (int) cfg->link_node;
+	node = cfg->link <= 0 ? -1 : cfg->link == 1 ? 0 : (int) cfg->link_node;
 
 	const std::vector<uint8_t> eeprom (mie->eeprom.mem, mie->eeprom.mem + sizeof (mie->eeprom.mem));
-	const uint8_t *flash = (const uint8_t *) sram->ptr (0);
+	uint8_t *flash = (uint8_t *) sram->ptr (0);
 	const std::vector<uint8_t> saved (flash, flash + sram->size ());
 
+	/* The game may still be writing its record in the EEPROM (Spawn's,
+	 * the whole of it again): taken once it has stayed for a second (the
+	 * backup memory's counters change all the time) */
+	if (eeprom != link_seen) {
+		link_seen = eeprom;
+		return;
+	}
+	if (cfg->link < 0) {
+		/* A slave already: setting it one changes nothing */
+		if (!apply_game_settings (this, 1, false))
+			return;
+		bool slave = !memcmp (eeprom.data (), mie->eeprom.mem, eeprom.size ()) &&
+		             !memcmp (saved.data (), flash, saved.size ());
+
+		memcpy (mie->eeprom.mem, eeprom.data (), eeprom.size ());
+		memcpy (flash, saved.data (), saved.size ());
+		if (!slave) {
+			link_watch = 0;
+			return;
+		}
+	}
 	if (!apply_game_settings (this, node, cfg->link == 3))
 		return;
 	if (memcmp (eeprom.data (), mie->eeprom.mem, eeprom.size ()) || memcmp (saved.data (), flash, saved.size ())) {

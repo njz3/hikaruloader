@@ -1253,7 +1253,8 @@ Config::write (FILE *fp) const
 	fprintf (fp, "\n[Network]\n");
 	fprintf (fp,
 	         "\n# The cabinets' link (the BIOS's COMMUNICATION MODE): AUTO, as the game's\n"
-	         "# EEPROM holds it (NO_LINK on a new board); NO_LINK, MASTER, SLAVE or RELAY,\n"
+	         "# EEPROM holds it (NO_LINK on a new board, and for a game whose first\n"
+	         "# settings would make it a slave); NO_LINK, MASTER, SLAVE or RELAY,\n"
 	         "# written to the EEPROM at the game's start. One master per ring; a relay\n"
 	         "# (SGNASCAR's monitor) does not play. Default: %s\n", link_names[def.link + 1]);
 	fprintf (fp, "LINK = %s\n", link_names[cfg->link + 1]);
