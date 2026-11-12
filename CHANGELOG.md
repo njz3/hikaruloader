@@ -5,8 +5,8 @@ What each version brings, for those who play. How the versions are numbered
 and released: [DEVELOPMENT.md](DEVELOPMENT.md), "Versions and releases".
 
 
-Next version
-------------
+0.8.1 (2026-11-12)
+------------------
 
 - The gear lever's new rule (NASCAR Arcade, F355, 18 Wheeler, Crazy Taxi,
   The King of Route 66; written down in [SPECS.md](https://github.com/njz3/hikaruloader/blob/main/SPECS.md)): an H
