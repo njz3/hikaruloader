@@ -5,8 +5,8 @@ What each version brings, for those who play. How the versions are numbered
 and released: [DEVELOPMENT.md](DEVELOPMENT.md), "Versions and releases".
 
 
-Next version
-------------
+0.8.2 (2026-11-13)
+------------------
 
 - Crazy Taxi's telemetry: the taxi's position, orientation, speed, gear,
   rpm, pedals and steering, its jumps and crashes, the time left, the
