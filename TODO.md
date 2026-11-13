@@ -101,8 +101,11 @@ The telemetry (`src/hl/telemetry-games.cpp`), what its decoders lack:
   ids not named), the traffic; the hits worked out from the velocity (the
   game flags none), the velocity sent as the mean of two frames (it swings
   across the taxi from a frame to the next, against a wall the most).
-- Jambo! Safari, Tokyo Bus Guide: no decoder yet; Jambo! Safari's deluxe
-  drive board neither (its EPROM unknown, its commands to decode).
+- Jambo! Safari: checked in the first area (Expert, Beginner), one capture
+  (Beginner's); not seen: Expert's net, the next areas, a continue, the
+  name entry; the rope's length (the HUD's distance) and the crates'
+  animals not found; no jump in the game (no airborne).
+- Tokyo Bus Guide: no decoder yet.
 - Gaelco Football and the other games: no decoder (not racing games).
 
 Star Wars: Racer Arcade's force feedback made from the telemetry
@@ -111,6 +114,17 @@ felt on a wheel nor on a game controller; the landings not tried (no jump
 driven); the bass shaker's level against a deluxe cabinet's. Crazy Taxi's
 the same way: its scale (`FfbScale`: 36 m/s, 50 m/s² hard turns, bumps
 past 60 m/s²) from rides in agent mode, not felt yet.
+
+Jambo! Safari's deluxe drive board (`src/hl/driveboard-jambo.cpp`): its own
+EPROM not known. Scud Race's (EPR-19338A) runs on the Z80, the game's
+commands being of that family (checked: the OUTPUT TEST's rolls; in play 25
+and 11, 20 and 22 roped, 5x and 6x the rope's pull, 5A 6A at a hit, 01 and
+04 the ground changing, Cx the scenes). What the board's sequences (0x) do
+on Jambo's own program, and how its program differs, unknown; not felt on
+a wheel. Without the scud set, the simulation's strengths are matched to
+EPR-19338A's for 11, 25 and the rolls alone. The game also reads the SH-4's
+performance counters (PMCR1 at FF000084, PMCTR1L at FF100008), not emulated
+(logged as unhandled).
 
 The controls (`src/hl/controls.cpp`):
 

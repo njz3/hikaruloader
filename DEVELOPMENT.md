@@ -223,7 +223,7 @@ In the environment:
 - `FFB_SEND_MS`: the pause after each write to the wheel (16), on the force
   feedback's thread; 0 lets the wheel's USB slow the frames down again;
   `DRIVEBOARD_SIMULATED=1`: the drive board's program simulated even with
-  the srally2 set.
+  the srally2 set (NASCAR Arcade) or the scud set (Jambo! Safari).
 - `COMM_BOARD = PROGRAM`'s ring (hikaru-commbd.cpp): `HR_COMM_LATENCY`, the
   fibre's latency in the board's clocks (2450, 8 lines); `HR_COMM_SLICE`,
   the lines between two times sent (2); `HR_COMM_SPIN`, the microseconds a
@@ -341,7 +341,9 @@ channel n at 2n), checked in the game's JVS TEST screen.
 - A cabinet's other hardware, in `data/games.json` too (a clone's is its
   parent's, `hl::Game`): `io_boards` `["837-13844"]` the racing cabinets' I/O
   board (Hikaru and NAOMI), `drive_board` the wheel's drive board on it
-  (`srally2`: NASCAR Arcade's, a Model 3's; `f355`, `18wheeler`),
+  (`srally2`: NASCAR Arcade's, a Model 3's; `f355`, `18wheeler`; `jambo`,
+  Jambo! Safari's deluxe one, a Model 3's: Scud Race's EPR-19338A from the
+  scud set on its Z80, `driveboard-jambo.cpp` simulated otherwise),
   `servo_board` `838-14174` the wheel's servo board on the MIDI port (Club
   Kart, The King of Route 66, Initial D, Driving Simulator), `card_reader`
   (`von4` on the Hikaru's MIE, `initiald` and `clubkart` on the NAOMI's

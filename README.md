@@ -51,6 +51,10 @@ What it needs
 - For NASCAR Arcade's drive board, optionally, Sega Rally 2's set
   (`srally2.zip`): its EPR-20512 then runs on an emulated Z80. Without it the
   board is simulated, and the force feedback works the same.
+- For Jambo! Safari's deluxe drive board, optionally, Scud Race's set
+  (`scud.zip`): its EPR-19338A then runs on an emulated Z80 (Jambo! Safari's
+  own program is not known; Scud Race's answers its commands). Without it
+  the board is simulated, more roughly.
 - For the Emulation tab's two low-level options, optionally (see
   *Settings*): `jvs13551.zip` and `18wheelr.zip` (the I/O boards' programs),
   MAME's newer `hikaru.zip` (with the `x76f100.ic85` and `93c46.ic115`
@@ -321,6 +325,7 @@ effect at once.
   them squeezed on the edges, as on a cylinder seen from the front, the
   middle undistorted (`BARREL_CENTER`, `BARREL_RADIUS`).
 - F355 Challenge's drive board (EPR-21867) is emulated on the force feedback wheel; its commands go out as `m3ffb` and a client's `m3ffb_rx` answers replace the emulated ones, as on NASCAR Arcade.
+- Jambo! Safari's deluxe cabinet (its GAME ASSIGNMENTS' CABINET TYPE DX, the default) has a Model 3's drive board on its 837-13844 I/O board: emulated on the force feedback wheel, with Scud Race's program when `scud.zip` is there (see "Force feedback"); its commands go out as `m3ffb` too.
 - The servo board 838-14174 of the NAOMI wheels (Club Kart, The King of Route 66, Driving Simulator) is emulated on the force feedback wheel; its frames also go out on the network outputs as `midiffb = HH HH HH`. A client that answers `midiffb_rx = HH..` (BackForceFeeder, in front of a real board) takes over: the game reads its answers and the wheel plays nothing, until it leaves.
 - NAOMI GD-ROM games need the game's zip (with its DIMM board's PIC) and its
   CHD in a folder named as the game, as MAME keeps them: `roms/initdv3e.zip`
@@ -680,7 +685,15 @@ with the servo board's spring and friction. With `srally2.zip` among the
 games, the board runs Sega Rally 2's own program (EPR-20512) on an emulated
 Z80; without it, a simulation of that program (`DRIVEBOARD_SIMULATED=1` in
 the environment forces the simulation). It starts in some 11 seconds (CF,
-CE, CD, then CC), as on the cabinet. Two environment variables adjust
+CE, CD, then CC), as on the cabinet.
+
+Jambo! Safari's deluxe cabinet has a Model 3 drive board too, its program
+not known. Its commands are those of Scud Race's board: with `scud.zip`
+among the games, Scud Race's program (EPR-19338A, Dirt Devils' too) runs on
+the emulated Z80 and answers them, its spring, friction and torques on the
+wheel (the OUTPUT TEST's ROLL LEFT and ROLL RIGHT turn it); without it, a
+simulation of the commands' families (the centring, the friction, the
+vibration, the torques, a jolt for the board's own sequences). Two environment variables adjust
 it: `FFB_GAIN`, a percentage (100 by default), and `FFB_INVERT=1` for a
 wheel that pushes the wrong way. The Controls tab's *Force feedback gain*,
 0 to 300% (`[ForceFeedback]` `GAIN` in `hikaruloader.ini`, 100 by default,
@@ -883,8 +896,8 @@ game's start.
   Racing Studio read: choose Forza Motorsport 7 there, with that port.
 
 The values are in metres, seconds, radians, m/s and m/s², y up; unknown ones
-are `null`. `state` is `attract`, `select`, `race`, `pause`, `over` or
-`unknown`: a motion platform is to park whenever it is not `race`, and when no
+are `null`. `state` is `attract`, `select`, `race`, `pause`, `over`, `replay`
+or `unknown`: a motion platform is to park whenever it is not `race`, and when no
 line comes for a while. `player` and each of `others` hold the vehicle's
 position (`x`, `y`, `z`), orientation (`heading`, `pitch`, `roll`,
 `rotation`), `speed` and velocity, its accelerations (`along`, `alat`,
@@ -898,6 +911,7 @@ change of speed), `lap`, `progress`, `position` (its place); and the race
 | Star Wars: Racer Arcade | The 11 other pods. The engines' tilt from the cockpit (`engines_roll`, radians, > 0 banked to the right). Each engine's thrust as the game uses it (`thrust_left`, `thrust_right`, 0 to 1), `boost`, `boosts_left`, `hit` (the frame of a hit against a wall or a pod), `colliding` (while its jolt lasts), `wall` (a wall touched), `hover` (the height over the ground, m), `shaker` (0 to 1: the deluxe cabinet's bass shaker, fed by the option sound board, its low frequencies), the course |
 | ATV Track | The riders the game drives, two at most, once the player has gone far enough. Gear, the engine (`engine`, 0 to 1), throttle, each brake lever, steering; each wheel on the ground, `airborne`; the checkpoints passed, the stage and the distance along it (`stage_distance`, m, the riders' too) |
 | Smashing Drive | Throttle, brake, steering, `horn`; each wheel on the ground, `airborne`; the time left of the ride. No opponent: the other taxis are traffic |
+| Jambo! Safari | Throttle, brake and steering as the game reads them, `lever` (1 LEVER UP, throwing the rope or the net; -1 LEVER DOWN, pulling), `tumble` (rad, the jeep rolled by a roped animal, in `roll` too), `roped` (0 or 1), `score` (RANGER POINTS), `captured` (the animals caught); each wheel's ground (`grass`, `sand`, `water`); the time left. `state` is `replay` in a capture's scenes, the game driving |
 | Crazy Taxi | Gear (-1 REVERSE, 1 to 4 in DRIVE), rpm, throttle, brake and steering as the game reads them, `wheel_speed` (m/s, the wheels' own: spinning against a wall); each wheel on the ground, `airborne`; the time left; a customer aboard (`customer`, 0 or 1), his time left (`customer_time`, s), the distance to his stop (`destination`, m, the HUD's) and the `fare` ($). No opponent: the cars are traffic |
 
 The places of Star Wars: Racer Arcade's opponents come from their progress

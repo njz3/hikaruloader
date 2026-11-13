@@ -16,6 +16,16 @@ Next version
   Arcade's (its cabinet's wheel has no motor): the centring and the turns'
   weight scaled to the taxi, the crashes, the engine, the bumps and the
   landings (`[ForceFeedback]` `EFFECTS`).
+- Jambo! Safari's deluxe drive board: the game's commands reach the wheel,
+  through the cabinet's 837-13844 I/O board (its OUTPUT TEST's ROLL LEFT and
+  ROLL RIGHT turn it; in play the centring, the friction, the rope's pull,
+  the hits, the ground changing). Its own program is not known: with
+  `scud.zip` among the games, Scud Race's (EPR-19338A), of the same family,
+  runs on an emulated Z80; without it, a simulation.
+- Jambo! Safari's telemetry: the jeep's position, orientation (its tumble
+  when an animal yanks it), speed, steering, pedals, the lever, each wheel's
+  ground, the rope on an animal, the time left, the RANGER POINTS and the
+  animals caught (README, "Telemetry").
 
 
 0.8.1 (2026-11-12)

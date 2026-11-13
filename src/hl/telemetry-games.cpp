@@ -738,6 +738,121 @@ private:
 	float last_v[3] = {}, last_mean[3] = {};
 };
 
+/****************************************************************************
+ Jambo! Safari (jambo), NAOMI
+
+ Checked in Expert and Beginner rides of the first area, a capture. A unit
+ is 10 cm (the game's km/h is the units a frame x 21.6; the HUD's distance
+ to a roped animal the units / 10). The world is mirrored (steering right
+ lowers its heading): x is turned round. The jeep never leaves the ground.
+ - The game 0C2AAD2C: 0 the attract, 3 the mode's and the ranger's choice,
+   4 an area (its intro, the play, CONTINUE?), 7 RESULTS, 8 GAME OVER; in an
+   area, the time left 0C2B90D4 (s, below 0 from TIME UP), the intro's
+   count 0C2B90E0 (START! once past 0C15B730), the capture's scene
+   0C168190 (1 the net's hit, 2 GREAT!) and 0C2AAD30 5 the binoculars after
+   it, the game driving.
+ - The jeep: x y z 0C2B5084, the last frame's 0C2B5090 (units); its matrix
+   0C2B27D8 (3 x 3, rows 10 apart, columns right, up, back); the speed
+   0C2B1F20 (units a frame, signed); a tumble 0C2B1FFC (rad, about the nose,
+   the right side down: a roped animal yanking it, up to a roll-over); each
+   wheel's ground 0C2B2470 + n x 60 (front right, front left, rear right,
+   rear left), bits 8-11: C, D, E grass, 2 sand or mud, 4 water.
+ - The inputs as read: steering 0C2B5120 (0 to 118, 59 the centre, + right),
+   accelerator 0C2AB3D4 and brake 0C2AB3D8 (0 to 254), the lever 0C2AB3B8
+   (10 LEVER UP, throwing the rope, then the net; 20 LEVER DOWN, pulling).
+ - The rope on an animal 0C1437B4; RANGER POINTS 0C2B7FB8; the animals
+   caught 0C2B7FBC.
+ - No hit is flagged: one is a change of the horizontal velocity of more
+   than a unit a frame in a frame (free driving stays under 0.22, a tree
+   28); roped, the animal's yanks reach 4 (12 once): 8 then.
+ Not found: the rope's length (the HUD's distance), the crates' animals.
+****************************************************************************/
+
+class Jambo : public Decoder {
+public:
+	bool decode (Machine *mach, uint64_t frame, Frame &out) override
+	{
+		Ram ram (mach, "ram", 0x0C000000);
+		const float U = 0.1f;			/* m a unit */
+		const float V = U * (float) FPS;	/* m/s a unit a frame */
+
+		(void) frame;
+		if (!ram.ok ())
+			return false;
+		uint32_t mode = ram.u32 (0x0C2AAD2C);
+		float timer = ram.f32 (0x0C2B90D4);
+		if (mode == 4) {
+			if (timer < 0)
+				out.state = State::OVER;
+			else if (ram.u32 (0x0C2B90E0) <= ram.u32 (0x0C15B730))
+				out.state = State::SELECT;
+			else if (ram.u32 (0x0C168190) || ram.u32 (0x0C2AAD30) == 5)
+				/* The capture's scenes, the game driving */
+				out.state = State::REPLAY;
+			else
+				out.state = State::RACE;
+		} else if (mode == 7 || mode == 8)
+			out.state = State::OVER;
+		else if (mode == 3)
+			out.state = State::SELECT;
+		else
+			out.state = State::ATTRACT;
+		out.finished = out.state == State::OVER;
+		out.time_left = std::max (timer, 0.0f);
+
+		Vehicle &p = out.player;
+		const uint32_t M = 0x0C2B27D8;
+		float up[3] = { ram.f32 (M + 0x04), ram.f32 (M + 0x14), ram.f32 (M + 0x24) };
+		float fwd[3] = { -ram.f32 (M + 0x08), -ram.f32 (M + 0x18), -ram.f32 (M + 0x28) };
+		p.x = -ram.f32 (0x0C2B5084) * U;
+		p.y = ram.f32 (0x0C2B5088) * U;
+		p.z = ram.f32 (0x0C2B508C) * U;
+		orient_mirrored (p, up, fwd);
+		float tumble = ram.f32 (0x0C2B1FFC);
+		p.roll += tumble;
+		p.vx = -(ram.f32 (0x0C2B5084) - ram.f32 (0x0C2B5090)) * V;
+		p.vy = (ram.f32 (0x0C2B5088) - ram.f32 (0x0C2B5094)) * V;
+		p.vz = (ram.f32 (0x0C2B508C) - ram.f32 (0x0C2B5098)) * V;
+		p.has_velocity = true;
+		p.speed = std::fabs (ram.f32 (0x0C2B1F20)) * V;
+
+		/* A hit: the horizontal velocity's change */
+		bool roped = out.state == State::RACE && ram.u32 (0x0C1437B4) == 1;
+		float dv = have_last ? std::hypot (p.vx - last_vx, p.vz - last_vz) : 0.0f;
+		p.impact = out.state == State::RACE && dv > (roped ? ROPED_HIT : HIT) * V ? dv : 0.0f;
+		have_last = true;
+		last_vx = p.vx;
+		last_vz = p.vz;
+
+		/* The game's wheels: front right, front left, rear right, rear
+		 * left */
+		static const int order[4] = { 1, 0, 3, 2 };
+		for (int n = 0; n < 4; n++) {
+			uint32_t ground = (ram.u32 (0x0C2B2470 + 0x60 * n) >> 8) & 0xF;
+			p.wheels[order[n]].surface = ground == 4 ? "water" : ground == 2 ? "sand" :
+			                             ground >= 0xC && ground <= 0xE ? "grass" : "";
+		}
+		p.steer = -std::clamp ((ram.f32 (0x0C2B5120) - 59.0f) / 59.0f, -1.0f, 1.0f);
+		p.throttle = ram.u8 (0x0C2AB3D4) / 254.0f;
+		p.brake = ram.u8 (0x0C2AB3D8) / 254.0f;
+		uint8_t lever = ram.u8 (0x0C2AB3B8);
+		p.extra.push_back ({ "lever", (lever & 0x10) ? 1.0f : (lever & 0x20) ? -1.0f : 0.0f });
+		p.extra.push_back ({ "tumble", tumble });
+		p.extra.push_back ({ "roped", roped ? 1.0f : 0.0f });
+		p.extra.push_back ({ "score", (float) ram.u32 (0x0C2B7FB8) });
+		p.extra.push_back ({ "captured", (float) ram.u32 (0x0C2B7FBC) });
+		return true;
+	}
+
+private:
+	/* A hit, units a frame (above) */
+	static constexpr float HIT = 1.0f;
+	static constexpr float ROPED_HIT = 8.0f;
+
+	bool have_last = false;
+	float last_vx = 0, last_vz = 0;
+};
+
 } /* namespace */
 
 std::unique_ptr<Decoder>
@@ -753,6 +868,8 @@ make_decoder (Machine *mach)
 		return std::unique_ptr<Decoder> (new Gaelco (!strcmp (f, "atvtrack")));
 	if (!strcmp (f, "crzytaxi"))
 		return std::unique_ptr<Decoder> (new CrazyTaxi);
+	if (!strcmp (f, "jambo"))
+		return std::unique_ptr<Decoder> (new Jambo);
 	return NULL;
 }
 

@@ -110,6 +110,7 @@ set (HIKARU_SRC
 	src/mach/naomi/naomi-netdimm.cpp
 	src/mach/naomi/naomi-smcp.cpp
 	src/hl/driveboard-f355.cpp
+	src/hl/driveboard-jambo.cpp
 	src/hl/driveboard-z80.cpp
 	src/hl/tmp90ph44.cpp
 	src/hl/ioboard.cpp

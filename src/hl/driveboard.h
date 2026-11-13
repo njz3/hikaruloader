@@ -117,6 +117,31 @@ private:
 	} s;
 };
 
+/* Jambo! Safari's deluxe cabinet's, its EPROM not known: its commands
+ * simulated, when Scud Race's EPROM is not there to run them on the Z80. See
+ * driveboard-jambo.cpp */
+class DriveBoardJambo : public DriveBoardProgram {
+public:
+	explicit DriveBoardJambo (Machine *mach);
+
+	void	 reset () override;
+	void	 nmi (uint8_t command, uint8_t wheel, Servo &servo) override;
+	uint8_t	 reply () const override;
+	bool	 drives_wheel () const override { return true; }
+	int	 save_state (State *state) override;
+	int	 load_state (State *state) override;
+
+private:
+	void	 execute (uint8_t cmd);
+	void	 set (int effect, float force);
+
+	Machine	*mach;
+	struct {
+		uint8_t	 last_command, vibration;
+		uint16_t jolt_nmis;
+	} s;
+};
+
 class DriveBoard : public Device, private DriveBoardProgram::Servo {
 public:
 	static const unsigned NMI_HZ = 500;

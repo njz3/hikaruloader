@@ -26,6 +26,7 @@
 #include <cstring>
 
 #include "hl/config.h"
+#include "hl/driveboard-z80.h"
 #include "hl/gamecontrols.h"
 #include "hl/core.h"
 #include "hl/machine.h"
@@ -448,10 +449,26 @@ Board::init ()
 	jvs = new hl::JvsBus (machine);
 	/* The racing cabinets' I/O board, the 837-13844 ("io_boards"), with the
 	 * wheel's drive board on the first main board (F355 Challenge's, 18
-	 * Wheeler's: "drive_board") */
+	 * Wheeler's, Jambo! Safari's: "drive_board") */
 	if (!game->io_boards.empty () && game->io_boards[0] == "837-13844") {
-		if (!index && (game->drive_board == "f355" || game->drive_board == "18wheeler")) {
-			drive_board = new hl::DriveBoard (machine, new hl::DriveBoardF355 (machine, game->drive_board == "18wheeler"));
+		if (!index && (game->drive_board == "f355" || game->drive_board == "18wheeler" ||
+		               game->drive_board == "jambo")) {
+			hl::DriveBoardProgram *program;
+			/* Jambo! Safari's board, its EPROM not known: Scud Race's
+			 * (EPR-19338A, the scud set's, Dirt Devils' too) on its Z80
+			 * when the set is there, its commands being of that family;
+			 * else simulated. DRIVEBOARD_SIMULATED=1 simulates it
+			 * anyway */
+			hl::Buffer *drive_rom = game->drive_board == "jambo" ? game->section_data ("drivebd") : NULL;
+			if (drive_rom && !hl_util_get_bool_option ("DRIVEBOARD_SIMULATED", false)) {
+				program = new hl::DriveBoardZ80 ((const uint8_t *) drive_rom->ptr (0), drive_rom->size ());
+				HL_PRINT ("naomi: the drive board runs EPR-19338A on its Z80");
+			} else if (game->drive_board == "jambo")
+				program = new hl::DriveBoardJambo (machine);
+			else
+				program = new hl::DriveBoardF355 (machine, game->drive_board == "18wheeler");
+			drive_board = new hl::DriveBoard (machine, program);
+			drive_board->name = "drive_board";
 			HL_PRINT ("naomi: the drive board (%s)", game->drive_board.c_str ());
 		} else if (!index && !game->drive_board.empty ())
 			HL_ERROR ("naomi: unknown drive board %s", game->drive_board.c_str ());
