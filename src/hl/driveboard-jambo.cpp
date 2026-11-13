@@ -59,6 +59,9 @@ namespace hl {
  *  - 10-17   the spring n: FE 80, FD (24, 25, 26, 27, 29, 2C, 2F, 4A), FC 4
  *            (2C + 8n: the servo board's spring, 5 to 12 of 15)
  *  - 20-2F   FB = 87 + 8n, the gain (the MOTOR POWER's curve at 100 %)
+ *  - 30-3F   the servo board's own vibration: FC 0 to 3, the bytes 0E 0A
+ *            (31) to 12 12 (3F) a nibble at a time, 30 zero (E8 09 AA 0B
+ *            for 31, as EPR-19338A writes them)
  *  - 50-57, 60-67  a push right (FE 80 - (21 + 2n)), left (80 + 21 + 2n),
  *            FD 00, held, the road effect off, until the next 1x
  *  - 90-9F   the motor idle (FF) for 60 to 90 ms, then the spring again
@@ -68,8 +71,8 @@ namespace hl {
  * FB FF, FE 80, the spring 0); CA the test (80 FE 80, 81 FE 69 to the
  * right, 82 FE 97 to the left); CB the start-up again. EPR-19338A's
  * torque by the wheel's position, its tables', is left out: the servo
- * board's spring (FC 4) alone. The 3x (the servo board's own vibration) and
- * 4x (a power slide) are not played; Jambo! Safari sends 30 alone.
+ * board's spring (FC 4) alone. The 4x (a power slide) are not played;
+ * Jambo! Safari sends no 3x but 30, as it starts.
  *
  * The game sends C1 00 30 10 20 08 C1 as it starts, then in a ride 25 and
  * 11 by turns, 20 and 22 roped (a lower gain), 5x and 6x the rope's pull,
@@ -205,6 +208,18 @@ DriveBoardJambo::execute (uint8_t cmd, Servo &servo)
 	case 0x2:
 		servo.servo_write (SERVO_FB, (uint8_t) (0x87 + 8 * (cmd & 0x0F)));
 		break;
+	case 0x3: {
+		/* The servo board's vibration: two bytes, a nibble a write
+		 * (FC 0-3, bit 3 set); 0E, 10, 12 by five, then 0A to 12 */
+		unsigned k = (cmd & 0x0F) - 1u;
+		uint8_t a = (cmd & 0x0F) ? (uint8_t) (0x0E + 2 * (k / 5)) : 0;
+		uint8_t b = (cmd & 0x0F) ? (uint8_t) (0x0A + 2 * (k % 5)) : 0;
+		servo.servo_write (SERVO_FC, (uint8_t) (((a & 0x0F) << 4) | 0x08));
+		servo.servo_write (SERVO_FC, (uint8_t) ((a & 0xF0) | 0x09));
+		servo.servo_write (SERVO_FC, (uint8_t) (((b & 0x0F) << 4) | 0x0A));
+		servo.servo_write (SERVO_FC, (uint8_t) ((b & 0xF0) | 0x0B));
+		break;
+	}
 	case 0x5:
 	case 0x6:
 		s.push = (uint8_t) ((cmd >> 4) == 5 ? 0x80 - (21 + 2 * n) : 0x80 + 21 + 2 * n);

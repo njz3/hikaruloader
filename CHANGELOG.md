@@ -11,6 +11,9 @@ Next version
 - The SH-4's performance counters, with which Jambo! Safari, VON4 and
   AIRTRIX time their frames (for nothing they show: the games play and look
   the same). Their reads no longer fill the log.
+- The Model 3 drive boards' servo board vibrates on its own when the
+  program asks (Scud Race's family's 3x commands, 15 strengths), with
+  Jambo! Safari's board simulated too.
 
 
 0.8.2 (2026-11-13)

@@ -76,7 +76,13 @@ public:
  *   FE  The torque: 80 none, above pushes left, below right, full at 80+-63
  *   FD  A friction, its high nibble
  *   FC  Sub-register 4 (bits 0-2): the servo board's own centring spring,
- *       its strength in bits 3-6 (bit 7: off)
+ *       its strength in bits 3-6 (bit 7: off). Sub-registers 0 to 3: its
+ *       own vibration (EPR-19338A's 3x), two bytes a nibble at a time (bits
+ *       4-7), 0 and 1 the first's low and high nibbles, 2 and 3 the
+ *       second's; set as 3 is written: 0E 0A to 12 12 for 31 to 3F, the
+ *       vibration 0F + 10 x (n - 1) on FF (6 to 94 %, Supermodel's reading;
+ *       what the servo board does with the bytes is not known), at 20 Hz;
+ *       a byte 0 (30, the modes' FC 0A 0B) stops it
  *   FB  A gain, when bit 7 is set
  *   FF  The motor idle: no force at all, until a torque or a friction
  *
@@ -90,7 +96,8 @@ public:
  * vibration, at its amplitude and its period, and the torque's mean over its
  * whole periods to the constant force (a slower swing, a force a frame
  * follows it); a torque of one NMI far from both its neighbours (a bump of
- * EPR-19338A's road effect 02) to a jolt of the vibration. The gain (FB)
+ * EPR-19338A's road effect 02) to a jolt of the vibration. The servo
+ * board's own vibration plays when stronger than the swing. The gain (FB)
  * scales them all.
  *
  * Its registers in the Lua shell: get (1, 0) the reply, get (1, 1) the
@@ -183,6 +190,9 @@ public:
 	DriveBoardProgram *program;
 	/* The servo board's registers, as written last */
 	uint8_t	 torque, friction, spring, gain, idle;
+	/* FC 0 to 3's two bytes, and the vibration they set (on FF). Not
+	 * saved: none after a state's load, until the next 3x */
+	uint8_t	 shake[2], shake_strength;
 
 	/* A swing of the torque: over samples, an NMI each, the oldest first
 	 * (HISTORY at most), the torque less its mean swinging quickly enough

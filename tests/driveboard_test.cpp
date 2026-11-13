@@ -29,6 +29,8 @@
 #include <vector>
 
 #include "hl/driveboard.h"
+#include "hl/config.h"
+#include "hl/machine.h"
 
 static int failures, checks;
 
@@ -239,6 +241,77 @@ test_jambo ()
 	CHECK ("jambo test 80: stopped", sv.reg[0xFE], 0x80);
 }
 
+/* The servo board's own vibration (3x): EPR-19338A's writes, as its Z80 makes
+ * them in Supermodel's journal (E8 09 AA 0B for 31), and the strength
+ * DriveBoard takes from them, through the board's frames */
+class TestMachine : public hl::Machine {
+public:
+	TestMachine () : hl::Machine (NULL) {}
+	int run_frame () override { return 0; }
+	const char *debug_string () override { return "driveboardtest"; }
+};
+
+static void
+frames (TestMachine &m, hl::DriveBoard &d, uint8_t command, unsigned n)
+{
+	for (unsigned i = 0; i < n; i++) {
+		m.frame++;
+		d.write (command);
+	}
+}
+
+/* The FC writes alone (the program writes FE at each NMI too) */
+static void
+fc_only (TestServo &sv)
+{
+	sv.writes.erase (std::remove_if (sv.writes.begin (), sv.writes.end (),
+	                                 [] (const std::pair<uint8_t, uint8_t> &w) { return w.first != 0xFC; }),
+	                 sv.writes.end ());
+}
+
+static void
+test_servo_vibration ()
+{
+	hl::DriveBoardJambo b (NULL);
+	TestServo sv;
+
+	jambo (b, sv, 0xC7, 4);
+	sv.writes.clear ();
+	jambo (b, sv, 0x31, 4);
+	fc_only (sv);
+	CHECK ("31: four FC writes", sv.writes.size (), 4);
+	if (sv.writes.size () == 4) {
+		CHECK ("31: FC 0", sv.writes[0].second, 0xE8);
+		CHECK ("31: FC 1", sv.writes[1].second, 0x09);
+		CHECK ("31: FC 2", sv.writes[2].second, 0xAA);
+		CHECK ("31: FC 3", sv.writes[3].second, 0x0B);
+	}
+	sv.writes.clear ();
+	jambo (b, sv, 0x38, 4);
+	fc_only (sv);
+	CHECK ("38: FC 0 to 3", sv.writes.size () == 4 && sv.writes[0].second == 0x08 &&
+	       sv.writes[1].second == 0x19 && sv.writes[2].second == 0xEA && sv.writes[3].second == 0x0B, 1);
+
+	/* The machine deletes its devices, the board among them. No device
+	 * of this PC's takes the forces: one of no such name asked for */
+	snprintf (hl::Config::get ()->ffb_device, sizeof (hl::Config::get ()->ffb_device), "driveboardtest: none");
+	TestMachine m;
+	hl::DriveBoard &d = *new hl::DriveBoard (&m, new hl::DriveBoardJambo (&m));
+	frames (m, d, 0xC7, 4);
+	CHECK ("C7: no vibration", d.shake_strength, 0);
+	frames (m, d, 0x31, 4);
+	CHECK ("31: 6 %", d.shake_strength, 0x0F);
+	frames (m, d, 0x38, 4);
+	CHECK ("38: the 8th step", d.shake_strength, 0x7F);
+	frames (m, d, 0x3F, 4);
+	CHECK ("3F: 94 %", d.shake_strength, 0xEF);
+	frames (m, d, 0x30, 4);
+	CHECK ("30: stopped", d.shake_strength, 0);
+	frames (m, d, 0x3F, 4);
+	frames (m, d, 0xC7, 4);
+	CHECK ("a mode's FC 0A 0B: stopped", d.shake_strength, 0);
+}
+
 static hl::DriveBoardSr2 *board;
 static TestServo *servo;
 
@@ -356,6 +429,7 @@ main (int argc, char **argv)
 	delete servo;
 	test_swings ();
 	test_jambo ();
+	test_servo_vibration ();
 	printf ("driveboardtest: %d checks, %d failures\n", checks, failures);
 	return failures ? 1 : 0;
 }

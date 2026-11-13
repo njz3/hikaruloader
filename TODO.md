@@ -124,7 +124,9 @@ unknown; not felt on a wheel. The servo board 838-12912-01 (`DriveBoard`):
 what FB does (taken as the torque's gain, as BackForceFeeder's
 EPR-19338A docs guess it; the games lower it while the board pushes: Scud
 Race's 20 at a hit, Jambo's 20 roped), FD (a damping?), FC 0-3 (its own
-vibration, the 3x: not played); to measure on a real board. Without the
+vibration, the 3x: played at 20 Hz, 6 to 94 % in 15 steps, as Supermodel
+reads the two bytes; their real meaning, a strength or a frequency, not
+known); to measure on a real board. Without the
 scud set, the simulation's road effects are sines of EPR-19338A's measured
 amplitudes and periods (its tables' shapes not known), and its torque by
 the wheel's position is left out.

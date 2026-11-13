@@ -210,6 +210,17 @@ DriveBoard::servo_write (uint8_t reg, uint8_t value)
 	case SERVO_SPRING:
 		if ((value & 7) == 4)
 			spring = value;
+		else if (!(value & 4)) {
+			/* The vibration's two bytes, a nibble at a time */
+			unsigned sub = value & 3;
+			uint8_t &byte = shake[sub >> 1];
+			byte = (sub & 1) ? (uint8_t) ((byte & 0x0F) | (value & 0xF0)) :
+			                   (uint8_t) ((byte & 0xF0) | (value >> 4));
+			if (sub == 3) {
+				int s = ((shake[0] >> 1) - 7) * 0x50 + ((shake[1] >> 1) - 5) * 0x10 + 0x0F;
+				shake_strength = (shake[0] && shake[1]) ? (uint8_t) std::clamp (s, 0, 0xFF) : 0;
+			}
+		}
 		break;
 	case SERVO_GAIN:
 		if (value & 0x80)
@@ -271,16 +282,25 @@ DriveBoard::update_ffb ()
 	else if (d < -1)
 		constant = 2.0f * (d + 1) / 127.0f;
 	constant *= g;
+	unsigned period = 0;
 	if (swinging) {
 		vibration = 2.0f * swing.amplitude / 127.0f * g;
-		ForceFeedback::sine_period ((unsigned) lrintf (swing.period * 1000.0f / NMI_HZ));
+		period = (unsigned) lrintf (swing.period * 1000.0f / NMI_HZ);
+	}
+	/* The servo board's own, at 20 Hz */
+	float own = shake_strength / 255.0f * g;
+	if (own > vibration) {
+		vibration = own;
+		period = 50;
 	}
 	if (nmis < jolt_until) {
-		if (!swinging)
-			ForceFeedback::sine_period (50);
+		if (!period)
+			period = 50;
 		vibration = std::max (vibration, jolt * g);
 	} else
 		jolt = 0.0f;
+	if (period)
+		ForceFeedback::sine_period (period);
 	spring_force = (spring & 0x80) ? 0.0f : ((spring & 0x78) >> 3) * 0x18 / 255.0f;
 	friction_force = (friction >> 4) * 0x20 / 255.0f;
 	ForceFeedback::set (ForceFeedback::CONSTANT, constant, mach->frame);
@@ -312,6 +332,7 @@ DriveBoard::reset (ResetType type)
 	last_queued = 0xFF;
 	torque = 0x80;
 	friction = spring = 0;
+	shake[0] = shake[1] = shake_strength = 0;
 	gain = 0x7F;
 	idle = 1;
 	history_count = history_next = 0;
@@ -359,6 +380,7 @@ DriveBoard::load_state (State *state)
 	if (queued > QUEUE)
 		queued = 0;
 	ret |= program->load_state (state);
+	shake[0] = shake[1] = shake_strength = 0;
 	history_count = history_next = 0;
 	jolt = 0.0f;
 	jolt_until = 0;
@@ -373,9 +395,9 @@ DriveBoard::debug_string ()
 	static char text[200];
 	const char *own = program->debug_string ();
 
-	snprintf (text, sizeof (text), "%s; command %02X, reply %02X, servo FE %02X FD %02X FC %02X FB %02X%s",
+	snprintf (text, sizeof (text), "%s; command %02X, reply %02X, servo FE %02X FD %02X FC %02X FB %02X, vibration %02X%s",
 	          own ? own : "", command, program->reply (), torque, friction, spring, gain,
-	          idle ? ", idle" : "");
+	          shake_strength, idle ? ", idle" : "");
 	return text;
 }
 
