@@ -27,6 +27,9 @@ Next version
 - The NAOMI wheels' servo board leaves the wheel to the player while its
   motor is off: the games' test menus (INPUT TEST, VOLUME SETTING) see it
   turn, where it stayed in the middle.
+- A game's settings and records (`nvram/<game>.nvram`) are saved even when
+  another program (an antivirus, Windows' search) holds the file for a
+  moment: a save was lost a few times in a thousand.
 
 
 0.8.2 (2026-11-13)

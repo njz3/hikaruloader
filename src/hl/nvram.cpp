@@ -19,8 +19,10 @@
 #include <stdio.h>
 #include <string.h>
 
+#include <chrono>
 #include <filesystem>
 #include <system_error>
+#include <thread>
 
 #include "hl/nvram.h"
 
@@ -130,10 +132,16 @@ Nvram::save (const char *path) const
 		return false;
 	ok = fwrite (file.data (), 1, file.size (), fp) == file.size ();
 	ok = (fclose (fp) == 0) && ok;
-	if (ok) {
+	/* Another program (an antivirus, the search indexer) may hold the file
+	 * just written, or the one it replaces, for a few milliseconds: Windows
+	 * then refuses the rename, a few times in a thousand */
+	for (int attempt = 0; ok; attempt++) {
 		std::filesystem::rename (temp, target, error);
-		ok = !error;
+		if (!error || attempt == 50)
+			break;
+		std::this_thread::sleep_for (std::chrono::milliseconds (10));
 	}
+	ok = ok && !error;
 	if (!ok)
 		std::filesystem::remove (temp, error);
 	return ok;
