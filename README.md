@@ -272,6 +272,15 @@ down or the buttons) going through neutral that long, as a real lever
 (`[Input]` `SHIFT_NEUTRAL_MS`, 0 by default: at once). The gear the game
 reads shows in *What the game receives*.
 
+**The games' own calibration.** Some games keep their wheel's and pedals'
+range in their settings, made in their test menu. The King of Route 66 (and
+its prototype) starts with its VOLUME SETTING made for the whole range of the
+controls, its pedals acting in proportion. Its settings saved by an earlier
+version keep the factory ones, where the pedals act all or nothing and a
+pedal held half way ends the stage: make the VOLUME SETTING in the game's
+test menu (the wheel turned to both ends, each pedal pressed down, then
+EXIT).
+
 **Star Wars: Racer Arcade's levers.** The cabinet has two levers, each the
 thrust of one of the pod's engines, pushed forward: even, the pod goes
 straight; the side pushing harder turns it the other way; both back, it
@@ -326,8 +335,7 @@ effect at once.
   middle undistorted (`BARREL_CENTER`, `BARREL_RADIUS`).
 - F355 Challenge's drive board (EPR-21867) is emulated on the force feedback wheel; its commands go out as `m3ffb` and a client's `m3ffb_rx` answers replace the emulated ones, as on NASCAR Arcade.
 - Jambo! Safari's deluxe cabinet (its GAME ASSIGNMENTS' CABINET TYPE DX, the default) has a Model 3's drive board on its 837-13844 I/O board: emulated on the force feedback wheel, with Scud Race's program when `scud.zip` is there (see "Force feedback"); its commands go out as `m3ffb` too.
-- The servo board 838-14174 of the NAOMI wheels (Club Kart, The King of Route 66, Driving Simulator) is emulated on the force feedback wheel; its frames also go out on the network outputs as `midiffb = HH HH HH`. A client that answers `midiffb_rx = HH..` (BackForceFeeder, in front of a real board) takes over: the game reads its answers and the wheel plays nothing, until it leaves.
-- NAOMI GD-ROM games need the game's zip (with its DIMM board's PIC) and its
+- The servo board 838-14174 of the NAOMI wheels (Club Kart, The King of Route 66, Driving Simulator) is emulated on the force feedback wheel; its frames also go out on the network outputs as `midiffb = HH HH HH`. A client that answers `midiffb_rx = HH..` (BackForceFeeder, in front of a real board) takes over: the game reads its answers and the wheel plays nothing, until it leaves. While the game checks the motor, at its start, the wheel turns on its own; with the motor off, as in the games' test menus, it is the player's (INPUT TEST, VOLUME SETTING).- NAOMI GD-ROM games need the game's zip (with its DIMM board's PIC) and its
   CHD in a folder named as the game, as MAME keeps them: `roms/initdv3e.zip`
   and `roms/initdv3e/gds-0033.chd`. Atomiswave games need `awbios.zip`. Initial
   D's magnetic card is inserted with F7.

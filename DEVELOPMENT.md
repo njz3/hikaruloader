@@ -212,6 +212,9 @@ In the environment:
 - `HR_LOG_INPUTS=1` logs the switches the game reads at each change (the
   simulated I/O board's): start 8000, service 4000, up 2000, down 1000,
   left 0800, right 0400, buttons 1 to 4 from 0200 down.
+- `HR_LOG_SERVO=1` logs the NAOMI servo board's commands (838-14174) as
+  their parameters change: the command, its two bytes, the board's
+  milliseconds, whether the motor is on and the start's check running.
 - `HR_NO_AUDIO=1` opens no sound output; `HR_WAV=<path>` writes all the
   sound to a WAV file as well.
 - `HR_CLOCK=<count>`: the board's clock starts at that count (seconds since
@@ -274,6 +277,20 @@ channel n at 2n), checked in the game's JVS TEST screen.
   the game's last write, the backup RAM every ten seconds when it changed,
   both on the way out. A `nvram/<game>.eeprom` of the earlier versions is
   read when the game has no `.nvram` yet.
+- A NAOMI game without its `.nvram` starts from `data/naomi/<set>.sram` (the
+  backup RAM) and `data/naomi/<set>.eeprom` (the MIE's EEPROM, 128 bytes)
+  when they are there: a cabinet set up as the game needs it. F355 Twin's
+  backup is not linked to another cabinet (from Flycast's resources), Club
+  Kart Prize's EEPROM is a set-up cabinet's; The King of Route 66's
+  (`kingrt66`, `kingrt66p`: their factory EEPROMs are the same) has its
+  VOLUME SETTING made, the game's record at 44 (and its copy at 80) holding
+  the centre, the wheel's left and right ends, the accelerator's and the
+  brake's least and most, 8000 0000 FF00 0000 FF00 0000 FF00 (the factory's
+  are all 8000: 0/0 for a pedal at 8000). Made in agent mode: the game's
+  test menu, VOLUME SETTING, the wheel and the pedals pushed to their ends,
+  EXIT; the game writes the record and its CRCs, and the nvram's `MIEE`
+  block is the file. The BIOS's part (0 to 35) is a new cabinet's, rewritten
+  from the settings at each start.
 - The controls (`hl::GameControls`, `src/hl/gamecontrols.cpp`): every board
   (the JVS I/O boards of the Hikaru and the NAOMI, the Atomiswave's pads,
   Gaelco's ports and ADC, the MIEs' Test and Service, the card readers) asks

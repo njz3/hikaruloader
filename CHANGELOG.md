@@ -19,6 +19,14 @@ Next version
   trailer, the distance to the goal), Club Kart (with the other karts) and
   Initial D Arcade Stage (Export, with the rival and the gap to it): README,
   "Telemetry".
+- The King of Route 66 (and its prototype) starts with its VOLUME SETTING
+  made: its pedals act in proportion, where they acted all or nothing, and
+  a brake held half way no longer ends the stage won. Settings saved by an
+  earlier version keep the factory ones: make the VOLUME SETTING in the
+  game's test menu (README, "Keys and controllers").
+- The NAOMI wheels' servo board leaves the wheel to the player while its
+  motor is off: the games' test menus (INPUT TEST, VOLUME SETTING) see it
+  turn, where it stayed in the middle.
 
 
 0.8.2 (2026-11-13)

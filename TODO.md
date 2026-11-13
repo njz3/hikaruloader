@@ -117,10 +117,7 @@ The telemetry (`src/hl/telemetry-games.cpp`), what its decoders lack:
 - The King of Route 66: AREA 1's first two stages; the nitro (by voice, the
   cans' count), a hit flag, the wheels, the rival (B+7C probably) not
   found; the bodies are not pointed at from anywhere (another truck than
-  the Texas Hawk not tried); kingrt66p's map is another. With the factory
-  settings (VOLUME SETTING not done) its pedals' range is 8000 to 8000: a
-  pedal reads 0 or 1, and one at 8000 exactly makes 0/0, a NaN that ends
-  the stage won (the game's own arithmetic, as on a board).
+  the Texas Hawk not tried); kingrt66p's map is another.
 - Club Kart: Beginner races on two courses; no speedometer, no engine
   (a value with the speed alone), the wheels, the hits; clubk2k3's and
   clubkprz's maps are others (their main addresses noted, not decoded).

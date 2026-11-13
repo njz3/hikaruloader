@@ -368,6 +368,14 @@ ServoBoard::midi_received (uint8_t data)
 		uint8_t cmd = s.frame[0];
 
 		s.last_frame_ms = s.now_ms;
+		/* HR_LOG_SERVO=1: each command whose parameters change */
+		static const bool log_servo = getenv ("HR_LOG_SERVO") != NULL;
+		static uint16_t last[128];
+		if (log_servo && last[cmd & 0x7F] != (0x8000 | s.frame[1] << 7 | s.frame[2])) {
+			last[cmd & 0x7F] = (uint16_t) (0x8000 | s.frame[1] << 7 | s.frame[2]);
+			HL_PRINT ("servo board: %02X %02X %02X (ms %u, %s%s)", cmd, s.frame[1], s.frame[2], (unsigned) s.now_ms,
+			          s.active ? "active" : "off", s.calibrating ? ", calibrating" : "");
+		}
 		process (cmd, s.frame[1], s.frame[2]);
 		if (!s.calibrating) {
 			/* The wheel, its encoder the other way */
@@ -411,7 +419,10 @@ ServoBoard::tick ()
 
 	s.now_ms++;
 	/* Calibrating: the games check that the wheel turns with the motor, its
-	 * potentiometer following, whatever the player's wheel does */
+	 * potentiometer following, whatever the player's wheel does. The motor
+	 * off, the wheel is free: the player's, the model following it (from a
+	 * reset until the motor is on; all through the games' test modes, which
+	 * reset the board and leave it off) */
 	if (s.calibrating) {
 		hl::SegaIoBoard *io = (hl::SegaIoBoard *) board->io_board;
 
@@ -424,9 +435,12 @@ ServoBoard::tick ()
 			                     s.torque - std::copysign (friction, (float) s.torque);
 
 			s.position = std::clamp (s.position + moving * 0.25f, 0.0f, 16383.0f);
+			io->analog[0] = (uint16_t) std::clamp (0x8000 - (int) ((s.position - 8192.0f) * 4.0f), 0, 0xFFFF);
+			io->analog_set[0] = true;
+		} else {
+			io->analog_set[0] = false;
+			s.position = std::clamp (8192.0f - ((int) io->analog[0] - 0x8000) / 4.0f, 0.0f, 16383.0f);
 		}
-		io->analog[0] = (uint16_t) std::clamp (0x8000 - (int) ((s.position - 8192.0f) * 4.0f), 0, 0xFFFF);
-		io->analog_set[0] = true;
 	}
 	if (s.state == STATE_SEARCHING_INDEX && s.now_ms >= s.search_end)
 		s.state = STATE_READY;

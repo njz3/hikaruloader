@@ -990,7 +990,8 @@ Board::nvram_read (const hl::Nvram &nvram)
 /* A new cabinet's backup memory where the game needs one: F355 Twin's says it
  * is not linked to another (data/naomi, from Flycast's resources/flash); a game
  * without its record starts looking for the cabinet it would be linked to.
- * The same for the MIE's EEPROM, the settings a game's operator would have made */
+ * The same for the MIE's EEPROM, the settings a game's operator would have made
+ * (The King of Route 66's VOLUME SETTING: its factory range is none) */
 void
 Board::default_backup ()
 {
