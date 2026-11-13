@@ -241,7 +241,11 @@ and the shipped presets, the bezels' layouts, the translations).
 `driveboardz80test` is not among them: it needs EPR-20512 (`epr-20512.bin`),
 a script and a journal of Supermodel's, and is run by hand. With another
 program and an empty journal, `DRIVEBOARD_LIST=1` lists what it writes,
-NMI by NMI (EPR-19338A's values in `driveboard-jambo.cpp` were measured so).
+NMI by NMI (EPR-19338A's values in `driveboard-jambo.cpp` were measured so);
+`--boot` counts the cycles from the reset to the CTC's start. EPR-19338A,
+Jambo! Safari's, is checked the same way as EPR-20512 against a journal of
+Supermodel's on a scenario of all its commands: the same outputs, at most
+an NMI apart (the results in the test's header).
 
 
 Controls: the MIE and the JVS bus

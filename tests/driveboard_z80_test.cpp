@@ -35,7 +35,26 @@
  * the changes come at most 1 NMI apart. With its earlier core, which counted
  * fewer, its board starts 2 frames sooner: OFFSET 17 compares the NMIs so.
  * DUMP shows both sides around an NMI.
- * Usage: driveboardz80test epr-20512.bin script.txt journal.txt [OFFSET [DUMP]] */
+ *
+ * EPR-19338A (Scud Race's, Jambo! Safari's here; CRC32 C9FAC464), DIP CF FF,
+ * a scenario of all its commands (C1, C6, C7; the road effects 01 to 07, the
+ * springs 10 to 17, the gains 20 to 2F, the pushes 5x and 6x, the idles 9x,
+ * the vibrations 3x, the power slides 41 and 49; Jambo's sequences; C9, C8,
+ * CA and its 80 to 87, D0 to D7, F5, FA, CB and the start-up again; 5462
+ * frames, 47331 NMIs): the wheel at its centre, the 5461 changes the same,
+ * at most 1 NMI apart. With the wheel swept for 240 frames (the torque by
+ * its position), 47166 NMIs the same, 138 within an NMI, 25 a step or two of
+ * the torque apart, all in the sweep: the wheel read in the frame before or
+ * after, at the NMIs that fall in another frame (Supermodel's harness loses
+ * each instruction's overshoot at the NMI; the two cores count the same
+ * cycles from the reset to the CTC's start, 1959726, and the same for every
+ * instruction the program uses).
+ *
+ * Usage: driveboardz80test epr-20512.bin script.txt journal.txt [OFFSET [DUMP]];
+ * driveboardz80test ROM --boot, the cycles from the reset to the CTC's start,
+ * by address (as Supermodel's z80_drive.exe --boot). DRIVEBOARD_LIST=1: our
+ * outputs' changes, NMI by NMI; DRIVEBOARD_FRAMES=1: every NMI in another
+ * frame. */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -62,6 +81,57 @@ field (const char *s)
 	return sscanf (s, "%x", &v) == 1 ? (int) v : -1;
 }
 
+/* --boot: the Z80 alone from its reset to its CTC's start (channel 1's time
+ * constant written), the program's ROM checksum and RAM test, one
+ * instruction at a time: the cycles of each address, as Supermodel's
+ * z80_drive.exe --boot prints them, to compare the two cores' counts */
+class BootBus : public Z80::Bus {
+public:
+	std::vector<uint8_t> &rom;
+	uint8_t ram[0x2000];
+	bool started = false, constant_next = false;
+
+	explicit BootBus (std::vector<uint8_t> &rom) : rom (rom) { memset (ram, 0, sizeof (ram)); }
+	uint8_t read (uint16_t a) override { return a < 0x9000 ? rom[a] : a >= 0xE000 ? ram[a - 0xE000] : 0xFF; }
+	void write (uint16_t a, uint8_t v) override { if (a >= 0xE000) ram[a - 0xE000] = v; }
+	uint8_t in (uint16_t port) override
+	{
+		port &= 0xFF;
+		return port == 0x20 ? 0xCF : port == 0x21 ? 0xFF : port == 0x2C ? 0x00 : 0xFF;
+	}
+	void out (uint16_t port, uint8_t v) override
+	{
+		if ((port & 0xFF) != 0x11)
+			return;
+		if (constant_next)
+			started = true;
+		constant_next = !constant_next && (v & 0x05) == 0x05;
+	}
+};
+
+static int
+boot_cycles (std::vector<uint8_t> &rom)
+{
+	BootBus bus (rom);
+	Z80 z80 (&bus);
+	static long long count[0x10000], cycles[0x10000];
+	long long total = 0;
+
+	z80.reset ();
+	while (!bus.started && total < 100000000) {
+		uint16_t pc = z80.regs.pc;
+		int c = z80.step ();
+		count[pc]++;
+		cycles[pc] += c;
+		total += c;
+	}
+	printf ("cycles from reset to the CTC's start: %lld\n", total);
+	for (int a = 0; a < 0x10000; a++)
+		if (count[a])
+			printf ("%04X %lld %lld\n", a, count[a], cycles[a]);
+	return 0;
+}
+
 int
 main (int argc, char **argv)
 {
@@ -75,7 +145,9 @@ main (int argc, char **argv)
 	long end = -1;
 	FILE *fp;
 
-	if (argc < 4) {
+	if (argc == 3 && !strcmp (argv[2], "--boot"))
+		;
+	else if (argc < 4) {
 		puts ("usage: driveboardz80test epr-20512.bin script.txt journal.txt [OFFSET [DUMP]]");
 		return 0;
 	}
@@ -85,6 +157,8 @@ main (int argc, char **argv)
 		return 1;
 	}
 	fclose (fp);
+	if (!strcmp (argv[2], "--boot"))
+		return boot_cycles (rom);
 
 	/* The scenario: "FRAME cmd XX", "FRAME wheel XX", "FRAME end" */
 	fp = fopen (argv[2], "r");
@@ -177,7 +251,8 @@ main (int argc, char **argv)
 		auto it = got_frame.find (w.first);
 		if (it == got_frame.end () || it->second == w.second)
 			continue;
-		if (other_frame++ < 5)
+		/* DRIVEBOARD_FRAMES=1: all of them */
+		if (other_frame++ < 5 || getenv ("DRIVEBOARD_FRAMES"))
 			printf ("NMI %llu: in frame %ld, ours in %ld\n",
 			        (unsigned long long) w.first, w.second, it->second);
 	}
