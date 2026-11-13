@@ -59,6 +59,10 @@ public:
 
 	/* frame: the machine's, for the records */
 	static void	 set (Effect effect, float force, uint64_t frame);
+	/* VIBRATE's period, ms (10 to 1000; 50, 20 Hz, by default, and again
+	 * at STOP), a drive board's road effect's: the vibration playing takes
+	 * it at once */
+	static void	 sine_period (unsigned ms);
 	static float	 get (Effect effect);
 	/* The spring's centre, -1 to 1 of the game's wheel's travel, > 0 to
 	 * the right; 0 again at STOP */

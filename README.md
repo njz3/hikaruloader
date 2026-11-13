@@ -692,8 +692,10 @@ not known. Its commands are those of Scud Race's board: with `scud.zip`
 among the games, Scud Race's program (EPR-19338A, Dirt Devils' too) runs on
 the emulated Z80 and answers them, its spring, friction and torques on the
 wheel (the OUTPUT TEST's ROLL LEFT and ROLL RIGHT turn it); without it, a
-simulation of the commands' families (the centring, the friction, the
-vibration, the torques, a jolt for the board's own sequences). Two environment variables adjust
+simulation that writes the servo board as that program does. The board's
+road effects (the ground changing under the jeep: water, sand, grass), a
+torque swinging 11 to 25 times a second, play as the wheel's vibration at
+their own frequency, and its bumps as jolts, the rest as forces. Two environment variables adjust
 it: `FFB_GAIN`, a percentage (100 by default), and `FFB_INVERT=1` for a
 wheel that pushes the wrong way. The Controls tab's *Force feedback gain*,
 0 to 300% (`[ForceFeedback]` `GAIN` in `hikaruloader.ini`, 100 by default,

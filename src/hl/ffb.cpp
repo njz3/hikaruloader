@@ -17,6 +17,7 @@
  */
 
 #include <math.h>
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
@@ -35,8 +36,11 @@ namespace hl {
 /* The spring's dead band about the centre, of the game's wheel's travel */
 #define SPRING_DEADBAND	0.05
 
-/* The vibration's period */
+/* The vibration's period, by default; a drive board's road effects set
+ * their own (sine_period) */
 #define SINE_PERIOD_MS	50
+
+static std::atomic<unsigned> sine_period_ms (SINE_PERIOD_MS);
 
 static float current[ForceFeedback::NUM_EFFECTS];
 static std::atomic<float> spring_center;
@@ -211,7 +215,7 @@ play (ForceFeedback::Effect effect, float force)
 		e.periodic.direction.type = SDL_HAPTIC_CARTESIAN;
 		e.periodic.direction.dir[0] = 1;
 		e.periodic.length = SDL_HAPTIC_INFINITY;
-		e.periodic.period = SINE_PERIOD_MS;
+		e.periodic.period = (Uint16) sine_period_ms.load ();
 		e.periodic.magnitude = (Sint16) lrintf (force * 32767.0f);
 		break;
 	default:
@@ -349,6 +353,8 @@ ForceFeedback::set (Effect effect, float force, uint64_t frame)
 
 	if (effect == STOP) {
 		spring_center = 0.0f;
+		/* The vibration's period back to its own, for the next game */
+		sine_period_ms = SINE_PERIOD_MS;
 		for (i = CONSTANT; i < RUMBLE_LOW; i++)
 			set ((Effect) i, 0.0f, frame);
 		rumble (0.0f, 0.0f, frame);
@@ -371,6 +377,16 @@ ForceFeedback::set (Effect effect, float force, uint64_t frame)
 	if (!looked)
 		open_device ();
 	send_force (effect, device_force (effect, force));
+}
+
+void
+ForceFeedback::sine_period (unsigned ms)
+{
+	ms = std::clamp (ms, 10u, 1000u);
+	if (ms == sine_period_ms.exchange (ms) || current[VIBRATE] == 0.0f)
+		return;
+	/* The vibration playing, sent again at its new period */
+	send_force (VIBRATE, device_force (VIBRATE, current[VIBRATE]));
 }
 
 /* The controller's motors: what was last sent, and when */
@@ -452,7 +468,7 @@ ForceFeedback::status ()
 	s.friction = device_force (FRICTION, current[FRICTION]);
 	s.constant = device_force (CONSTANT, current[CONSTANT]);
 	s.sine = device_force (VIBRATE, current[VIBRATE]);
-	s.sine_hz = 1000.0f / SINE_PERIOD_MS;
+	s.sine_hz = 1000.0f / sine_period_ms.load ();
 	s.rumble_low = rumble_force (current[RUMBLE_LOW]);
 	s.rumble_high = rumble_force (current[RUMBLE_HIGH]);
 	s.rumble_on_wheel = joystick && Controls::get ().player_joystick (0) == joystick;

@@ -21,7 +21,13 @@ Next version
   ROLL RIGHT turn it; in play the centring, the friction, the rope's pull,
   the hits, the ground changing). Its own program is not known: with
   `scud.zip` among the games, Scud Race's (EPR-19338A), of the same family,
-  runs on an emulated Z80; without it, a simulation.
+  runs on an emulated Z80; without it, a simulation that writes the servo
+  board as that program does.
+- The Model 3 drive boards' own quick swings of the torque (Jambo! Safari's
+  road effects, as the ground changes, 11 to 25 times a second) play as the
+  wheel's vibration at their frequency, and their bumps as jolts: they came
+  out as a few random pushes a frame. NASCAR Arcade's race forces are the
+  same as before.
 - Jambo! Safari's telemetry: the jeep's position, orientation (its tumble
   when an animal yanks it), speed, steering, pedals, the lever, each wheel's
   ground, the rope on an animal, the time left, the RANGER POINTS and the

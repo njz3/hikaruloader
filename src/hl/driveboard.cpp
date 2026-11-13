@@ -17,6 +17,8 @@
  */
 
 #include <math.h>
+#include <algorithm>
+#include <cstdlib>
 
 #include "hl/driveboard.h"
 #include "hl/ffb.h"
@@ -38,6 +40,33 @@ namespace hl {
 /* At most 10 s of NMIs caught up at once; a longer gap (a state of a version
  * without the board) is skipped */
 #define MAX_CATCH_UP	(10 * DriveBoard::NMI_HZ)
+
+/* A swing: the torque less its mean over SWING_MEAN NMIs (some 12 Hz and
+ * above: slower, a force a frame follows it), over the last SWING_LOOK; its
+ * half amplitude, in the torque's steps, at least; its crossings of 0, out
+ * of a band of a part of that, at least; its frequency's range. Measured on
+ * EPR-19338A's road effects: 01, 03, 04 and 05 (11 to 25 Hz, 5 to 11 steps)
+ * found at 80 to 100 % of the frames, held SWING_HOLD frames in between;
+ * 06 and 07 (8.6 Hz) left to the force; none in its pushes, its shakes (C6,
+ * 5A 6A), a ramp, the spring's steps */
+#define SWING_MEAN		40
+#define SWING_LOOK		80
+#define SWING_MIN_AMPLITUDE	2.0f
+#define SWING_HYSTERESIS	0.25f
+#define SWING_MIN_CROSSINGS	4
+#define SWING_MIN_HZ		8.0f
+#define SWING_MAX_HZ		45.0f
+#define SWING_HOLD		6
+/* A swing is the program's own, changing within the frames: a torque the
+ * game sets at each frame (NASCAR Arcade's, EPR-20512 holding each one until
+ * the next) changes some 9 times in SWING_LOOK NMIs, and a force a frame
+ * plays it as it is. At least this many changes */
+#define SWING_MIN_CHANGES	(SWING_LOOK / 3)
+
+/* A jolt: a torque of one NMI this far from both its neighbours (EPR-19338A's
+ * bumps go to the end of the scale for 2 ms), felt for 60 ms */
+#define JOLT_STEP		0x30
+#define JOLT_NMIS		30
 
 /* DriveBoard */
 
@@ -70,8 +99,81 @@ DriveBoard::catch_up ()
 		program->nmi (command, wheel, *this);
 		nmis++;
 		held++;
+		/* The torque of this NMI; the one before it, a jolt if far from
+		 * both its neighbours */
+		history[history_next] = torque;
+		history_next = (history_next + 1) % HISTORY;
+		if (history_count < HISTORY)
+			history_count++;
+		if (history_count >= 3) {
+			int a = history[(history_next + HISTORY - 3) % HISTORY];
+			int b = history[(history_next + HISTORY - 2) % HISTORY];
+			int c = torque;
+			if (std::abs (b - a) >= JOLT_STEP && std::abs (b - c) >= JOLT_STEP) {
+				jolt = std::max (jolt, std::abs (b - (a + c) / 2) / 127.0f);
+				jolt_until = nmis + JOLT_NMIS;
+			}
+		}
 	}
 	update_ffb ();
+}
+
+bool
+DriveBoard::find_swing (const uint8_t *s, unsigned n, Swing &swing)
+{
+	if (n < SWING_MEAN + SWING_LOOK - 1)
+		return false;
+	/* The torque less its mean over the SWING_MEAN NMIs before */
+	float fast[SWING_LOOK], lo = 255, hi = -255, sum = 0;
+	for (unsigned i = n - SWING_MEAN - SWING_LOOK + 1; i < n - SWING_LOOK + 1; i++)
+		sum += s[i];
+	for (unsigned k = 0; k < SWING_LOOK; k++) {
+		unsigned i = n - SWING_LOOK + k;
+		if (k)
+			sum += s[i] - s[i - SWING_MEAN];
+		fast[k] = s[i] - sum / SWING_MEAN;
+		lo = std::min (lo, fast[k]);
+		hi = std::max (hi, fast[k]);
+	}
+	float amplitude = (hi - lo) / 2.0f;
+	if (amplitude < SWING_MIN_AMPLITUDE)
+		return false;
+	unsigned changes = 0;
+	for (unsigned i = n - SWING_LOOK + 1; i < n; i++)
+		changes += s[i] != s[i - 1];
+	if (changes < SWING_MIN_CHANGES)
+		return false;
+	float band = std::max (1.0f, amplitude * SWING_HYSTERESIS);
+	int side = 0;
+	unsigned crossings = 0, first = 0, last = 0;
+	for (unsigned k = 0; k < SWING_LOOK; k++) {
+		int now = fast[k] > band ? 1 : fast[k] < -band ? -1 : 0;
+		if (!now || now == side)
+			continue;
+		if (side) {
+			if (!crossings)
+				first = k;
+			crossings++;
+			last = k;
+		}
+		side = now;
+	}
+	if (crossings < SWING_MIN_CROSSINGS)
+		return false;
+	/* From the first crossing to the last, crossings - 1 half periods */
+	float period = 2.0f * (last - first) / (crossings - 1);
+	float hz = NMI_HZ / period;
+	if (hz < SWING_MIN_HZ || hz > SWING_MAX_HZ)
+		return false;
+	/* The mean over whole periods, the swing cancelled */
+	unsigned whole = std::min (n, (unsigned) lrintf (period * std::max (1.0f, floorf (SWING_MEAN / period))));
+	float mean = 0;
+	for (unsigned i = n - whole; i < n; i++)
+		mean += s[i];
+	swing.amplitude = amplitude;
+	swing.period = period;
+	swing.mean = mean / whole;
+	return true;
 }
 
 void
@@ -123,12 +225,14 @@ DriveBoard::servo_write (uint8_t reg, uint8_t value)
 }
 
 /* The servo board's registers as forces, the way Supermodel's wheel board
- * reads them: the torque, twice its distance from 80 (beyond one) on 127 */
+ * reads them: the torque, twice its distance from 80 (beyond one) on 127,
+ * times the gain; a swing of it the vibration, at its period (see the
+ * class) */
 void
 DriveBoard::update_ffb ()
 {
-	int d = (int) torque - 0x80;
-	float constant = 0.0f, spring_force, friction_force;
+	float constant = 0.0f, spring_force, friction_force, vibration = 0.0f;
+	float g = gain / 127.0f;
 
 	if (program->drives_wheel ())
 		return;
@@ -136,16 +240,53 @@ DriveBoard::update_ffb ()
 		ForceFeedback::set (ForceFeedback::STOP, 0.0f, mach->frame);
 		return;
 	}
+	uint8_t samples[HISTORY];
+	for (unsigned i = 0; i < history_count; i++)
+		samples[i] = history[(history_next + HISTORY - history_count + i) % HISTORY];
+	/* A swing found, or one found in the last SWING_HOLD frames (its
+	 * amplitude and period as then, the mean as now) */
+	Swing found;
+	if (find_swing (samples, history_count, found)) {
+		/* The period smoothed, for the wheel not to take a new one at
+		 * each frame */
+		found.period = swing_frames ? swing.period + (found.period - swing.period) * 0.3f : found.period;
+		swing = found;
+		swing_frames = SWING_HOLD;
+	} else if (swing_frames && mach->frame != swing_frame) {
+		swing_frames--;
+		/* The mean over the last period found */
+		unsigned whole = std::min (history_count, (unsigned) lrintf (swing.period));
+		if (whole) {
+			float sum = 0;
+			for (unsigned i = history_count - whole; i < history_count; i++)
+				sum += samples[i];
+			swing.mean = sum / whole;
+		}
+	}
+	swing_frame = mach->frame;
+	bool swinging = swing_frames != 0;
+	float d = (swinging ? swing.mean : (float) torque) - 0x80;
 	if (d > 1)
 		constant = 2.0f * (d - 1) / 127.0f;
 	else if (d < -1)
 		constant = 2.0f * (d + 1) / 127.0f;
-	constant *= gain / 127.0f;
+	constant *= g;
+	if (swinging) {
+		vibration = 2.0f * swing.amplitude / 127.0f * g;
+		ForceFeedback::sine_period ((unsigned) lrintf (swing.period * 1000.0f / NMI_HZ));
+	}
+	if (nmis < jolt_until) {
+		if (!swinging)
+			ForceFeedback::sine_period (50);
+		vibration = std::max (vibration, jolt * g);
+	} else
+		jolt = 0.0f;
 	spring_force = (spring & 0x80) ? 0.0f : ((spring & 0x78) >> 3) * 0x18 / 255.0f;
 	friction_force = (friction >> 4) * 0x20 / 255.0f;
 	ForceFeedback::set (ForceFeedback::CONSTANT, constant, mach->frame);
 	ForceFeedback::set (ForceFeedback::SPRING, spring_force, mach->frame);
 	ForceFeedback::set (ForceFeedback::FRICTION, friction_force, mach->frame);
+	ForceFeedback::set (ForceFeedback::VIBRATE, std::min (vibration, 1.0f), mach->frame);
 }
 
 int
@@ -173,6 +314,10 @@ DriveBoard::reset (ResetType type)
 	friction = spring = 0;
 	gain = 0x7F;
 	idle = 1;
+	history_count = history_next = 0;
+	jolt = 0.0f;
+	jolt_until = 0;
+	swing_frames = 0;
 	ForceFeedback::set (ForceFeedback::STOP, 0.0f, mach->frame);
 }
 
@@ -214,6 +359,10 @@ DriveBoard::load_state (State *state)
 	if (queued > QUEUE)
 		queued = 0;
 	ret |= program->load_state (state);
+	history_count = history_next = 0;
+	jolt = 0.0f;
+	jolt_until = 0;
+	swing_frames = 0;
 	update_ffb ();
 	return ret;
 }

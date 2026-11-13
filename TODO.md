@@ -119,12 +119,17 @@ Jambo! Safari's deluxe drive board (`src/hl/driveboard-jambo.cpp`): its own
 EPROM not known. Scud Race's (EPR-19338A) runs on the Z80, the game's
 commands being of that family (checked: the OUTPUT TEST's rolls; in play 25
 and 11, 20 and 22 roped, 5x and 6x the rope's pull, 5A 6A at a hit, 01 and
-04 the ground changing, Cx the scenes). What the board's sequences (0x) do
-on Jambo's own program, and how its program differs, unknown; not felt on
-a wheel. Without the scud set, the simulation's strengths are matched to
-EPR-19338A's for 11, 25 and the rolls alone. The game also reads the SH-4's
-performance counters (PMCR1 at FF000084, PMCTR1L at FF100008), not emulated
-(logged as unhandled).
+04 the ground changing, Cx the scenes). How Jambo's own program differs,
+unknown; not felt on a wheel. The servo board 838-12912-01 (`DriveBoard`):
+what FB does (taken as the torque's gain, as BackForceFeeder's
+EPR-19338A docs guess it; the games lower it while the board pushes: Scud
+Race's 20 at a hit, Jambo's 20 roped), FD (a damping?), FC 0-3 (its own
+vibration, the 3x: not played); to measure on a real board. Without the
+scud set, the simulation's road effects are sines of EPR-19338A's measured
+amplitudes and periods (its tables' shapes not known), and its torque by
+the wheel's position is left out. The game also reads the SH-4's
+performance counters (PMCR1 at FF000084, PMCTR1L at FF100008), not
+emulated (logged as unhandled).
 
 The controls (`src/hl/controls.cpp`):
 

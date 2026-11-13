@@ -239,7 +239,9 @@ controls' hotkeys and wheel rotation on SDL's virtual joysticks, the drive
 board, the card reader, the aspect ratio's layouts, the CRT presets' reader
 and the shipped presets, the bezels' layouts, the translations).
 `driveboardz80test` is not among them: it needs EPR-20512 (`epr-20512.bin`),
-a script and a journal of Supermodel's, and is run by hand.
+a script and a journal of Supermodel's, and is run by hand. With another
+program and an empty journal, `DRIVEBOARD_LIST=1` lists what it writes,
+NMI by NMI (EPR-19338A's values in `driveboard-jambo.cpp` were measured so).
 
 
 Controls: the MIE and the JVS bus

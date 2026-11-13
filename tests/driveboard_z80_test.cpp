@@ -229,6 +229,13 @@ main (int argc, char **argv)
 		return v;
 	};
 	const auto wc = changes (want), gc = changes (got);
+	/* DRIVEBOARD_LIST=1: our changes, each with its NMI, its frame and the
+	 * command then (another program than EPR-20512, a journal empty) */
+	if (getenv ("DRIVEBOARD_LIST"))
+		for (const auto &c : gc)
+			printf ("NMI %llu, frame %ld: 28=%02X 29=%02X 2E=%02X 2A=%02X 2D=%02X\n",
+			        (unsigned long long) c.first, got_frame[c.first], c.second.cmd & 0xFF,
+			        c.second.reply & 0xFF, c.second.mode & 0xFF, c.second.tq & 0xFF, c.second.out & 0xFF);
 	size_t same = 0;
 	long long apart = 0;
 	for (; same < wc.size () && same < gc.size (); same++) {

@@ -80,6 +80,19 @@ public:
  *   FB  A gain, when bit 7 is set
  *   FF  The motor idle: no force at all, until a torque or a friction
  *
+ * The program writes the torque at each NMI, a frame's NMIs here at once,
+ * and the wheel takes a force a frame: a torque swinging quickly (the
+ * board's road effects, its shakes: 8 to 33 times a second about the
+ * spring's torque) would come out as a few of its points, at random. Kept
+ * NMI by NMI, a quick swing of the program's own, changing within the
+ * frames (find_swing: some 12 Hz and up; a torque the game sets at each
+ * frame, as NASCAR Arcade's, is played as it is) goes to the wheel's
+ * vibration, at its amplitude and its period, and the torque's mean over its
+ * whole periods to the constant force (a slower swing, a force a frame
+ * follows it); a torque of one NMI far from both its neighbours (a bump of
+ * EPR-19338A's road effect 02) to a jolt of the vibration. The gain (FB)
+ * scales them all.
+ *
  * Its registers in the Lua shell: get (1, 0) the reply, get (1, 1) the
  * command, get (1, 2) the torque. Option "log": the commands taken. */
 /* F355 Challenge's (EPR-21867), its program as high level code: the effects
@@ -117,9 +130,9 @@ private:
 	} s;
 };
 
-/* Jambo! Safari's deluxe cabinet's, its EPROM not known: its commands
- * simulated, when Scud Race's EPROM is not there to run them on the Z80. See
- * driveboard-jambo.cpp */
+/* Jambo! Safari's deluxe cabinet's, its EPROM not known: the servo board's
+ * registers written as EPR-19338A, Scud Race's, writes them, when that
+ * EPROM is not there to run on the Z80. See driveboard-jambo.cpp */
 class DriveBoardJambo : public DriveBoardProgram {
 public:
 	explicit DriveBoardJambo (Machine *mach);
@@ -127,18 +140,19 @@ public:
 	void	 reset () override;
 	void	 nmi (uint8_t command, uint8_t wheel, Servo &servo) override;
 	uint8_t	 reply () const override;
-	bool	 drives_wheel () const override { return true; }
 	int	 save_state (State *state) override;
 	int	 load_state (State *state) override;
 
 private:
-	void	 execute (uint8_t cmd);
-	void	 set (int effect, float force);
+	void	 execute (uint8_t cmd, Servo &servo);
+	void	 spring (Servo &servo);
+	unsigned next_bump ();
 
 	Machine	*mach;
 	struct {
-		uint8_t	 last_command, vibration;
-		uint16_t jolt_nmis;
+		uint8_t	 last_command, mode, road, spring, push;
+		uint16_t nmis, idle_nmis, bump_wait;
+		uint32_t random;
 	} s;
 };
 
@@ -170,6 +184,18 @@ public:
 	/* The servo board's registers, as written last */
 	uint8_t	 torque, friction, spring, gain, idle;
 
+	/* A swing of the torque: over samples, an NMI each, the oldest first
+	 * (HISTORY at most), the torque less its mean swinging quickly enough
+	 * (some 12 to 45 Hz) and widely enough: true, its half amplitude
+	 * (steps), its period (NMIs) and the torque's mean over its last whole
+	 * periods (see driveboard.cpp) */
+	struct Swing {
+		float	 amplitude, period, mean;
+	};
+	static bool	 find_swing (const uint8_t *samples, unsigned count, Swing &swing);
+	/* The samples kept */
+	static const unsigned HISTORY = 128;
+
 private:
 	void	 servo_write (uint8_t reg, uint8_t value) override;
 	void	 catch_up ();
@@ -178,6 +204,16 @@ private:
 	uint8_t	 command, wheel;
 	/* Run since the power-on */
 	uint64_t nmis;
+	/* The torque at each NMI, the last HISTORY (a ring; not saved: empty
+	 * again after a state's load); a jolt's force, and its last NMI */
+	uint8_t	 history[HISTORY];
+	unsigned history_count, history_next;
+	float	 jolt;
+	uint64_t jolt_until;
+	/* The swing played, and the frames it is held for yet */
+	Swing	 swing;
+	unsigned swing_frames;
+	uint64_t swing_frame;
 	/* The commands written, not shown yet; the last one queued; the
 	 * NMIs the current one has been shown */
 	uint8_t	 queue[QUEUE];
