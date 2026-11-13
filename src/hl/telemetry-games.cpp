@@ -1292,6 +1292,142 @@ private:
 	State state = State::ATTRACT;
 };
 
+/****************************************************************************
+ Initial D Arcade Stage (initdexp), NAOMI 2 GD-ROM
+
+ Checked in Legend of the Streets with the AE86, AT and MT, on Myogi (3
+ laps, a race won, one lost, a TIME IS UP), Usui and Happogahara, no card,
+ the defaults. A unit is a metre. The world is mirrored (steering right
+ lowers its heading): x is turned round. No reverse gear.
+ - The scene 0C229310: 0 the attract (the replay after GAME OVER too), 1
+   the menus and RESULT, 2 the story and CONTINUE?, 3 the race's;
+   0C2092BC 1 from the story before the race to the attract after GAME
+   OVER (and through the loading's last frames: after a choice, still the
+   choice).
+ - The race's objects, on the heap, from the anchor A = [0C7D9F4C]: the
+   HUD's H = [A + 4F4] (its handler 0C23EAFC at +0), the timer's T = [A +
+   410] (0C23923C): the phase A - 34C (2 from GO to the finish), the
+   countdown A - 2CC (2 in 3-2-1); the time left T + 8, the place H + 8 (from
+   0), the race's time H + 1C and each lap's H + 20 + 4 k (1/6000 s, -1 not
+   begun), the lap's fraction H + 54 (the rival's + 58), the gap to the
+   rival H + 5C (m, > 0 ahead).
+ - The car 0C3017C0: x y z, its matrix +1E0 (rows 10 apart: right, up,
+   back); the rival's the same at +270. The car's wheels' speed 0C7DBE94,
+   the gear 0C7DBC0C (0 before GO, 1 to 5), rpm 0C7DBC1C; steering (+ left),
+   accelerator and brake as the game takes them 0C7DBE28, 18, 24; MT
+   0C228CD8 1; the course 0C228CA0 (0 Myogi, 1 Usui, 3 Happogahara).
+ Not found: the race's laps (the course's screen alone), a hit flag, the
+ wheels' grounds (0C7DBD00 + 4 k: ids not named). initdv3e's map is
+ another (its car at 0C401B14, the rest not looked for).
+****************************************************************************/
+
+class InitialD : public Decoder {
+public:
+	bool decode (Machine *mach, uint64_t frame, Frame &out) override
+	{
+		Ram ram (mach, "ram", 0x0C000000);
+		const float TICK = 6000.0f;
+
+		(void) frame;
+		if (!ram.ok ())
+			return false;
+		uint32_t scene = ram.u32 (0x0C229310), raced = ram.u32 (0x0C2092BC);
+		uint32_t A = ram.u32 (0x0C7D9F4C), H = 0, T = 0;
+		if (scene == 3 && ram.has (A - 0x400, 0x900)) {
+			uint32_t h = ram.u32 (A + 0x4F4), t = ram.u32 (A + 0x410);
+			if (ram.has (h, 0x60) && ram.u32 (h) == 0x0C23EAFC && ram.has (t, 0x10) && ram.u32 (t) == 0x0C23923C) {
+				H = h;
+				T = t;
+			}
+		}
+		uint32_t total = H ? ram.u32 (H + 0x1C) : 0;
+		if (scene == 0)
+			out.state = State::ATTRACT;
+		else if (scene == 3 && H && ram.u32 (A - 0x34C) == 2)
+			out.state = State::RACE;
+		else if (scene == 3 && H && ram.u32 (A - 0x2CC) == 2)
+			out.state = State::SELECT;
+		else if (scene == 3 && H && total > 0)
+			out.state = State::OVER;
+		else if (scene == 3)
+			out.state = State::SELECT;
+		else if (raced == 1 && state != State::SELECT)
+			out.state = State::OVER;
+		else
+			out.state = State::SELECT;
+		state = out.state;
+		out.finished = out.state == State::OVER;
+		out.transmission = ram.u32 (0x0C228CD8) == 1 ? "MT" : "AT";
+		static const char *const courses[4] = { "Myogi", "Usui", "", "Happogahara" };
+		uint32_t course = ram.u32 (0x0C228CA0);
+		out.track = course < 4 ? courses[course] : "";
+
+		const uint32_t B = 0x0C3017C0;
+		Vehicle &p = out.player;
+		car (ram, B, p);
+		p.speed = ram.f32 (0x0C7DBE94);
+		p.rpm = std::max (ram.f32 (0x0C7DBC1C), 0.0f);
+		uint32_t gear = ram.u32 (0x0C7DBC0C);
+		p.gear = gear <= 5 ? (int) gear : UNKNOWN;
+		p.gears = 5;
+		p.steer = std::clamp (ram.f32 (0x0C7DBE28), -1.0f, 1.0f);
+		p.throttle = ram.f32 (0x0C7DBE18);
+		p.brake = ram.f32 (0x0C7DBE24);
+		Vehicle rival;
+		car (ram, B + 0x270, rival);
+		if (!H) {
+			out.others.push_back (rival);
+			return true;
+		}
+
+		out.time_left = (float) std::max (ram.i32 (T + 8), 0) / TICK;
+		out.race_time = (float) total / TICK;
+		/* The laps begun; the one running, the last, the best of those done */
+		int32_t laps[4];
+		int lap = 0;
+		while (lap < 4 && (laps[lap] = ram.i32 (H + 0x20 + 4 * lap)) >= 0)
+			lap++;
+		if (lap)
+			out.lap_time = (float) laps[lap - 1] / TICK;
+		for (int k = 0; k + 1 < lap; k++) {
+			out.last_lap = (float) laps[k] / TICK;
+			out.best_lap = std::isnan (out.best_lap) ? out.last_lap : std::min (out.best_lap, out.last_lap);
+		}
+		p.lap = lap;
+		p.position = (int) ram.u32 (H + 8) + 1;
+		p.progress = lap ? (float) (lap - 1) + ram.f32 (H + 0x54) : 0.0f;
+		rival.position = 3 - p.position;
+		/* The rival's fraction of its own lap: within half a lap of the
+		 * player's */
+		float d = ram.f32 (H + 0x58) - ram.f32 (H + 0x54);
+		d -= std::floor (d + 0.5f);
+		rival.progress = lap ? p.progress + d : 0.0f;
+		float gap = ram.f32 (H + 0x5C);
+		if (gap >= 0)
+			p.dist_behind = gap;
+		else
+			p.dist_ahead = -gap;
+		p.extra.push_back ({ "gap", gap });
+		out.others.push_back (rival);
+		return true;
+	}
+
+private:
+	/* A car's position and matrix (rows right, up, back) */
+	static void car (const Ram &ram, uint32_t at, Vehicle &v)
+	{
+		const uint32_t M = at + 0x1E0;
+		float up[3] = { ram.f32 (M + 0x10), ram.f32 (M + 0x14), ram.f32 (M + 0x18) };
+		float fwd[3] = { -ram.f32 (M + 0x20), -ram.f32 (M + 0x24), -ram.f32 (M + 0x28) };
+		v.x = -ram.f32 (at);
+		v.y = ram.f32 (at + 4);
+		v.z = ram.f32 (at + 8);
+		orient_mirrored (v, up, fwd);
+	}
+
+	State state = State::ATTRACT;
+};
+
 } /* namespace */
 
 std::unique_ptr<Decoder>
@@ -1323,6 +1459,8 @@ make_decoder (Machine *mach)
 		return std::unique_ptr<Decoder> (new Wheeler18);
 	if (!strcmp (name, "clubkrt"))
 		return std::unique_ptr<Decoder> (new ClubKart);
+	if (!strcmp (name, "initdexp"))
+		return std::unique_ptr<Decoder> (new InitialD);
 	return NULL;
 }
 

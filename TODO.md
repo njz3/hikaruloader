@@ -124,6 +124,11 @@ The telemetry (`src/hl/telemetry-games.cpp`), what its decoders lack:
 - Club Kart: Beginner races on two courses; no speedometer, no engine
   (a value with the speed alone), the wheels, the hits; clubk2k3's and
   clubkprz's maps are others (their main addresses noted, not decoded).
+- Initial D Arcade Stage: initdexp in Legend of the Streets (AE86, Myogi,
+  Usui, Happogahara), no card; the race's laps (the course's screen only),
+  a hit flag, the wheels' grounds, Time Attack, a card in the reader not
+  checked; initdv3e's map is another (its car at 0C401B14), initd and
+  initdv2j not tried.
 - Tokyo Bus Guide: no decoder yet.
 - Gaelco Football and the other games: no decoder (not racing games).
 

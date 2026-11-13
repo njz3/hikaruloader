@@ -16,8 +16,9 @@ Next version
   Jambo! Safari's board simulated too.
 - Telemetry for F355 Challenge (twin; deluxe and Challenge 2 the motion, gear
   and rpm), 18 Wheeler (with the trailer's angle), The King of Route 66 (the
-  trailer, the distance to the goal) and Club Kart (with the other karts):
-  README, "Telemetry".
+  trailer, the distance to the goal), Club Kart (with the other karts) and
+  Initial D Arcade Stage (Export, with the rival and the gap to it): README,
+  "Telemetry".
 
 
 0.8.2 (2026-11-13)

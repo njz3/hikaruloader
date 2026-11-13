@@ -921,6 +921,7 @@ change of speed), `lap`, `progress`, `position` (its place); and the race
 | 18 Wheeler (`18wheelr`) | The lever as `gear` (-1 R, 1 LOW or none, 2 HIGH), `gearbox` (the automatic's 1 to 5), rpm, throttle, brake and steering as the game takes them, `trailer_angle` (rad, > 0 the cab turned right of the trailer), `horn`, `reward` ($); the time left. The truck goes 1.7 times as fast as its `speed` (the HUD's) says: its velocity is the world's |
 | The King of Route 66 (`kingrt66`) | Gear (-1 REVERSE, 1 to 4), rpm, throttle, brake and steering, `trailer` (1 hitched), `trailer_angle`, `distance_to_goal` (m, the HUD's), `wrong_way`, `emblems` (the 66 emblems), `reward` ($); the time left |
 | Club Kart (`clubkrt`) | The 7 other karts, their places and laps. Throttle, brake and steering as the game takes them; the laps of the race, the lap times, the race's time, the time left |
+| Initial D Arcade Stage (`initdexp`) | The rival, its place and progress. Gear (0 before GO, 1 to 5), rpm, `transmission` (`AT`, `MT`), throttle, brake and steering as the game takes them, the course (`track`); the lap, the place, the lap times, the race's time, the time left, `gap` (m to the rival, > 0 ahead) |
 
 The places of Star Wars: Racer Arcade's opponents come from their progress
 along the track (the game keeps the player's alone), and ATV Track's from
