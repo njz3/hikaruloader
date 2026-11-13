@@ -14,6 +14,10 @@ Next version
 - The Model 3 drive boards' servo board vibrates on its own when the
   program asks (Scud Race's family's 3x commands, 15 strengths), with
   Jambo! Safari's board simulated too.
+- Telemetry for F355 Challenge (twin; deluxe and Challenge 2 the motion, gear
+  and rpm), 18 Wheeler (with the trailer's angle), The King of Route 66 (the
+  trailer, the distance to the goal) and Club Kart (with the other karts):
+  README, "Telemetry".
 
 
 0.8.2 (2026-11-13)

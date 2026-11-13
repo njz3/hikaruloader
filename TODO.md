@@ -105,6 +105,25 @@ The telemetry (`src/hl/telemetry-games.cpp`), what its decoders lack:
   (Beginner's); not seen: Expert's net, the next areas, a continue, the
   name entry; the rope's length (the HUD's distance) and the crates'
   animals not found; no jump in the game (no airborne).
+- F355 Challenge: checked on f355twin (Motegi, AT and the paddles, Training
+  and Race); the manual gearbox (neutral, reverse) not offered with the
+  defaults, the race's laps (4 in the checks), the assists, the surfaces;
+  the opponents not sent; f355twn2 and f355: the motion, speed, gear and rpm
+  alone (their laps, times, inputs not mapped); the prototypes not checked.
+- 18 Wheeler: the first stage alone; the rival (Lizard Tail), the parking
+  game, a stage's clear, the damage not found; the world 1.7 times as fast
+  as the speed the game shows; the other sets not mapped (18wheelu's
+  shifted by 5F0, the others not checked).
+- The King of Route 66: AREA 1's first two stages; the nitro (by voice, the
+  cans' count), a hit flag, the wheels, the rival (B+7C probably) not
+  found; the bodies are not pointed at from anywhere (another truck than
+  the Texas Hawk not tried); kingrt66p's map is another. With the factory
+  settings (VOLUME SETTING not done) its pedals' range is 8000 to 8000: a
+  pedal reads 0 or 1, and one at 8000 exactly makes 0/0, a NaN that ends
+  the stage won (the game's own arithmetic, as on a board).
+- Club Kart: Beginner races on two courses; no speedometer, no engine
+  (a value with the speed alone), the wheels, the hits; clubk2k3's and
+  clubkprz's maps are others (their main addresses noted, not decoded).
 - Tokyo Bus Guide: no decoder yet.
 - Gaelco Football and the other games: no decoder (not racing games).
 

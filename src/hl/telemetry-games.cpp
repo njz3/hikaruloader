@@ -853,6 +853,445 @@ private:
 	float last_vx = 0, last_vz = 0;
 };
 
+/****************************************************************************
+ The King of Route 66 (kingrt66, Rev A), NAOMI 2
+
+ Checked in the first two stages of AREA 1 with the Texas Hawk, the
+ defaults. A unit is a metre (the HUD's km/h is the velocity x 3.6). The
+ world is mirrored (the matrices' rows left, up, forward; steering right
+ lowers its heading): x is turned round. The game moves the truck at 30 Hz,
+ every other frame: the velocity is left to the deriver, which takes such
+ moves (the game's own velocity, 0C784590, misses the crashes: the solver
+ puts the body back, the vector keeps the wheels' motion).
+ - The game's block B, the pointer at 0C25FB5C (0C3C5464): its stage's
+   flags +4, the game's +8, the time left +58 (seconds in the high half,
+   sixtieths in the low; frozen at a stage's end), the distance to the goal
+   +30 (m, the HUD's), the speed +34 (km/h, the wheels': never below 0, on
+   at a wall), rpm +38, the 66 emblems +20, the reward +28 ($), a copy of
+   the tractor's position +DC and its heading +F8 (16 bits a turn).
+ - The state: attract while the game's flags have E0000 (the title, the
+   GAME RULE demo with its own truck); time up to GAME OVER, the stage's
+   40000; YOU MADE IT! and the load's result, 80000 and 2000; driving from
+   GET GOING! (the truck rolling, the inputs live), 0C339724 not 0 with the
+   stage's 400 and not 4000; WRONG WAY 20000.
+ - The tractor: x y z 0C78456C, its matrix 0C7845D0 (3 x 3, rows 10
+   apart: left, up, forward), the automatic's gear 0C784CA4 (-1 REVERSE, 0
+   to 3 the four gears); the trailer: x y z 0C784E84, its matrix 0C784EE8,
+   8.4 m behind (left behind in the stages without a load: hitched within
+   12 m). The bodies are not pointed at from anywhere: they are taken while
+   they agree with B's copy, else B's position and heading.
+ - The inputs as read: steering 0C37543C (128 the centre, + right),
+   accelerator 0C37543E, brake 0C375440 (0 to 255); the lever 0C375434 (20
+   D, 10 R).
+ Not found: the nitro (by voice; the cans' count), a hit flag, the wheels,
+ the rival for sure (B+7C). kingrt66p's map is another.
+****************************************************************************/
+
+class KingRt66 : public Decoder {
+public:
+	bool decode (Machine *mach, uint64_t frame, Frame &out) override
+	{
+		Ram ram (mach, "ram", 0x0C000000);
+
+		(void) frame;
+		if (!ram.ok ())
+			return false;
+		uint32_t B = ram.u32 (0x0C25FB5C);
+		if (!ram.has (B, 0x110))
+			return false;
+		uint32_t fs = ram.u32 (B + 0x04), fg = ram.u32 (B + 0x08);
+		bool staged = ram.u32 (0x0C339724) != 0;
+		bool cleared = (fs & 0x80000) && (fs & 0x2000);
+		if (fg & 0xE0000)
+			out.state = State::ATTRACT;
+		else if ((fs & 0x40000) || cleared)
+			out.state = State::OVER;
+		else if (staged && (fs & 0x400) && !(fs & 0x4000))
+			out.state = State::RACE;
+		else
+			out.state = State::SELECT;
+		out.finished = cleared;
+		out.transmission = "AT";
+		uint32_t t = ram.u32 (B + 0x58);
+		out.time_left = (float) (t >> 16) + (float) (t & 0xFFFF) / (float) FPS;
+
+		Vehicle &p = out.player;
+		const uint32_t T = 0x0C78456C, M = 0x0C7845D0;
+		float pos[3] = { ram.f32 (T), ram.f32 (T + 4), ram.f32 (T + 8) };
+		float copy[3] = { ram.f32 (B + 0xDC), ram.f32 (B + 0xE0), ram.f32 (B + 0xE4) };
+		float fwd[3] = { ram.f32 (M + 0x20), ram.f32 (M + 0x24), ram.f32 (M + 0x28) };
+		bool body = std::hypot (pos[0] - copy[0], pos[2] - copy[2]) < 5.0f;
+		if (body) {
+			float up[3] = { ram.f32 (M + 0x10), ram.f32 (M + 0x14), ram.f32 (M + 0x18) };
+			p.x = -pos[0];
+			p.y = pos[1];
+			p.z = pos[2];
+			orient_mirrored (p, up, fwd);
+		} else {
+			/* B's copy: the heading alone */
+			float h = -(float) ram.u16 (B + 0xF8) * 6.2831853f / 65536.0f;
+			float right[3] = { std::cos (h), 0, -std::sin (h) }, up[3] = { 0, 1, 0 };
+			float ahead[3] = { std::sin (h), 0, std::cos (h) };
+			p.x = -copy[0];
+			p.y = copy[1];
+			p.z = copy[2];
+			set_orientation (p, right, up, ahead);
+		}
+		p.speed = ram.f32 (B + 0x34) / 3.6f;
+		p.rpm = ram.f32 (B + 0x38);
+		int32_t gear = ram.i32 (0x0C784CA4);
+		p.gear = gear < 0 ? -1 : gear <= 3 ? gear + 1 : UNKNOWN;
+		p.gears = 4;
+		p.steer = -std::clamp ((ram.u8 (0x0C37543C) - 128.0f) / 127.0f, -1.0f, 1.0f);
+		p.throttle = ram.u8 (0x0C37543E) / 255.0f;
+		p.brake = ram.u8 (0x0C375440) / 255.0f;
+
+		/* The trailer: its angle to the tractor, > 0 the cab turned right
+		 * of it */
+		const uint32_t TT = 0x0C784E84, TM = 0x0C784EE8;
+		float tp[3] = { ram.f32 (TT), ram.f32 (TT + 4), ram.f32 (TT + 8) };
+		bool hitched = body && std::sqrt ((tp[0] - pos[0]) * (tp[0] - pos[0]) + (tp[1] - pos[1]) * (tp[1] - pos[1]) +
+		                                  (tp[2] - pos[2]) * (tp[2] - pos[2])) < 12.0f;
+		float angle = 0.0f;
+		if (hitched) {
+			float a = std::atan2 (fwd[0], fwd[2]) - std::atan2 (ram.f32 (TM + 0x20), ram.f32 (TM + 0x28));
+			while (a > 3.14159265f)
+				a -= 6.2831853f;
+			while (a < -3.14159265f)
+				a += 6.2831853f;
+			angle = -a;
+		}
+		bool racing = out.state == State::RACE;
+		p.extra.push_back ({ "trailer", hitched ? 1.0f : 0.0f });
+		p.extra.push_back ({ "trailer_angle", hitched ? angle : NAN });
+		p.extra.push_back ({ "distance_to_goal", ram.f32 (B + 0x30) });
+		p.extra.push_back ({ "wrong_way", racing && (fs & 0x20000) ? 1.0f : 0.0f });
+		p.extra.push_back ({ "emblems", (float) ram.u32 (B + 0x20) });
+		p.extra.push_back ({ "reward", racing ? (float) ram.u32 (B + 0x28) : NAN });
+		return true;
+	}
+};
+
+/****************************************************************************
+ F355 Challenge (f355twin, f355twn2, f355), NAOMI
+
+ Checked on f355twin in Training and Race at Motegi, AT and semi-automatic,
+ the defaults; the master board's RAM (it draws nothing). A unit is a metre
+ (the velocity in m/s, the HUD's km/h the speed x 3.6). The world is
+ mirrored (steering right lowers its heading): x is turned round.
+ - The mode 0C3A38F8: 7 the course's, level's and mode's choice, 8 the
+   intro and the countdown, 9 the race (from GO), 10 GOAL and the results
+   (the game driving), 13 TIME UP and GAME OVER, 17 the VMU's save; the
+   others the attract (its demo replays a race in the car).
+ - The car 0C1E0040: x y z +10, its matrix +7C (rows 10 apart: right, up,
+   back), the gear +1D0 (1 to 6), the laps done +38 (16 bits), the place
+   +140 (from 0), the last lap's start +134, the last lap +138 with its
+   fraction +144, the best +13C (ticks of 1/60.2 s, the game's clock); the
+   transmission 0C1E0028 (2 AT, 1 the paddles).
+ - The physics 0C24D378: the velocity +C (m/s), rpm +1C, the speed +2C,
+   each wheel's spin +58 + n x 14 (rad/s; front left, front right, rear
+   left, rear right); frozen after GOAL.
+ - The race's clock 0C1E8188 (ticks); the time left 0C1E818C (frames, the
+   HUD's R.TIME 10 frames under; 37.4 s more at each line).
+ - The inputs as read: steering, accelerator, brake, clutch 0C1E8B74 to 77
+   (128 the centre, + right; 0 to 254).
+ f355twn2 (mode 0C329380, the same values; physics 0C1F0164, the car
+ 0C2E3740, its gear +1CC) and f355 (mode 0C3C319C, each value from the
+ choice on one more; physics 0C26D020, the car's x y z 0C20003C, matrix
+ 0C200070, gear 0C2001A8): the motion, the speed, rpm and the gear checked
+ alone.
+ Not found: the race's laps (4 in the checks), the manual gearbox's
+ neutral and reverse (not offered), the assists, the wheels' ground.
+****************************************************************************/
+
+class F355 : public Decoder {
+public:
+	enum Set { TWIN, TWIN2, DELUXE };
+
+	explicit F355 (Set set) : set (set) {}
+
+	bool decode (Machine *mach, uint64_t frame, Frame &out) override
+	{
+		Ram ram (mach, "ram", 0x0C000000);
+		/* The layouts: mode, physics, the car's x y z, matrix, gear */
+		static const struct {
+			uint32_t mode, physics, pos, matrix, gear;
+			unsigned shift;
+		} sets[3] = {
+			{ 0x0C3A38F8, 0x0C24D378, 0x0C1E0050, 0x0C1E00BC, 0x0C1E0210, 0 },
+			{ 0x0C329380, 0x0C1F0164, 0x0C2E3750, 0x0C2E37BC, 0x0C2E390C, 0 },
+			{ 0x0C3C319C, 0x0C26D020, 0x0C20003C, 0x0C200070, 0x0C2001A8, 1 },
+		};
+		const auto &L = sets[set];
+
+		(void) frame;
+		if (!ram.ok ())
+			return false;
+		/* The deluxe's numbers are one more from the choice on */
+		uint32_t mode = ram.u32 (L.mode);
+		if (mode >= 7 + L.shift)
+			mode -= L.shift;
+		out.state = mode == 9 ? State::RACE : mode == 7 || mode == 8 ? State::SELECT :
+		            mode == 10 || mode == 13 || mode == 17 ? State::OVER : State::ATTRACT;
+		out.finished = mode == 10;
+
+		Vehicle &p = out.player;
+		const uint32_t M = L.matrix, P = L.physics;
+		float up[3] = { ram.f32 (M + 0x10), ram.f32 (M + 0x14), ram.f32 (M + 0x18) };
+		float fwd[3] = { -ram.f32 (M + 0x20), -ram.f32 (M + 0x24), -ram.f32 (M + 0x28) };
+		p.x = -ram.f32 (L.pos);
+		p.y = ram.f32 (L.pos + 4);
+		p.z = ram.f32 (L.pos + 8);
+		orient_mirrored (p, up, fwd);
+		/* The physics' own while it runs */
+		if (out.state == State::RACE) {
+			p.vx = -ram.f32 (P + 0x0C);
+			p.vy = ram.f32 (P + 0x10);
+			p.vz = ram.f32 (P + 0x14);
+			p.has_velocity = true;
+		}
+		p.speed = ram.f32 (P + 0x2C);
+		p.rpm = ram.f32 (P + 0x1C);
+		p.rpm_max = 8500.0f;
+		uint32_t gear = ram.u32 (L.gear);
+		p.gear = gear >= 1 && gear <= 6 ? (int) gear : UNKNOWN;
+		p.gears = 6;
+		/* The wheels' spin: front left, front right, rear left, rear right */
+		for (int n = 0; n < 4; n++)
+			p.wheels[n].spin = ram.f32 (P + 0x58 + 0x14 * n);
+		if (set != TWIN)
+			return true;
+
+		const uint32_t O = 0x0C1E0040;
+		uint32_t box = ram.u32 (0x0C1E0028);
+		out.transmission = box == 2 ? "AT" : box == 1 ? "MT" : "";
+		p.steer = -std::clamp ((ram.u8 (0x0C1E8B74) - 128.0f) / 127.0f, -1.0f, 1.0f);
+		p.throttle = ram.u8 (0x0C1E8B75) / 254.0f;
+		p.brake = ram.u8 (0x0C1E8B76) / 254.0f;
+		p.clutch = ram.u8 (0x0C1E8B77) / 254.0f;
+		/* The race's from GO on; the last lap at GOAL */
+		if (mode < 9)
+			return true;
+		unsigned done = ram.u16 (O + 0x38);
+		p.lap = (int) (mode == 9 ? done + 1 : std::max (done, 1u));
+		p.position = ram.u16 (O + 0x140) + 1;
+		const float TICK = 60.2f;
+		float t = ram.f32 (0x0C1E8188);
+		out.race_time = t / TICK;
+		out.lap_time = (t - (float) ram.u32 (O + 0x134)) / TICK;
+		if (done) {
+			out.last_lap = ((float) ram.u32 (O + 0x138) + ram.f32 (O + 0x144)) / TICK;
+			out.best_lap = (float) ram.u32 (O + 0x13C) / TICK;
+		}
+		out.time_left = (float) std::max (ram.i32 (0x0C1E818C) - 10, 0) / (float) FPS;
+		return true;
+	}
+
+private:
+	Set set;
+};
+
+/****************************************************************************
+ 18 Wheeler: American Pro Trucker (18wheelr), NAOMI
+
+ Checked in the first stage (Asphalt Cowboy, the fuel tanker), the
+ defaults. A unit is a metre (the truck's size); the truck goes through the
+ world 1.7 times as fast as its speed and the HUD say. The game moves it at
+ 30 Hz: the velocity is left to the deriver. The world is mirrored
+ (steering right lowers its heading): x is turned round.
+ - The scene, from the sound bank loaded (0C3AC8C4): 15 the attract (its
+   HOW TO PLAY drives the truck), 4 the truck's choice, 7 CONTINUE to the
+   ranking, FFFFFFFF loading (the state as it was); in the others (9 the
+   first stage), 0C3ACB34 1 driving (TIME UP once the time left is 0),
+   else READY, the map and the trailer's choice.
+ - The time left 0C3ACBB0 (frames), the reward 0C3ACBC4 ($).
+ - The tractor: x y z 0C4E9F90; its matrix in a list drawn, 0C289620 (4 x 4,
+   rows right, up, back, the position): taken when its position is the
+   tractor's (the slot holds another thing at a stop, after TIME UP); the
+   trailer's 0C2895E0, its position the kingpin. The speed 0C4E9F60 (m/s,
+   below 0 reversing), rpm 0C4E9F40, the gearbox 0C4E9F38 (1 to 3 in LOW,
+   4 in HIGH, 5 in R).
+ - The lever 0C3AC92C (0 none, driving as LOW; 2 LOW, 1 HIGH, 6 R); the
+   inputs as the game takes them: steering 0C3ACC80 (+ right, 1 short of
+   the lock), accelerator 0C3ACC88, brake 0C3ACC90; the horn 0C2B4FE5 bit 2.
+ Not found: the rival (Lizard Tail), the parking game, the damage. The
+ other sets' map is another (18wheelu's shifted by 5F0).
+****************************************************************************/
+
+class Wheeler18 : public Decoder {
+public:
+	bool decode (Machine *mach, uint64_t frame, Frame &out) override
+	{
+		Ram ram (mach, "ram", 0x0C000000);
+
+		(void) frame;
+		if (!ram.ok ())
+			return false;
+		uint32_t bank = ram.u32 (0x0C3AC8C4);
+		bool run = ram.u32 (0x0C3ACB34) == 1;
+		int32_t left = ram.i32 (0x0C3ACBB0);
+		if (bank == 0xFFFFFFFF)
+			out.state = state;
+		else if (bank == 0x15)
+			out.state = State::ATTRACT;
+		else if (bank == 4)
+			out.state = State::SELECT;
+		else if (bank == 7)
+			out.state = State::OVER;
+		else if (run)
+			out.state = left > 0 ? State::RACE : State::OVER;
+		else
+			out.state = State::SELECT;
+		state = out.state;
+		out.transmission = "AT";
+		out.time_left = (float) std::max (left, 0) / (float) FPS;
+
+		Vehicle &p = out.player;
+		float pos[3] = { ram.f32 (0x0C4E9F90), ram.f32 (0x0C4E9F94), ram.f32 (0x0C4E9F98) };
+		const uint32_t M = 0x0C289620, TM = 0x0C2895E0;
+		if (std::fabs (ram.f32 (M + 0x30) - pos[0]) < 0.5f && std::fabs (ram.f32 (M + 0x38) - pos[2]) < 0.5f) {
+			for (int i = 0; i < 3; i++) {
+				up[i] = ram.f32 (M + 0x10 + 4 * i);
+				fwd[i] = -ram.f32 (M + 0x20 + 4 * i);
+				trailer[i] = -ram.f32 (TM + 0x20 + 4 * i);
+			}
+		}
+		p.x = -pos[0];
+		p.y = pos[1];
+		p.z = pos[2];
+		orient_mirrored (p, up, fwd);
+		/* READY: the truck settling on its springs, no hit */
+		if (out.state != State::RACE)
+			p.impact = 0.0f;
+		p.speed = std::fabs (ram.f32 (0x0C4E9F60));
+		p.rpm = ram.f32 (0x0C4E9F40);
+		uint8_t lever = ram.u8 (0x0C3AC92C);
+		p.gear = lever == 6 ? -1 : lever == 1 ? 2 : 1;
+		p.gears = 2;
+		p.steer = -std::clamp (ram.f32 (0x0C3ACC80), -1.0f, 1.0f);
+		p.throttle = ram.f32 (0x0C3ACC88);
+		p.brake = ram.f32 (0x0C3ACC90);
+
+		/* The trailer's angle to the tractor, > 0 the cab turned right of
+		 * it (the headings in the mirrored world) */
+		float a = std::atan2 (fwd[0], fwd[2]) - std::atan2 (trailer[0], trailer[2]);
+		while (a > 3.14159265f)
+			a -= 6.2831853f;
+		while (a < -3.14159265f)
+			a += 6.2831853f;
+		p.extra.push_back ({ "trailer_angle", -a });
+		p.extra.push_back ({ "gearbox", (float) ram.u32 (0x0C4E9F38) });
+		p.extra.push_back ({ "horn", (ram.u8 (0x0C2B4FE5) & 4) ? 1.0f : 0.0f });
+		p.extra.push_back ({ "reward", (float) ram.i32 (0x0C3ACBC4) });
+		return true;
+	}
+
+private:
+	State state = State::ATTRACT;
+	/* The last matrix found */
+	float up[3] = { 0, 1, 0 }, fwd[3] = { 0, 0, 1 }, trailer[3] = { 0, 0, 1 };
+};
+
+/****************************************************************************
+ Club Kart: European Session (clubkrt), NAOMI
+
+ Checked in Beginner races on Cote d'Azur Type C (2 laps) and Circuit Type
+ B (3), the defaults, no card. A unit is a metre (the kart's size, a lap of
+ 1496 m); the velocities in units a frame. The world is mirrored (steering
+ right lowers its heading): x is turned round. No gearbox.
+ - The scene 0C30F300: 3 the attract (replays), 4, 7, 8, A, B the choices,
+   C the race's (its phase 0C30F83D: below B the flyover and 3-2-1, from B
+   the kart free), 12 Information, 14 GAME OVER, FFFFFFFF between two
+   scenes (the state as it was). Over at TIME IS UP (0C319CDC 1) or once
+   the player's laps are done.
+ - The time left 0C319CD4 (frames); the laps of the race 0C319B2E (a byte).
+ - The karts 0C31A49C + k x 94, k 0 the player, 1 to 7 the others:
+   accelerator +0, brake +4 (as the game takes them), the velocity +8,
+   the speed +14, the matrix +30 (rows 10 apart: right, up, back), x y z
+   +60.
+ - Their races 0C318B3C + k x 218: the place +8 (from 0), the laps done +C,
+   each lap's time +10 + 4 n and the best +70, the race's +74 (ms, the
+   game's clock).
+ - The player's steering as the game takes it 0C004080 (+1 left).
+ Not found: the engine (a value with the speed alone), the wheels, the
+ hits. The later sets' map is another.
+****************************************************************************/
+
+class ClubKart : public Decoder {
+public:
+	bool decode (Machine *mach, uint64_t frame, Frame &out) override
+	{
+		Ram ram (mach, "ram", 0x0C000000);
+		const float V = (float) FPS;	/* m/s a unit a frame */
+		const uint32_t K0 = 0x0C31A49C, R0 = 0x0C318B3C;
+
+		(void) frame;
+		if (!ram.ok ())
+			return false;
+		uint32_t scene = ram.u32 (0x0C30F300);
+		unsigned laps = ram.u8 (0x0C319B2E), done = ram.u32 (R0 + 0x0C);
+		bool timeup = ram.u32 (0x0C319CDC) == 1;
+		if (scene == 0x0C) {
+			if (timeup || (laps && done >= laps))
+				out.state = State::OVER;
+			else
+				out.state = ram.u8 (0x0C30F83D) >= 0x0B ? State::RACE : State::SELECT;
+		} else if (scene == 0x12 || scene == 0x14)
+			out.state = State::OVER;
+		else if (scene == 3)
+			out.state = State::ATTRACT;
+		else if (scene == 0xFFFFFFFF)
+			out.state = state;
+		else
+			out.state = State::SELECT;
+		state = out.state;
+		out.finished = scene == 0x0C && laps && done >= laps;
+		if (scene != 0x0C)
+			return true;
+
+		out.laps = (int) laps;
+		out.time_left = (float) std::max (ram.i32 (0x0C319CD4), 0) / (float) FPS;
+		uint32_t lap = ram.u32 (R0 + 0x10 + 4 * std::min (done, 11u));
+		if (done < laps && lap != 0xFFFFFFFF)
+			out.lap_time = (float) lap / 1000.0f;
+		if (done)
+			out.last_lap = (float) ram.u32 (R0 + 0x10 + 4 * std::min (done - 1, 11u)) / 1000.0f;
+		if (ram.u32 (R0 + 0x70))
+			out.best_lap = (float) ram.u32 (R0 + 0x70) / 1000.0f;
+		out.race_time = (float) ram.u32 (R0 + 0x74) / 1000.0f;
+
+		for (unsigned k = 0; k < 8; k++) {
+			const uint32_t K = K0 + 0x94 * k, R = R0 + 0x218 * k;
+			Vehicle kart;
+			float up[3] = { ram.f32 (K + 0x40), ram.f32 (K + 0x44), ram.f32 (K + 0x48) };
+			float fwd[3] = { -ram.f32 (K + 0x50), -ram.f32 (K + 0x54), -ram.f32 (K + 0x58) };
+			kart.x = -ram.f32 (K + 0x60);
+			kart.y = ram.f32 (K + 0x64);
+			kart.z = ram.f32 (K + 0x68);
+			orient_mirrored (kart, up, fwd);
+			kart.vx = -ram.f32 (K + 0x08) * V;
+			kart.vy = ram.f32 (K + 0x0C) * V;
+			kart.vz = ram.f32 (K + 0x10) * V;
+			kart.has_velocity = true;
+			kart.speed = ram.f32 (K + 0x14) * V;
+			kart.throttle = ram.f32 (K + 0x00);
+			kart.brake = ram.f32 (K + 0x04);
+			kart.position = (int) ram.u32 (R + 0x08) + 1;
+			unsigned kd = ram.u32 (R + 0x0C);
+			kart.lap = (int) (laps ? std::min (kd + 1, laps) : kd + 1);
+			if (k == 0) {
+				kart.steer = std::clamp (ram.f32 (0x0C004080), -1.0f, 1.0f);
+				out.player = kart;
+			} else
+				out.others.push_back (kart);
+		}
+		return true;
+	}
+
+private:
+	State state = State::ATTRACT;
+};
+
 } /* namespace */
 
 std::unique_ptr<Decoder>
@@ -870,6 +1309,20 @@ make_decoder (Machine *mach)
 		return std::unique_ptr<Decoder> (new CrazyTaxi);
 	if (!strcmp (f, "jambo"))
 		return std::unique_ptr<Decoder> (new Jambo);
+	/* The sets themselves where their clones' maps are others */
+	const char *name = mach->game ? mach->game->name : "";
+	if (!strcmp (name, "kingrt66"))
+		return std::unique_ptr<Decoder> (new KingRt66);
+	if (!strcmp (name, "f355twin"))
+		return std::unique_ptr<Decoder> (new F355 (F355::TWIN));
+	if (!strcmp (name, "f355twn2"))
+		return std::unique_ptr<Decoder> (new F355 (F355::TWIN2));
+	if (!strcmp (name, "f355"))
+		return std::unique_ptr<Decoder> (new F355 (F355::DELUXE));
+	if (!strcmp (name, "18wheelr"))
+		return std::unique_ptr<Decoder> (new Wheeler18);
+	if (!strcmp (name, "clubkrt"))
+		return std::unique_ptr<Decoder> (new ClubKart);
 	return NULL;
 }
 
