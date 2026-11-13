@@ -17,12 +17,16 @@
  */
 
 /*
- * The effects, from what the decoder reads (hl/telemetry-games.cpp):
+ * The effects, from what the decoder reads (hl/telemetry-games.cpp), scaled
+ * to the game's vehicle (telemetry::FfbScale: Star Wars: Racer Arcade's pods
+ * by default, Crazy Taxi's taxi):
  *
- * - Centring (spring) and damping (friction), stiffer with the speed: a pod
- *   at 600 km/h holds its line. Lighter in the air.
+ * - Centring (spring) and damping (friction), stiffer with the speed up to
+ *   the vehicle's top speed: a pod at 600 km/h holds its line. Lighter in
+ *   the air.
  * - The turn's weight (a constant force): the lateral acceleration pushes
- *   the wheel back out of the turn, as a car's self-aligning torque.
+ *   the wheel back out of the turn, as a car's self-aligning torque, at its
+ *   most in the vehicle's hard turns.
  * - A hit (the game's own, against a wall or a pod, or a change of speed
  *   past 8 g): a kick of the wheel away from the side hit (an acceleration to
  *   the right, the wall on the left: the wheel kicked to the right), as
@@ -111,7 +115,7 @@ FfbEffects::frame (const telemetry::Frame &f)
 	last_frame = f.frame;
 
 	float speed = finite (p.speed);
-	float fast = std::min (speed / 170.0f, 1.0f);
+	float fast = std::min (speed / scale.top_speed, 1.0f);
 	bool air = p.airborne == 1;
 	float throttle = std::clamp (finite (p.throttle), 0.0f, 1.0f);
 	float alat = finite (p.alat), avert = finite (p.avert), impact = finite (p.impact);
@@ -140,15 +144,15 @@ FfbEffects::frame (const telemetry::Frame &f)
 	/* A bump or a landing: the vertical acceleration off its average */
 	float bump = std::fabs (avert - avert_slow);
 	avert_slow += (avert - avert_slow) * 0.1f;
-	if (bump > 15.0f) {
-		float shake = terrain * std::clamp ((bump - 15.0f) / 40.0f + 0.2f, 0.0f, 0.8f);
+	if (bump > scale.bump) {
+		float shake = terrain * std::clamp ((bump - scale.bump) / 40.0f + 0.2f, 0.0f, 0.8f);
 		jolt = std::max (jolt, shake);
 		wheel_jolt = std::max (wheel_jolt, wheel_bumps * shake);
 	}
 	float scrape = wall && speed > 5.0f ? std::min (speed / 80.0f, 1.0f) : 0.0f;
 	/* The turn's weight, smoothed over some 70 ms; held through a hit */
 	if (!hit)
-		corner += (std::clamp (alat / 60.0f, -0.35f, 0.35f) - corner) * 0.25f;
+		corner += (0.35f * std::clamp (alat / scale.hard_turn, -1.0f, 1.0f) - corner) * 0.25f;
 
 	/* The wheel */
 	float spring = steering * wheel_spring * (0.10f + 0.40f * fast) * (air ? 0.3f : 1.0f);

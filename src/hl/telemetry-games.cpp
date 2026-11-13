@@ -19,7 +19,8 @@
 /* The racing games' telemetry decoders (hl/telemetry.h): where each game
  * keeps its vehicles and its race in its RAM, found by recording the RAM
  * while the game was driven, each value checked against the game's own
- * display. Addresses are the master SH-4's (its RAM at 0C000000). */
+ * display. Addresses are the master SH-4's (its RAM at 0C000000; NAOMI's
+ * "ram", the others' "ram_m"). */
 
 #include <algorithm>
 #include <cmath>
@@ -598,6 +599,145 @@ private:
 	}
 };
 
+/****************************************************************************
+ Crazy Taxi (crzytaxi), NAOMI
+
+ Checked in rides from the start of play, the defaults. A unit is 10 cm (the
+ HUD's distances are the units / 10); the game's gravity is some 4 g (0.110
+ unit a frame per frame in a fall). The world is mirrored (the matrix's rows
+ left, up, forward; steering right lowers its heading): x is turned round.
+ - The game: 0C288B60 is 1 from START to the end of GAME OVER; the scene
+   0C288B64 in pairs, starting and running: 0/1 the play (the boot's intro
+   too), 2/3 the demo or GAME OVER, 4/5 the driver's choice, 6/7 the title,
+   8/9 RESULT, A/B HOW TO PLAY; in the play, 0C288C38: 0 the intro, 1
+   driving from GO!, 3 TIME UP.
+ - The time left 0C288C44 (frames, the HUD's number), the time played
+   0C288C40 (frames).
+ - The taxi: x y z 0C22C760, its velocity 0C22C76C (units a frame), its
+   matrix 0C22C814 (4 x 4, rows left, up, forward), its wheels' speed
+   0C22C8BC (units a frame, signed; held in the air, spinning against a
+   wall), the automatic gear 0C22C880 (0 REVERSE, 1 to 4 in DRIVE), rpm
+   0C22C8B8; each wheel's ground 0C22C900 + n x 84 (front left, front
+   right, rear left, rear right), FFFFFFFF off the ground.
+ - Steering (+1 right), accelerator and brake as the game reads them:
+   0C288BAC, B0, B4.
+ - The customer: 0C288C3C 1 aboard (in the demo too), the time left to his
+   stop 0C288C7C (frames), the distance to it 0C288E64 (units, the HUD's
+   metres: to the stop's zone, not written inside it), the fare 0C2A5F98
+   (cents).
+ - The velocity swings across the taxi from a frame to the next, a few cm a
+   frame cruising, a metre against a wall or on a kerb, the body with it:
+   the mean of two frames is sent. No hit is flagged: one is that mean's
+   horizontal change of more than a unit a frame in a frame (driving,
+   cornering and the kerbs stay under 0.86, the trees, walls and fences
+   from 1.2 to 3.2).
+ Not found: the money earned (no ride ended in the checks), the driver.
+****************************************************************************/
+
+class CrazyTaxi : public Decoder {
+public:
+	bool makes_ffb () const override { return true; }
+
+	FfbScale ffb_scale () const override
+	{
+		FfbScale scale;
+
+		scale.top_speed = 36.0f;
+		scale.hard_turn = HARD_TURN;
+		scale.bump = BUMP;
+		return scale;
+	}
+
+	bool decode (Machine *mach, uint64_t frame, Frame &out) override
+	{
+		Ram ram (mach, "ram", 0x0C000000);
+		const float U = 0.1f;			/* m a unit */
+		const float V = U * (float) FPS;	/* m/s a unit a frame */
+
+		if (!ram.ok ())
+			return false;
+		uint32_t game = ram.u32 (0x0C288B60), scene = ram.u32 (0x0C288B64), phase = ram.u32 (0x0C288C38);
+		if (game != 1)
+			out.state = State::ATTRACT;
+		else if (scene <= 1)
+			out.state = phase == 1 ? State::RACE : phase == 0 ? State::SELECT : State::OVER;
+		else if (scene == 4 || scene == 5)
+			out.state = State::SELECT;
+		else if (scene == 2 || scene == 3 || scene == 8 || scene == 9)
+			out.state = State::OVER;
+		else
+			out.state = State::ATTRACT;
+		out.finished = out.state == State::OVER;
+		out.transmission = "AT";
+		out.time_left = (float) std::max (ram.i32 (0x0C288C44), 0) / (float) FPS;
+		out.race_time = (float) ram.u32 (0x0C288C40) / (float) FPS;
+
+		Vehicle &p = out.player;
+		const uint32_t M = 0x0C22C814;
+		float up[3] = { ram.f32 (M + 0x10), ram.f32 (M + 0x14), ram.f32 (M + 0x18) };
+		float fwd[3] = { ram.f32 (M + 0x20), ram.f32 (M + 0x24), ram.f32 (M + 0x28) };
+		p.x = -ram.f32 (0x0C22C760) * U;
+		p.y = ram.f32 (0x0C22C764) * U;
+		p.z = ram.f32 (0x0C22C768) * U;
+		orient_mirrored (p, up, fwd);
+
+		/* The velocity, the mean of this frame's and the last's; a hit,
+		 * that mean's horizontal change */
+		float v[3] = { -ram.f32 (0x0C22C76C) * V, ram.f32 (0x0C22C770) * V, ram.f32 (0x0C22C774) * V };
+		bool follows = have_last && frame == last_frame + 1;
+		float mean[3];
+		for (int i = 0; i < 3; i++)
+			mean[i] = follows ? (v[i] + last_v[i]) / 2 : v[i];
+		float dv = follows && have_mean ? std::hypot (mean[0] - last_mean[0], mean[2] - last_mean[2]) : 0.0f;
+		p.impact = dv > HIT * V ? dv : 0.0f;
+		p.vx = mean[0];
+		p.vy = mean[1];
+		p.vz = mean[2];
+		p.has_velocity = true;
+		p.speed = std::sqrt (p.vx * p.vx + p.vy * p.vy + p.vz * p.vz);
+		have_mean = follows;
+		have_last = true;
+		last_frame = frame;
+		memcpy (last_v, v, sizeof (v));
+		memcpy (last_mean, mean, sizeof (mean));
+
+		int off = 0;
+		for (int n = 0; n < 4; n++) {
+			bool down = ram.u32 (0x0C22C900 + 0x84 * n) != 0xFFFFFFFF;
+			p.wheels[n].contact = down ? 1 : 0;
+			off += down ? 0 : 1;
+		}
+		p.airborne = off == 4 ? 1 : 0;
+		uint32_t gear = ram.u32 (0x0C22C880);
+		p.gear = gear == 0 ? -1 : gear <= 4 ? (int) gear : UNKNOWN;
+		p.gears = 4;
+		p.rpm = ram.f32 (0x0C22C8B8);
+		p.steer = -ram.f32 (0x0C288BAC);
+		p.throttle = ram.f32 (0x0C288BB0);
+		p.brake = ram.f32 (0x0C288BB4);
+		p.extra.push_back ({ "wheel_speed", ram.f32 (0x0C22C8BC) * V });
+		bool aboard = out.state == State::RACE && ram.u32 (0x0C288C3C) == 1;
+		p.extra.push_back ({ "customer", aboard ? 1.0f : 0.0f });
+		p.extra.push_back ({ "customer_time", aboard ? (float) std::max (ram.i32 (0x0C288C7C), 0) / (float) FPS : NAN });
+		p.extra.push_back ({ "destination", aboard ? ram.f32 (0x0C288E64) * U : NAN });
+		p.extra.push_back ({ "fare", aboard ? (float) ram.u32 (0x0C2A5F98) / 100.0f : NAN });
+		return true;
+	}
+
+private:
+	/* A hit, units a frame (above). The effects' scale, measured in
+	 * rides: 50 m/s^2 sideways in the hard turns (30 in an ordinary one);
+	 * the body bouncing on the roads' rises some 40 m/s^2 off its average
+	 * (the game's 4 g), more on landing and on the kerbs */
+	static constexpr float HIT = 1.0f;
+	static constexpr float HARD_TURN = 50.0f;
+	static constexpr float BUMP = 60.0f;
+
+	bool have_last = false, have_mean = false;
+	uint64_t last_frame = 0;
+	float last_v[3] = {}, last_mean[3] = {};
+};
+
 } /* namespace */
 
 std::unique_ptr<Decoder>
@@ -611,6 +751,8 @@ make_decoder (Machine *mach)
 		return std::unique_ptr<Decoder> (new SwRacer);
 	if (!strcmp (f, "atvtrack") || !strcmp (f, "smashdrv"))
 		return std::unique_ptr<Decoder> (new Gaelco (!strcmp (f, "atvtrack")));
+	if (!strcmp (f, "crzytaxi"))
+		return std::unique_ptr<Decoder> (new CrazyTaxi);
 	return NULL;
 }
 

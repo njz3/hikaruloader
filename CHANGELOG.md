@@ -5,6 +5,19 @@ What each version brings, for those who play. How the versions are numbered
 and released: [DEVELOPMENT.md](DEVELOPMENT.md), "Versions and releases".
 
 
+Next version
+------------
+
+- Crazy Taxi's telemetry: the taxi's position, orientation, speed, gear,
+  rpm, pedals and steering, its jumps and crashes, the time left, the
+  customer aboard, his time left, the distance to his stop and the fare
+  (README, "Telemetry").
+- Crazy Taxi's force feedback, made from the telemetry as Star Wars: Racer
+  Arcade's (its cabinet's wheel has no motor): the centring and the turns'
+  weight scaled to the taxi, the crashes, the engine, the bumps and the
+  landings (`[ForceFeedback]` `EFFECTS`).
+
+
 0.8.1 (2026-11-12)
 ------------------
 

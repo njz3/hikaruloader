@@ -94,12 +94,23 @@ The telemetry (`src/hl/telemetry-games.cpp`), what its decoders lack:
 - Smashing Drive: the damage (8C22BF44 probably, a count that followed the
   HUD's bar at two crashes, its range unknown; 8C20144C is the last hit's
   strength), the fares; a linked game's other taxi.
+- Crazy Taxi: the money earned and the customers delivered (no ride driven
+  to its end in agent mode: the taxi stopped short of the stop's zone, by a
+  wall, and one put inside it at a standstill kept its customer; to check
+  in a game played by hand), the driver, the surfaces (the wheels' ground
+  ids not named), the traffic; the hits worked out from the velocity (the
+  game flags none), the velocity sent as the mean of two frames (it swings
+  across the taxi from a frame to the next, against a wall the most).
+- Jambo! Safari, Tokyo Bus Guide: no decoder yet; Jambo! Safari's deluxe
+  drive board neither (its EPROM unknown, its commands to decode).
 - Gaelco Football and the other games: no decoder (not racing games).
 
 Star Wars: Racer Arcade's force feedback made from the telemetry
 (`src/hl/ffb-effects.cpp`): tuned on recordings in agent mode only, not yet
 felt on a wheel nor on a game controller; the landings not tried (no jump
-driven); the bass shaker's level against a deluxe cabinet's.
+driven); the bass shaker's level against a deluxe cabinet's. Crazy Taxi's
+the same way: its scale (`FfbScale`: 36 m/s, 50 m/s² hard turns, bumps
+past 60 m/s²) from rides in agent mode, not felt yet.
 
 The controls (`src/hl/controls.cpp`):
 

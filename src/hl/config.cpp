@@ -1347,16 +1347,17 @@ Config::write (FILE *fp) const
 	         "# Default: %s\n", bool_name (def.ffb_hud));
 	fprintf (fp, "HUD = %s\n", bool_name (cfg->ffb_hud));
 	fprintf (fp,
-	         "\n# Star Wars: Racer Arcade's cabinet has no motor: force feedback is made from\n"
-	         "# what the game does (its engines, its hits, its turns, the ground), on a\n"
-	         "# wheel (DirectInput) and on player 1's controller's motors. Default: %s\n",
+	         "\n# Star Wars: Racer Arcade's and Crazy Taxi's cabinets have no motor: force\n"
+	         "# feedback is made from what the game does (its engines, its hits, its turns,\n"
+	         "# the ground), on a wheel (DirectInput) and on player 1's controller's motors.\n"
+	         "# Default: %s\n",
 	         bool_name (def.ffb_effects));
 	fprintf (fp, "EFFECTS = %s\n", bool_name (cfg->ffb_effects));
 	fprintf (fp,
 	         "\n# Each family's strength, in percent (0 to 200): STEERING the centring, the\n"
 	         "# weight of the turns and the damping; ENGINES the engines' rumble and the\n"
-	         "# boost; HITS the walls and the pods hit; TERRAIN the bumps and the landings;\n"
-	         "# RUMBLE a controller's motors as a whole. Default: %u\n", def.ffb_steering);
+	         "# boost; HITS the walls, the pods and the obstacles hit; TERRAIN the bumps and\n"
+	         "# the landings; RUMBLE a controller's motors as a whole. Default: %u\n", def.ffb_steering);
 	fprintf (fp, "STEERING = %u\n", cfg->ffb_steering);
 	fprintf (fp, "ENGINES = %u\n", cfg->ffb_engines);
 	fprintf (fp, "HITS = %u\n", cfg->ffb_hits);

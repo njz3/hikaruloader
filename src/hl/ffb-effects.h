@@ -27,20 +27,24 @@
 namespace hl {
 
 /* Force feedback made from a game's telemetry, for a cabinet without a motor
- * (Star Wars: Racer Arcade's pods): on a wheel (hl::ForceFeedback's
- * DirectInput effects) the centring, the turns' weight, the damping, the
- * hits' kicks, a rumble of the engines, the scraping, the bumps and the
- * landings; on player 1's controller the same as its two motors' rumble.
+ * (Star Wars: Racer Arcade's pods, Crazy Taxi's wheel): on a wheel
+ * (hl::ForceFeedback's DirectInput effects) the centring, the turns' weight,
+ * the damping, the hits' kicks, a rumble of the engines, the scraping, the
+ * bumps and the landings; on player 1's controller the same as its two
+ * motors' rumble.
  * [ForceFeedback] in hikaruloader.ini sets each family's strength. Nothing
  * outside a race: the effects stop in the menus and in a pause. */
 class FfbEffects {
 public:
+	explicit FfbEffects (const telemetry::FfbScale &scale = telemetry::FfbScale ()) : scale (scale) {}
+
 	/* Each frame decoded */
 	void	 frame (const telemetry::Frame &f);
 	/* The game paused, or gone */
 	void	 stop (uint64_t frame);
 
 private:
+	telemetry::FfbScale scale;	/* the game's vehicle */
 	bool	 playing = false;
 	float	 corner = 0;		/* the turn's weight, smoothed */
 	float	 kick = 0;		/* a hit's kick, decaying (> 0 to the left) */

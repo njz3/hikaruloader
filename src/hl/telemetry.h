@@ -138,6 +138,14 @@ struct Frame {
  * forward vectors (world, y up) */
 void set_orientation (Vehicle &v, const float right[3], const float up[3], const float forward[3]);
 
+/* How the force feedback made from a game's frames scales with its vehicle
+ * (hl::FfbEffects); the defaults are Star Wars: Racer Arcade's pods */
+struct FfbScale {
+	float top_speed = 170.0f;	/* m/s: the centring at its stiffest */
+	float hard_turn = 21.0f;	/* m/s^2 sideways: the turn's weight at its most */
+	float bump = 15.0f;		/* m/s^2 off the vertical average: a bump */
+};
+
 /* A game's decoder: reads one frame from the machine, false when the game is
  * in no state to say anything */
 class Decoder {
@@ -147,6 +155,7 @@ public:
 	/* The game's cabinet has no motor: its force feedback is made from
 	 * the frames (hl::FfbEffects) */
 	virtual bool makes_ffb () const { return false; }
+	virtual FfbScale ffb_scale () const { return FfbScale (); }
 };
 
 /* The decoder for the machine's game, or NULL for a game not decoded */

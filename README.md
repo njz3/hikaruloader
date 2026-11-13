@@ -706,6 +706,11 @@ engines' rumble with their thrust and the shaker's sound over it, stronger
 while boosting, the bumps and the landings. On player 1's game controller,
 a rumble of its two motors only for a boost at high speed, the hits, the
 scraping and the bumps, not while cruising.
+Crazy Taxi's wheel has no motor either: its force feedback is made the same
+way, scaled to the taxi (its top speed, its hard turns, its body bouncing
+on the hills): the centring stiffer with the speed, the turns' weight, a
+kick and a shake at each crash, the engine's rumble, the bumps and the
+landings of its jumps.
 The Controls tab's *Emulated force feedback* box turns them on and off
 (`[ForceFeedback]` `EFFECTS` in `hikaruloader.ini`), at once;
 `STEERING`, `ENGINES`, `HITS`, `TERRAIN` and `RUMBLE`, each family's
@@ -893,6 +898,7 @@ change of speed), `lap`, `progress`, `position` (its place); and the race
 | Star Wars: Racer Arcade | The 11 other pods. The engines' tilt from the cockpit (`engines_roll`, radians, > 0 banked to the right). Each engine's thrust as the game uses it (`thrust_left`, `thrust_right`, 0 to 1), `boost`, `boosts_left`, `hit` (the frame of a hit against a wall or a pod), `colliding` (while its jolt lasts), `wall` (a wall touched), `hover` (the height over the ground, m), `shaker` (0 to 1: the deluxe cabinet's bass shaker, fed by the option sound board, its low frequencies), the course |
 | ATV Track | The riders the game drives, two at most, once the player has gone far enough. Gear, the engine (`engine`, 0 to 1), throttle, each brake lever, steering; each wheel on the ground, `airborne`; the checkpoints passed, the stage and the distance along it (`stage_distance`, m, the riders' too) |
 | Smashing Drive | Throttle, brake, steering, `horn`; each wheel on the ground, `airborne`; the time left of the ride. No opponent: the other taxis are traffic |
+| Crazy Taxi | Gear (-1 REVERSE, 1 to 4 in DRIVE), rpm, throttle, brake and steering as the game reads them, `wheel_speed` (m/s, the wheels' own: spinning against a wall); each wheel on the ground, `airborne`; the time left; a customer aboard (`customer`, 0 or 1), his time left (`customer_time`, s), the distance to his stop (`destination`, m, the HUD's) and the `fare` ($). No opponent: the cars are traffic |
 
 The places of Star Wars: Racer Arcade's opponents come from their progress
 along the track (the game keeps the player's alone), and ATV Track's from

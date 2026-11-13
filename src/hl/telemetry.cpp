@@ -1018,7 +1018,7 @@ Service::start (Machine *m)
 	}
 	HL_PRINT ("telemetry: %s decoded", m->game ? m->game->name : "the game");
 	if (decoder->makes_ffb ()) {
-		effects.reset (new FfbEffects);
+		effects.reset (new FfbEffects (decoder->ffb_scale ()));
 		HL_PRINT ("ffb: effects made from the telemetry ([ForceFeedback] EFFECTS)");
 	}
 	if (!cfg->telemetry_port && !cfg->telemetry_forza[0])
