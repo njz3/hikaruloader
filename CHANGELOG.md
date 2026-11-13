@@ -5,6 +5,14 @@ What each version brings, for those who play. How the versions are numbered
 and released: [DEVELOPMENT.md](DEVELOPMENT.md), "Versions and releases".
 
 
+Next version
+------------
+
+- Smashing Drive's wheel turned fully right steers fully right: the game
+  took that end for no wheel and went on straight. Gaelco's wheels and
+  handlebars now turn between 10 and F0, as MAME has them.
+
+
 0.8.3 (2026-11-14)
 ------------------
 

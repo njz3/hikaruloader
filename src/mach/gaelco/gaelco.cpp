@@ -686,17 +686,23 @@ Gaelco::control_put (uint32_t val)
  * Port A and the ADC
  */
 
-/* The ADC's channels: the game's controls on "an" (the wheel or the
- * handlebar, high to the left; ATV Track's throttle), the middle for the
- * others */
+/* The ADC's channels: the game's controls on "an" (0 the wheel or the
+ * handlebar, ATV Track's high to the left, Smashing Drive's to the right; 1
+ * ATV Track's throttle), the middle for the others. The wheel's potentiometer
+ * turns between 10 and F0, its wiper never at its track's ends, as MAME has
+ * Gaelco's wheels (gaelco3d.cpp, PORT_MINMAX): Smashing Drive takes FF for no
+ * wheel and keeps its last reading (its taxi went on straight at full right
+ * lock, before November 2026) */
 static uint8_t
 adc_sample (unsigned channel)
 {
 	uint16_t v;
 
-	if (hl::GameControls::get ().analog ("an", channel, &v))
-		return (uint8_t) (v >> 8);
-	return (channel == 1) ? 0x00 : 0x80;
+	if (!hl::GameControls::get ().analog ("an", channel, &v))
+		return (channel == 1) ? 0x00 : 0x80;
+	if (channel == 0)
+		return (uint8_t) (0x10 + ((v >> 8) * 0xE0 + 0x7F) / 0xFF);
+	return (uint8_t) (v >> 8);
 }
 
 /* An ADC0834's serial protocol: CS low; on CLK's rising edges, DI's start
