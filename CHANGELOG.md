@@ -5,6 +5,14 @@ What each version brings, for those who play. How the versions are numbered
 and released: [DEVELOPMENT.md](DEVELOPMENT.md), "Versions and releases".
 
 
+Next version
+------------
+
+- The SH-4's performance counters, with which Jambo! Safari, VON4 and
+  AIRTRIX time their frames (for nothing they show: the games play and look
+  the same). Their reads no longer fill the log.
+
+
 0.8.2 (2026-11-13)
 ------------------
 

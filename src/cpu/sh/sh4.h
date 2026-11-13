@@ -328,6 +328,22 @@ public:
 	void		ddt_done (unsigned ch, uint32_t source);
 	/* The peripherals' clock, Pφ: the Hikaru's 200 MHz / 4 by default */
 	uint32_t	pclk_hz = 50000000;
+	/* The CPU's own clock on the board, Iφ, which the performance counters
+	 * count: 200 MHz on all of them */
+	uint32_t	iclk_hz = 200000000;
+	/* The performance counters (sh4.cpp, "Performance counters"): PMCR1
+	 * and 2 as written, their counts as of since (the CPU's time,
+	 * sh4_pm_now ()), a PMCLR waiting for them to start. Not in the saved
+	 * state (a load stops them): the games start them again at each frame */
+	struct {
+		uint16_t pmcr[2];
+		uint64_t count[2];
+		uint64_t since[2];
+		bool	 clear[2];
+	} pm = {};
+	/* The slice being run: its cycles, against which remaining tells the
+	 * time within it; remaining's own once it is run */
+	int		slice_cycles = 0;
 	/* The last TCNT read: where from (PC, PR, r15), the far stores then
 	 * and since the read before (~0: from elsewhere), the GPRs then */
 	struct {

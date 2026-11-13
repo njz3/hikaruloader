@@ -827,6 +827,87 @@ sh4_tmu_update_state (Sh4 *ctx)
 	            ctx->tmu.is_running[2]);
 }
 
+/* Performance counters
+ *
+ * Two 48-bit counters, PMCTR1 and 2 (FF100004-FF100010, high and low words),
+ * run by PMCR1 and 2 (FF000084, FF000088): PMEN (bit 15) and PMST (14) set
+ * count; PMCLR (13) clears; CLKF (8) counts the CPU/bus ratio's clock
+ * instead of the CPU's; PMM (0-5) the event. Not in the hardware manual:
+ * Linux's and KallistiOS's names. The games time their frames with them
+ * (Jambo! Safari's main loop, VON4's master, AIRTRIX's slave: E023 to start,
+ * 2000 then a read of PMCTR1L to stop), for nothing they show: the time is
+ * kept and not read again.
+ *
+ * Event 23, the elapsed time, counts the CPU's active cycles (none in
+ * SLEEP; the idle loops taken off count, the CPU spinning in them on the
+ * board): one a cycle of Iφ, or 24 a cycle of the bus (Iφ / 2), 12 a cycle,
+ * with CLKF (KallistiOS's measures). From the cycles run, against cpu_hz, so
+ * that they keep the board's time whatever the emulated clock. The other
+ * events (accesses, misses, instructions, the pipeline's stalls) are not
+ * modelled: such a counter holds.
+ *
+ * PMCLR clears the counter as it starts: the games' 2000 stops it, then they
+ * read the time it ran, which a clear at once would make 0 (inferred from
+ * their code: their library ran on the boards) */
+
+#define PMCR_PMEN	0x8000
+#define PMCR_PMST	0x4000
+#define PMCR_PMCLR	0x2000
+#define PMCR_CLKF	0x0100
+#define PMCR_PMM	0x003F
+#define PMM_ELAPSED	0x23
+
+/* The cycles run so far, those of the slice running included */
+static uint64_t
+sh4_pm_now (Sh4 *ctx)
+{
+	hl::Cpu *cpu = ctx;
+
+	return ctx->cycles_run + (uint64_t) (int64_t) (ctx->slice_cycles - cpu->remaining);
+}
+
+static bool
+sh4_pm_counting (Sh4 *ctx, unsigned n)
+{
+	uint16_t pmcr = ctx->pm.pmcr[n];
+
+	return (pmcr & (PMCR_PMEN | PMCR_PMST)) == (PMCR_PMEN | PMCR_PMST) &&
+	       (pmcr & PMCR_PMM) == PMM_ELAPSED;
+}
+
+static uint64_t
+sh4_pm_value (Sh4 *ctx, unsigned n)
+{
+	uint64_t value = ctx->pm.count[n];
+
+	if (sh4_pm_counting (ctx, n) && ctx->cpu_hz) {
+		uint64_t d = sh4_pm_now (ctx) - ctx->pm.since[n];
+		uint64_t rate = (uint64_t) ctx->iclk_hz * ((ctx->pm.pmcr[n] & PMCR_CLKF) ? 12 : 1);
+
+		value += d / ctx->cpu_hz * rate + d % ctx->cpu_hz * rate / ctx->cpu_hz;
+	}
+	return value & 0xFFFFFFFFFFFFull;
+}
+
+static void
+sh4_pm_control (Sh4 *ctx, unsigned n, uint16_t val)
+{
+	ctx->pm.count[n] = sh4_pm_value (ctx, n);
+	ctx->pm.since[n] = sh4_pm_now (ctx);
+	if (val & PMCR_PMCLR)
+		ctx->pm.clear[n] = true;
+	if ((val & (PMCR_PMEN | PMCR_PMST)) == (PMCR_PMEN | PMCR_PMST)) {
+		if (ctx->pm.clear[n]) {
+			ctx->pm.count[n] = 0;
+			ctx->pm.clear[n] = false;
+		}
+		if ((val & PMCR_PMM) != PMM_ELAPSED)
+			HL_ERROR_FEW ("SH-4: performance counter %u: event %02X not modelled (held)",
+			              n + 1, val & PMCR_PMM);
+	}
+	ctx->pm.pmcr[n] = val & ~PMCR_PMCLR;
+}
+
 /* On-chip Modules
  * See Table A.1, "Address List" */
 
@@ -845,6 +926,18 @@ sh4_ireg_get (Sh4 *ctx, unsigned size, uint32_t addr, void *val)
 		return 0;
 	case RTC_R64CNT:
 		set_ptr (val, size, ctx->rfcr++ & 0x7F);
+		return 0;
+	case PM_PMCR1:
+	case PM_PMCR2:
+		set_ptr (val, size, ctx->pm.pmcr[(addr & 0xF) == 0x8]);
+		return 0;
+	case PM_PMCTR1H:
+	case PM_PMCTR2H:
+		set_ptr (val, size, (uint32_t) (sh4_pm_value (ctx, (addr & 0xF) == 0xC) >> 32));
+		return 0;
+	case PM_PMCTR1L:
+	case PM_PMCTR2L:
+		set_ptr (val, size, (uint32_t) sh4_pm_value (ctx, (addr & 0xFF) == 0x10));
 		return 0;
 	case CPG_WTCNT:
 		break;
@@ -1009,6 +1102,16 @@ sh4_ireg_put (Sh4 *ctx, unsigned size, uint32_t addr, uint64_t val)
 	case CPG_STBCR:
 		HL_ASSERT (size == 1);
 		break;
+	case PM_PMCR1:
+	case PM_PMCR2:
+		sh4_pm_control (ctx, (addr & 0xF) == 0x8, (uint16_t) val);
+		return 0;
+	/* Read only */
+	case PM_PMCTR1H:
+	case PM_PMCTR1L:
+	case PM_PMCTR2H:
+	case PM_PMCTR2L:
+		return 0;
 	case BSC_BCR2:
 	case BSC_PCR:
 	case BSC_RTCSR:
@@ -2982,6 +3085,7 @@ Sh4::run (int cycles)
 
 	HostFpMode fp (ctx);
 	cpu->remaining = cycles;
+	slice_cycles = cycles;
 	/* SLEEP ends with the first interrupt it may take */
 	if (cpu->state == hl::CPU_STATE_SLEEP && irq_ready)
 		cpu->state = hl::CPU_STATE_RUN;
@@ -3023,6 +3127,7 @@ Sh4::run (int cycles)
 			sh4_watch_idle (ctx, pc, before);
 	}
 	cycles_run += (uint64_t) (cycles - cpu->remaining);
+	slice_cycles = cpu->remaining;
 	/* XXX BSC, SCI */
 	sh4_tmu_run (ctx, cycles);
 	//sh4_dmac_run (ctx, cycles);
@@ -3173,6 +3278,8 @@ Sh4::reset (hl::ResetType type)
 	ctx->tmu.counter[0] = 0xFFFFFFFF;
 	ctx->tmu.counter[1] = 0xFFFFFFFF;
 	ctx->tmu.counter[2] = 0xFFFFFFFF;
+
+	ctx->pm = {};
 }
 
 #define SAVE(thing_) \
@@ -3198,6 +3305,7 @@ Sh4::load_state (hl::State *state)
 	                 ctx->intc.irqs[ctx->intc.index].priority > SR.bit.i;
 	LOAD (ctx->dmac);
 	LOAD (ctx->tmu);
+	ctx->pm = {};
 	LOAD (ctx->config);
 	LOAD (ctx->mmu);
 	LOAD (ctx->slot_pc);

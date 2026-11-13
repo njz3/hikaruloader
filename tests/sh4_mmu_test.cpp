@@ -19,8 +19,8 @@
 /* The SH-4 MMU's tests (sh4.cpp, "MMU"): small programs run from P2, the
  * TLBs loaded by LDTLB or through their arrays, the misses served by a
  * handler that loads the entry and runs the instruction again, the other
- * exceptions by one that notes EXPEVT and skips it; and the FPU's moves and
- * rounding.
+ * exceptions by one that notes EXPEVT and skips it; the FPU's moves and
+ * rounding; the performance counters.
  * Run by ctest, or alone: sh4mmutest. */
 
 #include <stdio.h>
@@ -438,6 +438,77 @@ test_fround (void)
 	}
 }
 
+/* The performance counters (sh4.cpp, "Performance counters"), as the games
+ * use them: PMCR1 = start (E023), n NOPs, PMCR1 = 2000, then PMCTR1L and H
+ * read into r5 and r7; again from E023 then, 3 NOPs, into r8 (the clear as
+ * it starts). The interpreter alone: one cycle an instruction */
+#define MOVW_ST(m, n)	(0x2001 | ((n) << 8) | ((m) << 4))	/* mov.w Rm,@Rn */
+
+static void
+pm_run (unsigned nops, uint32_t cpu_hz, uint16_t start_val)
+{
+	uint32_t a = CODE;
+	auto put = [&a] (uint16_t inst) { ram->put (2, a & 0x00FFFFFF, inst); a += 2; };
+
+	start (CODE);
+	cpu->cpu_hz = cpu_hz;
+	cpu->regs.r[1] = 0xFF000084;
+	cpu->regs.r[2] = start_val;
+	cpu->regs.r[3] = 0xFF100008;
+	cpu->regs.r[4] = 0x2000;
+	cpu->regs.r[6] = 0xFF100004;
+	put (MOVW_ST (2, 1));
+	for (unsigned i = 0; i < nops; i++)
+		put (NOP);
+	put (MOVW_ST (4, 1));
+	put (MOVL_LD (3, 5));
+	put (MOVL_LD (6, 7));
+	put (NOP);
+	put (MOVL_LD (3, 9));	/* stopped: the same */
+	put (MOVW_ST (2, 1));
+	put (NOP);
+	put (NOP);
+	put (NOP);
+	put (MOVW_ST (4, 1));
+	put (MOVL_LD (3, 8));
+	put (STOP);
+	put (NOP);
+	run ();
+}
+
+static void
+test_perf_counters (void)
+{
+	bool blocks = cpu->use_blocks;
+	uint32_t c10, c30;
+
+	cpu->use_blocks = false;
+	pm_run (10, 200000000, 0xE023);
+	c10 = cpu->regs.r[5];
+	CHECK ("pm: counted", c10 > 10, 1);
+	CHECK ("pm: high word", cpu->regs.r[7], 0);
+	CHECK ("pm: held once stopped", cpu->regs.r[9], c10);
+	CHECK ("pm: cleared as it starts", cpu->regs.r[8], c10 - 7);
+	pm_run (30, 200000000, 0xE023);
+	c30 = cpu->regs.r[5];
+	CHECK ("pm: a count a cycle", c30 - c10, 20);
+	/* The emulated clock at half the board's: two counts a cycle */
+	pm_run (10, 100000000, 0xE023);
+	c10 = cpu->regs.r[5];
+	pm_run (30, 100000000, 0xE023);
+	CHECK ("pm: the board's time", cpu->regs.r[5] - c10, 40);
+	/* CLKF: 24 a bus cycle, 12 a CPU cycle */
+	pm_run (10, 200000000, 0xE123);
+	c10 = cpu->regs.r[5];
+	pm_run (30, 200000000, 0xE123);
+	CHECK ("pm: the ratio's clock", cpu->regs.r[5] - c10, 240);
+	/* Another event: not modelled, held */
+	pm_run (30, 200000000, 0xE013);
+	CHECK ("pm: other events held", cpu->regs.r[5], 0);
+	cpu->cpu_hz = 200000000;
+	cpu->use_blocks = blocks;
+}
+
 int
 main (int argc, char **argv)
 {
@@ -463,6 +534,7 @@ main (int argc, char **argv)
 	test_off ();
 	test_fmov ();
 	test_fround ();
+	test_perf_counters ();
 
 	printf ("sh4mmutest: %d checks, %d failures\n", checks, failures);
 	return failures ? 1 : 0;

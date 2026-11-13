@@ -127,9 +127,12 @@ Race's 20 at a hit, Jambo's 20 roped), FD (a damping?), FC 0-3 (its own
 vibration, the 3x: not played); to measure on a real board. Without the
 scud set, the simulation's road effects are sines of EPR-19338A's measured
 amplitudes and periods (its tables' shapes not known), and its torque by
-the wheel's position is left out. The game also reads the SH-4's
-performance counters (PMCR1 at FF000084, PMCTR1L at FF100008), not
-emulated (logged as unhandled).
+the wheel's position is left out.
+
+The SH-4's performance counters (`src/cpu/sh/sh4.cpp`): the elapsed time
+only (event 23), the other events held; PMCLR taken as clearing when the
+counter starts again, from the games' code (to check on a board, with a
+program reading the counter after writing 2000).
 
 The controls (`src/hl/controls.cpp`):
 

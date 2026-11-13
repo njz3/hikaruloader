@@ -36,6 +36,15 @@
 #define CCN_QACR0	0x000038
 #define CCN_QACR1	0x00003C
 
+/* Performance counters (not in the hardware manual; Linux's and KallistiOS's
+ * names) */
+#define PM_PMCR1	0x000084
+#define PM_PMCR2	0x000088
+#define PM_PMCTR1H	0x100004
+#define PM_PMCTR1L	0x100008
+#define PM_PMCTR2H	0x10000C
+#define PM_PMCTR2L	0x100010
+
 /* User Break Controller */
 #define UBC_BARA	0x200000
 #define UBC_BAMRA	0x200004
