@@ -238,6 +238,7 @@ main (const int argc, char **argv)
 	hl::Config *cfg;
 	bool has_init;
 	FILE *fp;
+	int status = 0;
 	int i;
 
 	if (!base)
@@ -378,11 +379,23 @@ main (const int argc, char **argv)
 next_game:
 	emulator->mach->reset (hl::RESET_HARD);
 
-	if (options.state_path[0])
-		emulator->load_state (options.state_path);
-	else if (options.start_state >= 0) {
-		emulator->state_slot = (unsigned) options.start_state % hl::Emulator::NUM_STATE_SLOTS;
-		emulator->load_or_save_state (true);
+	/* A state asked for that cannot be loaded: in agent mode the program
+	 * stops, its client would drive a game started afresh unawares;
+	 * otherwise the game starts, the error in the log and on the screen */
+	if (options.state_path[0] || options.start_state >= 0) {
+		int failed;
+
+		if (options.state_path[0])
+			failed = emulator->load_state (options.state_path);
+		else {
+			emulator->state_slot = (unsigned) options.start_state % hl::Emulator::NUM_STATE_SLOTS;
+			failed = emulator->load_or_save_state (true);
+		}
+		if (failed && options.agent) {
+			HL_ERROR ("agent: stopping, the state asked for with -l cannot be loaded");
+			status = 1;
+			goto fail;
+		}
 	}
 
 	/* The Lua shell: for its port, init.lua beside the program, -x, and
@@ -420,5 +433,5 @@ next_game:
 
 fail:
 	SDL_free (base);
-	return 0;
+	return status;
 }

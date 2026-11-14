@@ -8,6 +8,9 @@ and released: [DEVELOPMENT.md](DEVELOPMENT.md), "Versions and releases".
 Next version
 ------------
 
+- Agent mode: a state asked for with `-l` that cannot be loaded stops the
+  program (exit code 1) before `ready`; the game was started afresh in its
+  place, its client unaware.
 - Initial D's telemetry: the progress is just below 0 on the grid (it read
   the lap's end) and the laps' count at the finish (it read one lap less);
   the last and best laps count the last one at the finish; a time up is

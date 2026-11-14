@@ -503,8 +503,11 @@ the emulator through stdin and stdout, with the protocol Supermodel's and
 sm2-emu's agent modes share, so that one client drives the three: one command
 a line, one answer each, `err <reason>` on failure; frames run only on `step`,
 as fast as they can (no v-sync); the window shows them; the other messages go
-to stderr. Once the game is loaded: `ready GAME 640 480`. The protocol is
-shared: change it only together with Supermodel and sm2-emu.
+to stderr. Once the game is loaded: `ready GAME 640 480`. A state asked for
+with `-l` that cannot be loaded (missing, cut short, another version's) stops
+the program before `ready`, with exit code 1: the client never drives a game
+started afresh in its place. The protocol is shared: change it only together
+with Supermodel and sm2-emu.
 
 | Command | Answer |
 |---|---|
