@@ -110,14 +110,16 @@ The telemetry (`src/hl/telemetry-games.cpp`), what its decoders lack:
   defaults, the race's laps (4 in the checks), the assists, the surfaces;
   the opponents not sent; f355twn2 and f355: the motion, speed, gear and rpm
   alone (their laps, times, inputs not mapped); the prototypes not checked.
-- 18 Wheeler: the first stage alone; the rival (Lizard Tail), the parking
-  game, a stage's clear, the damage not found; the world 1.7 times as fast
-  as the speed the game shows; the other sets not mapped (18wheelu's
-  shifted by 5F0, the others not checked).
-- The King of Route 66: AREA 1's first two stages; the nitro (by voice, the
-  cans' count), a hit flag, the wheels, the rival (B+7C probably) not
-  found; the bodies are not pointed at from anywhere (another truck than
-  the Texas Hawk not tried); kingrt66p's map is another.
+- 18 Wheeler: the first stage alone (its rival there: the other stages'
+  not checked); the parking game, a stage's clear, who arrives first not
+  found; the world 1.7 times as fast as the speed the game shows; the
+  other sets not mapped (18wheelu's shifted by 5F0, its rival's work at
+  0C3B6C30, its driving function not known; the others not checked).
+- The King of Route 66: AREA 1's first two stages; a hit flag, the
+  wheels, the rival's speed not found; the nitro only seen ordered by a
+  RAM write (B+18: the voice's word is not recognised in the emulator),
+  its pickups never met; another truck than the Texas Hawk not tried;
+  kingrt66p's map is another.
 - Club Kart: Beginner races on two courses; no speedometer, no engine
   (a value with the speed alone), the wheels, the hits; clubk2k3's and
   clubkprz's maps are others (their main addresses noted, not decoded).

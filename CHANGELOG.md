@@ -11,6 +11,11 @@ Next version
 - Smashing Drive's wheel turned fully right steers fully right: the game
   took that end for no wheel and went on straight. Gaelco's wheels and
   handlebars now turn between 10 and F0, as MAME has them.
+- 18 Wheeler's telemetry: the rival truck (its position, speed, whether
+  it waits or drives), the gap to it, the damage. The King of Route 66's:
+  the nitro (the cans left, its burn), the rival, the fifth gear; the truck's
+  orientation and trailer found again where a start put them elsewhere in
+  memory.
 
 
 0.8.3 (2026-11-14)

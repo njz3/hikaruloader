@@ -108,6 +108,33 @@ orient_mirrored (Vehicle &v, const float up_row[3], const float fwd_row[3])
 	set_orientation (v, right, up, fwd);
 }
 
+/* The orientation from angles: the heading (+ turning right), the pitch (+
+ * nose up), the roll (+ leaning right) */
+void
+orient_angles (Vehicle &v, float heading, float pitch, float roll)
+{
+	float fwd[3] = { std::sin (heading) * std::cos (pitch), std::sin (pitch), std::cos (heading) * std::cos (pitch) };
+	float right0[3] = { std::cos (heading), 0, -std::sin (heading) }, up0[3];
+	cross (fwd, right0, up0);
+	float right[3], up[3];
+	for (int i = 0; i < 3; i++) {
+		right[i] = right0[i] * std::cos (roll) - up0[i] * std::sin (roll);
+		up[i] = up0[i] * std::cos (roll) + right0[i] * std::sin (roll);
+	}
+	set_orientation (v, right, up, fwd);
+}
+
+/* An angle within -pi..pi */
+float
+wrap_angle (float a)
+{
+	while (a > 3.14159265f)
+		a -= 6.2831853f;
+	while (a < -3.14159265f)
+		a += 6.2831853f;
+	return a;
+}
+
 /****************************************************************************
  NASCAR Arcade (sgnascar, sgnascaro)
 
@@ -874,17 +901,25 @@ private:
    40000; YOU MADE IT! and the load's result, 80000 and 2000; driving from
    GET GOING! (the truck rolling, the inputs live), 0C339724 not 0 with the
    stage's 400 and not 4000; WRONG WAY 20000.
- - The tractor: x y z 0C78456C, its matrix 0C7845D0 (3 x 3, rows 10
-   apart: left, up, forward), the automatic's gear 0C784CA4 (-1 REVERSE, 0
-   to 3 the four gears); the trailer: x y z 0C784E84, its matrix 0C784EE8,
-   8.4 m behind (left behind in the stages without a load: hitched within
-   12 m). The bodies are not pointed at from anywhere: they are taken while
-   they agree with B's copy, else B's position and heading.
+ - The tractor's block T, on the heap (its place changes from a start to
+   another), the pointer at 0CD122B0 (0 before the stage): x y z T+508, its
+   matrix T+56C (3 x 3, rows 10 apart: left, up, forward), the automatic's
+   gear T+C40 (-1 REVERSE, 0 to 4 the five gears, the fifth above some 130
+   km/h, with the nitro); the trailer: x y z
+   T+E20, its matrix T+E84, 8.4 m behind (left behind in the stages without
+   a load: hitched within 12 m). Taken while the tractor agrees with B's
+   copy (T is the last truck's after a game over), else B's position and
+   heading.
+ - The nitro: the cans B+0 bits 10-13 (0 to 3), B+4 bit 0 from the order
+   to the burn's end (some 76 frames of charge), bit 1 its burn (118
+   frames). The game orders it by voice alone (the CB-MIC's word).
+ - The rival: x y z B+7C, its trailer's B+88, its heading B+98 (16 bits, as
+   the player's B+F8).
  - The inputs as read: steering 0C37543C (128 the centre, + right),
    accelerator 0C37543E, brake 0C375440 (0 to 255); the lever 0C375434 (20
    D, 10 R).
- Not found: the nitro (by voice; the cans' count), a hit flag, the wheels,
- the rival for sure (B+7C). kingrt66p's map is another.
+ Not found: a hit flag, the wheels, the rival's speed (worked out from its
+ moves). kingrt66p's map is another.
 ****************************************************************************/
 
 class KingRt66 : public Decoder {
@@ -916,11 +951,17 @@ public:
 		out.time_left = (float) (t >> 16) + (float) (t & 0xFFFF) / (float) FPS;
 
 		Vehicle &p = out.player;
-		const uint32_t T = 0x0C78456C, M = 0x0C7845D0;
-		float pos[3] = { ram.f32 (T), ram.f32 (T + 4), ram.f32 (T + 8) };
+		uint32_t T0 = ram.u32 (0x0CD122B0);
+		bool block = ram.has (T0, 0x1000);
+		const uint32_t T = T0 + 0x508, M = T0 + 0x56C;
+		float pos[3] = { 0, 0, 0 }, fwd[3] = { 0, 0, 1 };
+		if (block)
+			for (int i = 0; i < 3; i++) {
+				pos[i] = ram.f32 (T + 4 * i);
+				fwd[i] = ram.f32 (M + 0x20 + 4 * i);
+			}
 		float copy[3] = { ram.f32 (B + 0xDC), ram.f32 (B + 0xE0), ram.f32 (B + 0xE4) };
-		float fwd[3] = { ram.f32 (M + 0x20), ram.f32 (M + 0x24), ram.f32 (M + 0x28) };
-		bool body = std::hypot (pos[0] - copy[0], pos[2] - copy[2]) < 5.0f;
+		bool body = block && std::hypot (pos[0] - copy[0], pos[2] - copy[2]) < 5.0f;
 		if (body) {
 			float up[3] = { ram.f32 (M + 0x10), ram.f32 (M + 0x14), ram.f32 (M + 0x18) };
 			p.x = -pos[0];
@@ -939,16 +980,16 @@ public:
 		}
 		p.speed = ram.f32 (B + 0x34) / 3.6f;
 		p.rpm = ram.f32 (B + 0x38);
-		int32_t gear = ram.i32 (0x0C784CA4);
-		p.gear = gear < 0 ? -1 : gear <= 3 ? gear + 1 : UNKNOWN;
-		p.gears = 4;
+		int32_t gear = body ? ram.i32 (T0 + 0xC40) : 4;
+		p.gear = gear < 0 ? -1 : gear <= 4 ? gear + 1 : UNKNOWN;
+		p.gears = 5;
 		p.steer = -std::clamp ((ram.u8 (0x0C37543C) - 128.0f) / 127.0f, -1.0f, 1.0f);
 		p.throttle = ram.u8 (0x0C37543E) / 255.0f;
 		p.brake = ram.u8 (0x0C375440) / 255.0f;
 
 		/* The trailer: its angle to the tractor, > 0 the cab turned right
 		 * of it */
-		const uint32_t TT = 0x0C784E84, TM = 0x0C784EE8;
+		const uint32_t TT = T0 + 0xE20, TM = T0 + 0xE84;
 		float tp[3] = { ram.f32 (TT), ram.f32 (TT + 4), ram.f32 (TT + 8) };
 		bool hitched = body && std::sqrt ((tp[0] - pos[0]) * (tp[0] - pos[0]) + (tp[1] - pos[1]) * (tp[1] - pos[1]) +
 		                                  (tp[2] - pos[2]) * (tp[2] - pos[2])) < 12.0f;
@@ -968,6 +1009,21 @@ public:
 		p.extra.push_back ({ "wrong_way", racing && (fs & 0x20000) ? 1.0f : 0.0f });
 		p.extra.push_back ({ "emblems", (float) ram.u32 (B + 0x20) });
 		p.extra.push_back ({ "reward", racing ? (float) ram.u32 (B + 0x28) : NAN });
+		/* The nitro: the cans left, the order (its charge and burn), the
+		 * burn */
+		p.extra.push_back ({ "nitro", racing ? (float) ((ram.u32 (B) >> 10) & 15) : NAN });
+		p.extra.push_back ({ "nitro_on", racing && (fs & 1) ? 1.0f : 0.0f });
+		p.extra.push_back ({ "nitro_boost", racing && (fs & 2) ? 1.0f : 0.0f });
+
+		/* The rival, while driving */
+		if (racing) {
+			Vehicle v;
+			v.x = -ram.f32 (B + 0x7C);
+			v.y = ram.f32 (B + 0x80);
+			v.z = ram.f32 (B + 0x84);
+			orient_angles (v, -(float) ram.u16 (B + 0x98) * 6.2831853f / 65536.0f, 0, 0);
+			out.others.push_back (v);
+		}
 		return true;
 	}
 };
@@ -1114,8 +1170,21 @@ private:
  - The lever 0C3AC92C (0 none, driving as LOW; 2 LOW, 1 HIGH, 6 R); the
    inputs as the game takes them: steering 0C3ACC80 (+ right, 1 short of
    the lock), accelerator 0C3ACC88, brake 0C3ACC90; the horn 0C2B4FE5 bit 2.
- Not found: the rival (Lizard Tail), the parking game, the damage. The
- other sets' map is another (18wheelu's shifted by 5F0).
+ - The reward on the HUD 0C3ACBCC, the hits taking from the stage's
+   0C3ACBC4: the damage their ratio.
+ - The rival (Lizard Tail), checked in the first stage: its task 0C3B11A0
+   (8000 set, its work 0C3B11C0 = 0C3B6644), its function 0C3B11B0
+   0C0A4EE6 waiting at its start (it waits until the player comes within
+   205 m), 0C0A4F5A driving; else none (the choices, after the stage). Its
+   tractor's x y z at the pointer 0C3B67E0 (y off for single frames: kept
+   when it falls 20 m), its pitch, heading and roll before it (-C, -8, -4,
+   16 bits a turn; 0 facing -z, - nose down, + its right side up), its
+   speed 0C3B6684 (x 30 the HUD's m/s), its distance to the player
+   0C3B67D4; its trailer's x y z at the pointer 0C3B6FE4, its heading at -8.
+   The game keeps no gap: worked out along the player's forward, from its
+   wheels (0C4EA0A0 ...: the list's matrix is not always the truck's).
+ Not found: the parking game, a stage's clear, who arrives first. The other
+ sets' map is another (18wheelu's shifted by 5F0).
 ****************************************************************************/
 
 class Wheeler18 : public Decoder {
@@ -1182,7 +1251,13 @@ public:
 		p.extra.push_back ({ "trailer_angle", -a });
 		p.extra.push_back ({ "gearbox", (float) ram.u32 (0x0C4E9F38) });
 		p.extra.push_back ({ "horn", (ram.u8 (0x0C2B4FE5) & 4) ? 1.0f : 0.0f });
-		p.extra.push_back ({ "reward", (float) ram.i32 (0x0C3ACBC4) });
+		int32_t full = ram.i32 (0x0C3ACBC4), reward = ram.i32 (0x0C3ACBCC);
+		p.extra.push_back ({ "reward", (float) reward });
+		if (out.state == State::RACE && full > 0)
+			p.damage = std::clamp (1.0f - (float) reward / (float) full, 0.0f, 1.0f);
+
+		bool stage = bank != 0x15 && bank != 4 && bank != 7 && bank != 0xFFFFFFFF;
+		rival (ram, stage, pos, out);
 		return true;
 	}
 
@@ -1190,6 +1265,54 @@ private:
 	State state = State::ATTRACT;
 	/* The last matrix found */
 	float up[3] = { 0, 1, 0 }, fwd[3] = { 0, 0, 1 }, trailer[3] = { 0, 0, 1 };
+	/* The rival's last height */
+	float rival_y = NAN;
+
+	void rival (const Ram &ram, bool stage, const float pos[3], Frame &out)
+	{
+		uint32_t node = ram.u32 (0x0C3B11A0), fn = ram.u32 (0x0C3B11B0), work = ram.u32 (0x0C3B11C0);
+		bool driving = fn == 0x0C0A4F5A, waiting = fn == 0x0C0A4EE6;
+		uint32_t P = ram.u32 (0x0C3B67E0), T = ram.u32 (0x0C3B6FE4);
+		if (!stage || !(node & 0x8000) || work != 0x0C3B6644 || (!driving && !waiting) ||
+		    !ram.has (P - 0x0C, 0x18) || !ram.has (T - 0x0C, 0x18)) {
+			rival_y = NAN;
+			return;
+		}
+		const float TURN = 6.2831853f / 65536.0f;
+		Vehicle v;
+		float x = ram.f32 (P), y = ram.f32 (P + 4), z = ram.f32 (P + 8);
+		if (!std::isnan (rival_y) && y < rival_y - 20.0f)
+			y = rival_y;
+		rival_y = y;
+		float yaw = (float) (int16_t) ram.u16 (P - 8) * TURN;
+		v.x = -x;
+		v.y = y;
+		v.z = z;
+		orient_angles (v, wrap_angle (3.14159265f - yaw), (float) (int16_t) ram.u16 (P - 0x0C) * TURN,
+		               -(float) (int16_t) ram.u16 (P - 4) * TURN);
+		v.speed = driving ? 30.0f * ram.f32 (0x0C3B6684) : 0.0f;
+		v.extra.push_back ({ "driving", driving ? 1.0f : 0.0f });
+		v.extra.push_back ({ "trailer_angle", wrap_angle ((float) (int16_t) ram.u16 (T - 8) * TURN - yaw) });
+		v.extra.push_back ({ "distance", driving ? ram.f32 (0x0C3B67D4) : NAN });
+
+		/* Ahead of the player or behind it, along its forward from its
+		 * wheels (in the game's frame) */
+		Vehicle &p = out.player;
+		float fx = (ram.f32 (0x0C4EA3E0) + ram.f32 (0x0C4EA4B0) - ram.f32 (0x0C4EA0A0) - ram.f32 (0x0C4EA240)) / 2;
+		float fz = (ram.f32 (0x0C4EA3E8) + ram.f32 (0x0C4EA4B8) - ram.f32 (0x0C4EA0A8) - ram.f32 (0x0C4EA248)) / 2;
+		float n = std::hypot (fx, fz);
+		if (n > 0.1f) {
+			float ahead = ((x - pos[0]) * fx + (z - pos[2]) * fz) / n;
+			if (ahead > 0)
+				p.dist_ahead = ahead;
+			else
+				p.dist_behind = -ahead;
+			p.position = ahead > 0 ? 2 : 1;
+			v.position = ahead > 0 ? 1 : 2;
+			p.extra.push_back ({ "gap", -ahead });
+		}
+		out.others.push_back (v);
+	}
 };
 
 /****************************************************************************
