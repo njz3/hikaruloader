@@ -15,7 +15,8 @@ Next version
   it waits or drives), the gap to it, the damage. The King of Route 66's:
   the nitro (the cans left, its burn), the rival, the fifth gear; the truck's
   orientation and trailer found again where a start put them elsewhere in
-  memory.
+  memory. F355 Challenge's: the H stick's neutral, the race's laps, the
+  level, the mode and the assists.
 
 
 0.8.3 (2026-11-14)

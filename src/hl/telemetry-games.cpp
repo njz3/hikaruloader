@@ -1043,7 +1043,12 @@ public:
    back), the gear +1D0 (1 to 6), the laps done +38 (16 bits), the place
    +140 (from 0), the last lap's start +134, the last lap +138 with its
    fraction +144, the best +13C (ticks of 1/60.2 s, the game's clock); the
-   transmission 0C1E0028 (2 AT, 1 the paddles).
+   transmission 0C1E0028 (2 AT, 1 the paddles, 0 the H stick: 0 neutral at
+   +1D0, no reverse; offered on a deluxe cabinet alone, its level
+   SIMULATOR), the level 0C1E002C (0 NOVICE, 1 INTERMEDIATE, 2 SIMULATOR),
+   the mode 0C1E0030 (0 TRAINING, 1 DRIVING, 2 RACE), the race's laps
+   0C41DF80 (16 bits, -1 none), the assists 0C1E88CC (bits 3 SC, 2 TC, 1
+   ABS, 0 IBS: 1 on).
  - The physics 0C24D378: the velocity +C (m/s), rpm +1C, the speed +2C,
    each wheel's spin +58 + n x 14 (rad/s; front left, front right, rear
    left, rear right); frozen after GOAL.
@@ -1056,8 +1061,7 @@ public:
  choice on one more; physics 0C26D020, the car's x y z 0C20003C, matrix
  0C200070, gear 0C2001A8): the motion, the speed, rpm and the gear checked
  alone.
- Not found: the race's laps (4 in the checks), the manual gearbox's
- neutral and reverse (not offered), the assists, the wheels' ground.
+ Not found: the wheels' ground; the other sets' laps, inputs and gearbox.
 ****************************************************************************/
 
 class F355 : public Decoder {
@@ -1120,7 +1124,20 @@ public:
 
 		const uint32_t O = 0x0C1E0040;
 		uint32_t box = ram.u32 (0x0C1E0028);
-		out.transmission = box == 2 ? "AT" : box == 1 ? "MT" : "";
+		out.transmission = box == 2 ? "AT" : box <= 1 ? "MT" : "";
+		if (box == 0 && ram.u32 (L.gear) == 0)
+			p.gear = 0;
+		p.extra.push_back ({ "shifter", box <= 2 ? (float) box : NAN });
+		p.extra.push_back ({ "level", (float) ram.u32 (0x0C1E002C) });
+		p.extra.push_back ({ "race_mode", (float) ram.u32 (0x0C1E0030) });
+		uint8_t assists = ram.u8 (0x0C1E88CC);
+		p.extra.push_back ({ "sc", (assists & 8) ? 1.0f : 0.0f });
+		p.extra.push_back ({ "tc", (assists & 4) ? 1.0f : 0.0f });
+		p.extra.push_back ({ "abs", (assists & 2) ? 1.0f : 0.0f });
+		p.extra.push_back ({ "ibs", (assists & 1) ? 1.0f : 0.0f });
+		int16_t laps = (int16_t) ram.u16 (0x0C41DF80);
+		if (laps > 0)
+			out.laps = laps;
 		p.steer = -std::clamp ((ram.u8 (0x0C1E8B74) - 128.0f) / 127.0f, -1.0f, 1.0f);
 		p.throttle = ram.u8 (0x0C1E8B75) / 254.0f;
 		p.brake = ram.u8 (0x0C1E8B76) / 254.0f;

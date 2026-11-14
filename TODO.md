@@ -105,10 +105,11 @@ The telemetry (`src/hl/telemetry-games.cpp`), what its decoders lack:
   (Beginner's); not seen: Expert's net, the next areas, a continue, the
   name entry; the rope's length (the HUD's distance) and the crates'
   animals not found; no jump in the game (no airborne).
-- F355 Challenge: checked on f355twin (Motegi, AT and the paddles, Training
-  and Race); the manual gearbox (neutral, reverse) not offered with the
-  defaults, the race's laps (4 in the checks), the assists, the surfaces;
-  the opponents not sent; f355twn2 and f355: the motion, speed, gear and rpm
+- F355 Challenge: checked on f355twin (Motegi, AT and the paddles, Training,
+  Driving and Race; the H stick on f355twin run as a deluxe cabinet:
+  CABINET DELUXE and four boards, HR_NAOMI_BOARDS=4); the surfaces, the
+  Grand Prix and the other courses' laps, the cars' count not found; the
+  opponents not sent; f355twn2 and f355: the motion, speed, gear and rpm
   alone (their laps, times, inputs not mapped); the prototypes not checked.
 - 18 Wheeler: the first stage alone (its rival there: the other stages'
   not checked); the parking game, a stage's clear, who arrives first not
