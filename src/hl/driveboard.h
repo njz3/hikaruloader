@@ -163,6 +163,26 @@ private:
 	} s;
 };
 
+/* Tokyo Bus Guide's motor board: the answers the game checks, no forces.
+ * See driveboard-tokyobus.cpp */
+class DriveBoardTokyoBus : public DriveBoardProgram {
+public:
+	DriveBoardTokyoBus ();
+
+	void	 reset () override;
+	void	 nmi (uint8_t command, uint8_t wheel, Servo &servo) override;
+	uint8_t	 reply () const override;
+	int	 save_state (State *state) override;
+	int	 load_state (State *state) override;
+
+private:
+	struct {
+		uint8_t	 answer, test;
+	} s;
+	/* The last command logged */
+	uint8_t	 logged = 0;
+};
+
 class DriveBoard : public Device, private DriveBoardProgram::Servo {
 public:
 	static const unsigned NMI_HZ = 500;

@@ -1908,6 +1908,102 @@ private:
 	bool finish = false;
 };
 
+/****************************************************************************
+ Tokyo Bus Guide (tokyobus), NAOMI
+
+ Checked on the first course's practice part (Nakanohashi to Shinjuku), the
+ terminal, the first junction and its red light, a time up, the attract's
+ demo. A unit is a metre; the game runs at 30 Hz, its speed in metres a
+ tick. The world is mirrored (steering right lowers its heading): x is
+ turned round.
+ - The state: 0C1D8140 1 the attract (its demo drives the bus); the scene
+   0C1D6C48 A the course's choice, 3 the route's map; else the bus's
+   sequence 0C244F88: 2 driving (the stops and the red lights too),
+   7 off the route (the game puts the bus back), 4 the time up, 5 the
+   route map, GAME OVER and HI SCORE; the others (0 boarding at the
+   terminal) the course's choice and the intro.
+ - The bus: the driver's eye 0C1D8180 (x y z, 2 m above the road), the
+   body's matrix 0C1D82D0 (rows 10 apart: right, up, back; the yaw alone),
+   the speed 0C1D84C8 (x 30 m/s), rpm 0C1D8534, the gear 0C1D8540 (0 to 2
+   the first to the third, 5 reverse).
+ - The inputs as read: steering, accelerator, brake 0C173F60, 62, 64 (16
+   bits: 8000 the centre, FEFF right or down); the switches 0C254CDF (02
+   the horn, 04 DOOR CLOSE, 08 ANNOUNCE, 10 VIEW) and 0C254CE1 (01 and 02
+   the winkers, left and right).
+ - The doors 0C1D860C (0 closed, 2 open, 3 closing); the clock 0C244FA0
+   and the time due at the next stop 0C244F9C (ticks since midnight), late
+   0C245028; the distance to the next stop 0C244FB0 (m, 0 beyond some
+   110 m); the people waiting at the stop 0C24516C; the penalties shown
+   0C244FB4.
+ Not found: a stop served (the doors at a stop, the score), the other
+ courses, a hit flag, the traffic lights.
+****************************************************************************/
+
+class TokyoBus : public Decoder {
+public:
+	bool decode (Machine *mach, uint64_t frame, Frame &out) override
+	{
+		Ram ram (mach, "ram", 0x0C000000);
+		const float TICK = 30.0f;	/* the game's ticks a second */
+
+		(void) frame;
+		if (!ram.ok ())
+			return false;
+		uint32_t seq = ram.u32 (0x0C244F88), scene = ram.u32 (0x0C1D6C48);
+		if (ram.u32 (0x0C1D8140) == 1)
+			out.state = State::ATTRACT;
+		/* The course's choice and the route's map: the demo's sequence
+		 * still there */
+		else if (scene == 0x0A || scene == 3)
+			out.state = State::SELECT;
+		else if (seq == 2 || seq == 7)
+			out.state = State::RACE;
+		else if (seq == 4 || seq == 5)
+			out.state = State::OVER;
+		else
+			out.state = State::SELECT;
+		out.transmission = "AT";
+
+		Vehicle &p = out.player;
+		const uint32_t M = 0x0C1D82D0;
+		float up[3] = { ram.f32 (M + 0x10), ram.f32 (M + 0x14), ram.f32 (M + 0x18) };
+		float fwd[3] = { -ram.f32 (M + 0x20), -ram.f32 (M + 0x24), -ram.f32 (M + 0x28) };
+		p.x = -ram.f32 (0x0C1D8180);
+		p.y = ram.f32 (0x0C1D8184);
+		p.z = ram.f32 (0x0C1D8188);
+		orient_mirrored (p, up, fwd);
+		p.speed = std::fabs (ram.f32 (0x0C1D84C8)) * TICK;
+		p.rpm = ram.f32 (0x0C1D8534);
+		uint32_t gear = ram.u32 (0x0C1D8540);
+		p.gear = gear == 5 ? -1 : gear <= 3 ? (int) gear + 1 : UNKNOWN;
+		p.steer = -std::clamp (((float) ram.u16 (0x0C173F60) - 32768.0f) / 32511.0f, -1.0f, 1.0f);
+		p.throttle = std::clamp (ram.u16 (0x0C173F62) / 65279.0f, 0.0f, 1.0f);
+		p.brake = std::clamp (ram.u16 (0x0C173F64) / 65279.0f, 0.0f, 1.0f);
+		/* Put back on the route: no hit */
+		if (seq == 7)
+			p.impact = 0.0f;
+
+		uint8_t sw1 = ram.u8 (0x0C254CDF), sw2 = ram.u8 (0x0C254CE1);
+		p.extra.push_back ({ "horn", (sw1 & 0x02) ? 1.0f : 0.0f });
+		p.extra.push_back ({ "winker_left", (sw2 & 0x01) ? 1.0f : 0.0f });
+		p.extra.push_back ({ "winker_right", (sw2 & 0x02) ? 1.0f : 0.0f });
+		p.extra.push_back ({ "doors", (float) ram.u32 (0x0C1D860C) });
+		p.extra.push_back ({ "off_route", seq == 7 ? 1.0f : 0.0f });
+		if (out.state != State::RACE)
+			return true;
+		/* The timetable: the time to the next stop's (< 0 late) */
+		int32_t now = ram.i32 (0x0C244FA0), due = ram.i32 (0x0C244F9C);
+		p.extra.push_back ({ "clock", (float) now / TICK });
+		p.extra.push_back ({ "schedule", (float) (due - now) / TICK });
+		p.extra.push_back ({ "late", ram.u32 (0x0C245028) ? 1.0f : 0.0f });
+		float stop = ram.f32 (0x0C244FB0);
+		p.extra.push_back ({ "distance_to_stop", stop > 0.0f ? stop : NAN });
+		p.extra.push_back ({ "waiting", (float) ram.u32 (0x0C24516C) });
+		p.extra.push_back ({ "penalties", (float) ram.u32 (0x0C244FB4) });
+		return true;
+	}
+};
+
 } /* namespace */
 
 std::unique_ptr<Decoder>
@@ -1923,6 +2019,8 @@ make_decoder (Machine *mach)
 		return std::unique_ptr<Decoder> (new Gaelco (!strcmp (f, "atvtrack")));
 	if (!strcmp (f, "crzytaxi"))
 		return std::unique_ptr<Decoder> (new CrazyTaxi);
+	if (!strcmp (f, "tokyobus"))
+		return std::unique_ptr<Decoder> (new TokyoBus);
 	if (!strcmp (f, "jambo"))
 		return std::unique_ptr<Decoder> (new Jambo);
 	/* The sets themselves where their clones' maps are others */

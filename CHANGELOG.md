@@ -8,6 +8,10 @@ and released: [DEVELOPMENT.md](DEVELOPMENT.md), "Versions and releases".
 Next version
 ------------
 
+- Tokyo Bus Guide plays: it took no input (MOTOR NETWORK ERROR). Its
+  cabinet's I/O board is the 837-13844 with the wheel's motor board, whose
+  answers the game checks. Its telemetry: the bus, its gear, doors and
+  winkers, the timetable, the next stop's distance.
 - 18 Wheeler's telemetry: the rival racing again after its wait in stage
   2, the parking bonus's success (finished) in the five sets.
 - F355 Challenge's telemetry: the 7 opponents in a race (position,

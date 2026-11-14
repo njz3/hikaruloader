@@ -159,7 +159,11 @@ The telemetry (`src/hl/telemetry-games.cpp`), what its decoders lack:
   seen); the finish told from a time up only when seen (a state loaded
   in the results says not finished); initd, initdv2j and initdv3j not
   tried.
-- Tokyo Bus Guide: no decoder yet.
+- Tokyo Bus Guide: checked on the first course's practice part; a stop
+  served (the doors, the score), the other courses, a hit flag, the
+  traffic lights not found; its motor board's forces not played (the
+  answers alone); the game takes no start in its first attract cycle
+  (some 3 minutes after the power-on).
 - Gaelco Football and the other games: no decoder (not racing games).
 
 Star Wars: Racer Arcade's force feedback made from the telemetry
