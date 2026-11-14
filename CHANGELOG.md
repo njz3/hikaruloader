@@ -5,8 +5,8 @@ What each version brings, for those who play. How the versions are numbered
 and released: [DEVELOPMENT.md](DEVELOPMENT.md), "Versions and releases".
 
 
-Next version
-------------
+0.8.4 (2026-11-15)
+------------------
 
 - The picker lists the games of the machines in `MACHINES` (`[Picker]` in
   `hikaruloader.ini`), a sum of: 1 Hikaru, 2 Gaelco, 4 NAOMI and NAOMI 2, 8
