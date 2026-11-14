@@ -8,6 +8,8 @@ and released: [DEVELOPMENT.md](DEVELOPMENT.md), "Versions and releases".
 Next version
 ------------
 
+- A state saved on a full disk no longer stops the program: an error, and
+  the state of that name kept as it was (it was left cut short).
 - Club Kart (all its sets) starts with its pedals' range made for the
   whole range: the factory's took nothing below a fifth of the travel and
   all from three quarters. Settings saved before keep it: make the game's

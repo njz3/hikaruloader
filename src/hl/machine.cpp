@@ -19,6 +19,7 @@
  */
 
 #include <algorithm>
+#include <exception>
 
 #include "hl/machine.h"
 #include "hl/state.h"
@@ -216,16 +217,33 @@ done:
 	return ret;
 }
 
+/* A memory short (the page file cannot grow on a full disk) throws from
+ * the buffers: an error, the machine reset when it was loading */
+int
+Machine::guarded_state (const char *path, State::Mode mode)
+{
+	try {
+		return load_save_state (path, mode);
+	} catch (const std::exception &e) {
+		HL_ERROR ("%s state: '%s': %s", (mode == State::LOAD) ? "load" : "save", path, e.what ());
+		if (mode == State::LOAD) {
+			HL_ERROR ("load state: resetting machine");
+			reset (RESET_HARD);
+		}
+		return -1;
+	}
+}
+
 int
 Machine::load_state (const char *path)
 {
-	return load_save_state (path, State::LOAD);
+	return guarded_state (path, State::LOAD);
 }
 
 int
 Machine::save_state (const char *path)
 {
-	return load_save_state (path, State::SAVE);
+	return guarded_state (path, State::SAVE);
 }
 
 } /* namespace hl */

@@ -18,6 +18,9 @@
  * along with Hikaruloader.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <filesystem>
+#include <system_error>
+
 #include <miniz.h>
 
 #include "hl/state.h"
@@ -145,7 +148,11 @@ State::finish ()
 	if (mz_compress2 (packed.data (), &length, data.data (), (mz_ulong) size, 1) != MZ_OK)
 		return -1;
 
-	fp = fopen (path.c_str (), "wb");
+	/* Through a temporary file: a disk full leaves no half state, and the
+	 * state of that name as it was */
+	std::string temp = path + ".tmp";
+	std::error_code error;
+	fp = fopen (temp.c_str (), "wb");
 	if (!fp)
 		return -1;
 	make_header (header);
@@ -153,7 +160,13 @@ State::finish ()
 	     fwrite (&size, sizeof (size), 1, fp) == 1 &&
 	     fwrite (packed.data (), 1, length, fp) == length;
 	ok = (fclose (fp) == 0) && ok;
-	return ok ? 0 : -1;
+	if (ok)
+		std::filesystem::rename (temp, path, error);
+	if (!ok || error) {
+		std::filesystem::remove (temp, error);
+		return -1;
+	}
+	return 0;
 }
 
 } /* namespace hl */

@@ -130,6 +130,7 @@ protected:
 
 private:
 	int		 load_save_state (const char *path, State::Mode mode);
+	int		 guarded_state (const char *path, State::Mode mode);
 };
 
 } /* namespace hl */
