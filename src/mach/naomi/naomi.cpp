@@ -985,6 +985,9 @@ Board::load_state (hl::State *state)
 
 static const char *const NV_TYPES[4] = { "EEPR", "MIEE", "BRAM", "X76F" };
 
+/* The backup RAM compared with the file's every so many frames */
+static const unsigned NVRAM_SRAM_PERIOD = 600;
+
 static void
 block_name (char out[5], const char *base, unsigned board)
 {
@@ -1139,11 +1142,13 @@ Naomi::Naomi (hl::Game *game) :
 	strcpy (name, "NAOMI");
 }
 
+/* Off as a cabinet goes off: the backup RAM as it is now (a game notes there
+ * that one is played, and a record saved in the middle of one, the next boot
+ * shows POWER DOWN IN GAME) */
 Naomi::~Naomi ()
 {
 	stop_threads ();
-	if (nvram_due)
-		save_nvram ();
+	save_nvram ();
 }
 
 void
@@ -1189,6 +1194,10 @@ Naomi::save_nvram ()
 		HL_ERROR ("naomi: cannot save '%s'", nvram_path.c_str ());
 }
 
+/* The EEPROMs' and the boards' settings saved 2 s after they change; the
+ * backup RAM, which the games write all the time, compared every 10 s and
+ * saved when it changed, so that the file is never far behind it (a crash, a
+ * power cut of the PC) */
 void
 Naomi::keep_nvram ()
 {
@@ -1199,6 +1208,14 @@ Naomi::keep_nvram ()
 	if (changed)
 		nvram_due = 120;
 	else if (nvram_due && !--nvram_due)
+		save_nvram ();
+	if (++nvram_frames < NVRAM_SRAM_PERIOD)
+		return;
+	nvram_frames = 0;
+	const std::vector<uint8_t> *saved = nvram.get (NV_TYPES[2]);
+	hl::Buffer *sram = master ()->sram;
+	if (sram && (!saved || saved->size () != sram->size () ||
+	             memcmp (saved->data (), sram->ptr (0), saved->size ())))
 		save_nvram ();
 }
 

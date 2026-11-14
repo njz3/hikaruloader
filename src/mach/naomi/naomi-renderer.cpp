@@ -21,6 +21,7 @@
  */
 
 #include <algorithm>
+#include <new>
 #include <chrono>
 #include <cmath>
 #include <condition_variable>
@@ -1684,8 +1685,21 @@ BoardRenderer::draw_picture ()
 	return draw_frame (f);
 }
 
+/* A frame drawn; for want of memory (another program took it), none: the
+ * picture kept, the emulation going on */
 Picture
 BoardRenderer::draw_frame (Frame &f)
+{
+	try {
+		return draw_frame_now (f);
+	} catch (const std::bad_alloc &) {
+		HL_ERROR_FEW ("naomi: no memory left (another program took it?): a frame not drawn");
+		return Picture ();
+	}
+}
+
+Picture
+BoardRenderer::draw_frame_now (Frame &f)
 {
 	std::vector<Draw> &draws = f.draws;
 	unsigned scale = (unsigned) std::max (1, hl::Config::get ()->render_scale);
@@ -2016,8 +2030,13 @@ Renderer::on_end_frame ()
 		threaded_end_frame (shown);
 		return;
 	}
-	for (i = 0; i < shown.size (); i++)
-		pictures.push_back (drawer (shown[i])->draw_picture ());
+	try {
+		for (i = 0; i < shown.size (); i++)
+			pictures.push_back (drawer (shown[i])->draw_picture ());
+	} catch (const std::bad_alloc &) {
+		HL_ERROR_FEW ("naomi: no memory left (another program took it?): a frame not drawn");
+		return;
+	}
 	present_pictures (shown, pictures, NULL);
 }
 
@@ -2292,9 +2311,15 @@ Renderer::threaded_end_frame (const std::vector<unsigned> &shown)
 	uint64_t before;
 	unsigned set, prev;
 
-	for (unsigned b : shown) {
-		frames.push_back (BoardRenderer::take (naomi->boards[b]->holly, quiet[b]));
-		at_once |= frames.back ().to_texture;
+	/* For want of memory, this frame left out: the last one stays */
+	try {
+		for (unsigned b : shown) {
+			frames.push_back (BoardRenderer::take (naomi->boards[b]->holly, quiet[b]));
+			at_once |= frames.back ().to_texture;
+		}
+	} catch (const std::bad_alloc &) {
+		HL_ERROR_FEW ("naomi: no memory left (another program took it?): a frame not drawn");
+		return;
 	}
 	/* The frame before drawn: this one to the thread, that one to the
 	 * window */

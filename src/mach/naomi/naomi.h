@@ -105,6 +105,19 @@ struct Scene {
 	/* Those of the translucent modifier volume list, in the same vertices */
 	std::vector<ModVol> mod_volumes_tr;
 	float max_z = 1e-6f;
+
+	/* Empty again, the vectors' room kept */
+	void clear ()
+	{
+		vertices.clear ();
+		vertices1.clear ();
+		for (std::vector<Batch> &b : batches)
+			b.clear ();
+		mod_vertices.clear ();
+		mod_volumes.clear ();
+		mod_volumes_tr.clear ();
+		max_z = 1e-6f;
+	}
 };
 
 /* A texture's bytes as the VRAM had them at a STARTRENDER: what the core draws
@@ -454,6 +467,7 @@ public:
 	void	 maple_end_of_reply ();
 	/* The words of a TA's 32 bytes (the Elan's too) */
 	void	 ta_packet (const uint32_t *w);
+	void	 ta_packet_guarded (const uint32_t *w);
 	/* The scene the TA is making */
 	Scene	*ta_scene ();
 
@@ -536,6 +550,14 @@ private:
 	};
 	std::vector<Context> contexts;
 	std::shared_ptr<Scene> building;
+	/* The scenes made, kept to be built again once no context nor drawing
+	 * holds them: their vectors' room kept, no allocation a frame (a new
+	 * scene's vertices grew from nothing at each list, doubling, and the
+	 * first that found no memory stopped the emulator) */
+	std::vector<std::shared_ptr<Scene>> spare_scenes;
+	std::shared_ptr<Scene> new_scene ();
+	/* No memory for what the TA or a drawing made: dropped, said now and then */
+	void	 no_memory (const char *what);
 	std::vector<Draw> draws;
 	/* The textures' copies, for those that did not change at the next
 	 * STARTRENDER */
@@ -1146,6 +1168,8 @@ public:
 	hl::Nvram nvram;
 	std::string nvram_path;
 	unsigned nvram_due;
+	/* The frames since the backup RAM was last compared with the file's */
+	unsigned nvram_frames = 0;
 
 	explicit Naomi (hl::Game *game);
 

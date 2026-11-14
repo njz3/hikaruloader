@@ -8,6 +8,12 @@ and released: [DEVELOPMENT.md](DEVELOPMENT.md), "Versions and releases".
 Next version
 ------------
 
+- NAOMI: the backup RAM saved as the game ends and every ten seconds when
+  it changed (it went with the EEPROM's saves alone): Club Kart Prize booted
+  to POWER DOWN IN GAME after a game played to its end.
+- A PC short of memory (another program taking it) no longer stops a NAOMI
+  game: its frames reuse their room, and a triangle or a frame is dropped
+  when there is none; a crash's log names a C++ exception and its stack.
 - Club Kart Prize's telemetry: the Double Up after the All or Nothing
   stage (its gates, the choice, the stake doubled or lost), the stake,
   clubkpzb's shields; a gate lost is no longer a win.

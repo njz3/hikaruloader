@@ -46,6 +46,18 @@ static float current[ForceFeedback::NUM_EFFECTS];
 static std::atomic<float> spring_center;
 static std::vector<ForceFeedback::Record> records;
 
+/* A record kept: the vector's room taken whole at first (and after each
+ * take), not grown by doubling while the game plays */
+static void
+keep_record (uint64_t frame, ForceFeedback::Effect effect, float force)
+{
+	if (records.capacity () < MAX_RECORDS)
+		records.reserve (MAX_RECORDS);
+	if (records.size () >= MAX_RECORDS)
+		records.erase (records.begin ());
+	records.push_back ({ frame, effect, force });
+}
+
 /* The SDL device, and its effects (-1: not made yet, or not supported) */
 static bool sdl_ready, looked;
 static std::atomic<SDL_Joystick *> joystick;
@@ -370,9 +382,7 @@ ForceFeedback::set (Effect effect, float force, uint64_t frame)
 		return;
 	current[effect] = force;
 
-	if (records.size () >= MAX_RECORDS)
-		records.erase (records.begin ());
-	records.push_back ({ frame, effect, force });
+	keep_record (frame, effect, force);
 
 	if (!looked)
 		open_device ();
@@ -441,9 +451,7 @@ ForceFeedback::rumble (float low, float high, uint64_t frame)
 			continue;
 		current[effects[i]] = f;
 		changed = true;
-		if (records.size () >= MAX_RECORDS)
-			records.erase (records.begin ());
-		records.push_back ({ frame, effects[i], f });
+		keep_record (frame, effects[i], f);
 	}
 	if (changed || (current[RUMBLE_LOW] + current[RUMBLE_HIGH] > 0 &&
 	                (rumble_sent == ~0ull || frame - rumble_sent >= 30 || frame < rumble_sent)))

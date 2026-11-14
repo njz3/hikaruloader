@@ -170,10 +170,8 @@ The telemetry (`src/hl/telemetry-games.cpp`), what its decoders lack:
   speedometer, no engine (a value with the speed alone), the wheels, the
   hits; the Prize sets: the CONTINUE setting (no continue offered),
   clubkpzb's Double Up with the real setting (its bit set by a RAM write),
-  the gate that wins (not looked for); an nvram saved after a game played
-  in agent mode boots to POWER DOWN IN GAME (the game's power-fail record
-  or the nvram saved at the wrong time: to see); clubk2k3's prototypes not
-  in games.json.
+  the gate that wins (not looked for); clubk2k3's prototypes not in
+  games.json.
 - Initial D Arcade Stage: each set raced to GO and on (Myogi, Usui, AT
   and MT), a finish in initdv2j, time ups, no card; the race's laps (the
   course's screen only), a hit flag, the wheels' grounds, Time Attack, a

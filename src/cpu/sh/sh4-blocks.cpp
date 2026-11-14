@@ -18,6 +18,7 @@
 
 /* The SH-4's code in blocks; see sh4-blocks.h */
 
+#include <new>
 #include <algorithm>
 
 #include "cpu/sh/sh4-blocks.h"
@@ -168,18 +169,28 @@ Sh4Block *
 Sh4BlockCache::get (Sh4 *ctx, uint32_t pc)
 {
 	std::unique_ptr<Page> &page = pages[(pc & ADDR_MASK) >> PAGE_BITS];
-	std::unique_ptr<Sh4Block> *slot;
+	std::unique_ptr<Sh4Block> *slot = NULL;
 
 	pc &= ADDR_MASK;
-	if (!page)
-		page.reset (new Page ());
-	slot = &page->blocks[(pc & ((1u << PAGE_BITS) - 1)) >> 1];
-	if (*slot && fresh (slot->get ()))
-		return slot->get ();
-	if (!*slot)
-		slot->reset (new Sh4Block ());
-	if (!decode (ctx, pc, slot->get ())) {
-		slot->reset ();
+	/* No memory left for a new block (another program took it): none, the
+	 * code fetched an instruction at a time until there is (the run's way
+	 * for code outside RAM and ROM), rather than the emulator stopped */
+	try {
+		if (!page)
+			page.reset (new Page ());
+		slot = &page->blocks[(pc & ((1u << PAGE_BITS) - 1)) >> 1];
+		if (*slot && fresh (slot->get ()))
+			return slot->get ();
+		if (!*slot)
+			slot->reset (new Sh4Block ());
+		if (!decode (ctx, pc, slot->get ())) {
+			slot->reset ();
+			return NULL;
+		}
+	} catch (const std::bad_alloc &) {
+		if (slot)
+			slot->reset ();
+		HL_ERROR_FEW ("sh4: no memory left (another program took it?): code at %08X interpreted", pc);
 		return NULL;
 	}
 	/* Its code just read */

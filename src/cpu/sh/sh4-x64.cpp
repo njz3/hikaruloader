@@ -61,6 +61,7 @@
  * interpreter reads r15 and PC there); nothing else reads them in ctx while
  * the block runs. */
 
+#include <new>
 #include <chrono>
 
 #include "cpu/sh/sh4-x64.h"
@@ -1822,7 +1823,14 @@ Sh4X64::get (Sh4 *ctx, Sh4Block *block)
 	if (block->patched || !arena.base ())
 		return NULL;
 	auto start = std::chrono::steady_clock::now ();
-	block->native = (void *) translate (ctx, block);
+	/* No memory left for the translator's work (another program took it):
+	 * the block interpreted this time */
+	try {
+		block->native = (void *) translate (ctx, block);
+	} catch (const std::bad_alloc &) {
+		HL_ERROR_FEW ("sh4: no memory left (another program took it?): a block not translated");
+		return NULL;
+	}
 	if (!block->native) {
 		/* The arena is full: everything goes, this block first again */
 		clear ();

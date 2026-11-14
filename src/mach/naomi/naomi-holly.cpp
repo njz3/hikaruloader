@@ -22,6 +22,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <new>
 
 #include "hl/core.h"
 #include "hl/machine.h"
@@ -997,6 +998,41 @@ Holly::ta_modifier (const uint32_t *w)
 			list->back ().count += 3;
 }
 
+/* A scene to build: a spare one no context nor drawing holds any more (only
+ * this thread makes new holders, the renderer's thread only lets go), else a
+ * new one, kept */
+std::shared_ptr<Scene>
+Holly::new_scene ()
+{
+	for (std::shared_ptr<Scene> &s : spare_scenes)
+		if (s.use_count () == 1) {
+			s->clear ();
+			return s;
+		}
+	std::shared_ptr<Scene> s = std::make_shared<Scene> ();
+	if (spare_scenes.size () < 8)
+		spare_scenes.push_back (s);
+	return s;
+}
+
+void
+Holly::no_memory (const char *what)
+{
+	HL_ERROR_FEW ("naomi: no memory left (another program took it?): %s dropped", what);
+}
+
+/* A packet, the TA's lists growing: none dropped but for want of memory (the
+ * emulation goes on, the picture short of it) */
+void
+Holly::ta_packet_guarded (const uint32_t *w)
+{
+	try {
+		ta_packet (w);
+	} catch (const std::bad_alloc &) {
+		no_memory ("a parameter");
+	}
+}
+
 void
 Holly::ta_packet (const uint32_t *w)
 {
@@ -1119,7 +1155,7 @@ void
 Holly::elan_packet (const uint32_t *w)
 {
 	from_elan = true;
-	ta_packet (w);
+	ta_packet_guarded (w);
 	from_elan = false;
 }
 
@@ -1142,7 +1178,11 @@ Holly::elan_polygon (unsigned list, uint32_t isp, uint32_t tsp, uint32_t tcw, bo
 void
 Holly::elan_triangle (const Vertex &a, const Vertex &b, const Vertex &c)
 {
-	ta_triangle (a, b, c);
+	try {
+		ta_triangle (a, b, c);
+	} catch (const std::bad_alloc &) {
+		no_memory ("a triangle");
+	}
 }
 
 void
@@ -1158,7 +1198,11 @@ Holly::elan_modifier (unsigned list, uint32_t isp)
 		mv.isp = isp;
 		mv.first = (uint32_t) building->mod_vertices.size () / 3;
 		mv.count = 0;
-		volumes->push_back (mv);
+		try {
+			volumes->push_back (mv);
+		} catch (const std::bad_alloc &) {
+			no_memory ("a modifier volume");
+		}
 	}
 }
 
@@ -1169,7 +1213,12 @@ Holly::elan_mod_triangle (const float *xyz)
 
 	if (!volumes || volumes->empty ())
 		return;
-	building->mod_vertices.insert (building->mod_vertices.end (), xyz, xyz + 9);
+	try {
+		building->mod_vertices.insert (building->mod_vertices.end (), xyz, xyz + 9);
+	} catch (const std::bad_alloc &) {
+		no_memory ("a modifier volume's triangle");
+		return;
+	}
 	volumes->back ().count += 3;
 }
 
@@ -1195,7 +1244,7 @@ Holly::fifo_word (uint32_t word)
 	ta.fifo[ta.fifo_words++] = word;
 	if (ta.fifo_words == 8) {
 		ta.fifo_words = 0;
-		ta_packet (ta.fifo);
+		ta_packet_guarded (ta.fifo);
 	}
 }
 
@@ -1371,8 +1420,12 @@ Holly::start_render ()
 		}
 		d.background_shadow = (tag >> 27) & 1;
 	}
-	keep_textures (d);
-	draws.push_back (std::move (d));
+	try {
+		keep_textures (d);
+		draws.push_back (std::move (d));
+	} catch (const std::bad_alloc &) {
+		no_memory ("a picture");
+	}
 }
 
 /* The textures of a drawing as they are now (renders end before the games go
@@ -1451,7 +1504,7 @@ Holly::pvr_write (unsigned reg, uint32_t val, uint32_t old)
 			ta.new_batch = 1;
 			pvr[PVR_TA_NEXT_OPB] = pvr[PVR_OPB_INIT];
 			pvr[PVR_TA_ITP] = pvr[PVR_TA_ISP_BASE];
-			building = std::make_shared<Scene> ();
+			building = new_scene ();
 			for (Context &c : contexts)
 				if (c.base == base)
 					found = &c;

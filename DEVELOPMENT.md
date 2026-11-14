@@ -276,7 +276,18 @@ channel n at 2n), checked in the game's JVS TEST screen.
   order of the addresses) and `BRAM`. The EEPROM is saved half a second after
   the game's last write, the backup RAM every ten seconds when it changed,
   both on the way out. A `nvram/<game>.eeprom` of the earlier versions is
-  read when the game has no `.nvram` yet.
+  read when the game has no `.nvram` yet. The NAOMI's the same, its EEPROMs
+  and its boards' settings two seconds after they change (its backup RAM
+  went with those saves alone: a record taken in the middle of a game, and
+  Club Kart Prize's POWER DOWN IN GAME at the next boot).
+- No memory left (another program took it): a NAOMI's scenes are built
+  again in the vectors of those no drawing holds any more (`Holly::
+  new_scene`: no allocation a frame; they grew from nothing at each list);
+  what the TA, a drawing or the SH-4's translator cannot get is dropped and
+  told now and then (a parameter, a frame, a block interpreted), not the
+  emulator stopped. The crash log gives a C++ exception's type (MSVC's
+  throw information) and the stack, each frame's module and offset (a
+  `/MAP` of the link, `_LINK_=/MAP:path`, names them).
 - A NAOMI game without its `.nvram` starts from `data/naomi/<set>.sram` (the
   backup RAM) and `data/naomi/<set>.eeprom` (the MIE's EEPROM, 128 bytes)
   when they are there: a cabinet set up as the game needs it. F355 Twin's

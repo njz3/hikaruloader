@@ -72,6 +72,8 @@ public:
 	/* The frame drawn: its picture (a scene to a texture back into the
 	 * VRAM, the machine waiting) */
 	Picture	 draw_frame (Frame &f);
+	/* draw_frame's work, which may run out of memory */
+	Picture	 draw_frame_now (Frame &f);
 	/* This frame's scenes */
 	Picture	 draw_picture ();
 	/* A picture over the bound framebuffer's viewport */
