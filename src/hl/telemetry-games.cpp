@@ -1711,9 +1711,20 @@ private:
  - The All or Nothing stage (1C): its kart at another pointer + 1710 (0 in
    the race; kept after the stage, its record then garbage: read in 1C
    alone), driven by the game but for the one brake; its state (0 the
-   countdown, 1 running, 2 won, 3 lost, 8 the result, A away), the run's
-   word (1 stopped or fallen, then 2 won or 3 lost: the verdict kept),
-   fallen into the sea. 1D the ranking's name entry after a win.
+   countdown, 1 running, 2 won, 3 lost, 4 to 7 the Double Up, 8 the result,
+   9 the braking point's replay after a short stop (lost), A away), the
+   run's word (1 stopped or fallen, then 2 won or 3 lost: kept through the
+   Double Up), fallen into the sea; its stake (pence: set at the race's
+   end, doubled at each gate won, 0 once lost). 1D the ranking's name entry
+   after a win. A GOAL always gives the stage (the time bonus rounds the
+   money up to a pound).
+ - The Double Up (an operator's setting, off by default): after a stage
+   won, three gates, A, EXIT and B, WIN and LOSE shuffled over A and B: 4
+   its intro (and after each gate), 6 the shuffle and the choice (0 A, 1
+   EXIT, 2 B), 7 the run through the gate; the right one doubles the
+   stake, the wrong one a fall (3), EXIT pays (8).
+ - clubkpzb's shields (its own: the course's 1, 2 or 4), each skull hit
+   taking one instead of the money.
  - The hopper board's meters as the game keeps them (pence): the credit,
    the won and the paid, those two not cleared at a new game (a change, not
    a level). The bonus stage's words and these not at the race's shift in
@@ -1730,13 +1741,17 @@ public:
 	struct Map {
 		uint32_t scene, phase, timeup, left, kart, race, lap, money, steer;
 		uint32_t bonus_kart, bonus_state, bonus_over, bonus_fell, meters;
+		/* The stage's stake, the Double Up's choice, the shields (0 none) */
+		uint32_t stake, choice, shields;
 	};
 	static constexpr Map PRIZE = { 0x0C2E10A0, 0x0C16FDE0, 0x0C170034, 0x0C170030, 0x0C16F7A4,
 	                               0x0C16F768, 0x0C16F830, 0x0C16FD7C, 0x0C2EE064,
-	                               0x0C16F61C, 0x0C16BE2C, 0x0C16BDF4, 0x0C16B81C, 0x0C5B0328 };
+	                               0x0C16F61C, 0x0C16BE2C, 0x0C16BDF4, 0x0C16B81C, 0x0C5B0328,
+	                               0x0C1703C4, 0x0C16A614, 0 };
 	static constexpr Map PRIZE_B = { 0x0C309FA0, 0x0C198D60, 0x0C198FB4, 0x0C198FB0, 0x0C198724,
 	                                 0x0C1986E8, 0x0C1987B0, 0x0C198CFC, 0x0C316F48,
-	                                 0x0C1985B0, 0x0C194DC0, 0x0C194D88, 0x0C194794, 0x0DBB20D8 };
+	                                 0x0C1985B0, 0x0C194DC0, 0x0C194D88, 0x0C194794, 0x0DBB20D8,
+	                                 0x0C199344, 0x0C19358C, 0x0C190A38 };
 
 	explicit ClubKartPrize (const Map &map) : L (map) {}
 
@@ -1756,8 +1771,14 @@ public:
 			else
 				out.state = ram.u32 (L.phase) >= 0x0B && race == 1 ? State::RACE : State::SELECT;
 		} else if (scene == 0x1C) {
+			/* The Double Up's choice (4 to 6) and its run through a gate (7) */
 			bool stopped = ram.u32 (L.bonus_over) != 0 || ram.u32 (L.bonus_fell) != 0;
-			out.state = bonus == 0 ? State::SELECT : bonus == 1 && !stopped ? State::RACE : State::OVER;
+			if (bonus == 0 || (bonus >= 4 && bonus <= 6))
+				out.state = State::SELECT;
+			else if ((bonus == 1 && !stopped) || bonus == 7)
+				out.state = State::RACE;
+			else
+				out.state = State::OVER;
 		} else if (scene == 0x1B || scene == 0x1D || scene == 0x1E)
 			out.state = State::OVER;
 		else if (scene == 3)
@@ -1767,9 +1788,20 @@ public:
 		else
 			out.state = State::SELECT;
 		state = out.state;
-		/* The bonus stage's verdict in its run's word: 2 won, 3 lost (the
-		 * state then on to its result, 8, and away, A) */
-		uint32_t verdict = scene == 0x1C ? ram.u32 (L.bonus_over) : 0;
+		/* The bonus stage's verdict: its state 2 won, 3 lost, 9 lost (the
+		 * replay after a short stop), 8 the result won, A away (won with a
+		 * stake left); running, the run's word once it stops (2 won, 3
+		 * lost: kept through the Double Up, pending from 4 to 7) */
+		uint32_t verdict = 0;
+		if (scene == 0x1C) {
+			int32_t stake = ram.i32 (L.stake);
+			if (bonus == 2 || bonus == 8 || (bonus == 0x0A && stake > 0))
+				verdict = 2;
+			else if (bonus == 3 || bonus == 9 || bonus == 0x0A)
+				verdict = 3;
+			else if (bonus == 1)
+				verdict = ram.u32 (L.bonus_over);
+		}
 		out.finished = (scene == 0x1A && race >= 3) || verdict == 2;
 		Vehicle &p = out.player;
 		p.extra.push_back ({ "credit", (float) ram.i32 (L.meters) });
@@ -1785,6 +1817,11 @@ public:
 			p.extra.push_back ({ "bonus", 1.0f });
 			p.extra.push_back ({ "fell", ram.u32 (L.bonus_fell) ? 1.0f : 0.0f });
 			p.extra.push_back ({ "bonus_won", verdict == 2 ? 1.0f : verdict == 3 ? 0.0f : NAN });
+			bool double_up = bonus >= 4 && bonus <= 7;
+			uint32_t choice = ram.u32 (L.choice);
+			p.extra.push_back ({ "stake", (float) ram.i32 (L.stake) });
+			p.extra.push_back ({ "double_up", double_up ? 1.0f : 0.0f });
+			p.extra.push_back ({ "double_up_choice", double_up && choice <= 2 ? (float) choice : NAN });
 			return true;
 		}
 		if (scene != 0x1A)
@@ -1804,6 +1841,8 @@ public:
 		p.lap = 1;
 		p.steer = std::clamp (ram.f32 (L.steer), -1.0f, 1.0f);
 		p.extra.push_back ({ "money", (float) ram.i32 (L.money) });
+		if (L.shields)
+			p.extra.push_back ({ "shields", (float) ram.u32 (L.shields) });
 		return true;
 	}
 

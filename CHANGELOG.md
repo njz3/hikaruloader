@@ -8,6 +8,9 @@ and released: [DEVELOPMENT.md](DEVELOPMENT.md), "Versions and releases".
 Next version
 ------------
 
+- Club Kart Prize's telemetry: the Double Up after the All or Nothing
+  stage (its gates, the choice, the stake doubled or lost), the stake,
+  clubkpzb's shields; a gate lost is no longer a win.
 - Initial D's telemetry for all its sets (Ver. 1, 2 and 3, the Japanese
   and export ones), the courses named (Akina, Akagi, Shomaru, Tsuchisaka
   and the others); a TIME IS UP is over at once (it was the race for one
