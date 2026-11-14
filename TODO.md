@@ -57,9 +57,33 @@ GENERAL
   DIMM firmware update discs read no firmware version.
 - Cycraft cabinets: the motion PC is answered, its motion data ignored (nothing
   moves); no game played to the end with it yet.
-- An event-driven scheduler. The machine runs a line at a time (544 a
-  frame): each SH-4 a line's cycles, then the MEMCTL's DMA, the GPU, the
-  MIE and the AICAs.
+- An event-driven scheduler (not urgent: no game is known to need it; the
+  troubles of the line's grain were mended where they showed, VON4's DMA
+  copied at its start).
+  - Now: each machine runs a video line at a time, some 30 us. The Hikaru,
+    544 lines a frame: the master SH-4 a line's cycles (some 3000 at 100
+    MHz), the slave, the MEMCTL's DMA and the GPU's command processor, the
+    MIE's Z80, the two AICAs (ARM7 and timers), the communication board.
+    The NAOMI the same on each board (the servo board each millisecond),
+    several boards in slices of 8 lines, a thread each; Gaelco's 525
+    lines.
+  - The scheduler: each part says when it next acts (a DMA's end, a
+    timer's overflow, a serial port's next byte, an interrupt, the Z80's
+    answer); the CPUs run up to the next event, it is done, and again: the
+    grain a cycle, not a line.
+  - What it would bring: a DMA or an interrupt done when due, not at a
+    line's end; the CPUs (master and slave, SH-4 and ARM7, SH-4 and Z80)
+    in step closer than a line; the timers, serial ports and performance
+    counters exact; the CPUs' waits skipped in general, not by each game's
+    loop found.
+  - What it costs: the machines' loops rewritten, each part scheduling its
+    events; the JIT left at the cycle due (it updates its count at a
+    block's end); the NAOMI's slices between threads; the save states'
+    layout. Every game compared frame for frame before and after; maybe
+    slower (more exits from the blocks).
+  - In steps, when a game needs it: 1. a queue of events within the
+    present loop for the DMAs and the timers, the CPUs' grain the same; 2.
+    the lines cut at the next event; 3. the JIT.
 - Speed: measure the six games against Odin again on an idle machine. The
   last numbers (November 2026) were taken with each game run beside Odin
   on a machine busy with a build: ours 0.74 to 0.99 of Odin's frame time.
