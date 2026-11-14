@@ -637,7 +637,8 @@ private:
    0C288B64 in pairs, starting and running: 0/1 the play (the boot's intro
    too), 2/3 the demo or GAME OVER, 4/5 the driver's choice, 6/7 the title,
    8/9 RESULT, A/B HOW TO PLAY; in the play, 0C288C38: 0 the intro, 1
-   driving from GO!, 3 TIME UP.
+   driving from GO!, 2 a customer getting off (115 frames, the taxi held,
+   the clock stopped), 3 TIME UP.
  - The time left 0C288C44 (frames, the HUD's number), the time played
    0C288C40 (frames).
  - The taxi: x y z 0C22C760, its velocity 0C22C76C (units a frame), its
@@ -658,7 +659,17 @@ private:
    horizontal change of more than a unit a frame in a frame (driving,
    cornering and the kerbs stay under 0.86, the trees, walls and fences
    from 1.2 to 3.2).
- Not found: the money earned (no ride ended in the checks), the driver.
+ - A customer gets off when the taxi stops (wheels' speed 0.15 at most)
+   inside his stop's zone, a polygon (the HUD's distance is to the circle
+   round it). The money: the total earned 0C288C58 (cents; the fare paid
+   some 50 frames after the stop, cleared at the next game's intro), the
+   customers delivered 0C22D5AC (RESULT's number, 115 frames after the
+   stop), the last ride's rank 0C2A6098 (-1 BAD, 0 SLOW, 1 NORMAL, 2
+   SPEEDY), the combo 0C2A1628 (the HUD's COMBO; cleared at a stop, at
+   TIME UP, while a customer boards), the ranking's place 0C288C14 (100
+   none yet), RESULT's class 0C2A721C (0 S to 5 E, from RESULT's first
+   frame to GAME OVER's end); the rides ended 0C288C4C (at the stop).
+ Not found: the driver; the classes' money thresholds.
 ****************************************************************************/
 
 class CrazyTaxi : public Decoder {
@@ -687,7 +698,7 @@ public:
 		if (game != 1)
 			out.state = State::ATTRACT;
 		else if (scene <= 1)
-			out.state = phase == 1 ? State::RACE : phase == 0 ? State::SELECT : State::OVER;
+			out.state = phase == 1 || phase == 2 ? State::RACE : phase == 0 ? State::SELECT : State::OVER;
 		else if (scene == 4 || scene == 5)
 			out.state = State::SELECT;
 		else if (scene == 2 || scene == 3 || scene == 8 || scene == 9)
@@ -748,6 +759,17 @@ public:
 		p.extra.push_back ({ "customer_time", aboard ? (float) std::max (ram.i32 (0x0C288C7C), 0) / (float) FPS : NAN });
 		p.extra.push_back ({ "destination", aboard ? ram.f32 (0x0C288E64) * U : NAN });
 		p.extra.push_back ({ "fare", aboard ? (float) ram.u32 (0x0C2A5F98) / 100.0f : NAN });
+		bool playing = game == 1 && scene <= 1 && phase != 0;
+		bool result = game == 1 && (scene == 8 || scene == 9 || scene == 2 || scene == 3);
+		int32_t rank = ram.i32 (0x0C2A6098), place = ram.i32 (0x0C288C14), grade = ram.i32 (0x0C2A721C);
+		p.extra.push_back ({ "earned", playing || result ? (float) ram.u32 (0x0C288C58) / 100.0f : NAN });
+		p.extra.push_back ({ "customers", playing || result ? (float) ram.u32 (0x0C22D5AC) : NAN });
+		/* The rides ended in this game 0C288C4C (at the stop) */
+		bool ridden = playing && ram.u32 (0x0C288C4C) > 0;
+		p.extra.push_back ({ "ride_rank", ridden && rank >= -1 && rank <= 2 ? (float) rank : NAN });
+		p.extra.push_back ({ "combo", playing ? (float) ram.u32 (0x0C2A1628) : NAN });
+		p.extra.push_back ({ "ranking", (playing || result) && place > 0 && place < 100 ? (float) place : NAN });
+		p.extra.push_back ({ "class", result && grade >= 0 && grade <= 5 ? (float) grade : NAN });
 		return true;
 	}
 
@@ -1253,9 +1275,10 @@ private:
  (steering right lowers its heading): x is turned round.
  - The scene, from the sound bank loaded (0C3AC8C4): 15 the attract (its
    HOW TO PLAY drives the truck), 4 the truck's choice, 7 CONTINUE to the
-   ranking, FFFFFFFF loading (the state as it was); in the others (9 the
-   first stage), 0C3ACB34 1 driving (TIME UP once the time left is 0),
-   else READY, the map and the trailer's choice.
+   ranking, 12 the NAME ENTRY, FFFFFFFF loading and the ending's staff roll
+   (the state as it was); in the others (9 to C the stages, E the
+   parkings), 0C3ACB34 1 driving (TIME UP once the time left is 0), else
+   READY, the map and the trailer's choice.
  - The time left 0C3ACBB0 (frames), the reward 0C3ACBC4 ($).
  - The tractor: x y z 0C4E9F90; its matrix in a list drawn, 0C289620 (4 x 4,
    rows right, up, back, the position): taken when its position is the
@@ -1270,32 +1293,37 @@ private:
    0C3ACBC4: the damage their ratio.
  - The stage, by the time left's word T: staged T - 78 (1 to the goal, 5
    with the lever in R, 0 from the goal on), its number T - 5C (1 to 4, 5
-   the parking bonus), the money T - 8, the rival there first T + C4 (1),
+   the parking bonus after the first stage won, 6 after the third, 9 the
+   ending), the money T - 8, the rival there first T + C4 (1),
    the control T + E8 (f32: 1.0 while the player drives). The goal: staged
    0 with 0C3ACB34 still 1 (YOU MADE IT and RESULT, the truck frozen); the
    place 2 when the rival came first, else 1. The parking bonus (bank E,
    after a stage won): driving, then parked when the control drops to 0
    with time left (the time held), failed at T below 0.
  - The rival (Lizard Tail): its task 0C3B11A0 (8000 set), its function
-   +10, its work +20 (one of a pool 804 apart: another in the fourth
-   stage), its trailer's task the next (work at +44); the bodies at the
-   works' +19C. The first stage's (and the fourth's): 0C0A4EE6 waiting at
-   its start until the player reaches the route's next block, 0C0A4F5A
-   driving; the second's: 0C0ADDF4 running ahead (its speed's field not
-   one), 0C0ADF72 waiting, 0C0AE0C6 racing (its distance's field 0). Its
-   tractor's x y z (y off for single frames: kept when it falls 20 m), its
-   pitch, heading and roll before them (-C, -8, -4, 16 bits a turn; 0
-   facing -z, - nose down, + its right side up), its speed work + 40 (x 30
-   the HUD's m/s), its distance to the player work + 190; its trailer's
-   heading at -8. The game keeps no gap: worked out along the player's
-   forward, from its wheels (0C4EA0A0 ...: the list's matrix is not always
-   the truck's).
+   +10, its work +20 (one of a pool 804 apart: another in the third and
+   fourth stages), its trailer's task the next (work at +44); the bodies at
+   the works' +19C. The first, third and fourth stages': 0C0A4EE6 waiting
+   at its start until the player reaches the route's next block, 0C0A4F5A
+   driving; the second's: 0C0ADDF4 running ahead, 0C0ADF72 waiting,
+   0C0AE0C6 racing (its distance's field 0). Its tractor's x y z (y off
+   for single frames, 3 to 18 m down: the ground under it work + 88, + 0.55
+   m, then), its pitch, heading and roll before them (-C, -8, -4, 16 bits a
+   turn; 0 facing -z, - nose down, + its right side up), its speed work +
+   40 (x 30 the HUD's m/s), its distance to the player work + 190; its
+   trailer's heading at -8. The game keeps no gap and compares the trucks
+   only at the goals: in the second stage the rival takes its own highway,
+   its progress along it work + 48 (x 1.7 m), against the player's
+   straight distance to the goal; in the others worked out along the
+   player's forward, from its wheels (0C4EA0A0 ...: the list's matrix is
+   not always the truck's).
  The other sets (18wheelu, 18wheels, 18wheelro, 18wheelrt): the same values
  at their own addresses (the table below), the same world; 18wheelu's
  steering the game's own clamped to 1 at the lock (the parent's 1.37);
- their second stage's rival functions found by their code, not run.
+ their second stage's rival run to its race, the third and fourth stages
+ not.
  Not found: the rival's bonus (no fixed address: 5000 when the player came
- first), the third and fourth stages' rival driven to, the parking's box.
+ first), the parking's box, the second stage's goal in RAM (measured).
 ****************************************************************************/
 
 class Wheeler18 : public Decoder {
@@ -1326,13 +1354,17 @@ public:
 		 * staged, its number, the rival there first, the money */
 		bool staged = ram.u32 (L.left - 0x78) != 0;
 		bool goal = false, parked = false;
-		if (bank == 0xFFFFFFFF)
+		uint32_t number = ram.u32 (L.left - 0x5C);
+		/* The ending's staff roll (the stage 9) */
+		if (bank == 0xFFFFFFFF && number == 9)
+			out.state = State::OVER;
+		else if (bank == 0xFFFFFFFF)
 			out.state = state;
 		else if (bank == 0x15)
 			out.state = State::ATTRACT;
 		else if (bank == 4)
 			out.state = State::SELECT;
-		else if (bank == 7)
+		else if (bank == 7 || bank == 0x12)
 			out.state = State::OVER;
 		else if (run && !parking && !staged && bank >= 9 && bank <= 0x0C) {
 			out.state = State::OVER;
@@ -1349,8 +1381,7 @@ public:
 		out.finished = goal || parked;
 		out.transmission = "AT";
 		out.time_left = (float) std::max (left, 0) / (float) FPS;
-		uint32_t number = ram.u32 (L.left - 0x5C);
-		if (number >= 1 && number <= 5)
+		if (number >= 1 && number <= 6)
 			out.stage = (int) number;
 
 		Vehicle &p = out.player;
@@ -1409,7 +1440,7 @@ public:
 		p.extra.push_back ({ "parking", parking ? 1.0f : 0.0f });
 
 		bool stage = bank >= 9 && bank <= 0x0C;
-		rival (ram, stage, pos, out);
+		rival (ram, stage, ram.u32 (L.left + 0xC4) == 1, pos, out);
 		/* The result: the rival there first or not */
 		if (goal) {
 			bool second = ram.u32 (L.left + 0xC4) == 1;
@@ -1451,10 +1482,11 @@ private:
 	State state = State::ATTRACT;
 	/* The last matrix found */
 	float up[3] = { 0, 1, 0 }, fwd[3] = { 0, 0, 1 }, trailer[3] = { 0, 0, 1 };
-	/* The rival's last height */
-	float rival_y = NAN;
+	/* The second stage's goal (x z, the game's frame) and the rival's
+	 * progress at its zone, measured in the parent's runs */
+	static constexpr float GOAL2_X = 1241.4f, GOAL2_Z = 4856.2f, RIVAL2_GOAL = 1398.46f;
 
-	void rival (const Ram &ram, bool stage, const float pos[3], Frame &out)
+	void rival (const Ram &ram, bool stage, bool rival_first, const float pos[3], Frame &out)
 	{
 		/* Its task's node, function, work; its trailer's the next node.
 		 * The work one of the pool's (0x804 apart: another in the fourth
@@ -1462,38 +1494,58 @@ private:
 		uint32_t node = ram.u32 (L.node), fn = ram.u32 (L.node + 0x10), work = ram.u32 (L.node + 0x20);
 		uint32_t twork = ram.u32 (L.node + 0x44);
 		bool lead = L.lead && fn == L.lead;
+		bool wait2 = L.wait2 && fn == L.wait2;
 		bool race2 = L.race2 && fn == L.race2;
-		bool driving = fn == L.driving || lead || race2, waiting = fn == L.waiting || (L.wait2 && fn == L.wait2);
+		bool driving = fn == L.driving || lead || race2, waiting = fn == L.waiting || wait2;
 		bool pooled = work >= L.work && (work - L.work) % 0x804 == 0 && (work - L.work) / 0x804 < 16;
 		uint32_t P = ram.u32 (work + 0x19C), T = ram.u32 (twork + 0x19C);
 		if (!stage || !(node & 0x8000) || !pooled || (!driving && !waiting) ||
-		    !ram.has (P - 0x0C, 0x18) || !ram.has (T - 0x0C, 0x18)) {
-			rival_y = NAN;
+		    !ram.has (P - 0x0C, 0x18) || !ram.has (T - 0x0C, 0x18))
 			return;
-		}
 		const float TURN = 6.2831853f / 65536.0f;
 		Vehicle v;
 		float x = ram.f32 (P), y = ram.f32 (P + 4), z = ram.f32 (P + 8);
-		if (!std::isnan (rival_y) && y < rival_y - 20.0f)
-			y = rival_y;
-		rival_y = y;
+		/* Its height off for single frames (3 to 18 m down): the ground's
+		 * under it then */
+		float ground = ram.f32 (work + 0x88) + 0.55f;
+		if (std::fabs (y - ground) > 2.0f)
+			y = ground;
 		float yaw = (float) (int16_t) ram.u16 (P - 8) * TURN;
 		v.x = -x;
 		v.y = y;
 		v.z = z;
 		orient_angles (v, wrap_angle (3.14159265f - yaw), (float) (int16_t) ram.u16 (P - 0x0C) * TURN,
 		               -(float) (int16_t) ram.u16 (P - 4) * TURN);
-		/* The second stage's lead run: its speed's field is not one */
-		v.speed = lead ? NAN : driving ? 30.0f * ram.f32 (work + 0x40) : 0.0f;
+		v.speed = driving ? 30.0f * ram.f32 (work + 0x40) : 0.0f;
 		v.extra.push_back ({ "driving", driving ? 1.0f : 0.0f });
 		v.extra.push_back ({ "trailer_angle", wrap_angle ((float) (int16_t) ram.u16 (T - 8) * TURN - yaw) });
-		/* Its distance's field the first stage's run alone (0 in the
-		 * second's) */
+		/* Its distance's field the first, third and fourth stages' run
+		 * (0 in the second's) */
 		v.extra.push_back ({ "distance", fn == L.driving ? ram.f32 (work + 0x190) : NAN });
+
+		Vehicle &p = out.player;
+		if (lead || wait2 || race2) {
+			/* The second stage: the rival on its own highway, its progress
+			 * along it work + 48 (x 1.7 m; 1398.46 at its goal's zone),
+			 * against the player's straight distance to the goal (the
+			 * game compares nothing before the goals) */
+			float rival_left = rival_first ? 0.0f : std::max ((RIVAL2_GOAL - ram.f32 (work + 0x48)) * 1.7f, 0.0f);
+			float player_left = std::hypot (pos[0] - GOAL2_X, pos[2] - GOAL2_Z);
+			float gap = rival_left - player_left;
+			bool first = rival_first || gap < 0;
+			if (first)
+				p.dist_ahead = -gap;
+			else
+				p.dist_behind = gap;
+			p.position = first ? 2 : 1;
+			v.position = first ? 1 : 2;
+			p.extra.push_back ({ "gap", gap });
+			out.others.push_back (v);
+			return;
+		}
 
 		/* Ahead of the player or behind it, along its forward from its
 		 * wheels (in the game's frame) */
-		Vehicle &p = out.player;
 		float fx = (ram.f32 (L.wheel_rf) + ram.f32 (L.wheel_lf) - ram.f32 (L.wheel_rr) - ram.f32 (L.wheel_lr)) / 2;
 		float fz = (ram.f32 (L.wheel_rf + 8) + ram.f32 (L.wheel_lf + 8) - ram.f32 (L.wheel_rr + 8) - ram.f32 (L.wheel_lr + 8)) / 2;
 		float n = std::hypot (fx, fz);
@@ -1948,17 +2000,31 @@ private:
 /****************************************************************************
  Tokyo Bus Guide (tokyobus), NAOMI
 
- Checked on the first course's practice part (Nakanohashi to Shinjuku), the
- terminal, the first junction and its red light, a time up, the attract's
- demo. A unit is a metre; the game runs at 30 Hz, its speed in metres a
- tick. The world is mirrored (steering right lowers its heading): x is
- turned round.
+ Checked on the first course (Nakanohashi to Shinjuku): the terminal, the
+ practice part to the first stop, the scored part to the second, the
+ junctions and their lights, contacts, a time up, the attract's demo. A unit
+ is a metre; the game runs at 30 Hz, its speed in metres a tick. The world
+ is mirrored (steering right lowers its heading): x is turned round.
+ - The points 0C244F94 (the HUD's bar, 100 at the start and again after the
+   practice, which ends at the first stop): each penalty takes its amount,
+   3 a second once late; at 0 the game is over.
  - The state: 0C1D8140 1 the attract (its demo drives the bus); the scene
-   0C1D6C48 A the course's choice, 3 the route's map; else the bus's
-   sequence 0C244F88: 2 driving (the stops and the red lights too),
-   7 off the route (the game puts the bus back), 4 the time up, 5 the
-   route map, GAME OVER and HI SCORE; the others (0 boarding at the
-   terminal) the course's choice and the intro.
+   0C1D6C48 A the course's choice, 3 the route's map before the first stop
+   (the stops served 0C2450E0 at 0), 5 the terminal and the practice, 4 the
+   scored part; the bus's sequence 0C244F88: 2 driving (the red lights
+   too), 7 off the route (the game puts the bus back), 3, 4, 5 a stop
+   served (the route's map between), 0 the doors and the people boarding
+   (at the terminal before the drive); 4 and 5 with no points left the time
+   up, GAME OVER, HI SCORE.
+ - A stop is served stopped within 5 m of its point 0C2452D8 (x y z; the
+   distance word below is only written within some 110 m); the bus's state
+   0C1D8500: 1 driving, 2 a contact (8 to 18 frames), 3 stopped at a stop
+   served, 0 the doors and boarding. The people carried 0C1D8160; the
+   game's winker 0C1D84A8 (0 off, 1 left, 2 right: the switches step it);
+   the mistakes 0C1D8170 (a penalty, or 3 points late); the newest
+   penalty's message 0C244F28 + 4 (an entry of the table 0C06A438 + 4: 0 to
+   2 a contact, 6 to 8 the wrong course, 15 no winker, 16 a red light run,
+   17 stopped past the line, 23 a sudden start, 32 no announcement).
  - The bus: the driver's eye 0C1D8180 (x y z, 2 m above the road), the
    body's matrix 0C1D82D0 (rows 10 apart: right, up, back; the yaw alone),
    the speed 0C1D84C8 (x 30 m/s), rpm 0C1D8534, the gear 0C1D8540 (0 to 2
@@ -1967,13 +2033,13 @@ private:
    bits: 8000 the centre, FEFF right or down); the switches 0C254CDF (02
    the horn, 04 DOOR CLOSE, 08 ANNOUNCE, 10 VIEW) and 0C254CE1 (01 and 02
    the winkers, left and right).
- - The doors 0C1D860C (0 closed, 2 open, 3 closing); the clock 0C244FA0
-   and the time due at the next stop 0C244F9C (ticks since midnight), late
-   0C245028; the distance to the next stop 0C244FB0 (m, 0 beyond some
-   110 m); the people waiting at the stop 0C24516C; the penalties shown
-   0C244FB4.
- Not found: a stop served (the doors at a stop, the score), the other
- courses, a hit flag, the traffic lights.
+ - The doors 0C1D860C (0 closed, 1 opening, 2 open, 3 closing); the clock
+   0C244FA0 and the time due at the next stop 0C244F9C (ticks since
+   midnight), late 0C245028; the distance to the next stop 0C244FB0 (m,
+   written within some 110 m only, the last stop's kept beyond); the
+   people waiting at the stop 0C24516C; the penalties shown 0C244FB4.
+ Not found: the route's end (22 stops), the people getting off, the other
+ courses, the traffic light ahead (each junction's own).
 ****************************************************************************/
 
 class TokyoBus : public Decoder {
@@ -1987,16 +2053,19 @@ public:
 		if (!ram.ok ())
 			return false;
 		uint32_t seq = ram.u32 (0x0C244F88), scene = ram.u32 (0x0C1D6C48);
+		uint32_t points = ram.u32 (0x0C244F94), served = ram.u32 (0x0C2450E0);
 		if (ram.u32 (0x0C1D8140) == 1)
 			out.state = State::ATTRACT;
 		/* The course's choice and the route's map: the demo's sequence
 		 * still there */
-		else if (scene == 0x0A || scene == 3)
+		else if (scene == 0x0A || (scene == 3 && served == 0))
 			out.state = State::SELECT;
-		else if (seq == 2 || seq == 7)
-			out.state = State::RACE;
-		else if (seq == 4 || seq == 5)
+		else if ((seq == 4 || seq == 5) && points == 0)
 			out.state = State::OVER;
+		/* Driving, and the stops served (their route's map, the boarding) */
+		else if ((points > 0 && (seq == 2 || seq == 3 || seq == 4 || seq == 5 || seq == 7)) ||
+		         (seq == 0 && scene == 4))
+			out.state = State::RACE;
 		else
 			out.state = State::SELECT;
 		out.transmission = "AT";
@@ -2020,25 +2089,53 @@ public:
 		if (seq == 7)
 			p.impact = 0.0f;
 
-		uint8_t sw1 = ram.u8 (0x0C254CDF), sw2 = ram.u8 (0x0C254CE1);
+		uint8_t sw1 = ram.u8 (0x0C254CDF);
+		uint32_t winker = ram.u32 (0x0C1D84A8), bus = ram.u32 (0x0C1D8500);
 		p.extra.push_back ({ "horn", (sw1 & 0x02) ? 1.0f : 0.0f });
-		p.extra.push_back ({ "winker_left", (sw2 & 0x01) ? 1.0f : 0.0f });
-		p.extra.push_back ({ "winker_right", (sw2 & 0x02) ? 1.0f : 0.0f });
+		p.extra.push_back ({ "winker_left", winker == 1 ? 1.0f : 0.0f });
+		p.extra.push_back ({ "winker_right", winker == 2 ? 1.0f : 0.0f });
 		p.extra.push_back ({ "doors", (float) ram.u32 (0x0C1D860C) });
 		p.extra.push_back ({ "off_route", seq == 7 ? 1.0f : 0.0f });
+		if (out.state != State::RACE && out.state != State::OVER)
+			return true;
+		p.extra.push_back ({ "points", (float) points });
+		p.extra.push_back ({ "stops", (float) served });
+		p.extra.push_back ({ "passengers", (float) ram.u32 (0x0C1D8160) });
+		p.extra.push_back ({ "mistakes", (float) ram.u32 (0x0C1D8170) });
+		/* The newest penalty's message, by its entry in the table */
+		uint32_t msg = ram.u32 (0x0C244F28 + 4);
+		float penalty = NAN;
+		for (int i = 0; msg && i < 34; i++)
+			if (ram.u32 (0x0C06A438 + 4 * i) + 4 == msg)
+				penalty = (float) i;
+		p.extra.push_back ({ "last_penalty", penalty });
 		if (out.state != State::RACE)
 			return true;
+		bool contact = bus == 2;
+		p.extra.push_back ({ "contact", contact ? 1.0f : 0.0f });
+		p.extra.push_back ({ "at_stop", bus == 0 || bus == 3 ? 1.0f : 0.0f });
+		/* The speed jumps for a tick at a contact */
+		if (contact)
+			p.speed = last_speed;
+		last_speed = p.speed;
 		/* The timetable: the time to the next stop's (< 0 late) */
 		int32_t now = ram.i32 (0x0C244FA0), due = ram.i32 (0x0C244F9C);
 		p.extra.push_back ({ "clock", (float) now / TICK });
 		p.extra.push_back ({ "schedule", (float) (due - now) / TICK });
 		p.extra.push_back ({ "late", ram.u32 (0x0C245028) ? 1.0f : 0.0f });
-		float stop = ram.f32 (0x0C244FB0);
-		p.extra.push_back ({ "distance_to_stop", stop > 0.0f ? stop : NAN });
+		/* The distance to the next stop's point, at any range (the
+		 * game's word only within some 110 m) */
+		float sx = ram.f32 (0x0C2452D8), sz = ram.f32 (0x0C2452E0);
+		float stop = sx != 0.0f || sz != 0.0f ?
+		             std::hypot (ram.f32 (0x0C1D8180) - sx, ram.f32 (0x0C1D8188) - sz) : NAN;
+		p.extra.push_back ({ "distance_to_stop", stop });
 		p.extra.push_back ({ "waiting", (float) ram.u32 (0x0C24516C) });
 		p.extra.push_back ({ "penalties", (float) ram.u32 (0x0C244FB4) });
 		return true;
 	}
+
+private:
+	float last_speed = 0.0f;
 };
 
 } /* namespace */

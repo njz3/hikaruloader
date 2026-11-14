@@ -8,6 +8,17 @@ and released: [DEVELOPMENT.md](DEVELOPMENT.md), "Versions and releases".
 Next version
 ------------
 
+- Crazy Taxi's telemetry: the money earned, the customers delivered, each
+  ride's rank (SPEEDY, NORMAL, SLOW), the combo, the ranking's place,
+  RESULT's class; a customer getting off is no longer the game's end.
+- Tokyo Bus Guide's telemetry: the points (the HUD's bar), the stops
+  served, the passengers, the mistakes and the newest penalty, a contact,
+  the bus stopped at a stop, the game's own winkers, the distance to the
+  next stop at any range; a stop served is no longer the game's end.
+- 18 Wheeler's telemetry: the rival in the third and fourth stages, the
+  place against it in the second (the rival on its own highway), its
+  speed while it leads, its height steady; the second parking (stage 6),
+  the NAME ENTRY and the ending as over.
 - Club Kart Prize's telemetry: the All or Nothing stage (the kart, won or
   lost) and the medal board's meters (credit, won, paid).
 - Widescreen for NAOMI and Atomiswave games with codes (`widescreen` in

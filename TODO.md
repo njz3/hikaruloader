@@ -132,13 +132,14 @@ The telemetry (`src/hl/telemetry-games.cpp`), what its decoders lack:
 - Smashing Drive: the damage (8C22BF44 probably, a count that followed the
   HUD's bar at two crashes, its range unknown; 8C20144C is the last hit's
   strength), the fares; a linked game's other taxi.
-- Crazy Taxi: the money earned and the customers delivered (no ride driven
-  to its end in agent mode: the taxi stopped short of the stop's zone, by a
-  wall, and one put inside it at a standstill kept its customer; to check
-  in a game played by hand), the driver, the surfaces (the wheels' ground
-  ids not named), the traffic; the hits worked out from the velocity (the
-  game flags none), the velocity sent as the mean of two frames (it swings
-  across the taxi from a frame to the next, against a wall the most).
+- Crazy Taxi: two rides driven to their ends (NORMAL), RESULT class E;
+  the classes A to C (their order only) and their money thresholds, Crazy
+  Dash, Drift and Through (only Crazy Jumps made, the taxi lifted by a RAM
+  write), a combo with no customer aboard; the driver, the surfaces (the
+  wheels' ground ids not named), the traffic; the hits worked out from the
+  velocity (the game flags none), the velocity sent as the mean of two
+  frames (it swings across the taxi from a frame to the next, against a
+  wall the most).
 - Jambo! Safari: checked in the first area (Expert, Beginner), one capture
   (Beginner's); not seen: Expert's net, the next areas, a continue, the
   name entry; the rope's length (the HUD's distance) and the crates'
@@ -149,14 +150,15 @@ The telemetry (`src/hl/telemetry-games.cpp`), what its decoders lack:
   not found; f355twn2 checked at Atlanta (its H stick not tried: its
   neutral taken as the others'); the opponents' scale (0.95 to 1.24 a
   car) not understood; the prototypes not checked.
-- 18 Wheeler: stages 1 and 2 and the parking played to their ends (the
-  timer held by a RAM write on the long drives), stages 3 and 4 reached by
-  RAM writes, their rival not driven to; the place against the rival is
-  worked out along the truck: in stage 2 the rival takes another road and
-  reads behind while it leads (the route's block, position - 34, could
-  tell: the rival's own not found); the rival's bonus has no fixed
-  address; the other sets' stage 2 rival found by its code, not run; the
-  world 1.7 times as fast as the speed the game shows.
+- 18 Wheeler: the four stages and the first parking played to their ends
+  with their rival (the timer held by a RAM write on the long drives); the
+  second parking (after stage 3) not to a success; the place against the
+  rival worked out (the game compares the trucks at the goals only): in
+  stage 2 from the rival's progress on its own highway and the player's
+  straight distance to the goal, its constants measured (the goal's zone
+  not found in RAM); the rival's bonus has no fixed address; the other
+  sets' stages 3 and 4 not run; the world 1.7 times as fast as the speed
+  the game shows.
 - The King of Route 66: AREA 1's first two stages; a hit flag, the
   wheels, the rival's speed not found; the nitro only seen ordered by a
   RAM write (B+18: the voice's word is not recognised in the emulator),
@@ -175,11 +177,12 @@ The telemetry (`src/hl/telemetry-games.cpp`), what its decoders lack:
   seen); the finish told from a time up only when seen (a state loaded
   in the results says not finished); initd, initdv2j and initdv3j not
   tried.
-- Tokyo Bus Guide: checked on the first course's practice part; a stop
-  served (the doors, the score), the other courses, a hit flag, the
-  traffic lights not found; its motor board's forces not played (the
-  answers alone); the game takes no start in its first attract cycle
-  (some 3 minutes after the power-on).
+- Tokyo Bus Guide: checked on the first course to its second stop; the
+  route's end (22 stops), the people getting off, the +15 points at the
+  second stop (a bonus?), the other courses, the traffic light ahead (each
+  junction's own, the HUD's not found) not found; its motor board's
+  forces not played (the answers alone); the game takes no start in its
+  first attract cycle (some 3 minutes after the power-on).
 - Gaelco Football and the other games: no decoder (not racing games).
 
 Star Wars: Racer Arcade's force feedback made from the telemetry
