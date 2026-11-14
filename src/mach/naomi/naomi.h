@@ -148,6 +148,9 @@ struct Draw {
 	Vertex background[3];
 	uint32_t background_isp, background_tsp, background_tcw;
 	bool background_shadow;
+	/* The picture stretched to the whole width (WIDESCREEN, the game's
+	 * codes on: Board::anamorphic) */
+	bool stretch_all = false;
 };
 
 /* The cartridge board on the G1 bus: its registers at 005F7000; see
@@ -1025,6 +1028,7 @@ public:
 	int	 load_state (hl::State *state);
 	int	 save_state (hl::State *state);
 	const char *debug_string ();
+	void	 apply_widescreen_codes ();
 
 	Naomi	*machine;
 	hl::Game *game;
@@ -1056,6 +1060,9 @@ public:
 	bool	 has_comm = false;
 	/* Vertical blank went by since the last time the boards met */
 	bool	 vblank_due = false;
+	/* Its game's widescreen codes all hold theirs: the game draws 16:9
+	 * squeezed into its picture, stretched back (Draw::stretch_all) */
+	bool	 anamorphic = false;
 	/* [Network] LINK could not be set yet: the record is not there */
 	bool	 link_settings_due = false;
 	/* Seconds left to watch for the game's first record, and the EEPROM

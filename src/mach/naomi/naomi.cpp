@@ -863,11 +863,42 @@ Board::run_lines (unsigned line, unsigned count)
 	}
 }
 
+/* The game's widescreen codes (games.json "widescreen"), at the frame's end
+ * as the game is done with it: with WIDESCREEN, each word set while it holds
+ * what the game puts there (another program, a clone, a slave's, leaves it
+ * alone); without, put back. The picture stretched while they all hold theirs */
+void
+Board::apply_widescreen_codes ()
+{
+	bool wide = hl::Config::get ()->widescreen, all = !game->widescreen.empty ();
+
+	for (const hl::Game::WideCode &c : game->widescreen) {
+		uint32_t offs = c.at - 0x0C000000;
+		uint32_t now;
+
+		if (c.at < 0x0C000000 || offs + 4 > ram->size ()) {
+			all = false;
+			continue;
+		}
+		now = (uint32_t) ram->get (4, offs);
+		if (wide && now == c.from)
+			ram->put (4, offs, now = c.value);
+		else if (!wide && now == c.value)
+			ram->put (4, offs, now = c.from);
+		all = all && now == c.value;
+	}
+	if (wide && all != anamorphic)
+		HL_PRINT ("naomi: board %u draws %s (WIDESCREEN's codes)", index, all ? "16:9" : "4:3");
+	anamorphic = wide && all;
+}
+
 void
 Board::end_frame (std::vector<int32_t> *mix)
 {
 	std::vector<int32_t> &in = ((hikaru::Aica *) aica)->out;
 
+	if (!game->widescreen.empty ())
+		apply_widescreen_codes ();
 	if (card)
 		card->frame ();
 	if (hopper)

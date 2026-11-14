@@ -50,7 +50,10 @@ namespace naomi {
  * missing); the 2D stretched to the whole width (u_stretch_2d, the
  * WIDESCREEN_2D setting): the HUD's polygons, each at a 1/W of 1 or more
  * (1, 2, 3... one a sprite; the 3D's is 0.2 at most), and the backgrounds at
- * the far plane's 1e-6 (Smashing Drive's sky, the pictures) */
+ * the far plane's 1e-6 (Smashing Drive's sky, the pictures). A game with its
+ * widescreen codes draws its picture 16:9 squeezed into 640: all of it
+ * stretched to the whole width (u_stretch_all), its texts too (some of its
+ * panels, Initial D's, go through its view and are squeezed with the 3D) */
 static const char *vs_src = R"(#version 430
 layout (location = 0) in vec3 in_pos;
 layout (location = 1) in vec2 in_uv;
@@ -62,6 +65,7 @@ out vec4 v_offset;
 noperspective out float v_z;
 uniform float u_width;
 uniform int u_stretch_2d;
+uniform int u_stretch_all;
 uniform vec2 u_scale;
 uniform vec2 u_target;
 void main ()
@@ -72,7 +76,7 @@ void main ()
 	 * rounds otherwise, a few pixels a frame) */
 	float px = in_pos.x * u_scale.x, py = in_pos.y * u_scale.y;
 	float x = px / (u_target.x * 0.5) - 1.0;
-	if (u_width > 640.0 && !(u_stretch_2d != 0 && flat_2d))
+	if (u_width > 640.0 && u_stretch_all == 0 && !(u_stretch_2d != 0 && flat_2d))
 		x = (px + (u_width - 640.0) * 0.5) / (u_width * 0.5) - 1.0;
 	gl_Position = vec4 (x, 1.0 - py / (u_target.y * 0.5), 0.0, 1.0) * w;
 	v_uv = in_uv;
@@ -842,6 +846,7 @@ locate (P &p)
 	p.u_fog_density = glGetUniformLocation (p.id, "u_fog_density");
 	p.u_width = glGetUniformLocation (p.id, "u_width");
 	p.u_stretch_2d = glGetUniformLocation (p.id, "u_stretch_2d");
+	p.u_stretch_all = glGetUniformLocation (p.id, "u_stretch_all");
 	p.u_clamp_max = glGetUniformLocation (p.id, "u_clamp_max");
 	p.u_clamp_min = glGetUniformLocation (p.id, "u_clamp_min");
 	p.u_scale = glGetUniformLocation (p.id, "u_scale");
@@ -991,6 +996,7 @@ BoardRenderer::set_scene_uniforms (const Program &p)
 	glUniform1f (p.u_zscale, 1.0f / std::max (d.scene->max_z, d.background_z));
 	glUniform1f (p.u_width, d.to_texture ? 640.0f : (float) width);
 	glUniform1i (p.u_stretch_2d, hl::Config::get ()->widescreen_2d == hl::WIDESCREEN_2D_STRETCHED);
+	glUniform1i (p.u_stretch_all, d.stretch_all);
 	glUniform2f (p.u_scale, d.scale_x, d.scale_y);
 	glUniform2f (p.u_target, pixel_x, pixel_y);
 	glUniform1f (p.u_pt_ref, d.pt_alpha_ref / 255.0f);
@@ -1147,7 +1153,8 @@ BoardRenderer::draw_modifiers (const Draw &d, float sx, float sy)
 	(void) sy;
 	glUseProgram (mod_program);
 	glUniform1f (u_mod_zscale, 1.0f / std::max (scene.max_z, d.background_z));
-	glUniform1f (u_mod_width, d.to_texture ? 640.0f : (float) width);
+	/* Stretched with the picture (640: the whole width) */
+	glUniform1f (u_mod_width, d.to_texture || d.stretch_all ? 640.0f : (float) width);
 	glUniform2f (u_mod_scale, d.scale_x, d.scale_y);
 	glUniform2f (u_mod_target, pixel_x, pixel_y);
 	glBindVertexArray (mod_vao);
@@ -1211,7 +1218,7 @@ BoardRenderer::draw_translucent_volumes ()
 
 	glUseProgram (oit.volumes);
 	glUniform1f (oit.u_zscale, 1.0f / std::max (scene.max_z, d.background_z));
-	glUniform1f (oit.u_width, d.to_texture ? 640.0f : (float) width);
+	glUniform1f (oit.u_width, d.to_texture || d.stretch_all ? 640.0f : (float) width);
 	glUniform2f (oit.u_scale, d.scale_x, d.scale_y);
 	glUniform2f (oit.u_target, pixel_x, pixel_y);
 	glBindVertexArray (mod_vao);

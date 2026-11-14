@@ -8,6 +8,10 @@ and released: [DEVELOPMENT.md](DEVELOPMENT.md), "Versions and releases".
 Next version
 ------------
 
+- Widescreen for NAOMI and Atomiswave games with codes (`widescreen` in
+  games.json, Flycast's widescreen cheats): 18 Wheeler, Initial D (its
+  sets), Airline Pilots, Jambo! Safari, Faster Than Speed and others draw a
+  16:9 view, nothing missing at the sides; the whole picture is stretched.
 - Tokyo Bus Guide plays: it took no input (MOTOR NETWORK ERROR). Its
   cabinet's I/O board is the 837-13844 with the wheel's motor board, whose
   answers the game checks. Its telemetry: the bus, its gear, doors and

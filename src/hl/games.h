@@ -151,6 +151,14 @@ public:
 	 * slave alone); none listed: all */
 	unsigned screens[4] = { 0, 0, 0, 0 };
 	unsigned num_screens = 0;
+	/* Its widescreen codes (games.json "widescreen"): with WIDESCREEN, the
+	 * 32 bits at each address of the main RAM set to value while they hold
+	 * from or value, at each frame; the game then draws its view 16:9,
+	 * squeezed into its 4:3 picture (each set its own addresses) */
+	struct WideCode {
+		uint32_t at, value, from;
+	};
+	std::vector<WideCode> widescreen;
 	std::vector<GameSection> sections;
 
 private:

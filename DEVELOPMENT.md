@@ -373,7 +373,9 @@ channel n at 2n), checked in the game's JVS TEST screen.
   board (Hikaru and NAOMI), `drive_board` the wheel's drive board on it
   (`srally2`: NASCAR Arcade's, a Model 3's; `f355`, `18wheeler`; `jambo`,
   Jambo! Safari's deluxe one, a Model 3's: Scud Race's EPR-19338A from the
-  scud set on its Z80, `driveboard-jambo.cpp` simulated otherwise),
+  scud set on its Z80, `driveboard-jambo.cpp` simulated otherwise;
+  `tokyobus`, Tokyo Bus Guide's motor board, `driveboard-tokyobus.cpp`: the
+  answers the game checks, no forces),
   `servo_board` `838-14174` the wheel's servo board on the MIDI port (Club
   Kart, The King of Route 66, Initial D, Driving Simulator), `card_reader`
   (`von4` on the Hikaru's MIE, `initiald` and `clubkart` on the NAOMI's
@@ -382,6 +384,22 @@ channel n at 2n), checked in the game's JVS TEST screen.
   at the start; a value not known is an error there. `g2_board` the board on the G2 bus's
   outside (`naomi-g2board.cpp`, the games' 837-14381:
   `machine.devices.g2_board:option ('log', 1)` logs its accesses).
+- A NAOMI or Atomiswave set's widescreen codes, `widescreen` in
+  `data/games.json` (each set its own, not inherited): `[{"at" : "0C5C64A8",
+  "value" : "43700000", "from" : "43A00000"}, ...]`, 32-bit words of the
+  main RAM. With WIDESCREEN, each word is set to `value` at each frame's end
+  while it holds `from` (what the game puts there: another program, a
+  clone or a slave board's leaves it alone) and put back without; while
+  they all hold theirs, the game draws its view 16:9 squeezed into its 4:3
+  picture, and the renderer stretches the whole picture to the width
+  (`Board::anamorphic`, `Draw::stretch_all`); the log says when a board
+  draws 16:9 or 4:3. They are Flycast's widescreen cheats (core/cheats.cpp,
+  by flyinghead and the authors it credits), each `from` read in the game
+  here (18wheelr, initdexp, initdv3e, alpilotj, jambo, ftspeed, kov7sprt,
+  dolphin, mslug6, soulsurf) or, for the sets not at hand, taken as the
+  same kind's (1.333, 320, 1.0, 640). The game computes its view at a
+  race's or a scene's start: switched during one, the right picture comes
+  at the next.
 - SGNASCAR has the I/O board of the racing cabinets, an 837-13844, and on it
   the drive board of a Model 3 (Sega Rally 2's, EPR-20512): its program on an
   emulated Z80 when the srally2 set has it, simulated otherwise

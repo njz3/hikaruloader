@@ -1304,6 +1304,7 @@ Holly::start_render ()
 	d.pal_ctrl = pvr[PVR_PAL_CTRL];
 	d.pt_alpha_ref = pvr[PVR_PT_ALPHA] & 255;
 	d.shad_scale = pvr[PVR_SHAD_SCALE];
+	d.stretch_all = board->anamorphic;
 	d.background_z = to_float (pvr[PVR_BACKGND_D]);
 	d.to_texture = (pvr[PVR_FB_W_SOF1] & 0x01000000) != 0;
 	d.y_coeff = pvr[PVR_Y_COEFF] & 0xFFFF;

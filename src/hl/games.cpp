@@ -394,6 +394,22 @@ Game::create (GameList *game_list, const char *path, const char *name, const cha
 			for (size_t k = 0; k < json_array_size (screens) && k < 4; k++)
 				game->screens[game->num_screens++] = (unsigned) json_integer_value (json_array_get (screens, k));
 		}
+		{
+			/* Each set its own: not a parent's */
+			json_t *codes = json_object_get (entry->root, "widescreen");
+
+			for (size_t k = 0; k < json_array_size (codes); k++) {
+				json_t *c = json_array_get (codes, k);
+				const char *at = json_string_value (json_object_get (c, "at"));
+				const char *value = json_string_value (json_object_get (c, "value"));
+				const char *from = json_string_value (json_object_get (c, "from"));
+
+				if (at && value && from)
+					game->widescreen.push_back ({ (uint32_t) strtoul (at, NULL, 16),
+					                              (uint32_t) strtoul (value, NULL, 16),
+					                              (uint32_t) strtoul (from, NULL, 16) });
+			}
+		}
 	}
 
 	game->entry = entry;

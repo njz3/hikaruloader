@@ -90,7 +90,7 @@ private:
 	struct Program {
 		GLuint id;
 		GLint u_flags, u_tex, u_fog, u_zscale, u_fog_color, u_fog_color_vertex, u_fog_density;
-		GLint u_width, u_stretch_2d, u_clamp_max, u_clamp_min;
+		GLint u_width, u_stretch_2d, u_stretch_all, u_clamp_max, u_clamp_min;
 		GLint u_scale, u_target, u_pt_ref, u_lod_bias, u_max_lod, u_shade_scale, u_clip_out;
 		/* The collecting one's (else -1) */
 		GLint u_tag, u_max_nodes, u_opaque_depth, u_node_flags;
