@@ -38,10 +38,15 @@ GENERAL
     the attract, the menus and Race mode, not in Training (voice guidance there); its
     screen board plays the race's effects only; its first 50 s are silent (the boot: a
     TMU wait and three JVS chain enumerations the game asks for); no engine in the attract.
-- NAOMI: the translucent modifier volumes change no picture in the attracts
-  of Virtua Striker 3, Club Kart, The King of Route 66 and Airline Pilots:
-  to see in play; per-pixel translucency only. The Elan's vertex lists take
-  no time and its interrupt output is not wired: neither is documented.
+- NAOMI: the translucent modifier volumes (per-pixel translucency only)
+  are not yet seen changing a picture in any game. In play too, those that
+  send them cover no translucent polygon they could change: Club Kart (82
+  volumes a race frame, 8 shadowed polygons) and Virtua Striker 3 (6, 192
+  shadowed) with one parameter set each and the chip's shadow scaling off
+  (FPU_SHAD_SCALE bit 8 clear), The King of Route 66 (23) with none
+  shadowed; Airline Pilots sends none in flight. The Elan's vertex lists
+  take no time and its interrupt output is not wired: neither is
+  documented.
 - Net DIMM games: their network commands answer, Virtua Fighter 4 reaches
   its network check. Not yet playing: Dragon Treasure waits for its
   satellites on the network, its medal mechanisms' ports on the 837-14381 are
