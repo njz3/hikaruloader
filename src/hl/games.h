@@ -132,7 +132,7 @@ public:
 	/* Its cabinet's other hardware, "" none (games.json, a clone's its
 	 * parent's): "drive_board" the wheel's drive board on an 837-13844
 	 * ("srally2", Model 3 Sega Rally 2's: NASCAR Arcade; "f355", "18wheeler",
-	 * "jambo", "tokyobus" its motor board),
+	 * "jambo", "tokyobus" its motor board, played by F355's program),
 	 * "servo_board" the wheel's servo board on the MIDI port ("838-14174"),
 	 * "card_reader" its card reader's protocol ("von4" on the Hikaru's MIE,
 	 * "initiald" and "clubkart" on the NAOMI's SCIF), "hopper" its medal

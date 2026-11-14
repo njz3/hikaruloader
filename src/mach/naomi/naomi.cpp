@@ -449,15 +449,14 @@ Board::init ()
 	jvs = new hl::JvsBus (machine);
 	/* The racing cabinets' I/O board, the 837-13844 ("io_boards"), with the
 	 * wheel's drive board on the first main board (F355 Challenge's, 18
-	 * Wheeler's, Jambo! Safari's, Tokyo Bus Guide's motor board:
-	 * "drive_board") */
+	 * Wheeler's, Jambo! Safari's, Tokyo Bus Guide's: "drive_board"). Tokyo
+	 * Bus Guide's, its EPROM not known, speaks F355's board's commands (the
+	 * answers chosen by F0-F7, FE the start, 4x the spring, Dx Cx its
+	 * centre, 8x-Bx the short vibrations, E0-EF the test's torques):
+	 * EPR-21867's program plays them */
 	if (!game->io_boards.empty () && game->io_boards[0] == "837-13844") {
-		if (!index && game->drive_board == "tokyobus") {
-			drive_board = new hl::DriveBoard (machine, new hl::DriveBoardTokyoBus ());
-			drive_board->name = "drive_board";
-			HL_PRINT ("naomi: the motor board (tokyobus)");
-		} else if (!index && (game->drive_board == "f355" || game->drive_board == "18wheeler" ||
-		               game->drive_board == "jambo")) {
+		if (!index && (game->drive_board == "f355" || game->drive_board == "18wheeler" ||
+		               game->drive_board == "jambo" || game->drive_board == "tokyobus")) {
 			hl::DriveBoardProgram *program;
 			/* Jambo! Safari's board, its EPROM not known: Scud Race's
 			 * (EPR-19338A, the scud set's, Dirt Devils' too) on its Z80

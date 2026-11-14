@@ -103,7 +103,8 @@ public:
  * Its registers in the Lua shell: get (1, 0) the reply, get (1, 1) the
  * command, get (1, 2) the torque. Option "log": the commands taken. */
 /* F355 Challenge's (EPR-21867), its program as high level code: the effects
- * go to the wheel directly. See driveboard-f355.cpp */
+ * go to the wheel directly. Tokyo Bus Guide's motor board too (its program
+ * not known, its commands the same). See driveboard-f355.cpp */
 class DriveBoardF355 : public DriveBoardProgram {
 public:
 	/* wheeler: 18 Wheeler's EPR-23000, the same program but for its gains, its
@@ -161,26 +162,6 @@ private:
 		uint16_t nmis, idle_nmis, bump_wait;
 		uint32_t random;
 	} s;
-};
-
-/* Tokyo Bus Guide's motor board: the answers the game checks, no forces.
- * See driveboard-tokyobus.cpp */
-class DriveBoardTokyoBus : public DriveBoardProgram {
-public:
-	DriveBoardTokyoBus ();
-
-	void	 reset () override;
-	void	 nmi (uint8_t command, uint8_t wheel, Servo &servo) override;
-	uint8_t	 reply () const override;
-	int	 save_state (State *state) override;
-	int	 load_state (State *state) override;
-
-private:
-	struct {
-		uint8_t	 answer, test;
-	} s;
-	/* The last command logged */
-	uint8_t	 logged = 0;
 };
 
 class DriveBoard : public Device, private DriveBoardProgram::Servo {

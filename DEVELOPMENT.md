@@ -374,8 +374,12 @@ channel n at 2n), checked in the game's JVS TEST screen.
   (`srally2`: NASCAR Arcade's, a Model 3's; `f355`, `18wheeler`; `jambo`,
   Jambo! Safari's deluxe one, a Model 3's: Scud Race's EPR-19338A from the
   scud set on its Z80, `driveboard-jambo.cpp` simulated otherwise;
-  `tokyobus`, Tokyo Bus Guide's motor board, `driveboard-tokyobus.cpp`: the
-  answers the game checks, no forces),
+  `tokyobus`, Tokyo Bus Guide's motor board, its EPROM not known: it speaks
+  F355's board's commands, F0-F7 the answers (F1 10 while stopped, F0 the
+  echo of the test), FE the start, 4x the spring (47 in the games
+  played), D7 CF its centre, 8x-Bx the short vibrations at a
+  contact (bit 5 the other way), E0-EF the test's torques: EPR-21867's
+  program, `driveboard-f355.cpp`, plays them),
   `servo_board` `838-14174` the wheel's servo board on the MIDI port (Club
   Kart, The King of Route 66, Initial D, Driving Simulator), `card_reader`
   (`von4` on the Hikaru's MIE, `initiald` and `clubkart` on the NAOMI's

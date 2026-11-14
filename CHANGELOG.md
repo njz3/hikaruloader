@@ -18,6 +18,10 @@ Next version
 - Crazy Taxi's telemetry: the money earned, the customers delivered, each
   ride's rank (SPEEDY, NORMAL, SLOW), the combo, the ranking's place,
   RESULT's class; a customer getting off is no longer the game's end.
+- Tokyo Bus Guide's force feedback: its motor board speaks F355
+  Challenge's drive board's commands, played by that board's program: the
+  wheel's centring spring, a shake at each contact, the test menu's
+  rolls.
 - Tokyo Bus Guide's telemetry: the points (the HUD's bar), the stops
   served, the passengers, the mistakes and the newest penalty, a contact,
   the bus stopped at a stop, the game's own winkers, the distance to the

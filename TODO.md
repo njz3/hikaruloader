@@ -186,9 +186,11 @@ The telemetry (`src/hl/telemetry-games.cpp`), what its decoders lack:
 - Tokyo Bus Guide: checked on the first course to its second stop; the
   route's end (22 stops), the people getting off, the +15 points at the
   second stop (a bonus?), the other courses, the traffic light ahead (each
-  junction's own, the HUD's not found) not found; its motor board's
-  forces not played (the answers alone); the game takes no start in its
-  first attract cycle (some 3 minutes after the power-on).
+  junction's own, the HUD's not found) not found; its motor board played
+  by F355's program (its commands the same, its EPROM not known: its
+  spring's curve, its shakes' shapes taken as EPR-21867's), not felt on a
+  wheel; the game takes no start in its first attract cycle (some 3
+  minutes after the power-on).
 - Gaelco Football and the other games: no decoder (not racing games).
 
 Star Wars: Racer Arcade's force feedback made from the telemetry

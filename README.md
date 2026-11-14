@@ -340,7 +340,7 @@ effect at once.
   to 100), and *Bend the cut parts onto the edges* (`CROP_BARREL`) shows
   them squeezed on the edges, as on a cylinder seen from the front, the
   middle undistorted (`BARREL_CENTER`, `BARREL_RADIUS`).
-- F355 Challenge's drive board (EPR-21867) is emulated on the force feedback wheel; its commands go out as `m3ffb` and a client's `m3ffb_rx` answers replace the emulated ones, as on NASCAR Arcade.
+- F355 Challenge's drive board (EPR-21867) is emulated on the force feedback wheel; its commands go out as `m3ffb` and a client's `m3ffb_rx` answers replace the emulated ones, as on NASCAR Arcade. Tokyo Bus Guide's motor board, on the same 837-13844 I/O board, speaks the same commands: F355's program plays them (the wheel's centring spring, as hard as the game asks; a shake at each contact; the test menu's rolls).
 - Jambo! Safari's deluxe cabinet (its GAME ASSIGNMENTS' CABINET TYPE DX, the default) has a Model 3's drive board on its 837-13844 I/O board: emulated on the force feedback wheel, with Scud Race's program when `scud.zip` is there (see "Force feedback"); its commands go out as `m3ffb` too.
 - The servo board 838-14174 of the NAOMI wheels (Club Kart, The King of Route 66, Driving Simulator) is emulated on the force feedback wheel; its frames also go out on the network outputs as `midiffb = HH HH HH`. A client that answers `midiffb_rx = HH..` (BackForceFeeder, in front of a real board) takes over: the game reads its answers and the wheel plays nothing, until it leaves. While the game checks the motor, at its start, the wheel turns on its own; with the motor off, as in the games' test menus, it is the player's (INPUT TEST, VOLUME SETTING).- NAOMI GD-ROM games need the game's zip (with its DIMM board's PIC) and its
   CHD in a folder named as the game, as MAME keeps them: `roms/initdv3e.zip`
@@ -708,6 +708,12 @@ games, the board runs Sega Rally 2's own program (EPR-20512) on an emulated
 Z80; without it, a simulation of that program (`DRIVEBOARD_SIMULATED=1` in
 the environment forces the simulation). It starts in some 11 seconds (CF,
 CE, CD, then CC), as on the cabinet.
+
+F355 Challenge's drive board (EPR-21867) runs as high level code, and plays
+Tokyo Bus Guide's motor board too, whose program is not known but whose
+commands are the same: its spring centres the bus's wheel (as hard as the
+game sets it), and a short shake, one way then the other and fading, follows
+each contact.
 
 Jambo! Safari's deluxe cabinet has a Model 3 drive board too, its program
 not known. Its commands are those of Scud Race's board: with `scud.zip`
