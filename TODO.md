@@ -187,8 +187,14 @@ The telemetry (`src/hl/telemetry-games.cpp`), what its decoders lack:
   Its jobs go by the SH-4's DMA channel 2 (0C185F20, after waiting for the
   Elan's register 0C, which reads 1 here, to drop below a limit); what ends
   a job is the Elan's timing and interrupts, which are not known (see the
-  Elan in naomi-elan.cpp). initd (GDS-0020B) runs; initdo's map from the
-  code alone.
+  Elan in naomi-elan.cpp). Flycast's Elan answers as ours (register 0C 1,
+  the waits as the Holly's ends of lists, 74's bits); its texture DMAs end
+  512 SH-4 cycles after their start, a line here at least (the machine's
+  grain). Tried: the DMAs done at once fail at frame 839, the shorter ones
+  at once 4300, two or four lines 1914, the channel 2's interrupt at once
+  as Flycast has it no change: the stop moves with the timing, not ended
+  by it (the scheduler, above, would give the 512 cycles). initd
+  (GDS-0020B) runs; initdo's map from the code alone.
 - Tokyo Bus Guide: checked on the first course to its second stop; the
   route's end (22 stops), the people getting off, the +15 points at the
   second stop (a bonus?), the other courses, the traffic light ahead (each
