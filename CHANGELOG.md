@@ -8,6 +8,10 @@ and released: [DEVELOPMENT.md](DEVELOPMENT.md), "Versions and releases".
 Next version
 ------------
 
+- Club Kart (all its sets) starts with its pedals' range made for the
+  whole range: the factory's took nothing below a fifth of the travel and
+  all from three quarters. Settings saved before keep it: make the game's
+  VOLUME SETTING (README, "Keys and controllers").
 - Smashing Drive's wheel turned fully right steers fully right: the game
   took that end for no wheel and went on straight. Gaelco's wheels and
   handlebars now turn between 10 and F0, as MAME has them.

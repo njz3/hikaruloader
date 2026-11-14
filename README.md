@@ -281,7 +281,12 @@ controls, its pedals acting in proportion. Its settings saved by an earlier
 version keep the factory ones, where the pedals act all or nothing and a
 pedal held half way ends the stage: make the VOLUME SETTING in the game's
 test menu (the wheel turned to both ends, each pedal pressed down, then
-EXIT).
+EXIT). Club Kart (all its sets) starts with its pedals' range made for the
+whole range too, where the factory's took nothing below a fifth and all
+from three quarters (the game keeps a small dead band at each end); for
+settings saved before, its VOLUME SETTING: on ACCEL, Test with the pedal
+up, then Test with it down; the same on BRAKE; the game saves them as its
+test menu is left.
 
 **Star Wars: Racer Arcade's levers.** The cabinet has two levers, each the
 thrust of one of the pod's engines, pushed forward: even, the pod goes

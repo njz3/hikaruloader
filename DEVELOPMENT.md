@@ -281,7 +281,14 @@ channel n at 2n), checked in the game's JVS TEST screen.
   backup RAM) and `data/naomi/<set>.eeprom` (the MIE's EEPROM, 128 bytes)
   when they are there: a cabinet set up as the game needs it. F355 Twin's
   backup is not linked to another cabinet (from Flycast's resources), Club
-  Kart Prize's EEPROM is a set-up cabinet's; The King of Route 66's
+  Kart Prize's EEPROM is a set-up cabinet's (Flycast's); Club Kart's four
+  sets' (`clubkrt`, `clubk2k3`, `clubkprz`, `clubkpzb`) have their pedals'
+  range 00-FF in the game's record (bytes 55 to 58: the accelerator's least
+  and most, the brake's; the factory's 30 C0 30 C0; again at 87): made by
+  clubkrt's VOLUME SETTING in agent mode, the others' the same bytes and
+  their CRCs worked out (`eeprom_crc` over the record, at 36 and 40: the
+  same file as the game's for clubkrt), each kept by its game at a new
+  start; The King of Route 66's
   (`kingrt66`, `kingrt66p`: their factory EEPROMs are the same) has its
   VOLUME SETTING made, the game's record at 44 (and its copy at 80) holding
   the centre, the wheel's left and right ends, the accelerator's and the
