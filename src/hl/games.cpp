@@ -19,6 +19,7 @@
  */
 
 #include "hl/core.h"
+#include "hl/config.h"
 #include "hl/games.h"
 #include "hl/buffer.h"
 #include "hl/romset.h"
@@ -529,6 +530,72 @@ GameList::check (unsigned index, const char *path, unsigned *found, unsigned *to
 		}
 	}
 	destroy (set);
+
+	/* A GD-ROM game's disc, as the machine looks for it: <folder>/<game or
+	 * its parent>/<disc>.chd, in each folder */
+	const char *disc = json_string_value (json_object_get (entry->root, "gdrom"));
+	if (disc && disc[0]) {
+		std::string folders = path;
+		bool there = false;
+		size_t at = 0;
+
+		*total += 1;
+		while (!there && at <= folders.size ()) {
+			size_t end = folders.find (';', at);
+			std::string dir = folders.substr (at, end == std::string::npos ? end : end - at);
+
+			for (const char *sub : { entry->name, entry->parent }) {
+				if (!sub[0] || dir.empty ())
+					continue;
+				FILE *fp = fopen ((dir + "/" + sub + "/" + disc + ".chd").c_str (), "rb");
+				if (fp) {
+					fclose (fp);
+					there = true;
+				}
+			}
+			if (end == std::string::npos)
+				break;
+			at = end + 1;
+		}
+		if (there)
+			*found += 1;
+	}
+}
+
+unsigned
+GameList::picker_machine (unsigned index) const
+{
+	const GameEntry &entry = entries[index];
+	const char *board = json_string_value (json_object_get (entry.root, "board"));
+
+	if (!strcmp (entry.mach, "hikaru"))
+		return PICKER_HIKARU;
+	if (!strcmp (entry.mach, "gaelco"))
+		return PICKER_GAELCO;
+	if (!strcmp (entry.mach, "naomi"))
+		return board && !strcmp (board, "aw") ? PICKER_ATOMISWAVE : PICKER_NAOMI;
+	return 0;
+}
+
+std::string
+GameList::system_name (unsigned index) const
+{
+	const GameEntry &entry = entries[index];
+	const char *board = json_string_value (json_object_get (entry.root, "board"));
+	std::string name;
+
+	if (!strcmp (entry.mach, "hikaru"))
+		return "Hikaru";
+	if (!strcmp (entry.mach, "gaelco"))
+		return "Gaelco";
+	if (strcmp (entry.mach, "naomi"))
+		return entry.mach;
+	if (board && !strcmp (board, "aw"))
+		return "Atomiswave";
+	name = json_is_true (json_object_get (entry.root, "naomi2")) ? "NAOMI 2" : "NAOMI";
+	if (board && !strcmp (board, "gd"))
+		name += " GD-ROM";
+	return name;
 }
 
 /* "Air Trix (Rev A)": the title, and the version in its last parentheses

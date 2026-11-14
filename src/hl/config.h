@@ -46,6 +46,15 @@ enum {
 
 enum { MAX_SCREENS = 3 };
 
+/* [Picker] MACHINES: the machines whose games the picker lists, bits */
+enum {
+	PICKER_HIKARU	= 1 << 0,
+	PICKER_GAELCO	= 1 << 1,
+	PICKER_NAOMI	= 1 << 2,	/* NAOMI and NAOMI 2, cartridges and GD-ROM */
+	PICKER_ATOMISWAVE = 1 << 3,
+	PICKER_ALL	= 15
+};
+
 /* ASPECT_RATIO, as linuxloader, Supermodel, Flycast and sm2-emu name it
  * (hl/aspect.h): the frame the picture is shown in, and how it fills it */
 enum Aspect {
@@ -274,6 +283,9 @@ public:
 	 * (ui/ui_artwork.h); off, the artwork folder's alone */
 	bool		artwork_download;
 	char		last_game[32];
+	/* The machines whose games the picker lists, bits: PICKER_HIKARU...
+	 * (the others start from the command line) */
+	unsigned	picker_machines;
 
 	/* [Emulation] */
 	bool		dynarec;	/* the CPUs' dynamic recompilers, or

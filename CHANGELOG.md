@@ -8,6 +8,10 @@ and released: [DEVELOPMENT.md](DEVELOPMENT.md), "Versions and releases".
 Next version
 ------------
 
+- The picker lists the games of the machines in `MACHINES` (`[Picker]` in
+  `hikaruloader.ini`), a sum of: 1 Hikaru, 2 Gaelco, 4 NAOMI and NAOMI 2, 8
+  Atomiswave; 3 by default (as before), 15 all of them. A GD-ROM game is
+  ready with its disc's CHD; the game's pane names its system.
 - NAOMI: the backup RAM saved as the game ends and every ten seconds when
   it changed (it went with the EEPROM's saves alone): Club Kart Prize booted
   to POWER DOWN IN GAME after a game played to its end.

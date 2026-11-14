@@ -107,13 +107,20 @@ Starting a game
 
 Started without arguments, Hikaruloader shows its picker: the Hikaru and
 Gaelco games whose files are all in the games folder, none when there are
-none. NAOMI, Atomiswave and GD-ROM games are not in it for now: they start
-from the command line. The arrows (or a controller's D-pad) choose, Enter (a controller's A,
+none. The arrows (or a controller's D-pad) choose, Enter (a controller's A,
 or a double click) launches, Tab opens the settings, Escape quits. The games
 folder is the one of the settings (Picker tab), else `roms` beside the
 program. There can be several, separated by `;`
 (`D:\roms;E:\mame\roms`), looked in in that order: the BIOS can be in one,
 the games in another.
+
+The machines whose games the picker lists are `MACHINES` in the `[Picker]`
+section of `hikaruloader.ini`, a sum of: 1 Hikaru, 2 Gaelco, 4 NAOMI and
+NAOMI 2 (cartridges, GD-ROM, Net DIMM), 8 Atomiswave. 3 by default (Hikaru
+and Gaelco), 15 all of them (`MACHINES = 15`); the others' games start from
+the command line (`-r`). A GD-ROM game also needs its disc, the CHD in a
+folder named after its set or its parent's (`ikaruga\gdl-0010.chd`), as
+MAME has it.
 
 In a game, Escape (a controller's Guide + B) goes back to the picker; when
 the game was started from the command line, it quits. F9 (Guide + Start)
@@ -962,7 +969,8 @@ When something goes wrong
 -------------------------
 
 - A game is missing in the picker: `hikaruloader.exe -L`
-  lists the files each game needs, and which ones the games folder lacks.
+  lists the files each game needs, and which ones the games folder lacks;
+  a NAOMI or Atomiswave game needs its machine in `MACHINES` (`[Picker]`).
 - The game is slow: lower the SH-4 clock, 100 MHz at the least (57 for the
   games but Air Trix, in `SH4_CLOCK`) and the drawing on its own thread; the frame rate (F12) shows
   the gain.

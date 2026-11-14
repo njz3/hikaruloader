@@ -70,11 +70,12 @@ struct Picker
         gamesFolders = hl::RomSet::split_folders(dir);
         entries.clear();
         known = 0;
+        const unsigned machines = hl::Config::get ()->picker_machines;
         for (unsigned i = 0; i < list->entries.size (); i++)
         {
-            // The other machines' games start from the command line (-r, -z)
-            const char *mach = list->entries[i].mach;
-            if (strcmp(mach, "hikaru") && strcmp(mach, "gaelco"))
+            // The machines of [Picker] MACHINES; the others' games start
+            // from the command line (-r, -z)
+            if (!(list->picker_machine (i) & machines))
                 continue;
             Entry entry;
             entry.index = i;
@@ -265,6 +266,7 @@ struct Picker
         char status[128];
         statusText(cur, status, sizeof(status));
         ImGui::Text(ui::tr("%s: %s"), ui::tr("Status"), status);
+        ImGui::Text(ui::tr("%s: %s"), ui::tr("System"), list->system_name (cur.index).c_str ());
         ImGui::Spacing();
         ImGui::TextDisabled("%s", ui::tr("Cabinet"));
         ImGui::Text(ui::tr("%s: %s"), ui::tr("Link"),

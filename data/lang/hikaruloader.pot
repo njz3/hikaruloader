@@ -1592,6 +1592,10 @@ msgid "Status"
 msgstr ""
 
 #: src/ui/ui_picker.cpp
+msgid "System"
+msgstr ""
+
+#: src/ui/ui_picker.cpp
 msgid "Cabinet"
 msgstr ""
 

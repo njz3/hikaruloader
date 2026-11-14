@@ -68,6 +68,11 @@ public:
 	 * them: a game can run when found == total. */
 	void		 check (unsigned index, const char *path,
 			        unsigned *found, unsigned *total);
+	/* Its machine as the picker's MACHINES has it (PICKER_HIKARU...; the
+	 * Atomiswave apart from the NAOMI), 0 an unknown one; its name to show
+	 * ("NAOMI 2 GD-ROM") */
+	unsigned	 picker_machine (unsigned index) const;
+	std::string	 system_name (unsigned index) const;
 
 	/* The games, for -L: title, set, version, year, maker, the MAME
 	 * sets, the ROM files and their CRC32s, the main ROM's, how many of

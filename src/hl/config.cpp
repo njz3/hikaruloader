@@ -176,6 +176,7 @@ Config::set_defaults ()
 	strcpy (cfg->language, "auto");
 	cfg->log_file = true;
 	cfg->artwork_download = false;
+	cfg->picker_machines = PICKER_HIKARU | PICKER_GAELCO;
 	/* The MIE's Z80 runs, and drives the JVS bus */
 	cfg->dynarec = true;
 	cfg->memory_access = MEMORY_PAGE_TABLE;
@@ -472,6 +473,8 @@ Config::set_value (const char *section, const char *key, const char *value)
 			cfg->artwork_download = parse_bool (value);
 		else if (!strcasecmp (key, "LAST_GAME"))
 			snprintf (cfg->last_game, sizeof (cfg->last_game), "%s", value);
+		else if (!strcasecmp (key, "MACHINES"))
+			cfg->picker_machines = (unsigned) strtoul (value, NULL, 0) & PICKER_ALL;
 	} else if (!strcasecmp (section, "Emulation")) {
 		if (!strcasecmp (key, "CPU_CORE"))
 			cfg->dynarec = strcasecmp (value, "INTERPRETER") != 0;
@@ -1161,6 +1164,12 @@ Config::write (FILE *fp) const
 	fprintf (fp,
 	         "\n# The game last started, selected when the picker opens. Default: empty\n");
 	fprintf (fp, "LAST_GAME = %s\n", cfg->last_game);
+	fprintf (fp,
+	         "\n# The machines whose games the picker lists, a sum of bits: 1 Hikaru,\n"
+	         "# 2 Gaelco, 4 NAOMI and NAOMI 2 (cartridges, GD-ROM, Net DIMM), 8\n"
+	         "# Atomiswave (15 all of them); the others start from the command line\n"
+	         "# (-r). Default: %u\n", def.picker_machines);
+	fprintf (fp, "MACHINES = %u\n", cfg->picker_machines);
 
 	fprintf (fp, "\n[Emulation]\n");
 	fprintf (fp,

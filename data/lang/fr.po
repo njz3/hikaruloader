@@ -1743,6 +1743,10 @@ msgid "Status"
 msgstr "État"
 
 #: src/ui/ui_picker.cpp
+msgid "System"
+msgstr "Système"
+
+#: src/ui/ui_picker.cpp
 msgid "Cabinet"
 msgstr "Borne"
 
