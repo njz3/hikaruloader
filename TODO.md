@@ -158,8 +158,10 @@ The telemetry (`src/hl/telemetry-games.cpp`), what its decoders lack:
   tried.
 - Club Kart: Beginner races on two courses, clubk2k3 one on Type A; no
   speedometer, no engine (a value with the speed alone), the wheels, the
-  hits; the Prize sets' bonus stage (the kart not found there), their
-  payout; clubk2k3's prototypes not in games.json.
+  hits; the Prize sets: a GOAL with no money, the Double Up, clubkpzb's
+  second credit (its shields), the meters' addresses after another history
+  (the same in every state seen); clubk2k3's prototypes not in
+  games.json.
 - Initial D Arcade Stage: initdexp in Legend of the Streets (AE86, Myogi,
   Usui, Happogahara), no card; the race's laps (the course's screen only),
   a hit flag, the wheels' grounds, Time Attack, a card in the reader not

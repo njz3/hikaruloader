@@ -1656,20 +1656,35 @@ private:
    GOAL, 4 the time bonus, 5 done.
  - The time left (frames), the time-up flag, the lap's time (ms, the
    race's), the money (pence, the HUD's), the player's steering (+1 left).
+ - The All or Nothing stage (1C): its kart at another pointer + 1710 (0 in
+   the race; kept after the stage, its record then garbage: read in 1C
+   alone), driven by the game but for the one brake; its state (0 the
+   countdown, 1 running, 2 won, 3 lost, 8 the result, A away), the run's
+   word (1 stopped or fallen, then 2 won or 3 lost: the verdict kept),
+   fallen into the sea. 1D the ranking's name entry after a win.
+ - The hopper board's meters as the game keeps them (pence): the credit,
+   the won and the paid, those two not cleared at a new game (a change, not
+   a level). The bonus stage's words and these not at the race's shift in
+   clubkpzb: each found on its own.
 ****************************************************************************/
 
 class ClubKartPrize : public Decoder {
 public:
 	/* The scene, then the race's (all at the same shift from a set to the
 	 * other): the phase, the time-up flag, the time left, the kart's
-	 * pointer, the race's state, the lap's time, the money; the steering */
+	 * pointer, the race's state, the lap's time, the money; the steering;
+	 * the bonus stage's kart pointer, state, run over, fallen; the meters
+	 * (credit, won + 10, paid + 14) */
 	struct Map {
 		uint32_t scene, phase, timeup, left, kart, race, lap, money, steer;
+		uint32_t bonus_kart, bonus_state, bonus_over, bonus_fell, meters;
 	};
 	static constexpr Map PRIZE = { 0x0C2E10A0, 0x0C16FDE0, 0x0C170034, 0x0C170030, 0x0C16F7A4,
-	                               0x0C16F768, 0x0C16F830, 0x0C16FD7C, 0x0C2EE064 };
+	                               0x0C16F768, 0x0C16F830, 0x0C16FD7C, 0x0C2EE064,
+	                               0x0C16F61C, 0x0C16BE2C, 0x0C16BDF4, 0x0C16B81C, 0x0C5B0328 };
 	static constexpr Map PRIZE_B = { 0x0C309FA0, 0x0C198D60, 0x0C198FB4, 0x0C198FB0, 0x0C198724,
-	                                 0x0C1986E8, 0x0C1987B0, 0x0C198CFC, 0x0C316F48 };
+	                                 0x0C1986E8, 0x0C1987B0, 0x0C198CFC, 0x0C316F48,
+	                                 0x0C1985B0, 0x0C194DC0, 0x0C194D88, 0x0C194794, 0x0DBB20D8 };
 
 	explicit ClubKartPrize (const Map &map) : L (map) {}
 
@@ -1682,12 +1697,16 @@ public:
 			return false;
 		uint32_t scene = ram.u32 (L.scene), race = ram.u32 (L.race);
 		bool timeup = ram.u32 (L.timeup) == 1;
+		uint32_t bonus = ram.u32 (L.bonus_state);
 		if (scene == 0x1A) {
 			if (timeup || race >= 2)
 				out.state = State::OVER;
 			else
 				out.state = ram.u32 (L.phase) >= 0x0B && race == 1 ? State::RACE : State::SELECT;
-		} else if (scene == 0x1B || scene == 0x1C || scene == 0x1E)
+		} else if (scene == 0x1C) {
+			bool stopped = ram.u32 (L.bonus_over) != 0 || ram.u32 (L.bonus_fell) != 0;
+			out.state = bonus == 0 ? State::SELECT : bonus == 1 && !stopped ? State::RACE : State::OVER;
+		} else if (scene == 0x1B || scene == 0x1D || scene == 0x1E)
 			out.state = State::OVER;
 		else if (scene == 3)
 			out.state = State::ATTRACT;
@@ -1696,7 +1715,26 @@ public:
 		else
 			out.state = State::SELECT;
 		state = out.state;
-		out.finished = scene == 0x1A && race >= 3;
+		/* The bonus stage's verdict in its run's word: 2 won, 3 lost (the
+		 * state then on to its result, 8, and away, A) */
+		uint32_t verdict = scene == 0x1C ? ram.u32 (L.bonus_over) : 0;
+		out.finished = (scene == 0x1A && race >= 3) || verdict == 2;
+		Vehicle &p = out.player;
+		p.extra.push_back ({ "credit", (float) ram.i32 (L.meters) });
+		p.extra.push_back ({ "won", (float) ram.i32 (L.meters + 0x10) });
+		p.extra.push_back ({ "paid", (float) ram.i32 (L.meters + 0x14) });
+		if (scene == 0x1C) {
+			/* All or Nothing: the kart the game drives, the brake the
+			 * player's */
+			uint32_t K = ram.u32 (L.bonus_kart) + 0x1710;
+			if (ram.u32 (L.bonus_kart) && ram.has (K, 0x94))
+				ClubKart::kart_record (ram, K, p);
+			p.steer = std::clamp (ram.f32 (L.steer), -1.0f, 1.0f);
+			p.extra.push_back ({ "bonus", 1.0f });
+			p.extra.push_back ({ "fell", ram.u32 (L.bonus_fell) ? 1.0f : 0.0f });
+			p.extra.push_back ({ "bonus_won", verdict == 2 ? 1.0f : verdict == 3 ? 0.0f : NAN });
+			return true;
+		}
 		if (scene != 0x1A)
 			return true;
 
@@ -1707,7 +1745,6 @@ public:
 			out.lap_time = (float) lap / 1000.0f;
 			out.race_time = out.lap_time;
 		}
-		Vehicle &p = out.player;
 		uint32_t K = ram.u32 (L.kart) + 0x1710;
 		if (ram.u32 (L.kart) && ram.has (K, 0x94))
 			ClubKart::kart_record (ram, K, p);

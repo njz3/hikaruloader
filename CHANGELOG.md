@@ -8,6 +8,8 @@ and released: [DEVELOPMENT.md](DEVELOPMENT.md), "Versions and releases".
 Next version
 ------------
 
+- Club Kart Prize's telemetry: the All or Nothing stage (the kart, won or
+  lost) and the medal board's meters (credit, won, paid).
 - Widescreen for NAOMI and Atomiswave games with codes (`widescreen` in
   games.json, Flycast's widescreen cheats): 18 Wheeler, Initial D (its
   sets), Airline Pilots, Jambo! Safari, Faster Than Speed and others draw a
