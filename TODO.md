@@ -179,7 +179,7 @@ The telemetry (`src/hl/telemetry-games.cpp`), what its decoders lack:
   and initdv3j (the clones' taken as theirs); the finish told from a time
   up only when seen (a state loaded in the results says not finished).
   initdo (GDS-0020) stops at frame 3057 of its boot, after the SEGA logo:
-  its disc is MAME's (the CHD's SHA1 e1766340...), the stop an assertion of
+  its disc is MAME's (the CHD's SHA1 e1766340..., its data's checked), the stop an assertion of
   the game's (0C187020: the border red, then a loop) in the library's queue
   of the Elan's jobs. Each job sent logs a start (0C187240 with 1 or 2,
   0C1875B4 the one that fails), the next one taken (0C186140, when none
