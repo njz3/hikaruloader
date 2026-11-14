@@ -1268,21 +1268,34 @@ private:
    the lock), accelerator 0C3ACC88, brake 0C3ACC90; the horn 0C2B4FE5 bit 2.
  - The reward on the HUD 0C3ACBCC, the hits taking from the stage's
    0C3ACBC4: the damage their ratio.
- - The rival (Lizard Tail), checked in the first stage: its task 0C3B11A0
-   (8000 set, its work 0C3B11C0 = 0C3B6644), its function 0C3B11B0
-   0C0A4EE6 waiting at its start (it waits until the player comes within
-   205 m), 0C0A4F5A driving; else none (the choices, after the stage). Its
-   tractor's x y z at the pointer 0C3B67E0 (y off for single frames: kept
-   when it falls 20 m), its pitch, heading and roll before it (-C, -8, -4,
-   16 bits a turn; 0 facing -z, - nose down, + its right side up), its
-   speed 0C3B6684 (x 30 the HUD's m/s), its distance to the player
-   0C3B67D4; its trailer's x y z at the pointer 0C3B6FE4, its heading at -8.
-   The game keeps no gap: worked out along the player's forward, from its
-   wheels (0C4EA0A0 ...: the list's matrix is not always the truck's).
+ - The stage, by the time left's word T: staged T - 78 (1 to the goal, 5
+   with the lever in R, 0 from the goal on), its number T - 5C (1 to 4, 5
+   the parking bonus), the money T - 8, the rival there first T + C4 (1),
+   the control T + E8 (f32: 1.0 while the player drives). The goal: staged
+   0 with 0C3ACB34 still 1 (YOU MADE IT and RESULT, the truck frozen); the
+   place 2 when the rival came first, else 1. The parking bonus (bank E,
+   after a stage won): driving, then parked when the control drops to 0
+   with time left (the time held), failed at T below 0.
+ - The rival (Lizard Tail): its task 0C3B11A0 (8000 set), its function
+   +10, its work +20 (one of a pool 804 apart: another in the fourth
+   stage), its trailer's task the next (work at +44); the bodies at the
+   works' +19C. The first stage's (and the fourth's): 0C0A4EE6 waiting at
+   its start until the player reaches the route's next block, 0C0A4F5A
+   driving; the second's: 0C0ADDF4 running ahead (its speed's field not
+   one), 0C0ADF72 waiting, 0C0AE0C6 racing (its distance's field 0). Its
+   tractor's x y z (y off for single frames: kept when it falls 20 m), its
+   pitch, heading and roll before them (-C, -8, -4, 16 bits a turn; 0
+   facing -z, - nose down, + its right side up), its speed work + 40 (x 30
+   the HUD's m/s), its distance to the player work + 190; its trailer's
+   heading at -8. The game keeps no gap: worked out along the player's
+   forward, from its wheels (0C4EA0A0 ...: the list's matrix is not always
+   the truck's).
  The other sets (18wheelu, 18wheels, 18wheelro, 18wheelrt): the same values
  at their own addresses (the table below), the same world; 18wheelu's
- steering the game's own clamped to 1 at the lock (the parent's 1.37).
- Not found: the parking game, a stage's clear, who arrives first.
+ steering the game's own clamped to 1 at the lock (the parent's 1.37);
+ their second stage's rival functions found by their code, not run.
+ Not found: the rival's bonus (no fixed address: 5000 when the player came
+ first), the third and fourth stages' rival driven to, the parking's box.
 ****************************************************************************/
 
 class Wheeler18 : public Decoder {
@@ -1294,7 +1307,7 @@ public:
 		uint32_t bank, lever, run, left, full, reward, steer, horn;
 		uint32_t matrix, tmatrix, pos, speed, rpm, gearbox;
 		uint32_t wheel_rr, wheel_lr, wheel_rf, wheel_lf;
-		uint32_t node, work, waiting, driving, lead, wait2;
+		uint32_t node, work, waiting, driving, lead, wait2, race2;
 	};
 
 	explicit Wheeler18 (Set set) : L (maps[set]) {}
@@ -1312,7 +1325,7 @@ public:
 		/* The stage's (the player's block, its fields by the time left):
 		 * staged, its number, the rival there first, the money */
 		bool staged = ram.u32 (L.left - 0x78) != 0;
-		bool goal = false;
+		bool goal = false, parked = false;
 		if (bank == 0xFFFFFFFF)
 			out.state = state;
 		else if (bank == 0x15)
@@ -1324,12 +1337,16 @@ public:
 		else if (run && !parking && !staged && bank >= 9 && bank <= 0x0C) {
 			out.state = State::OVER;
 			goal = true;
+		} else if (run && parking && left > 0 && ram.f32 (L.left + 0xE8) < 0.5f) {
+			/* The truck parked: the control taken back, the time held */
+			out.state = State::OVER;
+			parked = true;
 		} else if (run)
 			out.state = left > 0 ? State::RACE : State::OVER;
 		else
 			out.state = State::SELECT;
 		state = out.state;
-		out.finished = goal;
+		out.finished = goal || parked;
 		out.transmission = "AT";
 		out.time_left = (float) std::max (left, 0) / (float) FPS;
 		uint32_t number = ram.u32 (L.left - 0x5C);
@@ -1412,23 +1429,23 @@ private:
 		{ 0x0C3AC8C4, 0x0C3AC92C, 0x0C3ACB34, 0x0C3ACBB0, 0x0C3ACBC4, 0x0C3ACBCC, 0x0C3ACC80, 0x0C2B4FE5,
 		  0x0C289620, 0x0C2895E0, 0x0C4E9F90, 0x0C4E9F60, 0x0C4E9F40, 0x0C4E9F38,
 		  0x0C4EA0A0, 0x0C4EA240, 0x0C4EA3E0, 0x0C4EA4B0,
-		  0x0C3B11A0, 0x0C3B6644, 0x0C0A4EE6, 0x0C0A4F5A, 0x0C0ADDF4, 0x0C0ADF72 },
+		  0x0C3B11A0, 0x0C3B6644, 0x0C0A4EE6, 0x0C0A4F5A, 0x0C0ADDF4, 0x0C0ADF72, 0x0C0AE0C6 },
 		{ 0x0C3ACEAC, 0x0C3ACF14, 0x0C3AD124, 0x0C3AD1A0, 0x0C3AD1B4, 0x0C3AD1BC, 0x0C3AD270, 0x0C2B55CD,
 		  0x0C289C00, 0x0C289BC0, 0x0C4EA580, 0x0C4EA550, 0x0C4EA530, 0x0C4EA528,
 		  0x0C4EA690, 0x0C4EA830, 0x0C4EA9D0, 0x0C4EAAA0,
-		  0x0C3B1790, 0x0C3B6C34, 0x0C0A54BA, 0x0C0A552E, 0, 0 },
+		  0x0C3B1790, 0x0C3B6C34, 0x0C0A54BA, 0x0C0A552E, 0x0C0AE3C8, 0x0C0AE546, 0x0C0AE69A },
 		{ 0x0C3ACCC4, 0x0C3ACD2C, 0x0C3ACF34, 0x0C3ACFB0, 0x0C3ACFC4, 0x0C3ACFCC, 0x0C3AD080, 0x0C2B53E5,
 		  0x0C289A20, 0x0C2899E0, 0x0C4EA390, 0x0C4EA360, 0x0C4EA340, 0x0C4EA338,
 		  0x0C4EA4A0, 0x0C4EA640, 0x0C4EA7E0, 0x0C4EA8B0,
-		  0x0C3B15A0, 0x0C3B6A44, 0x0C0A52EE, 0x0C0A5362, 0, 0 },
+		  0x0C3B15A0, 0x0C3B6A44, 0x0C0A52EE, 0x0C0A5362, 0x0C0AE1FC, 0x0C0AE37A, 0x0C0AE4CE },
 		{ 0x0C3AA964, 0x0C3AA9CC, 0x0C3AABD4, 0x0C3AAC50, 0x0C3AAC64, 0x0C3AAC6C, 0x0C3AAD20, 0x0C2B3085,
 		  0x0C2876C0, 0x0C287680, 0x0C4E7EC8, 0x0C4E7E98, 0x0C4E7E78, 0x0C4E7E70,
 		  0x0C4E7FD8, 0x0C4E8178, 0x0C4E8318, 0x0C4E83E8,
-		  0x0C3AF108, 0x0C3B45AC, 0x0C0A4DBE, 0x0C0A4E32, 0, 0 },
+		  0x0C3AF108, 0x0C3B45AC, 0x0C0A4DBE, 0x0C0A4E32, 0x0C0ADCCC, 0x0C0ADE4A, 0x0C0ADF9E },
 		{ 0x0C3AA964, 0x0C3AA9CC, 0x0C3AABD4, 0x0C3AAC50, 0x0C3AAC64, 0x0C3AAC6C, 0x0C3AAD20, 0x0C2B3085,
 		  0x0C2876C0, 0x0C287680, 0x0C4E7EC8, 0x0C4E7E98, 0x0C4E7E78, 0x0C4E7E70,
 		  0x0C4E7FD8, 0x0C4E8178, 0x0C4E8318, 0x0C4E83E8,
-		  0x0C3AF108, 0x0C3B45AC, 0x0C0A4DCE, 0x0C0A4E42, 0, 0 },
+		  0x0C3AF108, 0x0C3B45AC, 0x0C0A4DCE, 0x0C0A4E42, 0x0C0ADCDC, 0x0C0ADE5A, 0x0C0ADFAE },
 	};
 	const Map &L;
 	State state = State::ATTRACT;
@@ -1445,7 +1462,8 @@ private:
 		uint32_t node = ram.u32 (L.node), fn = ram.u32 (L.node + 0x10), work = ram.u32 (L.node + 0x20);
 		uint32_t twork = ram.u32 (L.node + 0x44);
 		bool lead = L.lead && fn == L.lead;
-		bool driving = fn == L.driving || lead, waiting = fn == L.waiting || (L.wait2 && fn == L.wait2);
+		bool race2 = L.race2 && fn == L.race2;
+		bool driving = fn == L.driving || lead || race2, waiting = fn == L.waiting || (L.wait2 && fn == L.wait2);
 		bool pooled = work >= L.work && (work - L.work) % 0x804 == 0 && (work - L.work) / 0x804 < 16;
 		uint32_t P = ram.u32 (work + 0x19C), T = ram.u32 (twork + 0x19C);
 		if (!stage || !(node & 0x8000) || !pooled || (!driving && !waiting) ||
@@ -1469,7 +1487,9 @@ private:
 		v.speed = lead ? NAN : driving ? 30.0f * ram.f32 (work + 0x40) : 0.0f;
 		v.extra.push_back ({ "driving", driving ? 1.0f : 0.0f });
 		v.extra.push_back ({ "trailer_angle", wrap_angle ((float) (int16_t) ram.u16 (T - 8) * TURN - yaw) });
-		v.extra.push_back ({ "distance", driving && !lead ? ram.f32 (work + 0x190) : NAN });
+		/* Its distance's field the first stage's run alone (0 in the
+		 * second's) */
+		v.extra.push_back ({ "distance", fn == L.driving ? ram.f32 (work + 0x190) : NAN });
 
 		/* Ahead of the player or behind it, along its forward from its
 		 * wheels (in the game's frame) */

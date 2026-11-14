@@ -8,6 +8,8 @@ and released: [DEVELOPMENT.md](DEVELOPMENT.md), "Versions and releases".
 Next version
 ------------
 
+- 18 Wheeler's telemetry: the rival racing again after its wait in stage
+  2, the parking bonus's success (finished) in the five sets.
 - F355 Challenge's telemetry: the 7 opponents in a race (position,
   orientation, velocity, speed, lap, place) in the three sets; F355
   Challenge 2's laps, lap times, place, transmission, level, mode, assists

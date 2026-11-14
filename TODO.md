@@ -135,12 +135,14 @@ The telemetry (`src/hl/telemetry-games.cpp`), what its decoders lack:
   not found; f355twn2 checked at Atlanta (its H stick not tried: its
   neutral taken as the others'); the opponents' scale (0.95 to 1.24 a
   car) not understood; the prototypes not checked.
-- 18 Wheeler: the first stage played to its goal (a timer held by a RAM
-  write on the way), stages 2 to 4 reached by RAM writes; the parking's
-  success, stage 2's rival after its wait, the rival's bonus in RAM not
-  found; the other sets checked in stage 1's race only (their stage 2
-  rival's functions not known, their end not run); the world 1.7 times as
-  fast as the speed the game shows.
+- 18 Wheeler: stages 1 and 2 and the parking played to their ends (the
+  timer held by a RAM write on the long drives), stages 3 and 4 reached by
+  RAM writes, their rival not driven to; the place against the rival is
+  worked out along the truck: in stage 2 the rival takes another road and
+  reads behind while it leads (the route's block, position - 34, could
+  tell: the rival's own not found); the rival's bonus has no fixed
+  address; the other sets' stage 2 rival found by its code, not run; the
+  world 1.7 times as fast as the speed the game shows.
 - The King of Route 66: AREA 1's first two stages; a hit flag, the
   wheels, the rival's speed not found; the nitro only seen ordered by a
   RAM write (B+18: the voice's word is not recognised in the emulator),
