@@ -92,9 +92,15 @@ GENERAL
   - In steps, when a game needs it: 1. a queue of events within the
     present loop for the DMAs and the timers, the CPUs' grain the same; 2.
     the lines cut at the next event; 3. the JIT.
-- Speed: measure the six games against Odin again on an idle machine. The
-  last numbers (November 2026) were taken with each game run beside Odin
-  on a machine busy with a build: ours 0.74 to 0.99 of Odin's frame time.
+- Speed: AIRTRIX and VON4 slower than Odin. Measured on an idle machine
+  (2026-11-14, mains power; the best of 5 runs, frames 600 to 3600 of the
+  attract, no speed limit, each in its window: Odin's frames by ODIN_SPEED,
+  ours by the agent's step): AIRTRIX 8.31 ms against Odin's 6.55 (1.27),
+  VON4 4.22 against 3.40 (1.24), SWRACER 3.59 against 3.35 (1.07);
+  SGNASCAR 4.75 against 5.16 (0.92), BRAVEFF 4.52 against 5.73 (0.79),
+  PHARRIER 4.49 against 5.76 (0.78). Ours varies more from run to run
+  (VON4 4.2 to 8.5 ms). To find: where AIRTRIX's and VON4's frames go
+  (HR_PROFILE), the drawing or the CPUs.
 
 The outputs (`src/hl/outputs.cpp`):
 
