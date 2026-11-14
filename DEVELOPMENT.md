@@ -393,11 +393,23 @@ channel n at 2n), checked in the game's JVS TEST screen.
   they all hold theirs, the game draws its view 16:9 squeezed into its 4:3
   picture, and the renderer stretches the whole picture to the width
   (`Board::anamorphic`, `Draw::stretch_all`); the log says when a board
-  draws 16:9 or 4:3. They are Flycast's widescreen cheats (core/cheats.cpp,
+  draws 16:9 or 4:3. Most are Flycast's widescreen cheats (core/cheats.cpp,
   by flyinghead and the authors it credits), each `from` read in the game
-  here (18wheelr, initdexp, initdv3e, alpilotj, jambo, ftspeed, kov7sprt,
-  dolphin, mslug6, soulsurf) or, for the sets not at hand, taken as the
-  same kind's (1.333, 320, 1.0, 640). The game computes its view at a
+  here (lupinsho's word found at its own address, by the code that reads
+  lupinshoo's); Slash Out's (the GD-ROM's word holds something else),
+  Spikers Battle's (a word the game changes) and Asian Dynamite's (its
+  words hold their value in some scenes only) left out. Crazy Taxi's, Club
+  Kart's and The King of Route 66's found here, by writing each word of
+  the RAM holding a value of the view's (320, 640, 4/3...) in a race and
+  measuring the picture's change: Crazy Taxi's view's half width (320 ->
+  240), Route 66's perspective's aspect (a literal of its code, 4/3 ->
+  16/9), Club Kart's projection's pointer to the view's width moved to its
+  height (the scale x 0.75; the centre is the width's half too) with the
+  view's x offset at 80 (the centre kept), in each of its sets at the
+  same code. F355 Challenge works its view's scale out in its registers
+  from the camera's angle at each frame (no word to change); Tokyo Bus
+  Guide's not found (its 320, 640, 4/3, 0.75 and 1.0 words change
+  nothing, written from the boot too). The game computes its view at a
   race's or a scene's start: switched during one, the right picture comes
   at the next.
 - SGNASCAR has the I/O board of the racing cabinets, an 837-13844, and on it

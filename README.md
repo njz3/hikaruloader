@@ -393,10 +393,12 @@ stretched display mode, `SCALE_FILTER` is read as `SCALING_FILTER`, and
   Gaelco games too: their HUD is the 2D, their sky and full-screen pictures
   stretched with it; ATV Track leaves pieces of ground out at the sides.
   Some NAOMI and Atomiswave games have codes that make them draw a 16:9
-  view (18 Wheeler, Initial D, Jambo! Safari, Airline Pilots, Faster Than
-  Speed and others: `widescreen` in `data/games.json`, from Flycast's): the
-  whole picture is stretched, nothing missing at the sides, the texts a
-  little wider. Their view changes at the next race or scene.
+  view (18 Wheeler, Crazy Taxi, Club Kart, The King of Route 66, Initial D,
+  Jambo! Safari, Airline Pilots, Faster Than Speed and others: `widescreen`
+  in `data/games.json`): the whole picture is stretched, nothing missing at
+  the sides, the texts and the HUD a little wider. Their view changes at the
+  next race or scene. F355 Challenge and Tokyo Bus Guide have none: their 3D
+  is seen wider as the other games' without codes.
   Switched during a game, it applies when the settings close; the game sees
   the wider view from the next time it computes its own.
 - *Draw distance* (x1 to x4): the scenery's detailed models and its fog go

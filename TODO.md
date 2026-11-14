@@ -20,14 +20,16 @@ GENERAL
   Ranger Mission's GUN TEST's "trigger" goes 0 and 1 whether the trigger is pulled or not,
   as its guns' Light-Gun modes come (one every 15 frames or so): the shots register in its
   GUN ADJUST and Sports Shooting's calibration; what that line shows, to see.
-- Widescreen codes (`widescreen` in games.json): those of the sets not at
-  hand (initd, initdo, initdexpo, initdv2*, initdv3j*, toyfight, lupinsho,
-  doa2m, beachspi, cspike, monkeyba, zombrvn, gunsur2) not checked, their
-  `from` taken as the same kind's; Slash Out's and Spawn's left out (what
-  their words hold not known); Jambo! Safari's narrows the view in height
-  (the same width seen, closer) where 18 Wheeler's widens it. The games
-  without codes (Crazy Taxi, F355, Club Kart, The King of Route 66...) keep
-  their 4:3 view with what they send beyond its sides.
+- Widescreen codes (`widescreen` in games.json): checked in the attracts
+  and some races (initdo's past its boot only: the game stops there);
+  Jambo! Safari's narrows the view in height (the same width seen, closer)
+  where 18 Wheeler's widens it; with them the HUD is stretched too (Club
+  Kart's map and Route 66's trailer go through the view); Asian Dynamite's
+  hold in some scenes only, Spikers Battle's word changes, slashout's (the
+  GD-ROM) holds another value: left out. F355 Challenge and Tokyo Bus Guide
+  have none (F355's view's scale is worked out in its registers at each
+  frame; Tokyo Bus's not found): they keep their 4:3 view with what they
+  send beyond its sides.
 - Controls: the mahjong panel, the card readers' own switches and Club Kart's view button
   are not placed (data/games.json).
 - NAOMI, seen in a pass over the 259 sets (3000 frames, attract only):
