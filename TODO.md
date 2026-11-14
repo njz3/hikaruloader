@@ -129,30 +129,35 @@ The telemetry (`src/hl/telemetry-games.cpp`), what its decoders lack:
   (Beginner's); not seen: Expert's net, the next areas, a continue, the
   name entry; the rope's length (the HUD's distance) and the crates'
   animals not found; no jump in the game (no airborne).
-- F355 Challenge: checked on f355twin (Motegi, AT and the paddles, Training,
-  Driving and Race; the H stick on f355twin run as a deluxe cabinet:
-  CABINET DELUXE and four boards, HR_NAOMI_BOARDS=4); the surfaces, the
-  Grand Prix and the other courses' laps, the cars' count not found; the
-  opponents not sent; f355twn2 and f355: the motion, speed, gear and rpm
-  alone (their laps, times, inputs not mapped); the prototypes not checked.
-- 18 Wheeler: the first stage alone (its rival there: the other stages'
-  not checked); the parking game, a stage's clear, who arrives first not
-  found; the world 1.7 times as fast as the speed the game shows; the
-  other sets not mapped (18wheelu's shifted by 5F0, its rival's work at
-  0C3B6C30, its driving function not known; the others not checked).
+- F355 Challenge: checked on f355twin and f355 (Motegi, AT, the paddles on
+  the twin, the H stick on the deluxe, Training, Driving and Race); the
+  surfaces, the Grand Prix and the other courses' laps, the cars' count
+  not found; the opponents not sent (the deluxe's positions known, their
+  matrices not checked); f355twn2: the motion, speed, gear and rpm alone
+  (its inputs, race time and time left found, its laps not reached); the
+  prototypes not checked.
+- 18 Wheeler: the first stage played to its goal (a timer held by a RAM
+  write on the way), stages 2 to 4 reached by RAM writes; the parking's
+  success, stage 2's rival after its wait, the rival's bonus in RAM not
+  found; the other sets checked in stage 1's race only (their stage 2
+  rival's functions not known, their end not run); the world 1.7 times as
+  fast as the speed the game shows.
 - The King of Route 66: AREA 1's first two stages; a hit flag, the
   wheels, the rival's speed not found; the nitro only seen ordered by a
   RAM write (B+18: the voice's word is not recognised in the emulator),
-  its pickups never met; another truck than the Texas Hawk not tried;
-  kingrt66p's map is another.
-- Club Kart: Beginner races on two courses; no speedometer, no engine
-  (a value with the speed alone), the wheels, the hits; clubk2k3's and
-  clubkprz's maps are others (their main addresses noted, not decoded).
+  its pickups never met; kingrt66p's boot through the test menu not
+  tried.
+- Club Kart: Beginner races on two courses, clubk2k3 one on Type A; no
+  speedometer, no engine (a value with the speed alone), the wheels, the
+  hits; the Prize sets' bonus stage (the kart not found there), their
+  payout; clubk2k3's prototypes not in games.json.
 - Initial D Arcade Stage: initdexp in Legend of the Streets (AE86, Myogi,
   Usui, Happogahara), no card; the race's laps (the course's screen only),
   a hit flag, the wheels' grounds, Time Attack, a card in the reader not
-  checked; initdv3e's map is another (its car at 0C401B14), initd and
-  initdv2j not tried.
+  checked; initdv3e on Myogi and Irohazaka (its other courses' ids not
+  seen); the progress reads the last lap's fraction until the start line
+  and stops at the last lap at the finish (2.0 for 3 laps); initd,
+  initdv2j and initdv3j not tried.
 - Tokyo Bus Guide: no decoder yet.
 - Gaelco Football and the other games: no decoder (not racing games).
 

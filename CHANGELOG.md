@@ -21,6 +21,13 @@ Next version
   orientation and trailer found again where a start put them elsewhere in
   memory. F355 Challenge's: the H stick's neutral, the race's laps, the
   level, the mode and the assists.
+- Telemetry for more sets: all five of 18 Wheeler, with the stage's end,
+  the place at the goal, the parking bonus, the money and the rival in
+  every stage; F355 Challenge's deluxe (its H stick, laps, lap times,
+  place); The King of Route 66's prototype; Club Kart 2003 and the two
+  Club Kart Prize sets; Initial D Ver. 3 Export. F355 Challenge Twin's best
+  and last laps were the wrong way round; Club Kart's steering is read
+  where it does not jump.
 
 
 0.8.3 (2026-11-14)
