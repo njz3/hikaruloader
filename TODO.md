@@ -178,9 +178,17 @@ The telemetry (`src/hl/telemetry-games.cpp`), what its decoders lack:
   card in the reader not checked; the courses' ids seen in initd, initdv2j
   and initdv3j (the clones' taken as theirs); the finish told from a time
   up only when seen (a state loaded in the results says not finished).
-  initdo (GDS-0020) stops after the SEGA logo in its fatal error routine
-  (0C187020, after writing 00FF00FF to A05F8040): the disc or the
-  emulation, to see; its map from the code alone.
+  initdo (GDS-0020) stops at frame 3057 of its boot, after the SEGA logo:
+  its disc is MAME's (the CHD's SHA1 e1766340...), the stop an assertion of
+  the game's (0C187020: the border red, then a loop) in the library's queue
+  of the Elan's jobs. Each job sent logs a start (0C187240 with 1 or 2,
+  0C1875B4 the one that fails), the next one taken (0C186140, when none
+  runs) an end (0); a start came with the last job still logged running.
+  Its jobs go by the SH-4's DMA channel 2 (0C185F20, after waiting for the
+  Elan's register 0C, which reads 1 here, to drop below a limit); what ends
+  a job is the Elan's timing and interrupts, which are not known (see the
+  Elan in naomi-elan.cpp). initd (GDS-0020B) runs; initdo's map from the
+  code alone.
 - Tokyo Bus Guide: checked on the first course to its second stop; the
   route's end (22 stops), the people getting off, the +15 points at the
   second stop (a bonus?), the other courses, the traffic light ahead (each
