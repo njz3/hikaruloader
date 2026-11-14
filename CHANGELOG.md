@@ -8,6 +8,9 @@ and released: [DEVELOPMENT.md](DEVELOPMENT.md), "Versions and releases".
 Next version
 ------------
 
+- Hikaru: hikcheck's C.R.T. TEST PAGE#2 shows its crosshatch (it showed
+  the font's corner magnified): texcoords with bit 16 of their header take
+  the texhead after the base's.
 - Agent mode: a state asked for with `-l` that cannot be loaded stops the
   program (exit code 1) before `ready`; the game was started afresh in its
   place, its client unaware.

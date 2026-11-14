@@ -141,6 +141,8 @@ typedef struct {
 	bool			has_two_sided_lighting;
 	/* Drawn for the second video output (781's front buffer 2 or 3) */
 	bool			second_monitor;
+	/* Its texcoords pick the texhead after the base's (0E8 bit 16) */
+	bool			next_texhead;
 	uint32_t		num;
 	/* The middle of its vertices, in the model: for the back to front
 	 * order of the translucent meshes */
@@ -174,6 +176,7 @@ public:
 	void begin_mesh (uint32_t addr, bool is_static);
 	void end_mesh (uint32_t addr);
 	void split_mesh (uint32_t addr);
+	void pick_texhead (bool next, uint32_t addr);
 	void on_begin_frame () override;
 	void on_end_frame () override;
 	void reset () override;

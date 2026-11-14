@@ -2762,6 +2762,21 @@ Renderer::split_mesh (uint32_t addr)
 	hr->push.num_verts = MIN2 (num_verts, 2u);
 }
 
+/* Texcoords that pick the texhead after the base's, or no longer pick it
+ * (0E8 bit 16): the triangles from them go to a mesh of their own, with the
+ * texhead the caller put in the scratch */
+void
+Renderer::pick_texhead (bool next, uint32_t addr)
+{
+	Renderer *hr = this;
+
+	if (!hr->meshes.current || hr->meshes.current->next_texhead == next)
+		return;
+	split_mesh (addr);
+	if (hr->meshes.current)
+		hr->meshes.current->next_texhead = next;
+}
+
 /* How a mesh of poly type 5 or 6 blends with the scene: its material's
  * blending mode (A81). The scene's alpha says where a mesh was drawn (the
  * layers' presence test, 1A0001BC): 1 there, whatever the mesh's own. */

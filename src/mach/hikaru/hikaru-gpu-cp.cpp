@@ -2790,7 +2790,7 @@ D (0x1B8)
 
 /* 0E8	Mesh: Push Texcoords 3
  *
- *	-------- -------x ----WWWo oooooooC
+ *	-------- -------n ----WWWo oooooooC
  *	vvvvvvvv vvvvvvvv uuuuuuuu uuuuuuuu
  *	vvvvvvvv vvvvvvvv uuuuuuuu uuuuuuuu
  *	vvvvvvvv vvvvvvvv uuuuuuuu uuuuuuuu
@@ -2798,13 +2798,29 @@ D (0x1B8)
  * The interaction of U, u, P, W, with the ones specified by the push position/
  * push all instructions is still unknown.
  *
+ * n = The texcoords are the texhead's after the base's (base + 1), not the
+ *     one recalled. hikcheck's C.R.T. TEST PAGE#2: its text with texhead 0
+ *     (the font), then a quad over the picture with n set, its texcoords in
+ *     whole texels of texhead 1 (16x16, wrapped): the crosshatch. No game's
+ *     attract sets it. Which one it picks when the texhead recalled is not
+ *     the base's is not known.
+ *
  * u, v = Texcoords for three points.
  */
 
 I (0x0E8)
 {
 	hikaru_vertex_t vs[3];
+	hikaru_texhead_t recalled;
+	bool next = (inst[0] >> 16) & 1;
 	unsigned i;
+
+	/* The texhead after the base's for these texcoords and their mesh */
+	if (next) {
+		recalled = TEX.scratch;
+		TEX.scratch = TEX.table[(TEX.base + 1) & (NUM_TEXHEADS - 1)];
+	}
+	((Renderer *) HR)->pick_texhead (next, PC);
 
 	for (i = 0; i < 3; i++) {
 		vs[i].info.full = inst[0];
@@ -2814,6 +2830,8 @@ I (0x0E8)
 	}
 
 	((Renderer *) HR)->push_vertices (&vs[0], HR_PUSH_TXC, 3);
+	if (next)
+		TEX.scratch = recalled;
 }
 
 D (0x0E8)

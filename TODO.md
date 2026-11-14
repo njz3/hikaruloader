@@ -10,11 +10,6 @@ this file's history (git).
 GENERAL
 -------
 
-- Hikaru, hikcheck's C.R.T. TEST PAGE#2 (page 1, its colour bars and "31KHz", is right): a quad over the
-  whole picture shows the 64x64 font's top left corner (texhead 0, 12.4 texcoords 0-1E1, 0-161)
-  magnified some 20 times; the texhead committed after it (16x16, repeated, whole texels) would make
-  a 16-texel grid of those coordinates, but nothing in the list recalls it (its 0E8 headers have
-  bit 16 set, the glyphs' not; taking texhead 1 for that bit did not give a clean grid).
 - Atomiswave: the wheel games' force (maxspeed, ftspeed): read as their manuals wire it and
   checked in Faster Than Speed's WHEEL FEEDBACK TEST, not yet felt on a real wheel; the
   motor's own lag (its belt, the wheel's weight) is not modelled. The guns' factory aim (a
