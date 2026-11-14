@@ -127,10 +127,9 @@ The telemetry (`src/hl/telemetry-games.cpp`), what its decoders lack:
 - F355 Challenge: checked on f355twin and f355 (Motegi, AT, the paddles on
   the twin, the H stick on the deluxe, Training, Driving and Race); the
   surfaces, the Grand Prix and the other courses' laps, the cars' count
-  not found; the opponents not sent (the deluxe's positions known, their
-  matrices not checked); f355twn2: the motion, speed, gear and rpm alone
-  (its inputs, race time and time left found, its laps not reached); the
-  prototypes not checked.
+  not found; f355twn2 checked at Atlanta (its H stick not tried: its
+  neutral taken as the others'); the opponents' scale (0.95 to 1.24 a
+  car) not understood; the prototypes not checked.
 - 18 Wheeler: the first stage played to its goal (a timer held by a RAM
   write on the way), stages 2 to 4 reached by RAM writes; the parking's
   success, stage 2's rival after its wait, the rival's bonus in RAM not

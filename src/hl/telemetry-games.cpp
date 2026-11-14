@@ -1057,9 +1057,10 @@ private:
    (the game driving), 13 TIME UP and GAME OVER, 17 the VMU's save; the
    others the attract (its demo replays a race in the car).
  - The car 0C1E0040: x y z +10, its matrix +7C (rows 10 apart: right, up,
-   back), the gear +1D0 (1 to 6), the laps done +38 (16 bits), the place
-   +140 (from 0), the last lap's start +134, the last lap +138 with its
-   fraction +144, the best +13C (ticks of 1/60.2 s, the game's clock); the
+   back), the gear +1D0 (1 to 6), the laps done +38 (16 bits), the lap's
+   start +134, the best +138, the last +13C (ticks of 1/60.2 s, the game's
+   clock), the place +140 (from 0), the best's and the last's fractions
+   +144 and +148 (the sub-frame crossing), the fractions' sum +14C; the
    transmission 0C1E0028 (2 AT, 1 the paddles, 0 the H stick: 0 neutral at
    +1D0, no reverse; offered on a deluxe cabinet alone, its level
    SIMULATOR), the level 0C1E002C (0 NOVICE, 1 INTERMEDIATE, 2 SIMULATOR),
@@ -1073,20 +1074,25 @@ private:
    HUD's R.TIME 10 frames under; 37.4 s more at each line).
  - The inputs as read: steering, accelerator, brake, clutch 0C1E8B74 to 77
    (128 the centre, + right; 0 to 254).
- The lap times: the lap's start, the best, the last (ticks), the place,
- the best's and the last's fractions (the sub-frame crossing), the
- fractions' sum, in a row (0C1E0174 the twin's, 0C20010C the deluxe's).
+ - The opponents: the 7 cars after the player's, 548 apart (their first
+   word 0 when unused: TRAINING, DRIVING), their x y z +10, matrix +7C,
+   velocity +24 and speed +C4 a frame times their scale +6C (0.95 to 1.24
+   a car), laps +38, place +140; sent from GO to GAME OVER (they drive on
+   after GOAL, they stand after TIME UP).
  f355 (the deluxe, its H stick with the defaults): mode 0C3C319C (each
  value from the choice on one more, 15 NAME ENTRY), physics 0C26D020, the
  car's x y z 0C20003C, matrix 0C200070, gear 0C2001A8 (0 neutral), the
  transmission, level and mode 0C208160 to 68, the assists 0C2081D0, the
  race's laps 0C43D7B0, the inputs 0C20842C, the laps done 0C2000CC, the
- clock 0C207A6C, the time left 0C207A70. f355twn2 (mode 0C329380, the same
- values; physics 0C1F0164, the car 0C2E3740, its gear +1CC): the motion,
- the speed, rpm and the gear alone.
- Not found: the wheels' ground; f355twn2's laps, times and inputs; the
- opponents not sent (the deluxe's at 0C20003C + 4F0 k, their matrices not
- checked).
+ lap times 0C20010C, the clock 0C207A6C, the time left 0C207A70; its cars
+ 0C200020, 4F0 apart (x y z +1C, matrix +50, velocity +90, scale +228,
+ speed +34, laps +AC, place +F8). f355twn2 (checked at Atlanta, 5 laps):
+ mode 0C329380 (the same values), physics 0C1F0164, the car 0C2E3740 (the
+ twin's layout, its gear +1CC), the transmission 0C2EBC9C, level
+ 0C2EB7FC, mode 0C2EB9FC, the assists 0C2EB618, the race's laps 0C3A0C44,
+ the inputs 0C2EC060, the clock 0C2EBB70, the time left 0C2EB7F4.
+ Not found: the wheels' ground; f355twn2's H stick (its neutral taken as
+ the others'); the opponents' rpm, gear and wheels (none kept).
 ****************************************************************************/
 
 class F355 : public Decoder {
@@ -1145,27 +1151,28 @@ public:
 		/* The wheels' spin: front left, front right, rear left, rear right */
 		for (int n = 0; n < 4; n++)
 			p.wheels[n].spin = ram.f32 (P + 0x58 + 0x14 * n);
-		if (set == TWIN2)
-			return true;
-
 		/* The race's: the transmission's, level's and mode's words; the
 		 * assists; the race's laps; the inputs; the car's laps done and
 		 * its lap times (start, best, last, place, their fractions, the
 		 * fractions' sum); the race's clock; the time left */
 		static const struct {
-			uint32_t box, assists, laps, inputs, laps_done, times, clock, left;
-		} races[2] = {
-			{ 0x0C1E0028, 0x0C1E88CC, 0x0C41DF80, 0x0C1E8B74, 0x0C1E0078, 0x0C1E0174, 0x0C1E8188, 0x0C1E818C },
-			{ 0x0C208160, 0x0C2081D0, 0x0C43D7B0, 0x0C20842C, 0x0C2000CC, 0x0C20010C, 0x0C207A6C, 0x0C207A70 },
+			uint32_t box, level, race_mode, assists, laps, inputs, laps_done, times, clock, left;
+		} races[3] = {
+			{ 0x0C1E0028, 0x0C1E002C, 0x0C1E0030, 0x0C1E88CC, 0x0C41DF80, 0x0C1E8B74, 0x0C1E0078, 0x0C1E0174,
+			  0x0C1E8188, 0x0C1E818C },
+			{ 0x0C2EBC9C, 0x0C2EB7FC, 0x0C2EB9FC, 0x0C2EB618, 0x0C3A0C44, 0x0C2EC060, 0x0C2E3778, 0x0C2E3874,
+			  0x0C2EBB70, 0x0C2EB7F4 },
+			{ 0x0C208160, 0x0C208164, 0x0C208168, 0x0C2081D0, 0x0C43D7B0, 0x0C20842C, 0x0C2000CC, 0x0C20010C,
+			  0x0C207A6C, 0x0C207A70 },
 		};
-		const auto &R = races[set == TWIN ? 0 : 1];
+		const auto &R = races[set];
 		uint32_t box = ram.u32 (R.box);
 		out.transmission = box == 2 ? "AT" : box <= 1 ? "MT" : "";
 		if (box == 0 && ram.u32 (L.gear) == 0)
 			p.gear = 0;
 		p.extra.push_back ({ "shifter", box <= 2 ? (float) box : NAN });
-		p.extra.push_back ({ "level", (float) ram.u32 (R.box + 4) });
-		p.extra.push_back ({ "race_mode", (float) ram.u32 (R.box + 8) });
+		p.extra.push_back ({ "level", (float) ram.u32 (R.level) });
+		p.extra.push_back ({ "race_mode", (float) ram.u32 (R.race_mode) });
 		uint8_t assists = ram.u8 (R.assists);
 		p.extra.push_back ({ "sc", (assists & 8) ? 1.0f : 0.0f });
 		p.extra.push_back ({ "tc", (assists & 4) ? 1.0f : 0.0f });
@@ -1194,6 +1201,41 @@ public:
 			out.last_lap = ((float) ram.u32 (LT + 8) + ram.f32 (LT + 0x14)) / TICK;
 		}
 		out.time_left = (float) std::max (ram.i32 (R.left) - 10, 0) / (float) FPS;
+
+		/* The opponents, from GO to GAME OVER: the cars after the player's
+		 * in use. Each moves by its velocity times its own scale */
+		static const struct {
+			uint32_t base, stride, pos, matrix, vel, scale, speed, laps, place;
+		} cars[3] = {
+			{ 0x0C1E0040, 0x548, 0x10, 0x7C, 0x24, 0x6C, 0xC4, 0x38, 0x140 },
+			{ 0x0C2E3740, 0x548, 0x10, 0x7C, 0x24, 0x6C, 0xC4, 0x38, 0x140 },
+			{ 0x0C200020, 0x4F0, 0x1C, 0x50, 0x90, 0x228, 0x34, 0xAC, 0xF8 },
+		};
+		const auto &C = cars[set];
+		if (mode != 9 && mode != 10)
+			return true;
+		for (unsigned k = 1; k < 8; k++) {
+			const uint32_t O = C.base + C.stride * k, CM = O + C.matrix;
+			if (!ram.u32 (O))
+				continue;
+			Vehicle v;
+			float vup[3] = { ram.f32 (CM + 0x10), ram.f32 (CM + 0x14), ram.f32 (CM + 0x18) };
+			float vfwd[3] = { -ram.f32 (CM + 0x20), -ram.f32 (CM + 0x24), -ram.f32 (CM + 0x28) };
+			float scale = ram.f32 (O + C.scale) * (float) FPS;
+			v.x = -ram.f32 (O + C.pos);
+			v.y = ram.f32 (O + C.pos + 4);
+			v.z = ram.f32 (O + C.pos + 8);
+			orient_mirrored (v, vup, vfwd);
+			v.vx = -ram.f32 (O + C.vel) * scale;
+			v.vy = ram.f32 (O + C.vel + 4) * scale;
+			v.vz = ram.f32 (O + C.vel + 8) * scale;
+			v.has_velocity = true;
+			v.speed = ram.f32 (O + C.speed) * scale;
+			unsigned vd = ram.u16 (O + C.laps);
+			v.lap = (int) (laps > 0 ? std::min (vd + 1, (unsigned) laps) : vd + 1);
+			v.position = ram.u16 (O + C.place) + 1;
+			out.others.push_back (v);
+		}
 		return true;
 	}
 

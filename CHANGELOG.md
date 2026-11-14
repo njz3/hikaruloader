@@ -8,6 +8,10 @@ and released: [DEVELOPMENT.md](DEVELOPMENT.md), "Versions and releases".
 Next version
 ------------
 
+- F355 Challenge's telemetry: the 7 opponents in a race (position,
+  orientation, velocity, speed, lap, place) in the three sets; F355
+  Challenge 2's laps, lap times, place, transmission, level, mode, assists
+  and inputs.
 - Hikaru: hikcheck's C.R.T. TEST PAGE#2 shows its crosshatch (it showed
   the font's corner magnified): texcoords with bit 16 of their header take
   the texhead after the base's.
