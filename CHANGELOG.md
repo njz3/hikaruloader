@@ -8,6 +8,10 @@ and released: [DEVELOPMENT.md](DEVELOPMENT.md), "Versions and releases".
 Next version
 ------------
 
+- Initial D's telemetry for all its sets (Ver. 1, 2 and 3, the Japanese
+  and export ones), the courses named (Akina, Akagi, Shomaru, Tsuchisaka
+  and the others); a TIME IS UP is over at once (it was the race for one
+  more second).
 - Crazy Taxi's telemetry: the money earned, the customers delivered, each
   ride's rank (SPEEDY, NORMAL, SLOW), the combo, the ranking's place,
   RESULT's class; a customer getting off is no longer the game's end.

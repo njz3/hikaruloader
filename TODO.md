@@ -170,13 +170,15 @@ The telemetry (`src/hl/telemetry-games.cpp`), what its decoders lack:
   second credit (its shields), the meters' addresses after another history
   (the same in every state seen); clubk2k3's prototypes not in
   games.json.
-- Initial D Arcade Stage: initdexp in Legend of the Streets (AE86, Myogi,
-  Usui, Happogahara), no card; the race's laps (the course's screen only),
-  a hit flag, the wheels' grounds, Time Attack, a card in the reader not
-  checked; initdv3e on Myogi and Irohazaka (its other courses' ids not
-  seen); the finish told from a time up only when seen (a state loaded
-  in the results says not finished); initd, initdv2j and initdv3j not
-  tried.
+- Initial D Arcade Stage: each set raced to GO and on (Myogi, Usui, AT
+  and MT), a finish in initdv2j, time ups, no card; the race's laps (the
+  course's screen only), a hit flag, the wheels' grounds, Time Attack, a
+  card in the reader not checked; the courses' ids seen in initd, initdv2j
+  and initdv3j (the clones' taken as theirs); the finish told from a time
+  up only when seen (a state loaded in the results says not finished).
+  initdo (GDS-0020) stops after the SEGA logo in its fatal error routine
+  (0C187020, after writing 00FF00FF to A05F8040): the disc or the
+  emulation, to see; its map from the code alone.
 - Tokyo Bus Guide: checked on the first course to its second stop; the
   route's end (22 stops), the people getting off, the +15 points at the
   second stop (a bonus?), the other courses, the traffic light ahead (each

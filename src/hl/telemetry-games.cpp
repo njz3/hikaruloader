@@ -1813,7 +1813,7 @@ private:
 };
 
 /****************************************************************************
- Initial D Arcade Stage (initdexp, initdv3e), NAOMI 2 GD-ROM
+ Initial D Arcade Stage (its 11 sets), NAOMI 2 GD-ROM
 
  Checked in Legend of the Streets with the AE86, AT and MT, on Myogi (3
  laps, a race won, one lost, a TIME IS UP), Usui and Happogahara, no card,
@@ -1843,7 +1843,18 @@ private:
  the time up to the next race: OVER while the HUD is freed); the car
  0C401B14, speed 0C900C2C, gear 0C900E88, rpm 0C900EA0, steering,
  accelerator and brake 0C900BB8, A8, B4; MT 0C31C9E0; the course 0C31C9A0
- (0 Myogi, 5 Irohazaka, the others not seen; set once confirmed).
+ (set once confirmed).
+ The other sets: the same objects at their own addresses (the maps below,
+ found by the code reading them, each checked in a race but initdo's: it
+ stopped in its fatal error routine in that run); Ver. 1's laid out as
+ initdexp's, Ver. 3's as initdv3e's, Ver. 2's HUD and timer as Ver. 3's,
+ its car's block as Ver. 1's (rpm the gear + 14, the gear + 18 the
+ needle). Every version has the race's end word. The phase goes on some
+ 60 frames after TIME IS UP (the car braked): over there. The courses:
+ Ver. 1 0 Myogi, 1 Usui, 2 Akina, 3 Happogahara; Ver. 2 0 Myogi, 1 Usui,
+ 2 Akagi, 3 Akina, 4 Happogahara, 5 Irohazaka; Ver. 3 the same and 6
+ Shomaru, 7 Tsuchisaka, 8 Akina in the snow (seen in initd, initdv2j,
+ initdv3j).
  Not found: the race's laps (the course's screen alone), a hit flag, the
  wheels' grounds (0C7DBD00 + 4 k: ids not named).
 ****************************************************************************/
@@ -1854,17 +1865,44 @@ public:
 	 * HUD's and the timer's slots and handlers, the HUD's fractions, the
 	 * race's end (0 none), the car, its speed, gear, rpm, steering (the
 	 * pedals -10 and -4), MT, the course, the courses' names */
+	static const unsigned COURSES = 9;
 	struct Map {
 		uint32_t scene, race_scene, raced, anchor, hud, timer, hud_handler, timer_handler, fractions, ended;
 		uint32_t car, speed, gear, rpm, steer, mt, course;
-		const char *courses[6];
+		const char *const *courses;
 	};
-	static constexpr Map EXPORT = { 0x0C229310, 3, 0x0C2092BC, 0x0C7D9F4C, 0x4F4, 0x410, 0x0C23EAFC, 0x0C23923C, 0x54, 0,
-	                                0x0C3017C0, 0x0C7DBE94, 0x0C7DBC0C, 0x0C7DBC1C, 0x0C7DBE28, 0x0C228CD8, 0x0C228CA0,
-	                                { "Myogi", "Usui", "", "Happogahara", "", "" } };
+	/* The courses by their ids, each version's */
+	static constexpr const char *VER1[COURSES] = { "Myogi", "Usui", "Akina", "Happogahara", "", "", "", "", "" };
+	static constexpr const char *VER2[COURSES] = { "Myogi", "Usui", "Akagi", "Akina", "Happogahara", "Irohazaka", "", "", "" };
+	static constexpr const char *VER3[COURSES] = { "Myogi", "Usui", "Akagi", "Akina", "Happogahara", "Irohazaka",
+	                                               "Shomaru", "Tsuchisaka", "Akina (snow)" };
+	/* Ver. 1: initd, initdo (its words from the code alone), initdexp,
+	 * initdexpo */
+	static constexpr Map INITD = { 0x0C21C504, 3, 0x0C1FC524, 0x0C7D9F4C, 0x4F4, 0x410, 0x0C22AD3C, 0x0C22547C, 0x54,
+		0x0C21C500, 0x0C3017C0, 0x0C7DBE94, 0x0C7DBC0C, 0x0C7DBC1C, 0x0C7DBE28, 0x0C21BECC, 0x0C21BE94, VER1 };
+	static constexpr Map INITDO = { 0x0C2160BC, 3, 0x0C1F60E4, 0x0C7D9F4C, 0x4F4, 0x410, 0x0C2248FC, 0x0C21F03C, 0x54,
+		0x0C2160B8, 0x0C3017C0, 0x0C7DBE84, 0x0C7DBBFC, 0x0C7DBC0C, 0x0C7DBE18, 0x0C215A84, 0x0C215A4C, VER1 };
+	static constexpr Map EXPORT = { 0x0C229310, 3, 0x0C2092BC, 0x0C7D9F4C, 0x4F4, 0x410, 0x0C23EAFC, 0x0C23923C, 0x54,
+		0x0C22930C, 0x0C3017C0, 0x0C7DBE94, 0x0C7DBC0C, 0x0C7DBC1C, 0x0C7DBE28, 0x0C228CD8, 0x0C228CA0, VER1 };
+	static constexpr Map EXPORT_O = { 0x0C2292E8, 3, 0x0C20929C, 0x0C7D9F4C, 0x4F4, 0x410, 0x0C23EADC, 0x0C23921C, 0x54,
+		0x0C2292E4, 0x0C3017C0, 0x0C7DBE94, 0x0C7DBC0C, 0x0C7DBC1C, 0x0C7DBE28, 0x0C228CB0, 0x0C228C78, VER1 };
+	/* Ver. 2: initdv2j, initdv2ja, initdv2jo, initdv2e (the HUD and the
+	 * timer as Ver. 3's, rpm the gear + 14) */
+	static constexpr Map V2 = { 0x0C2D5054, 4, 0x0C29F8B0, 0x0C8DA140, 0x4FC, 0x418, 0x0C306E54, 0x0C300EDC, 0x5C,
+		0x0C2D5050, 0x0C401920, 0x0C8DC0B8, 0x0C8DBE18, 0x0C8DBE2C, 0x0C8DC04C, 0x0C2D401C, 0x0C2D3FDC, VER2 };
+	static constexpr Map V2_A = { 0x0C2C09D4, 4, 0x0C28B2E8, 0x0C7DA140, 0x4FC, 0x418, 0x0C2E3874, 0x0C2DD8FC, 0x5C,
+		0x0C2C09D0, 0x0C301920, 0x0C7DC0B8, 0x0C7DBE18, 0x0C7DBE2C, 0x0C7DC04C, 0x0C2BF99C, 0x0C2BF95C, VER2 };
+	static constexpr Map V2_O = { 0x0C2BD310, 4, 0x0C287BE8, 0x0C7DA130, 0x4FC, 0x418, 0x0C2E01B4, 0x0C2DA23C, 0x5C,
+		0x0C2BD30C, 0x0C301920, 0x0C7DC0A8, 0x0C7DBE08, 0x0C7DBE1C, 0x0C7DC03C, 0x0C2BC2E4, 0x0C2BC2A4, VER2 };
+	static constexpr Map V2_EXPORT = { 0x0C2D61F4, 4, 0x0C2A2540, 0x0C8DA140, 0x4FC, 0x418, 0x0C307CF4, 0x0C301D7C, 0x5C,
+		0x0C2D61F0, 0x0C401920, 0x0C8DC0B8, 0x0C8DBE18, 0x0C8DBE2C, 0x0C8DC04C, 0x0C2D51BC, 0x0C2D517C, VER2 };
+	/* Ver. 3: initdv3j, initdv3jb, initdv3e */
+	static constexpr Map V3 = { 0x0C3296DC, 4, 0x0C2F52A8, 0x0C8FF174, 0x4FC, 0x418, 0x0C390804, 0x0C38A87C, 0x5C,
+		0x0C3296D8, 0x0C401B14, 0x0C900C2C, 0x0C900E88, 0x0C900EA0, 0x0C900BB8, 0x0C328264, 0x0C328224, VER3 };
+	static constexpr Map V3_B = { 0x0C3291D8, 4, 0x0C2F4DA8, 0x0C8FF174, 0x4FC, 0x418, 0x0C390304, 0x0C38A37C, 0x5C,
+		0x0C3291D4, 0x0C401B14, 0x0C900C2C, 0x0C900E88, 0x0C900EA0, 0x0C900BB8, 0x0C327D60, 0x0C327D20, VER3 };
 	static constexpr Map V3_EXPORT = { 0x0C31DE58, 4, 0x0C2F4E24, 0x0C8FF174, 0x4FC, 0x418, 0x0C3873C4, 0x0C38143C, 0x5C,
-	                                   0x0C31DE54, 0x0C401B14, 0x0C900C2C, 0x0C900E88, 0x0C900EA0, 0x0C900BB8, 0x0C31C9E0,
-	                                   0x0C31C9A0, { "Myogi", "", "", "", "", "Irohazaka" } };
+		0x0C31DE54, 0x0C401B14, 0x0C900C2C, 0x0C900E88, 0x0C900EA0, 0x0C900BB8, 0x0C31C9E0, 0x0C31C9A0, VER3 };
 
 	explicit InitialD (const Map &map) : L (map) {}
 
@@ -1889,13 +1927,15 @@ public:
 		uint32_t total = H ? ram.u32 (H + 0x1C) : 0;
 		if (scene == 0)
 			out.state = State::ATTRACT;
+		/* The phase goes on some 60 frames after TIME IS UP, the car
+		 * braked to a stop */
 		else if (scene == RACE && H && ram.u32 (A - 0x34C) == 2)
-			out.state = State::RACE;
+			out.state = ram.i32 (T + 8) > 0 ? State::RACE : State::OVER;
 		else if (scene == RACE && H && ram.u32 (A - 0x2CC) == 2)
 			out.state = State::SELECT;
 		else if (scene == RACE && H && total > 0)
 			out.state = State::OVER;
-		/* Ver. 3: between the HUD freed and RESULT, the race's end word */
+		/* Between the HUD freed and RESULT, the race's end word */
 		else if (scene == RACE && L.ended && ram.u32 (L.ended) == 0x100)
 			out.state = State::OVER;
 		else if (scene == RACE)
@@ -1911,7 +1951,7 @@ public:
 		out.finished = out.state == State::OVER && finish;
 		out.transmission = ram.u32 (L.mt) == 1 ? "MT" : "AT";
 		uint32_t course = ram.u32 (L.course);
-		out.track = course < 6 ? L.courses[course] : "";
+		out.track = course < COURSES ? L.courses[course] : "";
 
 		const uint32_t B = L.car;
 		Vehicle &p = out.player;
@@ -2187,10 +2227,16 @@ make_decoder (Machine *mach)
 		return std::unique_ptr<Decoder> (new ClubKartPrize (ClubKartPrize::PRIZE));
 	if (!strcmp (name, "clubkpzb"))
 		return std::unique_ptr<Decoder> (new ClubKartPrize (ClubKartPrize::PRIZE_B));
-	if (!strcmp (name, "initdexp"))
-		return std::unique_ptr<Decoder> (new InitialD (InitialD::EXPORT));
-	if (!strcmp (name, "initdv3e"))
-		return std::unique_ptr<Decoder> (new InitialD (InitialD::V3_EXPORT));
+	static const struct { const char *name; const InitialD::Map &map; } initds[] = {
+		{ "initd", InitialD::INITD }, { "initdo", InitialD::INITDO },
+		{ "initdexp", InitialD::EXPORT }, { "initdexpo", InitialD::EXPORT_O },
+		{ "initdv2j", InitialD::V2 }, { "initdv2ja", InitialD::V2_A }, { "initdv2jo", InitialD::V2_O },
+		{ "initdv2e", InitialD::V2_EXPORT },
+		{ "initdv3j", InitialD::V3 }, { "initdv3jb", InitialD::V3_B }, { "initdv3e", InitialD::V3_EXPORT },
+	};
+	for (const auto &d : initds)
+		if (!strcmp (name, d.name))
+			return std::unique_ptr<Decoder> (new InitialD (d.map));
 	return NULL;
 }
 
