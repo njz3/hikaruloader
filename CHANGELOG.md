@@ -8,6 +8,10 @@ and released: [DEVELOPMENT.md](DEVELOPMENT.md), "Versions and releases".
 Next version
 ------------
 
+- Initial D's telemetry: the progress is just below 0 on the grid (it read
+  the lap's end) and the laps' count at the finish (it read one lap less);
+  the last and best laps count the last one at the finish; a time up is
+  no longer sent as finished.
 - A state saved on a full disk no longer stops the program: an error, and
   the state of that name kept as it was (it was left cut short).
 - Club Kart (all its sets) starts with its pedals' range made for the

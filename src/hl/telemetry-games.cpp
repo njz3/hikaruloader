@@ -1754,7 +1754,10 @@ public:
 		else
 			out.state = State::SELECT;
 		state = out.state;
-		out.finished = out.state == State::OVER;
+		/* The finish seen in the race's last frames (not a time up) */
+		if (out.state == State::RACE)
+			finish = false;
+		out.finished = out.state == State::OVER && finish;
 		out.transmission = ram.u32 (L.mt) == 1 ? "MT" : "AT";
 		uint32_t course = ram.u32 (L.course);
 		out.track = course < 6 ? L.courses[course] : "";
@@ -1778,6 +1781,11 @@ public:
 		}
 
 		out.time_left = (float) std::max (ram.i32 (T + 8), 0) / TICK;
+		/* The phase ends with time left at the finish, none at a time up */
+		if (out.state == State::OVER) {
+			finish = out.time_left > 0;
+			out.finished = finish;
+		}
 		out.race_time = (float) total / TICK;
 		/* The laps begun; the one running, the last, the best of those done */
 		int32_t laps[4];
@@ -1786,14 +1794,24 @@ public:
 			lap++;
 		if (lap)
 			out.lap_time = (float) laps[lap - 1] / TICK;
-		for (int k = 0; k + 1 < lap; k++) {
+		/* At the finish every lap begun is done */
+		int complete = out.finished ? lap : lap - 1;
+		for (int k = 0; k < complete; k++) {
 			out.last_lap = (float) laps[k] / TICK;
 			out.best_lap = std::isnan (out.best_lap) ? out.last_lap : std::min (out.best_lap, out.last_lap);
 		}
 		p.lap = lap;
 		p.position = (int) ram.u32 (H + 8) + 1;
 		const uint32_t F = H + L.fractions;
-		p.progress = lap ? (float) (lap - 1) + ram.f32 (F) : 0.0f;
+		/* The grid is behind the line: the fraction is the lap's end until
+		 * the car crosses it (no car goes half a lap in 10 s); at the
+		 * finish it is back to 0 with the last lap done */
+		float f = ram.f32 (F);
+		if (lap == 1 && f > 0.5f && out.race_time < 10.0f)
+			f -= 1.0f;
+		if (out.finished && f < 0.5f)
+			f += 1.0f;
+		p.progress = lap ? (float) (lap - 1) + f : 0.0f;
 		rival.position = 3 - p.position;
 		/* The rival's fraction of its own lap: within half a lap of the
 		 * player's */
@@ -1825,6 +1843,7 @@ private:
 
 	const Map &L;
 	State state = State::ATTRACT;
+	bool finish = false;
 };
 
 } /* namespace */

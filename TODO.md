@@ -155,9 +155,9 @@ The telemetry (`src/hl/telemetry-games.cpp`), what its decoders lack:
   Usui, Happogahara), no card; the race's laps (the course's screen only),
   a hit flag, the wheels' grounds, Time Attack, a card in the reader not
   checked; initdv3e on Myogi and Irohazaka (its other courses' ids not
-  seen); the progress reads the last lap's fraction until the start line
-  and stops at the last lap at the finish (2.0 for 3 laps); initd,
-  initdv2j and initdv3j not tried.
+  seen); the finish told from a time up only when seen (a state loaded
+  in the results says not finished); initd, initdv2j and initdv3j not
+  tried.
 - Tokyo Bus Guide: no decoder yet.
 - Gaelco Football and the other games: no decoder (not racing games).
 
