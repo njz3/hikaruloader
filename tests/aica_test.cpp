@@ -126,6 +126,9 @@ test_adpcm (void)
 	for (i = 0; i < 400; i++)
 		aica_adpcm_step (value, step, 0xF);
 	CHECK ("adpcm: bottom", value == -32768 && step == 0x6000, "value %d, step %X", value, step);
+	/* At the largest step, 15/8 of it held to 7FFF: from the bottom to -1 */
+	aica_adpcm_step (value, step, 7);
+	CHECK ("adpcm: difference in 15 bits", value == -1, "value %d", value);
 	for (i = 0; i < 200; i++)
 		aica_adpcm_step (value, step, 0);
 	CHECK ("adpcm: small steps shrink", step == 0x7F, "step %X", step);

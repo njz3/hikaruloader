@@ -5,6 +5,17 @@ What each version brings, for those who play. How the versions are numbered
 and released: [DEVELOPMENT.md](DEVELOPMENT.md), "Versions and releases".
 
 
+Next version
+------------
+
+- NAOMI: the music streamed from the cartridge plays (Crazy Taxi, 18
+  Wheeler): the games copy it by DMA straight into the sound RAM, where the
+  copy went nowhere; its two voices looped the same 0.7 s and drifted to a
+  silent offset, the effects alone heard.
+- AICA (NAOMI, Hikaru): an ADPCM sample's step at its largest adds 7FFF at
+  most, as MAME's and Flycast's; a long stream ends on four samples.
+
+
 0.8.5 (2026-11-15)
 ------------------
 

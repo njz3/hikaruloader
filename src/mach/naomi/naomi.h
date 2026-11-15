@@ -509,6 +509,7 @@ private:
 	void	 start_render ();
 	void	 ch2_dma ();
 	void	 g1_dma ();
+	void	 bus_write (uint32_t addr, const uint8_t *from, uint32_t len);
 	void	 g2_dma (unsigned ch);
 	void	 pvr_dma ();
 	void	 maple_step ();

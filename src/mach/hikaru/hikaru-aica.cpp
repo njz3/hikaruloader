@@ -652,7 +652,8 @@ void
 Aica::advance (Voice &v, const Slot &s)
 {
 	v.pos++;
-	if (v.pos >= s.lea) {
+	/* A long stream's end on four samples (MAME and Flycast have it so) */
+	if (v.pos >= (s.pcms == 3 ? (s.lea + 3) & ~3u : s.lea)) {
 		v.lp = true;
 		if (!s.lpctl) {
 			/* The end */

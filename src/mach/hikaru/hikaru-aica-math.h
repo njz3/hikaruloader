@@ -21,6 +21,8 @@
 
 #include <stdint.h>
 
+#include <algorithm>
+
 /* The AICA's arithmetic that needs no machine: the DSP's ring buffer floats,
  * the ADPCM decoder's step. hikaru-aica.cpp uses them; tests/aica_test.cpp
  * checks them. */
@@ -78,13 +80,15 @@ aica_dsp_unpack (uint16_t val)
 }
 
 /* Yamaha's ADPCM: one nibble decoded, value and step updated; the value
- * stays in 16 bits, the step in 7F-6000 */
+ * stays in 16 bits, the step in 7F-6000, the difference in 15 bits (the
+ * largest step's 15/8 would reach B400: as it was, a long stream's loud
+ * passages left its music an offset, nothing taking it back) */
 static inline int32_t
 aica_adpcm_step (int32_t &value, int32_t &step, unsigned nib)
 {
 	/* The step scaled by each nibble's magnitude */
 	static const int32_t scale[8] = { 230, 230, 230, 230, 307, 409, 512, 614 };
-	int32_t diff = (step * (int32_t) ((nib & 7) * 2 + 1)) >> 3;
+	int32_t diff = std::min ((step * (int32_t) ((nib & 7) * 2 + 1)) >> 3, 0x7FFF);
 
 	value += (nib & 8) ? -diff : diff;
 	value = aica_clamp (value, -32768, 32767);

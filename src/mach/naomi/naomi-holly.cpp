@@ -390,6 +390,38 @@ Holly::ch2_dma ()
 	after (1, IST_DMA_CH2);
 }
 
+/* A DMA's data written by the system bus, outside the main RAM: by pages
+ * where a RAM is (the AICA's), by words elsewhere (a device's; a ROM's
+ * taken nowhere) */
+void
+Holly::bus_write (uint32_t addr, const uint8_t *from, uint32_t len)
+{
+	hl::Mmap *map = board->mmap;
+	uint32_t i = 0;
+
+	while (i < len) {
+		uint32_t at = addr + i, n = std::min (len - i, 4096 - (at & 4095));
+		uint8_t *to = map->direct (at, true);
+
+		if (to)
+			memcpy (to, from + i, n);
+		else
+			for (uint32_t k = 0; k < n; ) {
+				if (n - k >= 4 && !((at + k) & 3)) {
+					uint32_t word;
+
+					memcpy (&word, from + i + k, 4);
+					map->put (4, at + k, word);
+					k += 4;
+				} else {
+					map->put (1, at + k, from[i + k]);
+					k++;
+				}
+			}
+		i += n;
+	}
+}
+
 void
 Holly::g1_dma ()
 {
@@ -399,19 +431,24 @@ Holly::g1_dma ()
 	 * Flycast has it) */
 	uint32_t star = g1[0x04 / 4] & ~31u, len = (g1[0x08 / 4] + 30) & ~30u;
 	uint32_t offs = star & (board->ram->size () - 1);
-	/* Aimed elsewhere (0: Strike Fighter's), the data read goes nowhere */
+	/* Aimed elsewhere, the data goes there by the system bus: the AICA's
+	 * RAM (Crazy Taxi's and 18 Wheeler's music, streamed from the
+	 * cartridge straight into its ring), nowhere where a ROM is (0:
+	 * Strike Fighter's) */
 	bool in_ram = (star & 0x1C000000) == 0x0C000000;
 
 	if (in_ram && offs + len > board->ram->size ())
 		len = board->ram->size () - offs;
 	if (g1[0x0C / 4] & 1) {
-		std::vector<uint8_t> nowhere (in_ram ? 0 : len);
-		uint8_t *to = in_ram ? (uint8_t *) board->ram->ptr (offs) : nowhere.data ();
+		std::vector<uint8_t> staged (in_ram ? 0 : len);
+		uint8_t *to = in_ram ? (uint8_t *) board->ram->ptr (offs) : staged.data ();
 
 		if (board->has_comm && board->comm.dma_to_ram (to, len)) {
 			/* From the communication board */
 		} else if (!board->link || !board->link->dma (len, to))
 			board->cart->dma (to, len);
+		if (!in_ram)
+			bus_write (star & 0x1FFFFFFF, to, len);
 		((Sh4 *) board->sh)->blocks.new_epoch ();
 	} else if (board->has_comm && in_ram) {
 		/* From the RAM to the communication board's */
