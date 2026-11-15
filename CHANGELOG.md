@@ -5,8 +5,8 @@ What each version brings, for those who play. How the versions are numbered
 and released: [DEVELOPMENT.md](DEVELOPMENT.md), "Versions and releases".
 
 
-Next version
-------------
+0.8.6 (2026-11-15)
+------------------
 
 - NAOMI: the music streamed from the cartridge plays (Crazy Taxi, 18
   Wheeler): the games copy it by DMA straight into the sound RAM, where the
