@@ -89,12 +89,15 @@ namespace gaelco {
  *	0, its table's size in 1 KB a page (0: the list is not used), the VRAM's
  *	address of its table of pages (their addresses >> 12)
  *
- * A list is a stream of 32-bit words, in pages, each ended by a zero or its end:
+ * A list is a stream of 32-bit words, in pages, each ended by a zero where a
+ * strip would be, or by its end:
  *
  *  31	A polygon header follows this word, and applies from this strip on:
  *	vertices' page, the page they go on in, the ISP/TSP word, the TSP word,
- *	the texture word (as the Dreamcast's)
+ *	the texture word (as the Dreamcast's; 0 for an untextured polygon, its
+ *	strips after it in the page: ATV Track's spider of SELECT CIRCUIT)
  *  30-24 The strip's triangles, one bit each, from bit 30
+ *  23-21 Its vertices' words beyond x, y and 1/w (as the ISP/TSP word gives)
  *  19-0 The first vertex: its offset, in words, from the vertices' page
  *
  * A vertex is x, y (pixels), 1/w, then u, v when textured (one word when they
@@ -167,8 +170,9 @@ vram_u32 (hl::Buffer *vram, uint32_t addr)
 
 /* The words of a list. Its table holds count pages, the first ones: those after
  * them, of a frame with more, are there still, their lists out of date. A zero
- * ends a page, not the list, which goes on in the next one with the same header;
- * a page's unused ones are all zeros */
+ * where a strip would be ends a page, not the list, which goes on in the next one
+ * with the same header; a page's unused words are all zeros. A header's words
+ * are read as they are: a zero there is a texture word */
 class ListReader {
 public:
 	ListReader (hl::Buffer *vram, uint32_t table, unsigned count) : vram (vram)
@@ -182,13 +186,26 @@ public:
 		}
 	}
 
-	/* 0 at the list's end */
+	/* A strip's word: 0 at the list's end */
 	uint32_t next ()
 	{
 		while (page < pages.size ()) {
 			uint32_t val = (word < 1024) ? vram_u32 (vram, pages[page] + word++ * 4) : 0;
 			if (val)
 				return val;
+			page++;
+			word = 0;
+		}
+		return 0;
+	}
+
+	/* A header's word, zero or not: an untextured polygon's texture word is
+	 * 0, and its strips follow it in the page */
+	uint32_t header_word ()
+	{
+		while (page < pages.size ()) {
+			if (word < 1024)
+				return vram_u32 (vram, pages[page] + word++ * 4);
 			page++;
 			word = 0;
 		}
@@ -274,7 +291,7 @@ add_list (Frame *frame, hl::Buffer *vram, uint32_t table, unsigned pages_used, b
 		if (word >> 31) {
 			uint32_t header[5], i;
 			for (i = 0; i < 5; i++)
-				header[i] = list.next ();
+				header[i] = list.header_word ();
 			pages.page[0] = header[0];
 			pages.page[1] = header[1];
 			isp = header[2];

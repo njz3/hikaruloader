@@ -5,6 +5,17 @@ What each version brings, for those who play. How the versions are numbered
 and released: [DEVELOPMENT.md](DEVELOPMENT.md), "Versions and releases".
 
 
+Next version
+------------
+
+- Gaelco: the untextured polygons, and all that came after them in their
+  page of the list, are drawn (an untextured polygon's texture word, 0, was
+  taken for the page's end; the next page's strips then drew with its
+  header). ATV Track's SELECT CIRCUIT shows the circuits' animals (the
+  tarantula on its leaf, the piranha...) and no longer the big coloured
+  spikes at the left; the dust behind a quad leaving the rider screen.
+
+
 0.8.4 (2026-11-15)
 ------------------
 
