@@ -5,8 +5,8 @@ What each version brings, for those who play. How the versions are numbered
 and released: [DEVELOPMENT.md](DEVELOPMENT.md), "Versions and releases".
 
 
-Next version
-------------
+0.8.5 (2026-11-15)
+------------------
 
 - Gaelco: the untextured polygons, and all that came after them in their
   page of the list, are drawn (an untextured polygon's texture word, 0, was
