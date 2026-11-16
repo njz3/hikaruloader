@@ -5,8 +5,8 @@ What each version brings, for those who play. How the versions are numbered
 and released: [DEVELOPMENT.md](DEVELOPMENT.md), "Versions and releases".
 
 
-Next version
-------------
+0.8.7 (2026-11-16)
+------------------
 
 - The picker's *Game options* (O, a controller's Y, a button in the game's
   pane): the chosen game's own settings without starting it (display,
