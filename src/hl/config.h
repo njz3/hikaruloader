@@ -168,17 +168,28 @@ public:
 	 * begin_game () before its machine is made, end_game () after */
 	static void	 begin_game (const char *name);
 	static void	 end_game ();
-	/* The game running ("" none), and whether it has a file of its own */
+	/* The game running, or whose settings the picker shows ("" none), and
+	 * whether it has settings of its own */
 	static const char *game ();
-	static bool	 game_has_file ();
+	static bool	 has_own_settings ();
+	/* Its file: the one read ("" none: the common settings alone), the one
+	 * written (the write directory's when there is one) */
+	static std::string game_file_read_path ();
+	static std::string game_file_write_path ();
+	/* False when the write directory cannot be written to: nothing is
+	 * written nor removed anywhere then (the files beside the program
+	 * never, with a write directory) */
+	static bool	 can_save ();
 	/* The settings now, those that differ from the common ones, into the
 	 * game's file; the common ones then stay as they were */
 	static bool	 save_for_game ();
 	/* The settings now into hikaruloader.ini, but those the game's file
 	 * sets, which keep their common value there */
 	static bool	 save_common ();
-	/* The game's file removed, the common settings back for it */
-	static void	 use_common_settings ();
+	/* The common settings back for the game: its file removed, or, with a
+	 * write directory and a file beside the program (never changed), one
+	 * without settings over it in the write directory */
+	static bool	 use_common_settings ();
 	/* A setting the game's file sets (section, key) */
 	static bool	 set_by_game (const char *section, const char *key);
 	/* Those a game cannot have of its own: the folders, the network... */

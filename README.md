@@ -108,7 +108,9 @@ Starting a game
 Started without arguments, Hikaruloader shows its picker: the Hikaru and
 Gaelco games whose files are all in the games folder, none when there are
 none. The arrows (or a controller's D-pad) choose, Enter (a controller's A,
-or a double click) launches, Tab opens the settings, Escape quits. The games
+or a double click) launches, O (a controller's Y, or the button in the game's
+pane) opens the game's options (see "Settings"), Tab opens the settings,
+Escape quits. The games
 folder is the one of the settings (Picker tab), else `roms` beside the
 program. There can be several, separated by `;`
 (`D:\roms;E:\mame\roms`), looked in in that order: the BIOS can be in one,
@@ -325,8 +327,20 @@ the common ones to `games/<set>.ini` (the aspect ratio, widescreen, the force
 feedback's gains...): that game reads them over `hikaruloader.ini` from then
 on, the others are not changed. *Common settings* removes that file. The
 picker's, the network's, the outputs', the telemetry's and the controls'
-settings stay common. With a write directory, `games/` is there, a file
-beside the program read when the write directory has none.
+settings stay common.
+
+The same for a game not started: in the picker, *Game options* (O, a
+controller's Y) shows the chosen game's display, enhancements, sound and
+emulation settings, and its Game tab when it has one, as the game will read
+them (`hikaruloader.ini`, its `games/<set>.ini` over it). *Save for <set>
+alone* writes them, taken at its next start; Escape (a controller's B) or
+*Close* leaves them unsaved. While they are open, Enter does not launch the
+game. With a write directory, `games/` is there, a file
+beside the program read when the write directory has none. The window shows
+the files read and the one written. Nothing beside the program is changed
+then: *Common settings* puts a file without settings in the write directory,
+over one beside the program. A write directory that cannot be written to
+saves nothing anywhere, and the window says so.
 
 **Display.** The picture's settings are those of linuxloader, Supermodel,
 Flycast and sm2-emu, under the same names in `hikaruloader.ini`; each takes

@@ -116,6 +116,10 @@ msgid "1 while player 1's bomb button is held"
 msgstr ""
 
 #: src/hl/outputs.cpp
+msgid "The wheel's force: bit 0 its direction, bits 1 to 4 its strength"
+msgstr ""
+
+#: src/hl/outputs.cpp
 msgid "Start button lamp"
 msgstr ""
 
@@ -125,6 +129,10 @@ msgstr ""
 
 #: src/hl/outputs.cpp
 msgid "Flap down lamp"
+msgstr ""
+
+#: src/hl/outputs.cpp
+msgid "View change button lamp"
 msgstr ""
 
 #: src/hl/outputs.cpp
@@ -204,10 +212,6 @@ msgid "Billboard lamp"
 msgstr ""
 
 #: src/hl/outputs.cpp
-msgid "View change button lamp"
-msgstr ""
-
-#: src/hl/outputs.cpp
 msgid "Boost button lamp"
 msgstr ""
 
@@ -260,11 +264,71 @@ msgid "Received from a client (BackForceFeeder): a real drive board's reply, whi
 msgstr ""
 
 #: src/hl/outputs.cpp
+msgid "3 bytes in hex"
+msgstr ""
+
+#: src/hl/outputs.cpp
+msgid "Each frame the game sends to its servo board 838-14174"
+msgstr ""
+
+#: src/hl/outputs.cpp
+msgid "bytes in hex"
+msgstr ""
+
+#: src/hl/outputs.cpp
+msgid "Received from a client (BackForceFeeder): a real servo board's answer, which the game reads instead of the emulated one"
+msgstr ""
+
+#: src/hl/outputs.cpp
+msgid "relayed"
+msgstr ""
+
+#: src/hl/outputs.cpp
 msgid "When the game ends"
 msgstr ""
 
 #: src/ui/ui_common.cpp
 msgid "Takes effect at the next start."
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "Invert the stick's up and down"
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "A controller moves the stick, and it stays where it is left; a mouse places it."
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "One board at a time"
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "Side by side in one window"
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "One window per board"
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "Several boards"
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "Monitor of window"
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "AUTO (the next one)"
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "not connected"
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "Applied when the settings close. F8 shows the next board."
 msgstr ""
 
 #: src/ui/ui_common.cpp
@@ -464,6 +528,14 @@ msgid "Hide the mouse pointer"
 msgstr ""
 
 #: src/ui/ui_common.cpp
+msgid "Capture the mouse with a click"
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "A click in the game's window keeps the mouse in it, hidden; Tab, Alt, the Windows key or another window let it go"
+msgstr ""
+
+#: src/ui/ui_common.cpp
 msgid "Draw on a thread of its own"
 msgstr ""
 
@@ -496,7 +568,7 @@ msgid "2D in widescreen"
 msgstr ""
 
 #: src/ui/ui_common.cpp
-msgid "The 3D seen wider, at 16:9, its middle as the game draws it; the 2D (texts, logos) at 4:3 in the middle, or stretched for a game that needs it. The game may leave objects out at the sides, made for 4:3. Takes effect at the game's next start."
+msgid "The 3D seen wider, at 16:9, its middle as the game draws it; the 2D (texts, logos) at 4:3 in the middle, or stretched for a game that needs it. The game may leave objects out at the sides, made for 4:3. Applied when the settings close."
 msgstr ""
 
 #: src/ui/ui_common.cpp
@@ -740,6 +812,14 @@ msgid "The SH-4s' clock: 200 MHz is the board's. Their timers, the MIE and the s
 msgstr ""
 
 #: src/ui/ui_common.cpp
+msgid "NAOMI SH-4 clock"
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "The SH-4 clock of the NAOMI, NAOMI 2 and Atomiswave: their games unpack their pictures by the time each frame leaves, so 200 MHz, the board's, by default: slower, pictures show before they are complete."
+msgstr ""
+
+#: src/ui/ui_common.cpp
 msgid "I/O board running its own program"
 msgstr ""
 
@@ -892,6 +972,14 @@ msgid "From the Arcade Database (adb.arcadeitalia.net, by motoschifo), into cach
 msgstr ""
 
 #: src/ui/ui_common.cpp
+msgid "Main keys"
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "By default; the Controls tab changes them."
+msgstr ""
+
+#: src/ui/ui_common.cpp
 msgid "Hikaru Loader, a SEGA Hikaru emulator."
 msgstr ""
 
@@ -924,11 +1012,47 @@ msgid "CRT presets: Lola Retro's, by Zoki (MIT licence, data/crt/lola-retro/LICE
 msgstr ""
 
 #: src/ui/ui_common.cpp
+msgid "Nothing is saved: the write folder cannot be written to (%s)."
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "Save for %s alone"
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "Saved for %s: what differs from the common settings"
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "Cannot write the settings of %s"
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "Only the settings that differ from the common ones, in games/<set>.ini, read over them each time this game starts."
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "Common settings"
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "The common settings again for %s."
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "Drops this game's own settings (its file); some take effect at its next start."
+msgstr ""
+
+#: src/ui/ui_common.cpp
 msgid "Settings"
 msgstr ""
 
 #: src/ui/ui_common.cpp
 msgid "Display"
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "Game"
 msgstr ""
 
 #: src/ui/ui_common.cpp
@@ -960,6 +1084,10 @@ msgid "About"
 msgstr ""
 
 #: src/ui/ui_common.cpp
+msgid "Save for all games"
+msgstr ""
+
+#: src/ui/ui_common.cpp
 msgid "Save"
 msgstr ""
 
@@ -971,8 +1099,28 @@ msgstr ""
 msgid "Cannot write %s"
 msgstr ""
 
+#: src/ui/ui_common.cpp
+msgid "Into hikaruloader.ini; the settings this game has of its own keep their common value there."
+msgstr ""
+
 #: src/ui/ui_common.cpp src/ui/ui_controls.cpp
 msgid "Close"
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "Options of %s"
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "As %s will read them: hikaruloader.ini's, with games/%s.ini's over them. Saved for this game alone, they are taken at its next start."
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "Read: %s"
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "Saved to: %s"
 msgstr ""
 
 #: src/ui/ui_controls.cpp
@@ -980,7 +1128,19 @@ msgid "All games"
 msgstr ""
 
 #: src/ui/ui_controls.cpp
-msgid "Stick and buttons"
+msgid "Player 1"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Player 2"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Player 3"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Player 4"
 msgstr ""
 
 #: src/ui/ui_controls.cpp
@@ -988,11 +1148,11 @@ msgid "Driving"
 msgstr ""
 
 #: src/ui/ui_controls.cpp
-msgid "Mouse and light gun games"
+msgid "Flying"
 msgstr ""
 
 #: src/ui/ui_controls.cpp
-msgid "Gaelco cabinets"
+msgid "Guns, mice and analog sticks"
 msgstr ""
 
 #: src/ui/ui_controls.cpp
@@ -1016,15 +1176,27 @@ msgid "Coin 2"
 msgstr ""
 
 #: src/ui/ui_controls.cpp
+msgid "Coin 3"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Coin 4"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Card: insert or take back"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Volume up"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Volume down"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
 msgid "Start"
-msgstr ""
-
-#: src/ui/ui_controls.cpp
-msgid "Player 2: start"
-msgstr ""
-
-#: src/ui/ui_controls.cpp
-msgid "Quit"
 msgstr ""
 
 #: src/ui/ui_controls.cpp
@@ -1060,7 +1232,15 @@ msgid "Button 4"
 msgstr ""
 
 #: src/ui/ui_controls.cpp
-msgid "Card: insert or take back"
+msgid "Button 5"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Button 6"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Player 2: start"
 msgstr ""
 
 #: src/ui/ui_controls.cpp
@@ -1092,6 +1272,106 @@ msgid "Player 2: button 3"
 msgstr ""
 
 #: src/ui/ui_controls.cpp
+msgid "Player 2: button 4"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Player 2: button 5"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Player 2: button 6"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Player 3: start"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Player 3: up"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Player 3: down"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Player 3: left"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Player 3: right"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Player 3: button 1"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Player 3: button 2"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Player 3: button 3"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Player 3: button 4"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Player 3: button 5"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Player 3: button 6"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Player 4: start"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Player 4: up"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Player 4: down"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Player 4: left"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Player 4: right"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Player 4: button 1"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Player 4: button 2"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Player 4: button 3"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Player 4: button 4"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Player 4: button 5"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Player 4: button 6"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
 msgid "Steering wheel"
 msgstr ""
 
@@ -1104,14 +1384,6 @@ msgid "Brake"
 msgstr ""
 
 #: src/ui/ui_controls.cpp
-msgid "Steer left (all the way)"
-msgstr ""
-
-#: src/ui/ui_controls.cpp
-msgid "Steer right (all the way)"
-msgstr ""
-
-#: src/ui/ui_controls.cpp
 msgid "Accelerator (all the way)"
 msgstr ""
 
@@ -1120,7 +1392,7 @@ msgid "Brake (all the way)"
 msgstr ""
 
 #: src/ui/ui_controls.cpp
-msgid "Change view (NASCAR Arcade)"
+msgid "Change view"
 msgstr ""
 
 #: src/ui/ui_controls.cpp
@@ -1129,6 +1401,14 @@ msgstr ""
 
 #: src/ui/ui_controls.cpp
 msgid "Shift down"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Reverse"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Neutral"
 msgstr ""
 
 #: src/ui/ui_controls.cpp
@@ -1148,7 +1428,31 @@ msgid "Gear 4"
 msgstr ""
 
 #: src/ui/ui_controls.cpp
-msgid "Neutral"
+msgid "Gear 5"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Gear 6"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Clutch"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Clutch (all the way)"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Horn"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Left brake lever"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Right brake lever"
 msgstr ""
 
 #: src/ui/ui_controls.cpp
@@ -1160,83 +1464,127 @@ msgid "Right lever (its engine's thrust)"
 msgstr ""
 
 #: src/ui/ui_controls.cpp
-msgid "Volume up (ATV Track, Smashing Drive)"
+msgid "Left lever (all the way)"
 msgstr ""
 
 #: src/ui/ui_controls.cpp
-msgid "Volume down (ATV Track, Smashing Drive)"
+msgid "Right lever (all the way)"
 msgstr ""
 
 #: src/ui/ui_controls.cpp
-msgid "Left brake lever (ATV Track)"
+msgid "Elevator (wheel pushed, pulled)"
 msgstr ""
 
 #: src/ui/ui_controls.cpp
-msgid "Right brake lever (ATV Track)"
+msgid "Aileron (wheel turned)"
 msgstr ""
 
 #: src/ui/ui_controls.cpp
-msgid "Horn, also start (Smashing Drive)"
+msgid "Rudder pedals"
 msgstr ""
 
 #: src/ui/ui_controls.cpp
-msgid "Sight left and right (Brave Firefighters)"
+msgid "Left thrust lever"
 msgstr ""
 
 #: src/ui/ui_controls.cpp
-msgid "Sight up and down (Brave Firefighters)"
+msgid "Right thrust lever"
 msgstr ""
 
 #: src/ui/ui_controls.cpp
-msgid "Water (Brave Firefighters)"
+msgid "Sight or gun left and right"
 msgstr ""
 
 #: src/ui/ui_controls.cpp
-msgid "Fog (Brave Firefighters)"
+msgid "Sight or gun up and down"
 msgstr ""
 
 #: src/ui/ui_controls.cpp
-msgid "Aimed off the screen (Brave Firefighters)"
+msgid "Trigger"
 msgstr ""
 
 #: src/ui/ui_controls.cpp
-msgid "Player 2's sight left and right"
+msgid "Gun off the screen, reload"
 msgstr ""
 
 #: src/ui/ui_controls.cpp
-msgid "Player 2's sight up and down"
+msgid "Second button"
 msgstr ""
 
 #: src/ui/ui_controls.cpp
-msgid "Player 2's water"
+msgid "Third button"
 msgstr ""
 
 #: src/ui/ui_controls.cpp
-msgid "Player 2's fog"
+msgid "Player 2's sight or gun left and right"
 msgstr ""
 
 #: src/ui/ui_controls.cpp
-msgid "Player 2 aimed off the screen"
+msgid "Player 2's sight or gun up and down"
 msgstr ""
 
 #: src/ui/ui_controls.cpp
-msgid "Stick left and right (Planet Harriers)"
+msgid "Player 2's trigger"
 msgstr ""
 
 #: src/ui/ui_controls.cpp
-msgid "Stick up and down (Planet Harriers)"
+msgid "Player 2's gun off the screen"
 msgstr ""
 
 #: src/ui/ui_controls.cpp
-msgid "Bullets (Planet Harriers)"
+msgid "Player 2's second button"
 msgstr ""
 
 #: src/ui/ui_controls.cpp
-msgid "Missiles (Planet Harriers)"
+msgid "Player 2's third button"
 msgstr ""
 
 #: src/ui/ui_controls.cpp
-msgid "Bombs (Planet Harriers)"
+msgid "Analog stick left and right"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Analog stick up and down"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Player 2's analog stick left and right"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Player 2's analog stick up and down"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Player 3's analog stick left and right"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Player 3's analog stick up and down"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Player 4's analog stick left and right"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Player 4's analog stick up and down"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Kick (its strength)"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Player 2's kick"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Player 3's kick"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Player 4's kick"
 msgstr ""
 
 #: src/ui/ui_controls.cpp
@@ -1268,7 +1616,15 @@ msgid "Back to the picker, or quit"
 msgstr ""
 
 #: src/ui/ui_controls.cpp
+msgid "Quit"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
 msgid "Show the frame rate"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Next board's picture (several boards)"
 msgstr ""
 
 #: src/ui/ui_controls.cpp
@@ -1297,6 +1653,14 @@ msgstr ""
 
 #: src/ui/ui_controls.cpp
 msgid "Default: %s"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Yes"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "No"
 msgstr ""
 
 #: src/ui/ui_controls.cpp
@@ -1336,15 +1700,75 @@ msgid "Reset..."
 msgstr ""
 
 #: src/ui/ui_controls.cpp
+msgid "Clear..."
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Save as a profile..."
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Its bindings to a file of its own, put on it each time it is first connected, on this PC or another: share it."
+msgstr ""
+
+#: src/ui/ui_controls.cpp
 msgid "Put this device's bindings back to the defaults?"
 msgstr ""
 
 #: src/ui/ui_controls.cpp
-msgid "Yes"
+msgid "Put this device's bindings back to its profile's?"
 msgstr ""
 
 #: src/ui/ui_controls.cpp
-msgid "No"
+msgid "Remove all of this device's bindings?"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Save this device's bindings as its profile, in the devices folder beside controls.ini?"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "The profile could not be written: see hikaruloader.log."
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "The profile is in:"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Give it to whoever has the same device: in their devices folder, it is put on it the first time it is connected."
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "No profile for this device: its defaults are the common ones."
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Profile: %s"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Its bindings when it is first connected, and what Default and Reset put back."
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid " (down, left)"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid " (up, right)"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid " (a key)"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "This game's controls"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "All the controls"
 msgstr ""
 
 #: src/ui/ui_controls.cpp
@@ -1372,23 +1796,15 @@ msgid "Your wheel turns %d degrees: the game's wheel takes its whole turn."
 msgstr ""
 
 #: src/ui/ui_controls.cpp
-msgid "Neutral when no gear is engaged"
-msgstr ""
-
-#: src/ui/ui_controls.cpp
-msgid "With an H shifter bound to Gear 1..4: its lever in none\nof the gears is in neutral, as on the cabinet. Off, the\nlast gear stays engaged until another is selected or\nNeutral is pressed."
-msgstr ""
-
-#: src/ui/ui_controls.cpp
 msgid "Neutral between gears"
 msgstr ""
 
 #: src/ui/ui_controls.cpp
-msgid "With Shift up and Shift down: a shift from one\ngear to another passes through neutral this long, as a\nreal lever does."
+msgid "A shift from one gear to another, by Shift up and\nShift down or an H shifter's buttons, passes through\nneutral this long, as a real lever does."
 msgstr ""
 
 #: src/ui/ui_controls.cpp
-msgid "NASCAR Arcade's four gears: Shift up and Shift down a gear at each press, or an H shifter's positions (Gear 1 to 4, Neutral), in the Driving section of a device's bindings. The game asks for AUTOMATIC or MANUAL at the start of a race."
+msgid "The gear levers held in their positions (NASCAR Arcade, F355, 18 Wheeler, Crazy Taxi, The King of Route 66...): Shift up and Shift down engage the next gear at each press; an H shifter's buttons (Reverse, Neutral, Gear 1 to 6, in the Driving section of a device's bindings) engage theirs when pressed, kept once let go. Neutral only by its button."
 msgstr ""
 
 #: src/ui/ui_controls.cpp
@@ -1444,19 +1860,23 @@ msgid "The joysticks, wheels and controllers go on working while another\nwindow
 msgstr ""
 
 #: src/ui/ui_controls.cpp
-msgid "Gear (NASCAR Arcade)"
+msgid "ON"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "OFF"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Gear"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "R"
 msgstr ""
 
 #: src/ui/ui_controls.cpp
 msgid "N"
-msgstr ""
-
-#: src/ui/ui_controls.cpp
-msgid "Left lever (Star Wars: Racer Arcade)"
-msgstr ""
-
-#: src/ui/ui_controls.cpp
-msgid "Right lever (Star Wars: Racer Arcade)"
 msgstr ""
 
 #: src/ui/ui_controls.cpp
@@ -1469,6 +1889,10 @@ msgstr ""
 
 #: src/ui/ui_controls.cpp
 msgid "In controls.ini"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "(profile)"
 msgstr ""
 
 #: src/ui/ui_controls.cpp
@@ -1488,11 +1912,31 @@ msgid "The bindings are in %s, apart from the emulator's settings."
 msgstr ""
 
 #: src/ui/ui_controls.cpp
+msgid "%s has bindings of its own."
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Use the common bindings"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Its file is removed; the common controls.ini is used for it again."
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Save these bindings for %s alone"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "They go to a file of the game's own, read instead of controls.ini when it starts; the changes made from then on go there."
+msgstr ""
+
+#: src/ui/ui_controls.cpp
 msgid "What the game receives"
 msgstr ""
 
 #: src/ui/ui_controls.cpp
-msgid "Gear shifter (NASCAR Arcade)"
+msgid "Gear lever"
 msgstr ""
 
 #: src/ui/ui_controls.cpp
@@ -1568,7 +2012,7 @@ msgid "Select a game"
 msgstr ""
 
 #: src/ui/ui_picker.cpp
-msgid "Enter: launch   Tab: settings   Esc: quit"
+msgid "Enter: launch   O: game options   Tab: settings   Esc: quit"
 msgstr ""
 
 #: src/ui/ui_picker.cpp
@@ -1577,10 +2021,6 @@ msgstr ""
 
 #: src/ui/ui_picker.cpp
 msgid "%d of %d games ready in %s"
-msgstr ""
-
-#: src/ui/ui_picker.cpp
-msgid "No game is defined in data/games.json."
 msgstr ""
 
 #: src/ui/ui_picker.cpp
@@ -1593,6 +2033,10 @@ msgstr ""
 
 #: src/ui/ui_picker.cpp
 msgid "System"
+msgstr ""
+
+#: src/ui/ui_picker.cpp
+msgid "Game options (O)"
 msgstr ""
 
 #: src/ui/ui_picker.cpp

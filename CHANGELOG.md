@@ -5,6 +5,22 @@ What each version brings, for those who play. How the versions are numbered
 and released: [DEVELOPMENT.md](DEVELOPMENT.md), "Versions and releases".
 
 
+Next version
+------------
+
+- The picker's *Game options* (O, a controller's Y, a button in the game's
+  pane): the chosen game's own settings without starting it (display,
+  enhancements, sound, emulation, its Game tab), as it will read them, saved
+  for it alone in `games/<set>.ini`; Escape or B closes them unsaved, Enter
+  does not launch the game meanwhile.
+- The game's settings follow the write directory, in the picker and in a
+  game: the window shows the files read and the one written; *Common
+  settings* no longer leaves a file beside the program in use (one without
+  settings is put over it in the write directory); a write directory that
+  cannot be written to saves nothing anywhere, the window saying so, its
+  buttons off.
+
+
 0.8.6 (2026-11-15)
 ------------------
 

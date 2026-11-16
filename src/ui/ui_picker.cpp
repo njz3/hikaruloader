@@ -30,6 +30,7 @@
 #include <vector>
 
 #include <imgui.h>
+#include <jansson.h>
 
 #include "hl/config.h"
 #include "hl/input.h"
@@ -61,6 +62,60 @@ struct Picker
     bool scrollToSelected = true;
     bool settingsOpen = false;
     int launch = -1;
+    // A game's own settings (O, a controller's Y, its button): the entry shown
+    // in them, -1 none. hl::Config holds that game's while they are open
+    int gameSettings = -1;
+    bool openGameSettings = false; // asked this frame, opened between two frames
+    bool popupWasOpen = false;     // a list of that window open at the last frame: B closes it, not the window
+
+    bool anyWindowOpen() const { return settingsOpen || gameSettings >= 0; }
+
+    void beginGameSettings(int index)
+    {
+        gameSettings = index;
+        hl::Config::begin_game(game(entries[index]).name);
+    }
+
+    // Closed without saving: the common settings back, what was not saved forgotten
+    void endGameSettings()
+    {
+        if (gameSettings < 0)
+            return;
+        gameSettings = -1;
+        hl::Config::end_game();
+    }
+
+    // What its Game tab shows, from games.json: its monitors (the "screens"
+    // listed, else its boards), an analog stick among its controls; each
+    // field the game's, else its parent's, as hl::GameControls takes them
+    void gameTabFacts(int index, int *screens, bool *stick) const
+    {
+        const hl::GameEntry &g = game(entries[index]);
+        const hl::GameEntry *parent = g.parent[0] ? list->find(g.parent) : nullptr;
+        auto field = [&](const char *name) {
+            json_t *value = g.root ? json_object_get(g.root, name) : nullptr;
+            if (!value && parent && parent->root)
+                value = json_object_get(parent->root, name);
+            return value;
+        };
+        *screens = 1;
+        *stick = false;
+        json_t *listed = field("screens"), *boards = field("boards");
+        if (json_is_array(listed) && json_array_size(listed) > 0)
+            *screens = (int)json_array_size(listed);
+        else if (json_is_integer(boards))
+            *screens = (int)json_integer_value(boards);
+        auto isStick = [](const char *name) { return !strcmp(name, "P1_StickY") || !strcmp(name, "P2_StickY"); };
+        size_t i;
+        json_t *value;
+        json_array_foreach(field("uses"), i, value)
+            if (json_is_string(value) && isStick(json_string_value(value)))
+                *stick = true;
+        const char *key;
+        json_object_foreach(field("controls"), key, value)
+            if (isStick(key))
+                *stick = true;
+    }
 
     void scan()
     {
@@ -135,7 +190,7 @@ struct Picker
         }
 
         ImGui::TextUnformatted(ui::tr("Select a game"));
-        const char *hint = ui::tr("Enter: launch   Tab: settings   Esc: quit");
+        const char *hint = ui::tr("Enter: launch   O: game options   Tab: settings   Esc: quit");
         ImGui::SameLine(ImGui::GetWindowWidth() - ImGui::CalcTextSize(hint).x - ImGui::GetStyle().WindowPadding.x);
         ImGui::TextDisabled("%s", hint);
         ImGui::Separator();
@@ -167,8 +222,9 @@ struct Picker
         const int columns = std::max(1, (int)(gridW / (tile.x + ImGui::GetStyle().ItemSpacing.x)));
         const int count = (int)entries.size();
 
-        // The picker drives the selection itself, so the pane and the launch follow the highlighted tile
-        if (!settingsOpen)
+        // The picker drives the selection itself, so the pane and the launch follow the highlighted tile;
+        // not while a settings window is open (Enter there is the window's)
+        if (!anyWindowOpen())
         {
             auto pressed = [](ImGuiKey key) { return ImGui::IsKeyPressed(key, true); };
             int sel = selected;
@@ -188,6 +244,8 @@ struct Picker
             }
             if (pressed(ImGuiKey_Enter) || pressed(ImGuiKey_KeypadEnter) || pressed(ImGuiKey_GamepadFaceDown))
                 launch = selected;
+            if (ImGui::IsKeyPressed(ImGuiKey_O, false) || ImGui::IsKeyPressed(ImGuiKey_GamepadFaceUp, false))
+                openGameSettings = true;
         }
 
         ImGui::BeginChild("##grid", ImVec2(gridW, 0.0f), false);
@@ -267,6 +325,11 @@ struct Picker
         statusText(cur, status, sizeof(status));
         ImGui::Text(ui::tr("%s: %s"), ui::tr("Status"), status);
         ImGui::Text(ui::tr("%s: %s"), ui::tr("System"), list->system_name (cur.index).c_str ());
+        // Its own settings, the game not started (games/<set>.ini)
+        ImGui::BeginDisabled(anyWindowOpen());
+        if (ImGui::Button(ui::tr("Game options (O)")))
+            openGameSettings = true;
+        ImGui::EndDisabled();
         ImGui::Spacing();
         ImGui::TextDisabled("%s", ui::tr("Cabinet"));
         ImGui::Text(ui::tr("%s: %s"), ui::tr("Link"),
@@ -328,6 +391,11 @@ bool ui::Interface::pick_game (hl::GameList *list, char *name, size_t size, cons
     hl::Window::set_title (nullptr);
     SDL_ShowCursor(SDL_ENABLE);
     ImGui::GetIO().ConfigFlags &= ~ImGuiConfigFlags_NoMouseCursorChange;
+    // A game's options left open: the common settings back, whatever ends the picker
+    struct CommonBack
+    {
+        ~CommonBack() { hl::Config::end_game(); }
+    } commonBack;
 
     while (true)
     {
@@ -344,6 +412,13 @@ bool ui::Interface::pick_game (hl::GameList *list, char *name, size_t size, cons
                 return false;
             const bool escape = event.type == SDL_KEYDOWN && !event.key.repeat &&
                                 event.key.keysym.sym == SDLK_ESCAPE;
+            // The game's options: Escape or Back (Guide + B) closes them, unsaved; Tab waits for them to close
+            if (picker.gameSettings >= 0 && (escape || action == hl::ACTION_BACK || action == hl::ACTION_SETTINGS))
+            {
+                if (action != hl::ACTION_SETTINGS)
+                    picker.endGameSettings();
+                continue;
+            }
             // Escape or the Back input (Guide + B) closes the settings
             if (action == hl::ACTION_SETTINGS || ((escape || action == hl::ACTION_BACK) && picker.settingsOpen))
             {
@@ -367,12 +442,43 @@ bool ui::Interface::pick_game (hl::GameList *list, char *name, size_t size, cons
                 if (!open)
                     p->settingsOpen = false;
             }
+            if (p->gameSettings >= 0)
+            {
+                bool open = true;
+                int screens;
+                bool stick;
+                p->gameTabFacts(p->gameSettings, &screens, &stick);
+                ui::drawGameSettings(&open, p->game(p->entries[p->gameSettings]).description, screens, stick);
+                // A controller's B closes them too, unsaved, but first a list opened in them
+                if (ImGui::IsKeyPressed(ImGuiKey_GamepadFaceRight, false) && !p->popupWasOpen)
+                    open = false;
+                p->popupWasOpen = ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId);
+                if (!open)
+                    p->endGameSettings();
+            }
         }, &picker);
+
+        // Asked by O, Y or the pane's button: that game's settings read as it reads them
+        if (picker.openGameSettings)
+        {
+            picker.openGameSettings = false;
+            if (!picker.anyWindowOpen() && !picker.entries.empty())
+            {
+                picker.beginGameSettings(std::clamp(picker.selected, 0, (int)picker.entries.size() - 1));
+                picker.popupWasOpen = false;
+            }
+        }
 
         // The folders changed in the settings
         if (ui::takeRescanRequest(picker.settingsOpen))
+        {
+            picker.endGameSettings();
             picker.scan();
+        }
 
+        // Not while the game's options are open: Enter and the clicks are theirs
+        if (picker.gameSettings >= 0)
+            picker.launch = -1;
         if (picker.launch >= 0)
         {
             const Entry &entry = picker.entries[picker.launch];

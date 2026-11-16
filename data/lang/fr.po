@@ -119,6 +119,10 @@ msgid "1 while player 1's bomb button is held"
 msgstr "1 tant que le bouton bombes du joueur 1 est appuyé"
 
 #: src/hl/outputs.cpp
+msgid "The wheel's force: bit 0 its direction, bits 1 to 4 its strength"
+msgstr "La force du volant : bit 0 son sens, bits 1 à 4 sa force"
+
+#: src/hl/outputs.cpp
 msgid "Start button lamp"
 msgstr "Lampe du bouton Start"
 
@@ -129,6 +133,10 @@ msgstr "Lampe des volets rentrés"
 #: src/hl/outputs.cpp
 msgid "Flap down lamp"
 msgstr "Lampe des volets sortis"
+
+#: src/hl/outputs.cpp
+msgid "View change button lamp"
+msgstr "Lampe du bouton de changement de vue"
 
 #: src/hl/outputs.cpp
 msgid "Landing gear up lamp"
@@ -207,10 +215,6 @@ msgid "Billboard lamp"
 msgstr "Lampe de l'enseigne"
 
 #: src/hl/outputs.cpp
-msgid "View change button lamp"
-msgstr "Lampe du bouton de changement de vue"
-
-#: src/hl/outputs.cpp
 msgid "Boost button lamp"
 msgstr "Lampe du bouton Boost"
 
@@ -263,12 +267,72 @@ msgid "Received from a client (BackForceFeeder): a real drive board's reply, whi
 msgstr "Reçu d'un client (BackForceFeeder) : la réponse d'une vraie carte de pilotage, que le jeu lit au lieu de celle émulée"
 
 #: src/hl/outputs.cpp
+msgid "3 bytes in hex"
+msgstr "3 octets en hexadécimal"
+
+#: src/hl/outputs.cpp
+msgid "Each frame the game sends to its servo board 838-14174"
+msgstr "Chaque trame que le jeu envoie à sa carte servo 838-14174"
+
+#: src/hl/outputs.cpp
+msgid "bytes in hex"
+msgstr "octets en hexadécimal"
+
+#: src/hl/outputs.cpp
+msgid "Received from a client (BackForceFeeder): a real servo board's answer, which the game reads instead of the emulated one"
+msgstr "Reçu d'un client (BackForceFeeder) : la réponse d'une vraie carte servo, que le jeu lit au lieu de celle émulée"
+
+#: src/hl/outputs.cpp
+msgid "relayed"
+msgstr "relayé"
+
+#: src/hl/outputs.cpp
 msgid "When the game ends"
 msgstr "Quand le jeu se termine"
 
 #: src/ui/ui_common.cpp
 msgid "Takes effect at the next start."
 msgstr "Prise en compte au prochain lancement."
+
+#: src/ui/ui_common.cpp
+msgid "Invert the stick's up and down"
+msgstr "Inverser le haut et le bas du manche"
+
+#: src/ui/ui_common.cpp
+msgid "A controller moves the stick, and it stays where it is left; a mouse places it."
+msgstr "Une manette déplace le manche, qui reste là où on le laisse ; une souris le place directement."
+
+#: src/ui/ui_common.cpp
+msgid "One board at a time"
+msgstr "Une carte à la fois"
+
+#: src/ui/ui_common.cpp
+msgid "Side by side in one window"
+msgstr "Côte à côte dans une fenêtre"
+
+#: src/ui/ui_common.cpp
+msgid "One window per board"
+msgstr "Une fenêtre par carte"
+
+#: src/ui/ui_common.cpp
+msgid "Several boards"
+msgstr "Plusieurs cartes"
+
+#: src/ui/ui_common.cpp
+msgid "Monitor of window"
+msgstr "Moniteur de la fenêtre"
+
+#: src/ui/ui_common.cpp
+msgid "AUTO (the next one)"
+msgstr "AUTO (le suivant)"
+
+#: src/ui/ui_common.cpp
+msgid "not connected"
+msgstr "non connecté"
+
+#: src/ui/ui_common.cpp
+msgid "Applied when the settings close. F8 shows the next board."
+msgstr "Appliqué à la fermeture des réglages. F8 montre la carte suivante."
 
 #: src/ui/ui_common.cpp
 msgid "Vulkan 1.3 (to come)"
@@ -466,9 +530,11 @@ msgstr "Afficher le numéro d'image dans la barre de titre"
 msgid "Hide the mouse pointer"
 msgstr "Masquer le pointeur de la souris"
 
+#: src/ui/ui_common.cpp
 msgid "Capture the mouse with a click"
 msgstr "Capturer la souris d'un clic"
 
+#: src/ui/ui_common.cpp
 msgid "A click in the game's window keeps the mouse in it, hidden; Tab, Alt, the Windows key or another window let it go"
 msgstr "Un clic dans la fenêtre du jeu y garde la souris, masquée ; Tab, Alt, la touche Windows ou une autre fenêtre la libèrent"
 
@@ -741,102 +807,20 @@ msgid "How the CPUs find their RAM and ROM: the page table at once, the regions 
 msgstr "Comment les processeurs trouvent leur RAM et leur ROM : la table de pages d'un coup, les régions parcourues l'une après l'autre (la première méthode), le fastmem à leurs propres adresses dans l'espace d'adressage du PC. La même machine dans tous les cas : le changement prend effet à l'image suivante."
 
 #: src/ui/ui_common.cpp
-msgid "Main keys"
-msgstr "Touches principales"
-
-msgid "By default; the Controls tab changes them."
-msgstr "Par défaut ; l'onglet Contrôles permet de les changer."
-
-msgid "Opens and closes the settings"
-msgstr "Ouvre et ferme les paramètres"
-
-msgid "Loads the state chosen, the latest by default"
-msgstr "Charge l'état choisi, le plus récent par défaut"
-
-msgid "Chooses the state to load: a newer one"
-msgstr "Choisit l'état à charger : un plus récent"
-
-msgid "Chooses the state to load: an older one"
-msgstr "Choisit l'état à charger : un plus ancien"
-
-msgid "Saves the state, as the latest of the five kept"
-msgstr "Sauvegarde l'état, comme le plus récent des cinq gardés"
-
-msgid "Test: the game's test menu"
-msgstr "Test : le menu de test du jeu"
-
-msgid "Service"
-msgstr "Service"
-
-msgid "The card: in the reader, or taken back"
-msgstr "La carte : dans le lecteur, ou reprise"
-
-msgid "NAOMI cabinets of several boards: the next board's picture"
-msgstr "Bornes NAOMI à plusieurs cartes : l'image de la carte suivante"
-
-msgid "Quits the emulator"
-msgstr "Quitte l'émulateur"
-
-msgid "Shows and hides the frame rate"
-msgstr "Affiche et masque le nombre d'images par seconde"
-
-msgid "Pauses and resumes the game"
-msgstr "Met le jeu en pause et le reprend"
-
-msgid "Back to the picker the game was started from, else quits"
-msgstr "Retour au catalogue d'où le jeu a été lancé, sinon quitte"
-
-msgid "Coins"
-msgstr "Pièces"
-
-msgid "Full screen or window"
-msgstr "Plein écran ou fenêtre"
-
-msgid "Invert the stick's up and down"
-msgstr "Inverser le haut et le bas du manche"
-
-msgid "A controller moves the stick, and it stays where it is left; a mouse places it."
-msgstr "Une manette déplace le manche, qui reste là où on le laisse ; une souris le place directement."
-
-msgid "Game"
-msgstr "Jeu"
-
-msgid "Several boards"
-msgstr "Plusieurs cartes"
-
-msgid "One board at a time"
-msgstr "Une carte à la fois"
-
-msgid "Side by side in one window"
-msgstr "Côte à côte dans une fenêtre"
-
-msgid "One window per board"
-msgstr "Une fenêtre par carte"
-
-msgid "Monitor of window"
-msgstr "Moniteur de la fenêtre"
-
-msgid "AUTO (the next one)"
-msgstr "AUTO (le suivant)"
-
-msgid "not connected"
-msgstr "non connecté"
-
-msgid "Applied when the settings close. F8 shows the next board."
-msgstr "Appliqué à la fermeture des réglages. F8 montre la carte suivante."
-
-msgid "NAOMI SH-4 clock"
-msgstr "Horloge du SH-4 NAOMI"
-
-msgid "The SH-4 clock of the NAOMI, NAOMI 2 and Atomiswave: their games unpack their pictures by the time each frame leaves, so 200 MHz, the board's, by default: slower, pictures show before they are complete."
-msgstr "L'horloge du SH-4 des NAOMI, NAOMI 2 et Atomiswave : leurs jeux décompressent leurs images dans le temps que laisse chaque image, d'où 200 MHz, celle de la carte, par défaut ; plus lent, des images s'affichent avant d'être complètes."
-
 msgid "SH-4 clock"
 msgstr "Horloge des SH-4"
 
 #: src/ui/ui_common.cpp
 msgid "The SH-4s' clock: 200 MHz is the board's. Their timers, the MIE and the sound keep real time at any clock; the faster, the more of the PC the waits the games poll take (at 200 MHz, the games' boots run below 60 frames a second on this PC). 150 MHz by default: at 100 MHz some games show graphical glitches; below, Air Trix's skater loses his body."
 msgstr "L'horloge des SH-4 : 200 MHz est celle de la carte. Leurs minuteries, le MIE et le son gardent le temps réel à toute horloge ; plus elle est rapide, plus les attentes que les jeux font en boucle prennent de PC (à 200 MHz, les démarrages des jeux tournent sous 60 images par seconde sur ce PC). 150 MHz par défaut : à 100 MHz, certains jeux ont des défauts graphiques ; en dessous, le skateur d'Air Trix perd son corps."
+
+#: src/ui/ui_common.cpp
+msgid "NAOMI SH-4 clock"
+msgstr "Horloge du SH-4 NAOMI"
+
+#: src/ui/ui_common.cpp
+msgid "The SH-4 clock of the NAOMI, NAOMI 2 and Atomiswave: their games unpack their pictures by the time each frame leaves, so 200 MHz, the board's, by default: slower, pictures show before they are complete."
+msgstr "L'horloge du SH-4 des NAOMI, NAOMI 2 et Atomiswave : leurs jeux décompressent leurs images dans le temps que laisse chaque image, d'où 200 MHz, celle de la carte, par défaut ; plus lent, des images s'affichent avant d'être complètes."
 
 #: src/ui/ui_common.cpp
 msgid "I/O board running its own program"
@@ -991,6 +975,14 @@ msgid "From the Arcade Database (adb.arcadeitalia.net, by motoschifo), into cach
 msgstr "Depuis l'Arcade Database (adb.arcadeitalia.net, par motoschifo), dans cache/artwork : un jeu à la fois, ceux trouvés, chacun demandé une seule fois. Vos propres images s'affichent de toute façon : artwork/ à côté du programme, <set>.png ou .jpg, ou les dossiers titles/, snap/, flyers/ et marquees/ de MAME."
 
 #: src/ui/ui_common.cpp
+msgid "Main keys"
+msgstr "Touches principales"
+
+#: src/ui/ui_common.cpp
+msgid "By default; the Controls tab changes them."
+msgstr "Par défaut ; l'onglet Contrôles permet de les changer."
+
+#: src/ui/ui_common.cpp
 msgid "Hikaru Loader, a SEGA Hikaru emulator."
 msgstr "Hikaru Loader, un émulateur du SEGA Hikaru."
 
@@ -1023,12 +1015,48 @@ msgid "CRT presets: Lola Retro's, by Zoki (MIT licence, data/crt/lola-retro/LICE
 msgstr "Préréglages CRT : ceux de Lola Retro, par Zoki (licence MIT, data/crt/lola-retro/LICENSE), tels qu'Odin les fournit. La lecture des préréglages, leurs passes et les bezels dérivent de ceux d'Odin, par Réda Chérif-Touil (GPL v3 ou ultérieure)."
 
 #: src/ui/ui_common.cpp
+msgid "Nothing is saved: the write folder cannot be written to (%s)."
+msgstr "Rien n'est sauvegardé : le dossier d'écriture ne peut pas être écrit (%s)."
+
+#: src/ui/ui_common.cpp
+msgid "Save for %s alone"
+msgstr "Enregistrer pour %s seul"
+
+#: src/ui/ui_common.cpp
+msgid "Saved for %s: what differs from the common settings"
+msgstr "Enregistré pour %s : ce qui diffère des réglages communs"
+
+#: src/ui/ui_common.cpp
+msgid "Cannot write the settings of %s"
+msgstr "Impossible d'écrire les réglages de %s"
+
+#: src/ui/ui_common.cpp
+msgid "Only the settings that differ from the common ones, in games/<set>.ini, read over them each time this game starts."
+msgstr "Seuls les réglages qui diffèrent des réglages communs, dans games/<set>.ini, lus par-dessus à chaque lancement de ce jeu."
+
+#: src/ui/ui_common.cpp
+msgid "Common settings"
+msgstr "Réglages communs"
+
+#: src/ui/ui_common.cpp
+msgid "The common settings again for %s."
+msgstr "Les réglages communs de nouveau pour %s."
+
+#: src/ui/ui_common.cpp
+msgid "Drops this game's own settings (its file); some take effect at its next start."
+msgstr "Abandonne les réglages propres à ce jeu (son fichier) ; certains prennent effet à son prochain lancement."
+
+#: src/ui/ui_common.cpp
 msgid "Settings"
 msgstr "Paramètres"
 
 #: src/ui/ui_common.cpp
 msgid "Display"
 msgstr "Affichage"
+
+#: src/ui/ui_common.cpp
+msgid "Game"
+msgstr "Jeu"
 
 #: src/ui/ui_common.cpp
 msgid "Enhancements"
@@ -1059,6 +1087,10 @@ msgid "About"
 msgstr "À propos"
 
 #: src/ui/ui_common.cpp
+msgid "Save for all games"
+msgstr "Enregistrer pour tous les jeux"
+
+#: src/ui/ui_common.cpp
 msgid "Save"
 msgstr "Sauvegarder"
 
@@ -1070,83 +1102,61 @@ msgstr "Sauvegardé dans %s"
 msgid "Cannot write %s"
 msgstr "Impossible d'écrire %s"
 
+#: src/ui/ui_common.cpp
+msgid "Into hikaruloader.ini; the settings this game has of its own keep their common value there."
+msgstr "Dans hikaruloader.ini ; les réglages propres à ce jeu y gardent leur valeur commune."
+
 #: src/ui/ui_common.cpp src/ui/ui_controls.cpp
 msgid "Close"
 msgstr "Fermer"
+
+#: src/ui/ui_common.cpp
+msgid "Options of %s"
+msgstr "Options de %s"
+
+#: src/ui/ui_common.cpp
+msgid "As %s will read them: hikaruloader.ini's, with games/%s.ini's over them. Saved for this game alone, they are taken at its next start."
+msgstr "Telles que %s les lira : celles de hikaruloader.ini, avec celles de games/%s.ini par-dessus. Enregistrées pour ce jeu seul, elles sont prises à son prochain lancement."
+
+#: src/ui/ui_common.cpp
+msgid "Read: %s"
+msgstr "Lus : %s"
+
+#: src/ui/ui_common.cpp
+msgid "Saved to: %s"
+msgstr "Enregistrés dans : %s"
 
 #: src/ui/ui_controls.cpp
 msgid "All games"
 msgstr "Tous les jeux"
 
 #: src/ui/ui_controls.cpp
-msgid "Stick and buttons"
-msgstr "Manette et boutons"
+msgid "Player 1"
+msgstr "Joueur 1"
+
+#: src/ui/ui_controls.cpp
+msgid "Player 2"
+msgstr "Joueur 2"
+
+#: src/ui/ui_controls.cpp
+msgid "Player 3"
+msgstr "Joueur 3"
+
+#: src/ui/ui_controls.cpp
+msgid "Player 4"
+msgstr "Joueur 4"
 
 #: src/ui/ui_controls.cpp
 msgid "Driving"
 msgstr "Conduite"
 
 #: src/ui/ui_controls.cpp
-msgid "Mouse, light gun and analog stick games"
-msgstr "Jeux à la souris, au light gun ou au manche analogique"
+msgid "Flying"
+msgstr "Avion"
 
 #: src/ui/ui_controls.cpp
-msgid "Gaelco cabinets"
-msgstr "Bornes Gaelco"
-
-msgid "Save for all games"
-msgstr "Enregistrer pour tous les jeux"
-
-msgid "Into hikaruloader.ini; the settings this game has of its own keep their common value there."
-msgstr "Dans hikaruloader.ini ; les réglages propres à ce jeu y gardent leur valeur commune."
-
-msgid "Save for %s alone"
-msgstr "Enregistrer pour %s seul"
-
-msgid "Saved for %s: what differs from the common settings"
-msgstr "Enregistré pour %s : ce qui diffère des réglages communs"
-
-msgid "Cannot write the settings of %s"
-msgstr "Impossible d'écrire les réglages de %s"
-
-msgid "Only the settings that differ from the common ones, in games/<set>.ini, read over them each time this game starts."
-msgstr "Seuls les réglages qui diffèrent des réglages communs, dans games/<set>.ini, lus par-dessus à chaque lancement de ce jeu."
-
-msgid "Common settings"
-msgstr "Réglages communs"
-
-msgid "The common settings again for this game (its file removed)."
-msgstr "Les réglages communs de nouveau pour ce jeu (son fichier supprimé)."
-
-msgid "Removes this game's own settings file; some settings take effect at its next start."
-msgstr "Supprime le fichier de réglages propre à ce jeu ; certains réglages prennent effet à son prochain lancement."
-
-msgid "NAOMI and Atomiswave games (their own rows)"
-msgstr "Jeux NAOMI et Atomiswave (leurs propres lignes)"
-
-msgid "This game's controls"
-msgstr "Contrôles de ce jeu"
-
-msgid " (down, left)"
-msgstr " (bas, gauche)"
-
-msgid " (up, right)"
-msgstr " (haut, droite)"
-
-msgid "%s has bindings of its own."
-msgstr "%s a ses propres assignations."
-
-msgid "Use the common bindings"
-msgstr "Utiliser les assignations communes"
-
-msgid "Its file is removed; the common controls.ini is used for it again."
-msgstr "Son fichier est supprimé ; le controls.ini commun lui sert de nouveau."
-
-msgid "Save these bindings for %s alone"
-msgstr "Enregistrer ces assignations pour %s seul"
-
-msgid "They go to a file of the game's own, read instead of controls.ini when it starts; the changes made from then on go there."
-msgstr "Elles vont dans un fichier propre au jeu, lu à la place de controls.ini à son lancement ; les changements faits ensuite y vont."
+msgid "Guns, mice and analog sticks"
+msgstr "Pistolets, souris et manches analogiques"
 
 #: src/ui/ui_controls.cpp
 msgid "Emulator"
@@ -1169,16 +1179,28 @@ msgid "Coin 2"
 msgstr "Pièce 2"
 
 #: src/ui/ui_controls.cpp
+msgid "Coin 3"
+msgstr "Pièce 3"
+
+#: src/ui/ui_controls.cpp
+msgid "Coin 4"
+msgstr "Pièce 4"
+
+#: src/ui/ui_controls.cpp
+msgid "Card: insert or take back"
+msgstr "Carte : insérer ou reprendre"
+
+#: src/ui/ui_controls.cpp
+msgid "Volume up"
+msgstr "Volume plus"
+
+#: src/ui/ui_controls.cpp
+msgid "Volume down"
+msgstr "Volume moins"
+
+#: src/ui/ui_controls.cpp
 msgid "Start"
 msgstr "Start"
-
-#: src/ui/ui_controls.cpp
-msgid "Player 2: start"
-msgstr "Joueur 2 : start"
-
-#: src/ui/ui_controls.cpp
-msgid "Quit"
-msgstr "Quitter"
 
 #: src/ui/ui_controls.cpp
 msgid "Up"
@@ -1212,15 +1234,17 @@ msgstr "Bouton 3"
 msgid "Button 4"
 msgstr "Bouton 4"
 
+#: src/ui/ui_controls.cpp
 msgid "Button 5"
 msgstr "Bouton 5"
 
+#: src/ui/ui_controls.cpp
 msgid "Button 6"
 msgstr "Bouton 6"
 
 #: src/ui/ui_controls.cpp
-msgid "Card: insert or take back"
-msgstr "Carte : insérer ou reprendre"
+msgid "Player 2: start"
+msgstr "Joueur 2 : start"
 
 #: src/ui/ui_controls.cpp
 msgid "Player 2: up"
@@ -1251,6 +1275,106 @@ msgid "Player 2: button 3"
 msgstr "Joueur 2 : bouton 3"
 
 #: src/ui/ui_controls.cpp
+msgid "Player 2: button 4"
+msgstr "Joueur 2 : bouton 4"
+
+#: src/ui/ui_controls.cpp
+msgid "Player 2: button 5"
+msgstr "Joueur 2 : bouton 5"
+
+#: src/ui/ui_controls.cpp
+msgid "Player 2: button 6"
+msgstr "Joueur 2 : bouton 6"
+
+#: src/ui/ui_controls.cpp
+msgid "Player 3: start"
+msgstr "Joueur 3 : start"
+
+#: src/ui/ui_controls.cpp
+msgid "Player 3: up"
+msgstr "Joueur 3 : haut"
+
+#: src/ui/ui_controls.cpp
+msgid "Player 3: down"
+msgstr "Joueur 3 : bas"
+
+#: src/ui/ui_controls.cpp
+msgid "Player 3: left"
+msgstr "Joueur 3 : gauche"
+
+#: src/ui/ui_controls.cpp
+msgid "Player 3: right"
+msgstr "Joueur 3 : droite"
+
+#: src/ui/ui_controls.cpp
+msgid "Player 3: button 1"
+msgstr "Joueur 3 : bouton 1"
+
+#: src/ui/ui_controls.cpp
+msgid "Player 3: button 2"
+msgstr "Joueur 3 : bouton 2"
+
+#: src/ui/ui_controls.cpp
+msgid "Player 3: button 3"
+msgstr "Joueur 3 : bouton 3"
+
+#: src/ui/ui_controls.cpp
+msgid "Player 3: button 4"
+msgstr "Joueur 3 : bouton 4"
+
+#: src/ui/ui_controls.cpp
+msgid "Player 3: button 5"
+msgstr "Joueur 3 : bouton 5"
+
+#: src/ui/ui_controls.cpp
+msgid "Player 3: button 6"
+msgstr "Joueur 3 : bouton 6"
+
+#: src/ui/ui_controls.cpp
+msgid "Player 4: start"
+msgstr "Joueur 4 : start"
+
+#: src/ui/ui_controls.cpp
+msgid "Player 4: up"
+msgstr "Joueur 4 : haut"
+
+#: src/ui/ui_controls.cpp
+msgid "Player 4: down"
+msgstr "Joueur 4 : bas"
+
+#: src/ui/ui_controls.cpp
+msgid "Player 4: left"
+msgstr "Joueur 4 : gauche"
+
+#: src/ui/ui_controls.cpp
+msgid "Player 4: right"
+msgstr "Joueur 4 : droite"
+
+#: src/ui/ui_controls.cpp
+msgid "Player 4: button 1"
+msgstr "Joueur 4 : bouton 1"
+
+#: src/ui/ui_controls.cpp
+msgid "Player 4: button 2"
+msgstr "Joueur 4 : bouton 2"
+
+#: src/ui/ui_controls.cpp
+msgid "Player 4: button 3"
+msgstr "Joueur 4 : bouton 3"
+
+#: src/ui/ui_controls.cpp
+msgid "Player 4: button 4"
+msgstr "Joueur 4 : bouton 4"
+
+#: src/ui/ui_controls.cpp
+msgid "Player 4: button 5"
+msgstr "Joueur 4 : bouton 5"
+
+#: src/ui/ui_controls.cpp
+msgid "Player 4: button 6"
+msgstr "Joueur 4 : bouton 6"
+
+#: src/ui/ui_controls.cpp
 msgid "Steering wheel"
 msgstr "Volant"
 
@@ -1261,14 +1385,6 @@ msgstr "Accélérateur"
 #: src/ui/ui_controls.cpp
 msgid "Brake"
 msgstr "Frein"
-
-#: src/ui/ui_controls.cpp
-msgid "Steer left (all the way)"
-msgstr "Volant à gauche (à fond)"
-
-#: src/ui/ui_controls.cpp
-msgid "Steer right (all the way)"
-msgstr "Volant à droite (à fond)"
 
 #: src/ui/ui_controls.cpp
 msgid "Accelerator (all the way)"
@@ -1291,6 +1407,14 @@ msgid "Shift down"
 msgstr "Rapport inf."
 
 #: src/ui/ui_controls.cpp
+msgid "Reverse"
+msgstr "Marche arrière"
+
+#: src/ui/ui_controls.cpp
+msgid "Neutral"
+msgstr "Point mort"
+
+#: src/ui/ui_controls.cpp
 msgid "Gear 1"
 msgstr "Vitesse 1"
 
@@ -1307,8 +1431,32 @@ msgid "Gear 4"
 msgstr "Vitesse 4"
 
 #: src/ui/ui_controls.cpp
-msgid "Neutral"
-msgstr "Point mort"
+msgid "Gear 5"
+msgstr "Vitesse 5"
+
+#: src/ui/ui_controls.cpp
+msgid "Gear 6"
+msgstr "Vitesse 6"
+
+#: src/ui/ui_controls.cpp
+msgid "Clutch"
+msgstr "Embrayage"
+
+#: src/ui/ui_controls.cpp
+msgid "Clutch (all the way)"
+msgstr "Embrayage (à fond)"
+
+#: src/ui/ui_controls.cpp
+msgid "Horn"
+msgstr "Klaxon"
+
+#: src/ui/ui_controls.cpp
+msgid "Left brake lever"
+msgstr "Levier de frein gauche"
+
+#: src/ui/ui_controls.cpp
+msgid "Right brake lever"
+msgstr "Levier de frein droit"
 
 #: src/ui/ui_controls.cpp
 msgid "Left lever (its engine's thrust)"
@@ -1319,24 +1467,32 @@ msgid "Right lever (its engine's thrust)"
 msgstr "Levier droit (la poussée de son réacteur)"
 
 #: src/ui/ui_controls.cpp
-msgid "Volume up (ATV Track, Smashing Drive)"
-msgstr "Volume + (ATV Track, Smashing Drive)"
+msgid "Left lever (all the way)"
+msgstr "Levier gauche (à fond)"
 
 #: src/ui/ui_controls.cpp
-msgid "Volume down (ATV Track, Smashing Drive)"
-msgstr "Volume - (ATV Track, Smashing Drive)"
+msgid "Right lever (all the way)"
+msgstr "Levier droit (à fond)"
 
 #: src/ui/ui_controls.cpp
-msgid "Left brake lever (ATV Track)"
-msgstr "Levier de frein gauche (ATV Track)"
+msgid "Elevator (wheel pushed, pulled)"
+msgstr "Profondeur (manche poussé, tiré)"
 
 #: src/ui/ui_controls.cpp
-msgid "Right brake lever (ATV Track)"
-msgstr "Levier de frein droit (ATV Track)"
+msgid "Aileron (wheel turned)"
+msgstr "Ailerons (manche tourné)"
 
 #: src/ui/ui_controls.cpp
-msgid "Horn, also start (Smashing Drive)"
-msgstr "Klaxon, démarre aussi (Smashing Drive)"
+msgid "Rudder pedals"
+msgstr "Palonnier"
+
+#: src/ui/ui_controls.cpp
+msgid "Left thrust lever"
+msgstr "Manette des gaz gauche"
+
+#: src/ui/ui_controls.cpp
+msgid "Right thrust lever"
+msgstr "Manette des gaz droite"
 
 #: src/ui/ui_controls.cpp
 msgid "Sight or gun left and right"
@@ -1347,16 +1503,20 @@ msgid "Sight or gun up and down"
 msgstr "Viseur ou pistolet, haut et bas"
 
 #: src/ui/ui_controls.cpp
-msgid "Trigger (Brave Firefighters: water)"
-msgstr "Gâchette (Brave Firefighters : eau)"
-
-#: src/ui/ui_controls.cpp
-msgid "Fog (Brave Firefighters)"
-msgstr "Brouillard (Brave Firefighters)"
+msgid "Trigger"
+msgstr "Gâchette"
 
 #: src/ui/ui_controls.cpp
 msgid "Gun off the screen, reload"
 msgstr "Pistolet hors de l'écran, recharger"
+
+#: src/ui/ui_controls.cpp
+msgid "Second button"
+msgstr "Deuxième bouton"
+
+#: src/ui/ui_controls.cpp
+msgid "Third button"
+msgstr "Troisième bouton"
 
 #: src/ui/ui_controls.cpp
 msgid "Player 2's sight or gun left and right"
@@ -1371,12 +1531,16 @@ msgid "Player 2's trigger"
 msgstr "Gâchette du joueur 2"
 
 #: src/ui/ui_controls.cpp
-msgid "Player 2's fog"
-msgstr "Brouillard du joueur 2"
-
-#: src/ui/ui_controls.cpp
 msgid "Player 2's gun off the screen"
 msgstr "Pistolet du joueur 2 hors de l'écran"
+
+#: src/ui/ui_controls.cpp
+msgid "Player 2's second button"
+msgstr "Deuxième bouton du joueur 2"
+
+#: src/ui/ui_controls.cpp
+msgid "Player 2's third button"
+msgstr "Troisième bouton du joueur 2"
 
 #: src/ui/ui_controls.cpp
 msgid "Analog stick left and right"
@@ -1387,16 +1551,44 @@ msgid "Analog stick up and down"
 msgstr "Manche analogique, haut et bas"
 
 #: src/ui/ui_controls.cpp
-msgid "Bullets (Planet Harriers)"
-msgstr "Balles (Planet Harriers)"
+msgid "Player 2's analog stick left and right"
+msgstr "Manche analogique du joueur 2, gauche et droite"
 
 #: src/ui/ui_controls.cpp
-msgid "Missiles (Planet Harriers)"
-msgstr "Missiles (Planet Harriers)"
+msgid "Player 2's analog stick up and down"
+msgstr "Manche analogique du joueur 2, haut et bas"
 
 #: src/ui/ui_controls.cpp
-msgid "Bombs (Planet Harriers)"
-msgstr "Bombes (Planet Harriers)"
+msgid "Player 3's analog stick left and right"
+msgstr "Manche analogique du joueur 3, gauche et droite"
+
+#: src/ui/ui_controls.cpp
+msgid "Player 3's analog stick up and down"
+msgstr "Manche analogique du joueur 3, haut et bas"
+
+#: src/ui/ui_controls.cpp
+msgid "Player 4's analog stick left and right"
+msgstr "Manche analogique du joueur 4, gauche et droite"
+
+#: src/ui/ui_controls.cpp
+msgid "Player 4's analog stick up and down"
+msgstr "Manche analogique du joueur 4, haut et bas"
+
+#: src/ui/ui_controls.cpp
+msgid "Kick (its strength)"
+msgstr "Tir (sa force)"
+
+#: src/ui/ui_controls.cpp
+msgid "Player 2's kick"
+msgstr "Tir du joueur 2"
+
+#: src/ui/ui_controls.cpp
+msgid "Player 3's kick"
+msgstr "Tir du joueur 3"
+
+#: src/ui/ui_controls.cpp
+msgid "Player 4's kick"
+msgstr "Tir du joueur 4"
 
 #: src/ui/ui_controls.cpp
 msgid "Pause"
@@ -1427,8 +1619,16 @@ msgid "Back to the picker, or quit"
 msgstr "Retour au catalogue, ou quitter"
 
 #: src/ui/ui_controls.cpp
+msgid "Quit"
+msgstr "Quitter"
+
+#: src/ui/ui_controls.cpp
 msgid "Show the frame rate"
 msgstr "Afficher la fréquence d'images"
+
+#: src/ui/ui_controls.cpp
+msgid "Next board's picture (several boards)"
+msgstr "Image de la carte suivante (plusieurs cartes)"
 
 #: src/ui/ui_controls.cpp
 msgid "Stick moving a sight"
@@ -1457,6 +1657,14 @@ msgstr "Défaut"
 #: src/ui/ui_controls.cpp
 msgid "Default: %s"
 msgstr "Par défaut : %s"
+
+#: src/ui/ui_controls.cpp
+msgid "Yes"
+msgstr "Oui"
+
+#: src/ui/ui_controls.cpp
+msgid "No"
+msgstr "Non"
 
 #: src/ui/ui_controls.cpp
 msgid "Press an input of %s for: %s"
@@ -1495,16 +1703,76 @@ msgid "Reset..."
 msgstr "Réinitialiser..."
 
 #: src/ui/ui_controls.cpp
+msgid "Clear..."
+msgstr "Effacer..."
+
+#: src/ui/ui_controls.cpp
+msgid "Save as a profile..."
+msgstr "Enregistrer comme profil..."
+
+#: src/ui/ui_controls.cpp
+msgid "Its bindings to a file of its own, put on it each time it is first connected, on this PC or another: share it."
+msgstr "Ses assignations dans un fichier à lui, posées sur lui à son premier branchement, sur ce PC ou un autre : à partager."
+
+#: src/ui/ui_controls.cpp
 msgid "Put this device's bindings back to the defaults?"
 msgstr "Remettre les assignations de ce périphérique par défaut ?"
 
 #: src/ui/ui_controls.cpp
-msgid "Yes"
-msgstr "Oui"
+msgid "Put this device's bindings back to its profile's?"
+msgstr "Remettre les assignations de ce périphérique à celles de son profil ?"
 
 #: src/ui/ui_controls.cpp
-msgid "No"
-msgstr "Non"
+msgid "Remove all of this device's bindings?"
+msgstr "Retirer toutes les assignations de ce périphérique ?"
+
+#: src/ui/ui_controls.cpp
+msgid "Save this device's bindings as its profile, in the devices folder beside controls.ini?"
+msgstr "Enregistrer les assignations de ce périphérique comme son profil, dans le dossier devices à côté de controls.ini ?"
+
+#: src/ui/ui_controls.cpp
+msgid "The profile could not be written: see hikaruloader.log."
+msgstr "Le profil n'a pas pu être écrit : voir hikaruloader.log."
+
+#: src/ui/ui_controls.cpp
+msgid "The profile is in:"
+msgstr "Le profil est dans :"
+
+#: src/ui/ui_controls.cpp
+msgid "Give it to whoever has the same device: in their devices folder, it is put on it the first time it is connected."
+msgstr "Donnez-le à qui a le même périphérique : dans son dossier devices, il est posé dessus à son premier branchement."
+
+#: src/ui/ui_controls.cpp
+msgid "No profile for this device: its defaults are the common ones."
+msgstr "Pas de profil pour ce périphérique : ses défauts sont les communs."
+
+#: src/ui/ui_controls.cpp
+msgid "Profile: %s"
+msgstr "Profil : %s"
+
+#: src/ui/ui_controls.cpp
+msgid "Its bindings when it is first connected, and what Default and Reset put back."
+msgstr "Ses assignations à son premier branchement, et ce que Défaut et Réinitialiser remettent."
+
+#: src/ui/ui_controls.cpp
+msgid " (down, left)"
+msgstr " (bas, gauche)"
+
+#: src/ui/ui_controls.cpp
+msgid " (up, right)"
+msgstr " (haut, droite)"
+
+#: src/ui/ui_controls.cpp
+msgid " (a key)"
+msgstr " (une touche)"
+
+#: src/ui/ui_controls.cpp
+msgid "This game's controls"
+msgstr "Contrôles de ce jeu"
+
+#: src/ui/ui_controls.cpp
+msgid "All the controls"
+msgstr "Tous les contrôles"
 
 #: src/ui/ui_controls.cpp
 msgid "Its whole turn"
@@ -1539,8 +1807,8 @@ msgid "A shift from one gear to another, by Shift up and\nShift down or an H shi
 msgstr "D'une vitesse à l'autre, par Rapport sup. et Rapport inf.\nou les boutons d'un levier en H, passage par le point mort\npendant ce temps, comme avec un vrai levier."
 
 #: src/ui/ui_controls.cpp
-msgid "NASCAR Arcade's four gears: Shift up and Shift down a gear at each press, or an H shifter's positions (Gear 1 to 4, Neutral), in the Driving section of a device's bindings. The game asks for AUTOMATIC or MANUAL at the start of a race."
-msgstr "Les quatre vitesses de NASCAR Arcade : Rapport sup. et Rapport inf. passent une vitesse à chaque appui, ou les positions d'un levier en H (Vitesse 1 à 4, Point mort), dans la section Conduite des associations d'un périphérique. Le jeu demande AUTOMATIC ou MANUAL au départ d'une course."
+msgid "The gear levers held in their positions (NASCAR Arcade, F355, 18 Wheeler, Crazy Taxi, The King of Route 66...): Shift up and Shift down engage the next gear at each press; an H shifter's buttons (Reverse, Neutral, Gear 1 to 6, in the Driving section of a device's bindings) engage theirs when pressed, kept once let go. Neutral only by its button."
+msgstr "Les leviers de vitesses qui restent en position (NASCAR Arcade, F355, 18 Wheeler, Crazy Taxi, The King of Route 66...) : Rapport sup. et Rapport inf. engagent la vitesse suivante à chaque appui ; les boutons d'une grille en H (Marche arrière, Point mort, Rapports 1 à 6, dans la section Conduite des associations d'un périphérique) engagent la leur quand on les appuie, gardée une fois relâchés. Le point mort seulement par son bouton."
 
 #: src/ui/ui_controls.cpp
 msgid "Combined: the accelerator and the wheel"
@@ -1595,20 +1863,24 @@ msgid "The joysticks, wheels and controllers go on working while another\nwindow
 msgstr "Les joysticks, volants et manettes continuent de répondre quand une\nautre fenêtre a le focus, leurs raccourcis aussi. Le clavier ne répond\nque si la fenêtre a le focus."
 
 #: src/ui/ui_controls.cpp
-msgid "Gear (NASCAR Arcade)"
-msgstr "Vitesse (NASCAR Arcade)"
+msgid "ON"
+msgstr "ON"
+
+#: src/ui/ui_controls.cpp
+msgid "OFF"
+msgstr "OFF"
+
+#: src/ui/ui_controls.cpp
+msgid "Gear"
+msgstr "Rapport"
+
+#: src/ui/ui_controls.cpp
+msgid "R"
+msgstr "R"
 
 #: src/ui/ui_controls.cpp
 msgid "N"
 msgstr "N"
-
-#: src/ui/ui_controls.cpp
-msgid "Left lever (Star Wars: Racer Arcade)"
-msgstr "Levier gauche (Star Wars: Racer Arcade)"
-
-#: src/ui/ui_controls.cpp
-msgid "Right lever (Star Wars: Racer Arcade)"
-msgstr "Levier droit (Star Wars: Racer Arcade)"
 
 #: src/ui/ui_controls.cpp
 msgid "The agent drives the game: the keyboard and the controllers are not read."
@@ -1621,6 +1893,10 @@ msgstr "Périphériques"
 #: src/ui/ui_controls.cpp
 msgid "In controls.ini"
 msgstr "Dans controls.ini"
+
+#: src/ui/ui_controls.cpp
+msgid "(profile)"
+msgstr "(profil)"
 
 #: src/ui/ui_controls.cpp
 msgid "No controller connected."
@@ -1639,12 +1915,32 @@ msgid "The bindings are in %s, apart from the emulator's settings."
 msgstr "Les assignations sont dans %s, à part des réglages de l'émulateur."
 
 #: src/ui/ui_controls.cpp
+msgid "%s has bindings of its own."
+msgstr "%s a ses propres assignations."
+
+#: src/ui/ui_controls.cpp
+msgid "Use the common bindings"
+msgstr "Utiliser les assignations communes"
+
+#: src/ui/ui_controls.cpp
+msgid "Its file is removed; the common controls.ini is used for it again."
+msgstr "Son fichier est supprimé ; le controls.ini commun lui sert de nouveau."
+
+#: src/ui/ui_controls.cpp
+msgid "Save these bindings for %s alone"
+msgstr "Enregistrer ces assignations pour %s seul"
+
+#: src/ui/ui_controls.cpp
+msgid "They go to a file of the game's own, read instead of controls.ini when it starts; the changes made from then on go there."
+msgstr "Elles vont dans un fichier propre au jeu, lu à la place de controls.ini à son lancement ; les changements faits ensuite y vont."
+
+#: src/ui/ui_controls.cpp
 msgid "What the game receives"
 msgstr "Ce que le jeu reçoit"
 
 #: src/ui/ui_controls.cpp
-msgid "Gear shifter (NASCAR Arcade)"
-msgstr "Levier de vitesses (NASCAR Arcade)"
+msgid "Gear lever"
+msgstr "Levier de vitesses"
 
 #: src/ui/ui_controls.cpp
 msgid "Levers (Star Wars: Racer Arcade)"
@@ -1719,8 +2015,8 @@ msgid "Select a game"
 msgstr "Choisissez un jeu"
 
 #: src/ui/ui_picker.cpp
-msgid "Enter: launch   Tab: settings   Esc: quit"
-msgstr "Entrée : lancer   Tab : paramètres   Échap : quitter"
+msgid "Enter: launch   O: game options   Tab: settings   Esc: quit"
+msgstr "Entrée : lancer   O : options du jeu   Tab : paramètres   Échap : quitter"
 
 #: src/ui/ui_picker.cpp
 msgid "%d of %d games ready in %d folders"
@@ -1729,10 +2025,6 @@ msgstr "%d jeux prêts sur %d dans %d dossiers"
 #: src/ui/ui_picker.cpp
 msgid "%d of %d games ready in %s"
 msgstr "%d jeux prêts sur %d dans %s"
-
-#: src/ui/ui_picker.cpp
-msgid "No game is defined in data/games.json."
-msgstr "Aucun jeu n'est défini dans data/games.json."
 
 #: src/ui/ui_picker.cpp
 msgid "%s: %s"
@@ -1745,6 +2037,10 @@ msgstr "État"
 #: src/ui/ui_picker.cpp
 msgid "System"
 msgstr "Système"
+
+#: src/ui/ui_picker.cpp
+msgid "Game options (O)"
+msgstr "Options du jeu (O)"
 
 #: src/ui/ui_picker.cpp
 msgid "Cabinet"
@@ -1883,269 +2179,131 @@ msgstr "Chargement de %s..."
 #~ msgid "The SH-4s' clock: 200 MHz is the board's. Their timers, the MIE and the sound keep real time at any clock; the faster, the more of the PC the waits the games poll take (at 200 MHz, the games' boots run below 60 frames a second on this PC). 100 MHz by default; below, Air Trix's skater loses his body."
 #~ msgstr "L'horloge des SH-4 : 200 MHz est celle de la carte. Leurs minuteries, le MIE et le son gardent le temps réel à toute horloge ; plus elle est rapide, plus les attentes que les jeux font en boucle prennent de PC (à 200 MHz, les démarrages des jeux tournent sous 60 images par seconde sur ce PC). 100 MHz par défaut ; en dessous, le skateur d'Air Trix perd son corps."
 
-msgid "Flying games"
-msgstr "Jeux d'avion"
+#~ msgid "Opens and closes the settings"
+#~ msgstr "Ouvre et ferme les paramètres"
 
-msgid " (a key)"
-msgstr " (une touche)"
+#~ msgid "Loads the state chosen, the latest by default"
+#~ msgstr "Charge l'état choisi, le plus récent par défaut"
 
-msgid "Player 2's analog stick left and right"
-msgstr "Manche analogique du joueur 2, gauche et droite"
+#~ msgid "Chooses the state to load: a newer one"
+#~ msgstr "Choisit l'état à charger : un plus récent"
 
-msgid "Player 2's analog stick up and down"
-msgstr "Manche analogique du joueur 2, haut et bas"
+#~ msgid "Chooses the state to load: an older one"
+#~ msgstr "Choisit l'état à charger : un plus ancien"
 
-msgid "Player 3's analog stick left and right"
-msgstr "Manche analogique du joueur 3, gauche et droite"
+#~ msgid "Saves the state, as the latest of the five kept"
+#~ msgstr "Sauvegarde l'état, comme le plus récent des cinq gardés"
 
-msgid "Player 3's analog stick up and down"
-msgstr "Manche analogique du joueur 3, haut et bas"
+#~ msgid "Test: the game's test menu"
+#~ msgstr "Test : le menu de test du jeu"
 
-msgid "Player 4's analog stick left and right"
-msgstr "Manche analogique du joueur 4, gauche et droite"
+#~ msgid "Service"
+#~ msgstr "Service"
 
-msgid "Player 4's analog stick up and down"
-msgstr "Manche analogique du joueur 4, haut et bas"
+#~ msgid "The card: in the reader, or taken back"
+#~ msgstr "La carte : dans le lecteur, ou reprise"
 
-msgid "Kick (its strength)"
-msgstr "Tir (sa force)"
+#~ msgid "NAOMI cabinets of several boards: the next board's picture"
+#~ msgstr "Bornes NAOMI à plusieurs cartes : l'image de la carte suivante"
 
-msgid "Player 2's kick"
-msgstr "Tir du joueur 2"
+#~ msgid "Quits the emulator"
+#~ msgstr "Quitte l'émulateur"
 
-msgid "Player 3's kick"
-msgstr "Tir du joueur 3"
+#~ msgid "Shows and hides the frame rate"
+#~ msgstr "Affiche et masque le nombre d'images par seconde"
 
-msgid "Player 4's kick"
-msgstr "Tir du joueur 4"
+#~ msgid "Pauses and resumes the game"
+#~ msgstr "Met le jeu en pause et le reprend"
 
-msgid "Elevator (wheel pushed, pulled)"
-msgstr "Profondeur (manche poussé, tiré)"
+#~ msgid "Back to the picker the game was started from, else quits"
+#~ msgstr "Retour au catalogue d'où le jeu a été lancé, sinon quitte"
 
-msgid "Aileron (wheel turned)"
-msgstr "Ailerons (manche tourné)"
+#~ msgid "Coins"
+#~ msgstr "Pièces"
 
-msgid "Rudder pedals"
-msgstr "Palonnier"
+#~ msgid "Full screen or window"
+#~ msgstr "Plein écran ou fenêtre"
 
-msgid "Left thrust lever"
-msgstr "Manette des gaz gauche"
+#~ msgid "Stick and buttons"
+#~ msgstr "Manette et boutons"
 
-msgid "Right thrust lever"
-msgstr "Manette des gaz droite"
+#~ msgid "Mouse, light gun and analog stick games"
+#~ msgstr "Jeux à la souris, au light gun ou au manche analogique"
 
-msgid "Player 1"
-msgstr "Joueur 1"
+#~ msgid "Gaelco cabinets"
+#~ msgstr "Bornes Gaelco"
 
-msgid "Player 2"
-msgstr "Joueur 2"
+#~ msgid "NAOMI and Atomiswave games (their own rows)"
+#~ msgstr "Jeux NAOMI et Atomiswave (leurs propres lignes)"
 
-msgid "Flying"
-msgstr "Avion"
+#~ msgid "Steer left (all the way)"
+#~ msgstr "Volant à gauche (à fond)"
 
-msgid "Guns, mice and analog sticks"
-msgstr "Pistolets, souris et manches analogiques"
+#~ msgid "Steer right (all the way)"
+#~ msgstr "Volant à droite (à fond)"
 
-msgid "Volume up"
-msgstr "Volume plus"
+#~ msgid "Volume up (ATV Track, Smashing Drive)"
+#~ msgstr "Volume + (ATV Track, Smashing Drive)"
 
-msgid "Volume down"
-msgstr "Volume moins"
+#~ msgid "Volume down (ATV Track, Smashing Drive)"
+#~ msgstr "Volume - (ATV Track, Smashing Drive)"
 
-msgid "Player 2: button 4"
-msgstr "Joueur 2 : bouton 4"
+#~ msgid "Left brake lever (ATV Track)"
+#~ msgstr "Levier de frein gauche (ATV Track)"
 
-msgid "Player 2: button 5"
-msgstr "Joueur 2 : bouton 5"
+#~ msgid "Right brake lever (ATV Track)"
+#~ msgstr "Levier de frein droit (ATV Track)"
 
-msgid "Player 2: button 6"
-msgstr "Joueur 2 : bouton 6"
+#~ msgid "Horn, also start (Smashing Drive)"
+#~ msgstr "Klaxon, démarre aussi (Smashing Drive)"
 
-msgid "Reverse"
-msgstr "Marche arrière"
+#~ msgid "Trigger (Brave Firefighters: water)"
+#~ msgstr "Gâchette (Brave Firefighters : eau)"
 
-msgid "Horn"
-msgstr "Klaxon"
+#~ msgid "Fog (Brave Firefighters)"
+#~ msgstr "Brouillard (Brave Firefighters)"
 
-msgid "Left brake lever"
-msgstr "Levier de frein gauche"
+#~ msgid "Player 2's fog"
+#~ msgstr "Brouillard du joueur 2"
 
-msgid "Right brake lever"
-msgstr "Levier de frein droit"
+#~ msgid "Bullets (Planet Harriers)"
+#~ msgstr "Balles (Planet Harriers)"
 
-msgid "Trigger"
-msgstr "Gâchette"
+#~ msgid "Missiles (Planet Harriers)"
+#~ msgstr "Missiles (Planet Harriers)"
 
-msgid "Second button"
-msgstr "Deuxième bouton"
+#~ msgid "Bombs (Planet Harriers)"
+#~ msgstr "Bombes (Planet Harriers)"
 
-msgid "Third button"
-msgstr "Troisième bouton"
+#~ msgid "NASCAR Arcade's four gears: Shift up and Shift down a gear at each press, or an H shifter's positions (Gear 1 to 4, Neutral), in the Driving section of a device's bindings. The game asks for AUTOMATIC or MANUAL at the start of a race."
+#~ msgstr "Les quatre vitesses de NASCAR Arcade : Rapport sup. et Rapport inf. passent une vitesse à chaque appui, ou les positions d'un levier en H (Vitesse 1 à 4, Point mort), dans la section Conduite des associations d'un périphérique. Le jeu demande AUTOMATIC ou MANUAL au départ d'une course."
 
-msgid "Player 2's second button"
-msgstr "Deuxième bouton du joueur 2"
+#~ msgid "Gear (NASCAR Arcade)"
+#~ msgstr "Vitesse (NASCAR Arcade)"
 
-msgid "Player 2's third button"
-msgstr "Troisième bouton du joueur 2"
+#~ msgid "Left lever (Star Wars: Racer Arcade)"
+#~ msgstr "Levier gauche (Star Wars: Racer Arcade)"
 
-msgid "Next board's picture (several boards)"
-msgstr "Image de la carte suivante (plusieurs cartes)"
+#~ msgid "Right lever (Star Wars: Racer Arcade)"
+#~ msgstr "Levier droit (Star Wars: Racer Arcade)"
 
-msgid "All the controls"
-msgstr "Tous les contrôles"
+#~ msgid "Gear shifter (NASCAR Arcade)"
+#~ msgstr "Levier de vitesses (NASCAR Arcade)"
 
-msgid "The gear levers held in their positions (NASCAR Arcade, F355, 18 Wheeler, Crazy Taxi, The King of Route 66...): Shift up and Shift down engage the next gear at each press; an H shifter's buttons (Reverse, Neutral, Gear 1 to 6, in the Driving section of a device's bindings) engage theirs when pressed, kept once let go. Neutral only by its button."
-msgstr "Les leviers de vitesses qui restent en position (NASCAR Arcade, F355, 18 Wheeler, Crazy Taxi, The King of Route 66...) : Rapport sup. et Rapport inf. engagent la vitesse suivante à chaque appui ; les boutons d'une grille en H (Marche arrière, Point mort, Rapports 1 à 6, dans la section Conduite des associations d'un périphérique) engagent la leur quand on les appuie, gardée une fois relâchés. Le point mort seulement par son bouton."
+#~ msgid "Enter: launch   Tab: settings   Esc: quit"
+#~ msgstr "Entrée : lancer   Tab : paramètres   Échap : quitter"
 
-msgid "Gear"
-msgstr "Rapport"
+#~ msgid "No game is defined in data/games.json."
+#~ msgstr "Aucun jeu n'est défini dans data/games.json."
 
-msgid "R"
-msgstr "R"
+#~ msgid "Flying games"
+#~ msgstr "Jeux d'avion"
 
-msgid "Gear lever"
-msgstr "Levier de vitesses"
+#~ msgid "The common settings again for this game (its file removed)."
+#~ msgstr "Les réglages communs de nouveau pour ce jeu (son fichier supprimé)."
 
-msgid "Left lever (all the way)"
-msgstr "Levier gauche (à fond)"
+#~ msgid "Removes this game's own settings file; some settings take effect at its next start."
+#~ msgstr "Supprime le fichier de réglages propre à ce jeu ; certains réglages prennent effet à son prochain lancement."
 
-msgid "Right lever (all the way)"
-msgstr "Levier droit (à fond)"
-
-msgid "Gear 5"
-msgstr "Vitesse 5"
-
-msgid "Gear 6"
-msgstr "Vitesse 6"
-
-msgid "Clutch"
-msgstr "Embrayage"
-
-msgid "Clutch (all the way)"
-msgstr "Embrayage (à fond)"
-
-msgid "The wheel's force: bit 0 its direction, bits 1 to 4 its strength"
-msgstr "La force du volant : bit 0 son sens, bits 1 à 4 sa force"
-
-msgid "Player 3"
-msgstr "Joueur 3"
-
-msgid "Player 4"
-msgstr "Joueur 4"
-
-msgid "Coin 3"
-msgstr "Pièce 3"
-
-msgid "Coin 4"
-msgstr "Pièce 4"
-
-msgid "Player 3: start"
-msgstr "Joueur 3 : start"
-
-msgid "Player 3: up"
-msgstr "Joueur 3 : haut"
-
-msgid "Player 3: down"
-msgstr "Joueur 3 : bas"
-
-msgid "Player 3: left"
-msgstr "Joueur 3 : gauche"
-
-msgid "Player 3: right"
-msgstr "Joueur 3 : droite"
-
-msgid "Player 3: button 1"
-msgstr "Joueur 3 : bouton 1"
-
-msgid "Player 3: button 2"
-msgstr "Joueur 3 : bouton 2"
-
-msgid "Player 3: button 3"
-msgstr "Joueur 3 : bouton 3"
-
-msgid "Player 3: button 4"
-msgstr "Joueur 3 : bouton 4"
-
-msgid "Player 3: button 5"
-msgstr "Joueur 3 : bouton 5"
-
-msgid "Player 3: button 6"
-msgstr "Joueur 3 : bouton 6"
-
-msgid "Player 4: start"
-msgstr "Joueur 4 : start"
-
-msgid "Player 4: up"
-msgstr "Joueur 4 : haut"
-
-msgid "Player 4: down"
-msgstr "Joueur 4 : bas"
-
-msgid "Player 4: left"
-msgstr "Joueur 4 : gauche"
-
-msgid "Player 4: right"
-msgstr "Joueur 4 : droite"
-
-msgid "Player 4: button 1"
-msgstr "Joueur 4 : bouton 1"
-
-msgid "Player 4: button 2"
-msgstr "Joueur 4 : bouton 2"
-
-msgid "Player 4: button 3"
-msgstr "Joueur 4 : bouton 3"
-
-msgid "Player 4: button 4"
-msgstr "Joueur 4 : bouton 4"
-
-msgid "Player 4: button 5"
-msgstr "Joueur 4 : bouton 5"
-
-msgid "Player 4: button 6"
-msgstr "Joueur 4 : bouton 6"
-
-msgid "Clear..."
-msgstr "Effacer..."
-
-msgid "Save as a profile..."
-msgstr "Enregistrer comme profil..."
-
-msgid "Its bindings to a file of its own, put on it each time it is first connected, on this PC or another: share it."
-msgstr "Ses assignations dans un fichier à lui, posées sur lui à son premier branchement, sur ce PC ou un autre : à partager."
-
-msgid "Put this device's bindings back to its profile's?"
-msgstr "Remettre les assignations de ce périphérique à celles de son profil ?"
-
-msgid "Remove all of this device's bindings?"
-msgstr "Retirer toutes les assignations de ce périphérique ?"
-
-msgid "Save this device's bindings as its profile, in the devices folder beside controls.ini?"
-msgstr "Enregistrer les assignations de ce périphérique comme son profil, dans le dossier devices à côté de controls.ini ?"
-
-msgid "The profile could not be written: see hikaruloader.log."
-msgstr "Le profil n'a pas pu être écrit : voir hikaruloader.log."
-
-msgid "The profile is in:"
-msgstr "Le profil est dans :"
-
-msgid "Give it to whoever has the same device: in their devices folder, it is put on it the first time it is connected."
-msgstr "Donnez-le à qui a le même périphérique : dans son dossier devices, il est posé dessus à son premier branchement."
-
-msgid "No profile for this device: its defaults are the common ones."
-msgstr "Pas de profil pour ce périphérique : ses défauts sont les communs."
-
-msgid "Profile: %s"
-msgstr "Profil : %s"
-
-msgid "Its bindings when it is first connected, and what Default and Reset put back."
-msgstr "Ses assignations à son premier branchement, et ce que Défaut et Réinitialiser remettent."
-
-msgid "(profile)"
-msgstr "(profil)"
-
-msgid "ON"
-msgstr "ON"
-
-msgid "OFF"
-msgstr "OFF"
+#~ msgid "Removes this game's own settings file: the game reads the common settings again."
+#~ msgstr "Supprime le fichier de réglages propre à ce jeu : le jeu relit les réglages communs."

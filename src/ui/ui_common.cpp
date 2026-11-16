@@ -48,6 +48,7 @@
 #include "hl/input.h"
 #include "hl/crt_preset.h"
 #include "hl/outputs.h"
+#include "hl/paths.h"
 #include "hl/renderer.h"
 #include "hl/romset.h"
 #include "hl/window.h"
@@ -67,6 +68,7 @@ ImGuiStyle g_baseStyle;
 std::string g_status; // the result of the last save, shown beside the buttons
 bool g_rescan = false;
 bool g_rescanTyped = false; // the folder typed in, its field not left yet
+bool g_gameAlone = false;   // drawGameSettings: a game not running, nothing applied to the window
 
 // The languages: English, the texts' own, and the gettext catalogs data/lang/<code>.po beside the program,
 // each a translation of the English texts (data/lang/hikaruloader.pot; see README.md). All are loaded once,
@@ -390,7 +392,8 @@ void drawDisplayTab()
                                  "is not drawn. x1.0: as the game draws it."));
     ImGui::PopTextWrapPos();
 
-    if (changed)
+    // A game's own from the picker: at its start, not on the picker's window
+    if (changed && !g_gameAlone)
         hl::Window::apply_display ();
 }
 
@@ -978,7 +981,11 @@ void renderFrame(int width, int height)
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 }
 
-void drawSettings(bool *open, bool inGame)
+namespace
+{
+// A settings window, centred, never larger than the program's: false when it
+// is not drawn (ImGui::End () done then)
+bool beginSettingsWindow(const char *title, bool *open)
 {
     const ImGuiViewport *viewport = ImGui::GetMainViewport();
     ImVec2 size(std::min(viewport->WorkSize.x * 0.9f, 660.0f * g_uiScale), std::min(viewport->WorkSize.y * 0.9f, 500.0f * g_uiScale));
@@ -987,23 +994,96 @@ void drawSettings(bool *open, bool inGame)
     ImGui::SetNextWindowSizeConstraints(ImVec2(0.0f, 0.0f), viewport->WorkSize);
     ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x + viewport->WorkSize.x * 0.5f, viewport->WorkPos.y + viewport->WorkSize.y * 0.5f),
                             ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-    char title[64];
-    snprintf(title, sizeof(title), "%s###settings", tr("Settings"));
     if (!ImGui::Begin(title, open, ImGuiWindowFlags_NoCollapse))
     {
         ImGui::End();
-        return;
+        return false;
     }
     // Kept inside the window: one made smaller after the settings opened left them out of sight
-    {
-        const ImVec2 pos = ImGui::GetWindowPos(), extent = ImGui::GetWindowSize();
-        const ImVec2 inside(std::clamp(pos.x, viewport->WorkPos.x, std::max(viewport->WorkPos.x, viewport->WorkPos.x + viewport->WorkSize.x - extent.x)),
-                            std::clamp(pos.y, viewport->WorkPos.y, std::max(viewport->WorkPos.y, viewport->WorkPos.y + viewport->WorkSize.y - extent.y)));
-        if (inside.x != pos.x || inside.y != pos.y)
-            ImGui::SetWindowPos(inside);
-    }
+    const ImVec2 pos = ImGui::GetWindowPos(), extent = ImGui::GetWindowSize();
+    const ImVec2 inside(std::clamp(pos.x, viewport->WorkPos.x, std::max(viewport->WorkPos.x, viewport->WorkPos.x + viewport->WorkSize.x - extent.x)),
+                        std::clamp(pos.y, viewport->WorkPos.y, std::max(viewport->WorkPos.y, viewport->WorkPos.y + viewport->WorkSize.y - extent.y)));
+    if (inside.x != pos.x || inside.y != pos.y)
+        ImGui::SetWindowPos(inside);
+    return true;
+}
 
-    const float footer = ImGui::GetFrameHeightWithSpacing() * 2.2f;
+// The last save's result, beside the buttons when it fits, else on the line under them
+void drawStatus()
+{
+    if (g_status.empty())
+        return;
+    const float right = ImGui::GetCursorScreenPos().x + ImGui::GetContentRegionAvail().x;
+    if (ImGui::GetItemRectMax().x + ImGui::GetStyle().ItemSpacing.x + ImGui::CalcTextSize(g_status.c_str()).x <= right)
+        ImGui::SameLine();
+    ImGui::TextDisabled("%s", g_status.c_str());
+}
+
+// The write folder that cannot be written to (hl::Paths): nothing saved, the
+// buttons that would save left off; its line over them, and its room
+std::string unsavedText()
+{
+    char text[1200];
+    snprintf(text, sizeof(text), tr("Nothing is saved: the write folder cannot be written to (%s)."), hl::Paths::unusable_write_dir().c_str());
+    return text;
+}
+
+float unsavedNoticeHeight()
+{
+    if (hl::Config::can_save())
+        return 0.0f;
+    return ImGui::CalcTextSize(unsavedText().c_str(), nullptr, false, ImGui::GetContentRegionAvail().x).y + ImGui::GetStyle().ItemSpacing.y;
+}
+
+void unsavedNotice()
+{
+    if (hl::Config::can_save())
+        return;
+    ImGui::PushTextWrapPos(0.0f);
+    ImGui::TextColored(ImVec4(1.0f, 0.75f, 0.3f, 1.0f), "%s", unsavedText().c_str());
+    ImGui::PopTextWrapPos();
+}
+
+// The game's own file: Save for <set> alone, and Common settings when it has
+// settings of its own; each where the game reads it (the write folder's)
+void gameFileButtons(const char *game)
+{
+    char label[128];
+    snprintf(label, sizeof(label), tr("Save for %s alone"), game);
+    ImGui::BeginDisabled(!hl::Config::can_save());
+    if (ImGui::Button(label))
+    {
+        char message[1200];
+        snprintf(message, sizeof(message), hl::Config::save_for_game() ? tr("Saved for %s: what differs from the common settings") : tr("Cannot write the settings of %s"), game);
+        g_status = message;
+    }
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+        ImGui::SetTooltip("%s\n%s", tr("Only the settings that differ from the common ones, in games/<set>.ini, read over them each time this game starts."),
+                          hl::Config::game_file_write_path().c_str());
+    if (hl::Config::has_own_settings())
+    {
+        ImGui::SameLine();
+        if (ImGui::Button(tr("Common settings")))
+        {
+            char message[1200];
+            snprintf(message, sizeof(message), hl::Config::use_common_settings() ? tr("The common settings again for %s.") : tr("Cannot write the settings of %s"), game);
+            g_status = message;
+        }
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+            ImGui::SetTooltip("%s", tr("Drops this game's own settings (its file); some take effect at its next start."));
+    }
+    ImGui::EndDisabled();
+}
+} // namespace
+
+void drawSettings(bool *open, bool inGame)
+{
+    char title[64];
+    snprintf(title, sizeof(title), "%s###settings", tr("Settings"));
+    if (!beginSettingsWindow(title, open))
+        return;
+
+    const float footer = ImGui::GetFrameHeightWithSpacing() * 2.2f + unsavedNoticeHeight();
     ImGui::BeginChild("##tabs", ImVec2(0.0f, -footer), false);
     if (ImGui::BeginTabBar("##settingsTabs"))
     {
@@ -1058,9 +1138,11 @@ void drawSettings(bool *open, bool inGame)
     ImGui::EndChild();
 
     ImGui::Separator();
+    unsavedNotice();
     // During a game: the settings for all games (hikaruloader.ini), or for
     // this one alone (games/<set>.ini, only what differs from the common ones)
     const char *game = hl::Config::game();
+    ImGui::BeginDisabled(!hl::Config::can_save());
     if (ImGui::Button(game[0] ? tr("Save for all games") : tr("Save")))
     {
         char message[1200];
@@ -1068,44 +1150,88 @@ void drawSettings(bool *open, bool inGame)
         g_status = message;
         g_rescan = true;
     }
+    ImGui::EndDisabled();
     if (game[0] && ImGui::IsItemHovered())
         ImGui::SetTooltip("%s", tr("Into hikaruloader.ini; the settings this game has of its own keep their common value there."));
     if (game[0])
     {
-        char label[128];
         ImGui::SameLine();
-        snprintf(label, sizeof(label), tr("Save for %s alone"), game);
-        if (ImGui::Button(label))
-        {
-            char message[1200];
-            snprintf(message, sizeof(message), hl::Config::save_for_game() ? tr("Saved for %s: what differs from the common settings") : tr("Cannot write the settings of %s"), game);
-            g_status = message;
-        }
-        if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("%s", tr("Only the settings that differ from the common ones, in games/<set>.ini, read over them each time this game starts."));
-        if (hl::Config::game_has_file())
-        {
-            ImGui::SameLine();
-            if (ImGui::Button(tr("Common settings")))
-            {
-                hl::Config::use_common_settings();
-                g_status = tr("The common settings again for this game (its file removed).");
-            }
-            if (ImGui::IsItemHovered())
-                ImGui::SetTooltip("%s", tr("Removes this game's own settings file; some settings take effect at its next start."));
-        }
+        gameFileButtons(game);
     }
     ImGui::SameLine();
     if (ImGui::Button(tr("Close")))
         *open = false;
-    if (!g_status.empty())
-    {
-        // Beside the buttons when it fits, else on the line under them
-        const float right = ImGui::GetCursorScreenPos().x + ImGui::GetContentRegionAvail().x;
-        if (ImGui::GetItemRectMax().x + ImGui::GetStyle().ItemSpacing.x + ImGui::CalcTextSize(g_status.c_str()).x <= right)
-            ImGui::SameLine();
-        ImGui::TextDisabled("%s", g_status.c_str());
-    }
+    drawStatus();
     ImGui::End();
+}
+
+void drawGameSettings(bool *open, const char *description, int screens, bool stick)
+{
+    const char *game = hl::Config::game();
+    char title[256];
+    snprintf(title, sizeof(title), tr("Options of %s"), description);
+    strncat(title, "###gamesettings", sizeof(title) - strlen(title) - 1);
+    if (!beginSettingsWindow(title, open))
+        return;
+    g_gameAlone = true;
+    if (ImGui::IsWindowAppearing())
+        g_status.clear();
+
+    // The files as the game will take them: hikaruloader.ini's (the write
+    // folder's copy when there is one), its own over them, written there
+    ImGui::PushTextWrapPos(0.0f);
+    ImGui::TextDisabled(tr("As %s will read them: hikaruloader.ini's, with games/%s.ini's over them. Saved for this game alone, "
+                           "they are taken at its next start."),
+                        game, game);
+    // hl::Config::path () is where the common ones are saved: read from beside the program when the write folder has
+    // no copy or cannot be written to
+    const std::string readPath = hl::Config::game_file_read_path();
+    ImGui::TextDisabled(tr("Read: %s"), (hl::Paths::config_read("hikaruloader.ini") + (readPath.empty() ? "" : ", " + readPath)).c_str());
+    ImGui::TextDisabled(tr("Saved to: %s"), hl::Config::game_file_write_path().c_str());
+    ImGui::PopTextWrapPos();
+
+    // The keyboard and the controllers go from the options down to the buttons
+    const float footer = ImGui::GetFrameHeightWithSpacing() * 2.2f + unsavedNoticeHeight();
+    ImGui::BeginChild("##gametabs", ImVec2(0.0f, -footer), ImGuiChildFlags_NavFlattened);
+    if (ImGui::BeginTabBar("##gameSettingsTabs"))
+    {
+        if (ImGui::BeginTabItem(tr("Display")))
+        {
+            drawDisplayTab();
+            ImGui::EndTabItem();
+        }
+        if ((screens > 1 || stick) && ImGui::BeginTabItem(tr("Game")))
+        {
+            drawGameTab(screens, stick);
+            ImGui::EndTabItem();
+        }
+        if (ImGui::BeginTabItem(tr("Enhancements")))
+        {
+            drawEnhancementsTab();
+            ImGui::EndTabItem();
+        }
+        if (ImGui::BeginTabItem(tr("Sound")))
+        {
+            drawSoundTab(false);
+            ImGui::EndTabItem();
+        }
+        if (ImGui::BeginTabItem(tr("Emulation")))
+        {
+            drawEmulationTab(false);
+            ImGui::EndTabItem();
+        }
+        ImGui::EndTabBar();
+    }
+    ImGui::EndChild();
+
+    ImGui::Separator();
+    unsavedNotice();
+    gameFileButtons(game);
+    ImGui::SameLine();
+    if (ImGui::Button(tr("Close")))
+        *open = false;
+    drawStatus();
+    ImGui::End();
+    g_gameAlone = false;
 }
 } // namespace ui

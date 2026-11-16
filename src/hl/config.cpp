@@ -838,11 +838,31 @@ Config::game ()
 }
 
 bool
-Config::game_has_file ()
+Config::has_own_settings ()
+{
+	return !game_name.empty () && !game_keys.empty ();
+}
+
+std::string
+Config::game_file_read_path ()
 {
 	std::error_code ec;
 
-	return !game_name.empty () && std::filesystem::exists (game_file_read (), ec);
+	if (game_name.empty () || !std::filesystem::exists (game_file_read (), ec))
+		return "";
+	return game_file_read ();
+}
+
+std::string
+Config::game_file_write_path ()
+{
+	return game_name.empty () ? "" : game_file_write ();
+}
+
+bool
+Config::can_save ()
+{
+	return Paths::unusable_write_dir ().empty ();
 }
 
 bool
@@ -860,7 +880,7 @@ Config::save_for_game ()
 	FILE *fp;
 	std::string last;
 
-	if (game_name.empty ())
+	if (game_name.empty () || !can_save ())
 		return false;
 	path = game_file_write ();
 	std::filesystem::create_directories (std::filesystem::path (path).parent_path (), ec);
@@ -900,6 +920,8 @@ Config::save_common ()
 {
 	Config out = *get ();
 
+	if (!can_save ())
+		return false;
 	if (!game_name.empty ()) {
 		/* The game's own keep their common values in the common file */
 		for (const Entry &e : common.entries ())
@@ -910,17 +932,35 @@ Config::save_common ()
 	return out.save ();
 }
 
-void
+bool
 Config::use_common_settings ()
 {
+	std::string path = game_file_write (), beside = Paths::base () + "games/" + game_name + ".ini";
 	std::error_code ec;
 
-	if (game_name.empty ())
-		return;
-	std::filesystem::remove (game_file_write (), ec);
+	if (game_name.empty () || !can_save ())
+		return false;
+	if (Paths::has_write_dir () && std::filesystem::exists (beside, ec)) {
+		/* The one beside the program is the cabinet's model, never
+		 * changed: a file without settings over it, read instead */
+		FILE *fp;
+
+		std::filesystem::create_directories (std::filesystem::path (path).parent_path (), ec);
+		fp = fopen (path.c_str (), "w");
+		if (!fp)
+			return false;
+		fprintf (fp, "# %s: the common settings, none of its own, over '%s' (never\n"
+		             "# changed with a write directory). Written by the settings window\n"
+		             "# (Common settings); delete the file for that one's again.\n",
+		         game_name.c_str (), std::filesystem::path (beside).generic_string ().c_str ());
+		if (fclose (fp) != 0)
+			return false;
+	} else if (!std::filesystem::remove (path, ec) && std::filesystem::exists (path, ec))
+		return false;
 	*get () = common;
 	game_keys.clear ();
-	HL_PRINT ("settings: %s back to the common ones", game_name.c_str ());
+	HL_PRINT ("settings: %s back to the common ones ('%s')", game_name.c_str (), path.c_str ());
+	return true;
 }
 
 bool
