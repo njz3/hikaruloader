@@ -221,6 +221,14 @@ In the environment:
   1964-01-01 00:00, decimal or 0x hex) whatever the PC's time. In agent
   mode it starts at 0x5BFC8900 (26 Nov 2012 00:00) without it, so that runs
   repeat.
+- `HR_HASH=<file>`: each memory of the machine hashed at the end of each
+  frame, a line a frame: `F <frame> <name>=<hash>...` (`Machine::write_hashes`:
+  its buffers, named as the Lua shell names them, a NAOMI board's with its
+  number after the master's, `bufN` the devices' registers, then
+  `hashed_extra ()`'s: the NAOMI link's memory). `HR_HASH_BLOCKS=<frame>[,...]`
+  adds those frames' 64 KB blocks, `B <frame> <name> <offset> <hash>`: where
+  two runs differ. A frame some 25 ms slower on a three-board NAOMI; for
+  `tools/regress.py` (below, "Regressions").
 - `MIE_SPEED` and `MIE_IDLE_SKIP=0`, see below.
 - `FFB_GAIN`, `FFB_INVERT`: the force feedback (see README.md);
 - `FFB_SEND_MS`: the pause after each write to the wheel (16), on the force
@@ -249,6 +257,29 @@ NMI by NMI (EPR-19338A's values in `driveboard-jambo.cpp` were measured so);
 Jambo! Safari's, is checked the same way as EPR-20512 against a journal of
 Supermodel's on a scenario of all its commands: the same outputs, at most
 an NMI apart (the results in the test's header).
+
+
+Regressions
+-----------
+
+A game run twice from its boot, in agent mode with a fresh write directory,
+gives the same memories at each frame (the board's clock fixed, the boards'
+link exchanged at fixed points, a ring of one without a socket, the memories
+zeroed). `tools/regress.py` compares two builds on that, frame by frame:
+
+    python tools/regress.py --a old/ --b new/ --roms C:/roms --all --frames 1800 --jobs 8
+
+each set run once with each program (`HR_HASH`), the first frame where they
+differ and which memories: for a change that must not move a game. Without
+`--b`, the same program twice: whether each game's runs repeat.
+`--all` takes the sets of `data/games.json` whose zip, or their parent's, is
+in `--roms` (one not starting, a file missing, is left out); `--ini` gives
+the runs' `hikaruloader.ini`; the runs stay in `--work`. Both programs
+from 0.8.10 on (`HR_HASH`). On 2026-11-18 the 101 sets whose files are on
+the development PC repeated over 1800 frames (39 minutes, 8 runs at once).
+A difference is then narrowed with `HR_HASH_BLOCKS` at its frame, the
+blocks' bytes read with the agent's `ram` and the writer found with the Lua
+shell's `cpu:wpset` and `"write"` hook (above, "Lua shell").
 
 
 Controls: the MIE and the JVS bus
@@ -506,7 +537,14 @@ channel n at 2n), checked in the game's JVS TEST screen.
   engine, its fuselage at 10.1 degrees and 4067, its city at 13.5 and 3045,
   its take-off down to 2.7 and 15300, its logo at 45 and 879):
   their vertices on the master's previous frame's to 0.01 pixel, some 50
-  pixels from its last's while the camera turns. Each frame is solved on the
+  pixels from its last's while the camera turns. The game's own exchange,
+  not the emulation's timing (Sega Strike Fighter's attract, measured
+  2026-11-18): at line 17 of a frame the master writes its 122 words for
+  the slaves and switches the bank, they see it at line 23, read 63 words,
+  start their lists there and draw at line 520 as the master does, and every
+  board shows the picture drawn the frame before (two buffers each, the
+  same latency): those words hold the master's previous frame's views. No
+  phase of the boards changes what the words hold. Each frame is solved on the
   middle board's last scene and on the one before (`Renderer::held_middle`),
   the one that went with the side boards' first; with the one before, the
   middle board's picture is shown a frame late (`Renderer::late_middle`:

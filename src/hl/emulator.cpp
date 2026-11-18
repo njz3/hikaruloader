@@ -21,6 +21,7 @@
 /* TODO: move to a scheduler-based system, so that machines register their
  * components and the scheduler executes them. */
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <filesystem>
@@ -603,6 +604,33 @@ Emulator::limit_frame_rate ()
 	}
 }
 
+void
+Emulator::write_hashes ()
+{
+	static FILE *fp;
+	static bool looked;
+	static std::vector<uint64_t> block_frames;
+
+	if (!looked) {
+		const char *path = getenv ("HR_HASH"), *blocks = getenv ("HR_HASH_BLOCKS");
+
+		looked = true;
+		if (path && *path && !(fp = fopen (path, "w")))
+			HL_ERROR ("HR_HASH: cannot write '%s'", path);
+		for (const char *p = blocks; p && *p; ) {
+			char *end;
+			unsigned long long f = strtoull (p, &end, 10);
+
+			if (end == p)
+				break;
+			block_frames.push_back (f);
+			p = *end ? end + 1 : end;
+		}
+	}
+	if (fp)
+		mach->write_hashes (fp, std::find (block_frames.begin (), block_frames.end (), mach->frame) != block_frames.end ());
+}
+
 Emulator::Stop
 Emulator::run_frame ()
 {
@@ -675,6 +703,7 @@ Emulator::run_frame ()
 	mach->audio.clear ();
 	mach->frame++;
 	Window::set_frame (mach->frame);
+	write_hashes ();
 	if (shell)
 		shell->hook_number (Shell::EVENT_FRAME_END, mach->frame);
 

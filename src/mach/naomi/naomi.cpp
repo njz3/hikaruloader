@@ -239,11 +239,11 @@ Board::~Board ()
 }
 
 void
-Board::add_buffer (hl::Buffer *&buf, unsigned size, bool battery)
+Board::add_buffer (hl::Buffer *&buf, unsigned size, bool battery, const char *name)
 {
 	buf = hl::Buffer::create (size, 0, hl::Buffer::LE32);
 	if (buf)
-		machine->register_buffer (buf, battery);
+		machine->register_buffer (buf, battery, (name + (index ? std::to_string (index) : std::string ())).c_str ());
 }
 
 /* Each board's AICA, its own SH-4's line */
@@ -343,11 +343,11 @@ Board::init ()
 		return false;
 	}
 
-	add_buffer (bios, 2 * MB, true);
-	add_buffer (sram, is_atomiswave ? 128 * KB : 32 * KB, true);
-	add_buffer (ram, is_atomiswave ? 16 * MB : 32 * MB);
-	add_buffer (vram, 16 * MB);
-	add_buffer (aica_ram, 8 * MB);
+	add_buffer (bios, 2 * MB, true, "bios");
+	add_buffer (sram, is_atomiswave ? 128 * KB : 32 * KB, true, "sram");
+	add_buffer (ram, is_atomiswave ? 16 * MB : 32 * MB, false, "ram");
+	add_buffer (vram, 16 * MB, false, "vram");
+	add_buffer (aica_ram, 8 * MB, false, "aica_ram");
 	if (!bios || !sram || !ram || !vram || !aica_ram)
 		return false;
 	memcpy (bios->ptr (0), bios_rom->ptr (0), std::min (bios_rom->size (), 2u * MB));
@@ -382,7 +382,7 @@ Board::init ()
 			/* A slave's slot is empty: the bus reads all ones */
 			hl::Buffer *none;
 
-			add_buffer (none, 16, true);
+			add_buffer (none, 16, true, "slot");
 			if (!none)
 				return false;
 			memset (none->ptr (0), 0xFF, 16);
@@ -407,7 +407,7 @@ Board::init ()
 		link = new MultiboardPort (this, machine->link.get (), index);
 	holly = new Holly (this, vram);
 	if (is_naomi2) {
-		add_buffer (elan_ram, 32 * MB);
+		add_buffer (elan_ram, 32 * MB, false, "elan_ram");
 		if (!elan_ram)
 			return false;
 		elan = new Elan (this, elan_ram);
@@ -1528,6 +1528,14 @@ const char *
 Naomi::debug_string ()
 {
 	return master ()->debug_string ();
+}
+
+/* HR_HASH: the link's memory, not a buffer */
+void
+Naomi::hashed_extra (std::vector<Hashed> &out)
+{
+	if (link)
+		out.push_back ({ "link", link->data.data (), link->data.size () * 2 });
 }
 
 int

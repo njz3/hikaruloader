@@ -1130,7 +1130,8 @@ public:
 
 private:
 	hl::Mmap *setup_mmap ();
-	void	 add_buffer (hl::Buffer *&buf, unsigned size, bool battery = false);
+	/* name, HR_HASH's: the board's number after it but the master's */
+	void	 add_buffer (hl::Buffer *&buf, unsigned size, bool battery, const char *name);
 	char	 debug_text[256];
 	uint8_t	 nvram_old[128 + 128 + 132];
 };
@@ -1147,6 +1148,7 @@ public:
 	int	 on_load_state (hl::State *state) override;
 	int	 on_save_state (hl::State *state) override;
 	const char *debug_string () override;
+	void	 hashed_extra (std::vector<Hashed> &out) override;
 	void	 next_screen () override;
 	unsigned screens () const override { return (unsigned) screen_order.size (); }
 	/* MULTI_SCREEN_VIEW joined: games.json's screen_view "share" */

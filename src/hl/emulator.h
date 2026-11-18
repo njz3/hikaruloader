@@ -116,6 +116,9 @@ public:
 	/* One frame of the machine, drawn and presented; a breakpoint or a
 	 * recovered abort pauses the emulator, stop_message says which */
 	Stop	 run_frame ();
+	/* HR_HASH=<file>: the machine's memories hashed after each frame;
+	 * HR_HASH_BLOCKS=<frame>[,<frame>...]: their 64 KB blocks too there */
+	void	 write_hashes ();
 	/* Runs frames now, paused or not, from the breakpoints the CPUs
 	 * stopped at; stops after the frame where one reaches a breakpoint or
 	 * aborts. Returns the frames run, or -1 when the machine has aborted */

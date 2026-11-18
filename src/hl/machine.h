@@ -21,6 +21,7 @@
 #ifndef __HL_MACH_H__
 #define __HL_MACH_H__
 
+#include <string>
 #include <vector>
 
 #include "hl/core.h"
@@ -67,8 +68,9 @@ public:
 	static void operator delete (void *ptr) { ::operator delete (ptr); }
 
 	/* Called by the buffers', devices' and CPUs' creators; a battery's
-	 * buffer keeps its contents through the resets */
-	void		 register_buffer (Buffer *buf, bool battery = false);
+	 * buffer keeps its contents through the resets; name, the buffer's in
+	 * HR_HASH's lines (else its add_memory () name, else bufN) */
+	void		 register_buffer (Buffer *buf, bool battery = false, const char *name = NULL);
 	void		 register_device (Device *dev);
 	void		 register_cpu (Cpu *cpu);
 	/* Names a memory for the Lua shell: a registered buffer, or one the
@@ -103,6 +105,21 @@ public:
 	/* For the log */
 	virtual const char *debug_string () = 0;
 
+	/* HR_HASH (DEVELOPMENT.md): a memory of the machine's state, hashed at
+	 * the end of each frame for two runs to be compared */
+	struct Hashed {
+		std::string	 name;
+		const void	*data;
+		size_t		 size;
+	};
+	/* Its buffers and named memories, then hashed_extra ()'s */
+	void		 hashed_memories (std::vector<Hashed> &out);
+	/* Those outside its buffers: the NAOMI link's memory */
+	virtual void	 hashed_extra (std::vector<Hashed> &out) { (void) out; }
+	/* The frame's line in fp: "F frame name=hash..."; blocks, each memory's
+	 * 64 KB blocks too: "B frame name offset hash" */
+	void		 write_hashes (FILE *fp, bool blocks);
+
 	char		 name[64];
 	/* The frames run since the last hard reset: the emulator counts them,
 	 * the states keep them */
@@ -117,6 +134,7 @@ public:
 	/* NULL but when the shell has hooks on interrupts */
 	Hooks		*hooks;
 	std::vector<Buffer *> buffers;
+	std::vector<std::string> buffer_names;
 	/* Those of buffers a reset leaves */
 	std::vector<Buffer *> batteries;
 	std::vector<Device *> devices;

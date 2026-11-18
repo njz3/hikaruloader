@@ -92,10 +92,11 @@ Machine::~Machine ()
 }
 
 void
-Machine::register_buffer (Buffer *buf, bool battery)
+Machine::register_buffer (Buffer *buf, bool battery, const char *name)
 {
 	HL_ASSERT (buf);
 	buffers.push_back (buf);
+	buffer_names.push_back (name ? name : "");
 	if (battery)
 		batteries.push_back (buf);
 	HL_LOG ("machine: registered buffer %p, size=%08X", (void *) buf, buf->size ());
@@ -122,6 +123,69 @@ Machine::add_memory (const char *name, Buffer *buf)
 {
 	if (buf)
 		memories.push_back (std::make_pair (name, buf));
+}
+
+void
+Machine::hashed_memories (std::vector<Hashed> &out)
+{
+	size_t i;
+
+	for (i = 0; i < buffers.size (); i++) {
+		std::string name = i < buffer_names.size () ? buffer_names[i] : "";
+
+		for (const auto &m : memories)
+			if (name.empty () && m.second == buffers[i])
+				name = m.first;
+		if (name.empty ())
+			name = "buf" + std::to_string (i);
+		out.push_back ({ name, buffers[i]->ptr (0), buffers[i]->size () });
+	}
+	/* The named ones the machine does not own: the CPUs' registers */
+	for (const auto &m : memories)
+		if (std::find (buffers.begin (), buffers.end (), m.second) == buffers.end ())
+			out.push_back ({ m.first, m.second->ptr (0), m.second->size () });
+	hashed_extra (out);
+}
+
+/* Four lanes of 64 bits (the multiplies in parallel), folded with the size */
+static uint64_t
+hash_bytes (const void *data, size_t size)
+{
+	const uint8_t *p = (const uint8_t *) data;
+	uint64_t h[4] = { 0x9E3779B97F4A7C15ull, 0xC2B2AE3D27D4EB4Full, 0x165667B19E3779F9ull, 0x27D4EB2F165667C5ull };
+	size_t i = 0;
+	int k;
+
+	for (; i + 32 <= size; i += 32)
+		for (k = 0; k < 4; k++) {
+			uint64_t w;
+
+			memcpy (&w, p + i + 8 * k, 8);
+			h[k] = (h[k] ^ w) * 0x100000001B3ull;
+			h[k] ^= h[k] >> 29;
+		}
+	for (; i < size; i++)
+		h[0] = (h[0] ^ p[i]) * 0x100000001B3ull;
+	return (h[0] ^ (h[1] * 3) ^ (h[2] * 5) ^ (h[3] * 7) ^ size) * 0x9E3779B97F4A7C15ull;
+}
+
+void
+Machine::write_hashes (FILE *fp, bool blocks)
+{
+	std::vector<Hashed> mems;
+
+	hashed_memories (mems);
+	fprintf (fp, "F %llu", (unsigned long long) frame);
+	for (const Hashed &m : mems)
+		fprintf (fp, " %s=%016llX", m.name.c_str (), (unsigned long long) hash_bytes (m.data, m.size));
+	fputc ('\n', fp);
+	if (blocks)
+		for (const Hashed &m : mems)
+			for (size_t o = 0; o < m.size; o += 0x10000)
+				fprintf (fp, "B %llu %s %08zX %016llX\n", (unsigned long long) frame, m.name.c_str (), o,
+				         (unsigned long long) hash_bytes ((const uint8_t *) m.data + o,
+				                                          std::min<size_t> (0x10000, m.size - o)));
+	fflush (fp);
 }
 
 void
