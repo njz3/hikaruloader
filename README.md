@@ -141,7 +141,7 @@ hikaruloader.exe [options]
 | `-R <folder>` | The games folder for this start: the MAME zips or 7z, or a folder per game; several separated by `;` (`-R "D:\roms;E:\mame\roms"`) |
 | `-r <set>` | Starts that game at once, by its MAME set name (`-r sgnascar`), without the picker |
 | `-z <file>` | With `-r`: the zip or 7z holding that game, whatever its name (`-r vstrik3c -z D:\roms\vs3.7z`). Its folder is the first looked in for the BIOS, the parent and the CHD, then the games folders |
-| `-l <file>` | Loads that save state at the start: the game goes on from its frame. `-l 0` to `-l 4` load one of the game's own states, those F4 saves, 0 the latest |
+| `-l <file>` | Loads that save state at the start: the game goes on from its frame. `-l 0` to `-l 4` load one of the game's own states, those F6 saves, 0 the latest |
 | `-n <frames>` | Quits after that many frames |
 | `-L`, `--list` | Lists the games and quits: title, set, version, year and maker, the MAME sets each one needs, each ROM file with its CRC32, and how many of them the games folder holds |
 | `--find <text>` | Lists the games whose set, parent, title or maker hold each word of the text, whatever the case, one a line, and quits (`--find "f355 twin"`, `--find taxi`); with `-L`, those games in full |
@@ -167,7 +167,7 @@ Keys and controllers
 
 | By default | Action |
 |---|---|
-| F5; 9, F6 | Test and Service. Test opens the game's test menu: its settings, its bookkeeping, the BIOS's system settings |
+| F2; 9, F1 | Test and Service. Test opens the game's test menu: its settings, its bookkeeping, the BIOS's system settings |
 | 5, 6, 7, 8 | Coins |
 | 1, 2, 3, 4; a controller's Start | Start, players 1 to 4 |
 | The arrows, a controller's D-pad or left stick | Up, down, left, right |
@@ -176,17 +176,17 @@ Keys and controllers
 | I, K, J, L and Right Ctrl, Right Shift, Enter | Player 3's stick and buttons 1 to 3 |
 | The keypad's 8, 2, 4, 6 and 0, ., Enter | Player 4's stick and buttons 1 to 3 |
 | The keypad's -, +; Guide + D-pad down, up | The cabinet's volume |
-| A controller's left stick and triggers, a wheel's axes | Steering, accelerator, brake (the arrows too: all the way in 250 ms, back to the middle in 100 ms, `Axis_Key_Ramp` and `Axis_Key_Return` in `controls.ini`'s `[Config]`) |
+| A controller's left stick and triggers, a wheel's axes | Steering, accelerator, brake (the arrows too: all the way in 500 ms, back to the middle in 250 ms, `Axis_Key_Ramp` and `Axis_Key_Return` in `controls.ini`'s `[Config]`) |
 | Page Up, Page Down; a controller's R1, L1 | NASCAR Arcade's gear up, down |
 | V; a controller's Y | The view change (`ViewChange`, linuxloader's name): NASCAR Arcade, Initial D, 18 Wheeler... |
-| P; Guide + X | Pause |
-| F4, F1; Guide + R1, Guide + L1 | Save a new state, load the latest or the one chosen |
-| F2, F3 | Choose the state F1 loads, newer or older, among the last five (shown at the top of the picture) |
+| F5, P; Guide + X | Pause |
+| F6, F7; Guide + R1, Guide + L1 | Save a new state, load the latest or the one chosen |
+| F4, F3 | Choose the state F7 loads, newer or older, among the last five (shown at the top of the picture) |
 | A mouse or a light gun | Brave Firefighters' sights, Planet Harriers' stick (see "Mice and light guns") |
 | Tab; a controller's Back, Guide + Back | Settings |
-| F7; Guide + Y | Virtual-On 4's and Club Kart's card: in the reader's slot, or taken back (see below) |
+| F8; Guide + Y | Virtual-On 4's and Club Kart's card: in the reader's slot, or taken back (see below) |
 | F11 | The frame rate over the picture |
-| F8 | NAOMI cabinets of several boards: the next board's picture; with several screens, the middle one and a board without a screen in turn (F355 Deluxe's master) |
+| F10 | NAOMI cabinets of several boards: the next board's picture; with several screens, the middle one and a board without a screen in turn (F355 Deluxe's master) |
 | F9; Guide + Start | Quit |
 | Alt+Enter | Full screen (the desktop's) or a window, for this start |
 | Escape; Guide + B | Back to the picker, or quit |
@@ -375,9 +375,9 @@ effect at once.
 - The servo board 838-14174 of the NAOMI wheels (Club Kart, The King of Route 66, Driving Simulator) is emulated on the force feedback wheel; its frames also go out on the network outputs as `midiffb = HH HH HH`. A client that answers `midiffb_rx = HH..` (BackForceFeeder, in front of a real board) takes over: the game reads its answers and the wheel plays nothing, until it leaves. While the game checks the motor, at its start, the wheel turns on its own; with the motor off, as in the games' test menus, it is the player's (INPUT TEST, VOLUME SETTING).- NAOMI GD-ROM games need the game's zip (with its DIMM board's PIC) and its
   CHD in a folder named as the game, as MAME keeps them: `roms/initdv3e.zip`
   and `roms/initdv3e/gds-0033.chd`. Atomiswave games need `awbios.zip`. Initial
-  D's magnetic card is inserted with F7.
+  D's magnetic card is inserted with F8.
 - *Several boards* (`MULTI_SCREEN`), in the *Game* tab while a game of several screens runs, for the NAOMI cabinets of several boards; also for the Hikaru's second video output once a game drives it (`WINDOWS`: a window of its own; `SIDE_BY_SIDE`: the right half of a window twice as wide), applied when the
-  settings close: `ONE` shows one board (F8 the next), `SIDE_BY_SIDE` puts the screens in a row in the
+  settings close: `ONE` shows one board (F10 the next), `SIDE_BY_SIDE` puts the screens in a row in the
   window, for a very wide monitor, `WINDOWS` gives each a window. `SCREEN_ORDER` gives the boards
   with a monitor, left to right (`2,1,3`). With `WINDOWS`, a list gives each window's monitor, by its name, its device,
   its mode and its place on the desktop, or AUTO. In the file, `SCREEN_1_DISPLAY` to `SCREEN_3_DISPLAY`:
@@ -584,9 +584,9 @@ Saves and files
   the PC's time; set in the test menu (CLOCK SETTING), how far it is from
   the PC's is kept there too.
 - `nvram/von4.card`: Virtual-On 4's card, its three tracks (see below).
-- `<game>-0.hlstate` to `<game>-4.hlstate`: the save states of F4, 0 the latest
-  and 4 the oldest: each F4 makes a new 0, moves the others up and drops the
-  last. F1 loads the latest, unless F2 (newer) or F3 (older) has chosen another
+- `<game>-0.hlstate` to `<game>-4.hlstate`: the save states of F6, 0 the latest
+  and 4 the oldest: each F6 makes a new 0, moves the others up and drops the
+  last. F7 loads the latest, unless F4 (newer) or F3 (older) has chosen another
   (its number and age are written at the top of the picture); then it is the
   latest again. They hold the whole machine; a state may not load in another
   version of the program.
@@ -734,7 +734,7 @@ Virtual-On 4's cards
 
 Outside the USA region, Virtual-On 4 has a card reader, emulated: a VO4 card
 keeps a pilot's name, rank, Virtual-roid and records. The card is a file,
-`nvram/von4.card` (with a write directory, its copy). F7 (*Card*,
+`nvram/von4.card` (with a write directory, its copy). F8 (*Card*,
 `Card` in `controls.ini`) puts it in the reader's slot, or takes it
 back: the game takes it in when it asks for it (at the choice of the
 Virtual-roid), and gives it back at the end; it is taken 3 seconds later.
@@ -742,7 +742,7 @@ Without a card, the game plays as usual.
 
 A new card comes from the VO4 terminal: the game in its card vending mode.
 
-1. In the test menu (F5), GAME TEST MENU, GAME ASSIGNMENTS: GAME START MODE
+1. In the test menu (F2), GAME TEST MENU, GAME ASSIGNMENTS: GAME START MODE
    to VENDOR. The BIOS's COIN ASSIGNMENTS must be FREE PLAY (or one of the
    two the game lists), else the game says COIN ASSIGNMENTS ERROR.
 2. Out of the test menu, Start, then the new card: the pilot's name, the

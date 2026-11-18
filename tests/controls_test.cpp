@@ -123,7 +123,7 @@ test_upgrade (const std::string &dir)
 	check ("upgrade: the menu kept", c.value ("Emulator", "Menu") == "KEY_Tab, GC0_BUTTON_BACK");
 	check ("upgrade: Back added", c.value ("Emulator", "Back") == c.default_value ("Emulator", "Back"));
 	check ("upgrade: a missing row's default", c.value ("Emulator", "SaveState") ==
-	                                          "KEY_F4, GC0_BUTTON_GUIDE + GC0_BUTTON_RIGHTSHOULDER");
+	                                          "KEY_F6, GC0_BUTTON_GUIDE + GC0_BUTTON_RIGHTSHOULDER");
 	check ("upgrade: no hotkey, no change", c.value ("Common", "Test") == "KEY_F5");
 
 	/* Loaded again: still as the user left it */

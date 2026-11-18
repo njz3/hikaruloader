@@ -32,8 +32,10 @@ namespace hl {
 /* The cabinets' ring over TCP, as their optical fibres: the previous
  * node's link comes in on port_in, ours goes out to the next node's
  * address and port. A node can be its own next (the same port, on
- * 127.0.0.1). Messages: a 32-bit length, a 32-bit type, the data; little
- * endian */
+ * 127.0.0.1): then no socket, its messages put back at once for its own
+ * receive (), the emulation's order and nobody else's (another program on
+ * this PC listening on that port, or connecting to it). Messages: a 32-bit
+ * length, a 32-bit type, the data; little endian */
 class RingLink {
 public:
 	RingLink ();
@@ -55,7 +57,7 @@ public:
 
 	bool open (unsigned port_in, const char *addr_out, unsigned port_out);
 	void close ();
-	bool is_open () const { return listener != NO_SOCKET; }
+	bool is_open () const { return looped || listener != NO_SOCKET; }
 
 	/* Accepts the previous node and (not queued) connects to the next
 	 * one, without waiting (a refused connection is tried again a second
@@ -76,8 +78,8 @@ public:
 	 * one: a new one starts its messages again (a hello first) */
 	unsigned links_in () const { return in_count; }
 	unsigned links_out () const { return queued ? out_count.load () : out_count_plain; }
-	bool in_up () const { return in != NO_SOCKET; }
-	bool out_up () const { return queued ? out_ok.load () : out != NO_SOCKET && !connecting; }
+	bool in_up () const { return looped || in != NO_SOCKET; }
+	bool out_up () const { return looped || (queued ? out_ok.load () : out != NO_SOCKET && !connecting); }
 
 	static const uintptr_t NO_SOCKET = (uintptr_t) -1;
 	static const size_t QUEUE_MOST = 1 << 20;
@@ -94,6 +96,8 @@ private:
 	static void put_header (std::vector<uint8_t> &msg, uint32_t type, uint32_t size);
 
 	uintptr_t listener, in, out;
+	/* Its own next node: rx holds what it sent */
+	bool looped;
 	bool connecting;	/* out's connect () under way */
 	uint64_t next_try;	/* when to connect again, in ms */
 	bool lost;

@@ -311,7 +311,9 @@ Fpga::load_state (hl::State *state)
  * written at the control register 04 goes out, bit 31 of 00 telling it can; the
  * DMA channel 1 can send them, and the channel 0 takes those that come into the
  * RAM. Over [Network]'s ring (hl::RingLink), a word's 32 bits at a time, opened
- * when the game waits for its first word or sends one.
+ * when the game waits for its first word or sends one. A cabinet alone (the
+ * default: PORT_OUT = PORT_IN on this PC) gets its words back at the next
+ * line, the same in every run.
  */
 
 enum { LINK_WORDS = 1 };
@@ -352,10 +354,8 @@ Fpga::link_run ()
 		return;
 	}
 	ring.poll ();
-	if (!link_out.empty ()) {
-		ring.send (LINK_WORDS, link_out.data (), (uint32_t) (link_out.size () * 4));
-		link_out.clear ();
-	}
+	/* What came before this line's words go: a ring of one gives them back
+	 * at the next line */
 	{
 		std::vector<uint8_t> data;
 		uint32_t type;
@@ -368,6 +368,10 @@ Fpga::link_run ()
 				link_in.push_back (word);
 			}
 		}
+	}
+	if (!link_out.empty ()) {
+		ring.send (LINK_WORDS, link_out.data (), (uint32_t) (link_out.size () * 4));
+		link_out.clear ();
 	}
 	while (!link_in.empty () && sh->dma_ready (0)) {
 		sh->dma_to_memory (0, link_in.front ());

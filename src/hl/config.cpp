@@ -1040,7 +1040,7 @@ Config::write (FILE *fp) const
 	fprintf (fp, "WINDOW_SCALE = %d\n", cfg->window_scale);
 	fprintf (fp,
 	         "\n# NAOMI cabinets of several boards, read when a game starts: ONE shows one\n"
-	         "# board's picture (NextScreen, F8, goes to the next board), SIDE_BY_SIDE\n"
+	         "# board's picture (NextScreen, F10, goes to the next board), SIDE_BY_SIDE\n"
 	         "# puts them in a row in the window, for a very wide monitor, and WINDOWS\n"
 	         "# gives each its window. Default: %s\n", multi_screen_names[def.multi_screen]);
 	fprintf (fp, "MULTI_SCREEN = %s\n", multi_screen_names[cfg->multi_screen]);
@@ -1337,7 +1337,8 @@ Config::write (FILE *fp) const
 	fprintf (fp,
 	         "\n# The ring, over TCP: the previous cabinet connects to this one's PORT_IN,\n"
 	         "# this one to the next cabinet's ADDRESS_OUT and PORT_OUT, the last one to\n"
-	         "# the master. A master alone is its own next (127.0.0.1 and its PORT_IN).\n"
+	         "# the master. A master alone is its own next (127.0.0.1 and its PORT_IN):\n"
+	         "# no socket then, its messages come back to it at once.\n"
 	         "# Defaults: %u, %s, %u\n", def.port_in, def.address_out, def.port_out);
 	fprintf (fp, "PORT_IN = %u\n", cfg->port_in);
 	fprintf (fp, "ADDRESS_OUT = %s\n", cfg->address_out);

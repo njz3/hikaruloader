@@ -54,6 +54,14 @@ namespace naomi {
  * Airline Pilots' master waited for its slaves forever in most runs ("Please
  * Wait until Slaves synchronize..."), so neither the game nor its sound
  * driver ever started.
+ *
+ * The memory too: each board reads and writes its own view of it, the memory
+ * as at the last stop with its own writes since; at the stop the boards'
+ * writes go into the memory in the boards' order (the master first) and into
+ * every view. Read live, what a board read of another's writes of the same
+ * slice hung on the threads' pace: after a bank switch, which the slaves see
+ * only at the stop, the master and its slaves share a bank until then, the
+ * master reading the answers they may still be writing there.
  */
 
 enum {
@@ -78,8 +86,24 @@ MultiboardPort::MultiboardPort (Board *board_, Multiboard *link_, unsigned id_) 
 	hl::Device (board_->machine),
 	board (board_),
 	link (link_),
-	id (id_)
+	id (id_),
+	view (link_->data)
 {
+}
+
+void
+MultiboardPort::write (uint32_t at, uint16_t val)
+{
+	at &= MEM_WORDS - 1;
+	view[at] = val;
+	written.emplace_back (at, val);
+}
+
+void
+MultiboardPort::refresh ()
+{
+	view = link->data;
+	written.clear ();
 }
 
 void
@@ -94,6 +118,7 @@ MultiboardPort::reset (hl::ResetType type)
 		link->status.fetch_and ((uint16_t) ~(0x10 << id));
 	else
 		link->status = 0;
+	refresh ();
 }
 
 bool
@@ -111,7 +136,7 @@ MultiboardPort::g1_get (uint32_t addr, uint32_t *val)
 			at = offset + bank / 2;
 		} else
 			at = (offset & 0xFFFF) + (id - 1) * 0x10000 + bank / 2;
-		*val = link->data[at & (MEM_WORDS - 1)];
+		*val = view[at & (MEM_WORDS - 1)];
 		offset++;
 		return true;
 	}
@@ -154,7 +179,7 @@ MultiboardPort::g1_put (uint32_t addr, uint32_t val)
 			at = offset + bank / 2;
 		} else
 			at = (offset & 0xFFFF) + (id - 1) * 0x10000 + bank / 2;
-		link->data[at & (MEM_WORDS - 1)] = (uint16_t) val;
+		write (at, (uint16_t) val);
 		offset++;
 		return true;
 	}
@@ -196,7 +221,7 @@ MultiboardPort::dma (uint32_t size, uint8_t *out)
 	from = (id - 1) * 0x10000 + bank / 2 + dma_offset;
 	if (from + size / 2 > MEM_WORDS)
 		size = (MEM_WORDS - from) * 2;
-	memcpy (out, &link->data[from], size);
+	memcpy (out, &view[from], size);
 	return true;
 }
 
@@ -227,9 +252,9 @@ MultiboardPort::get (unsigned size, uint32_t addr, void *val)
 			uint32_t at = (a - G2_MEMORY + bank) / 2;
 
 			at &= MEM_WORDS - 1;
-			data = link->data[at];
+			data = view[at];
 			if (size >= 4)
-				data |= (uint32_t) link->data[(at + 1) & (MEM_WORDS - 1)] << 16;
+				data |= (uint32_t) view[(at + 1) & (MEM_WORDS - 1)] << 16;
 		}
 		break;
 	}
@@ -250,10 +275,9 @@ MultiboardPort::put (unsigned size, uint32_t addr, uint64_t val_)
 		uint32_t at = (a - G2_MEMORY + bank) / 2;
 		uint16_t status = link->status;
 		auto store = [&] (uint32_t where) {
-			where &= MEM_WORDS - 1;
-			link->data[where] = (uint16_t) val;
+			write (where, (uint16_t) val);
 			if (size >= 4)
-				link->data[(where + 1) & (MEM_WORDS - 1)] = (uint16_t) (val >> 16);
+				write (where + 1, (uint16_t) (val >> 16));
 		};
 
 		if ((status & 2) || a >= 0x1040000) {
@@ -274,10 +298,23 @@ MultiboardPort::put (unsigned size, uint32_t addr, uint64_t val_)
 }
 
 void
+MultiboardPort::publish ()
+{
+	if (master ())
+		link->changes.clear ();
+	for (const auto &w : written)
+		link->data[w.first] = w.second;
+	link->changes.insert (link->changes.end (), written.begin (), written.end ());
+	written.clear ();
+}
+
+void
 MultiboardPort::sync ()
 {
 	uint16_t now;
 
+	for (const auto &w : link->changes)
+		view[w.first] = w.second;
 	if (master ())
 		return;
 	if (unready_due)

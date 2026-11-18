@@ -56,8 +56,8 @@ Beside `hikaruloader.exe`:
 | `controls.ini` | The keys and controllers, written likewise |
 | `hikaruloader.log`, `hikaruloader.old.log` | The messages of the last start and of the one before (the Picker tab turns them off) |
 | `nvram\<game>.nvram` | Each game's EEPROM and battery-backed RAM: its settings, records and bookkeeping |
-| `nvram\von4.card` | Virtual-On 4's card (F7), made by the game's card terminal (README.md, "Virtual-On 4's cards") |
-| `<game>.hlstate` | Each game's save state (F4 saves, F1 loads) |
+| `nvram\von4.card` | Virtual-On 4's card (F8), made by the game's card terminal (README.md, "Virtual-On 4's cards") |
+| `<game>.hlstate` | Each game's save state (F6 saves, F7 loads) |
 | `artwork\`, `cache\artwork\` | The picker's pictures: yours, and those downloaded when the Picker tab says so (README.md, "Settings") |
 | `artwork\bezels\` | Your bezel pictures, `<set>.png` and `<set>.info` (Batocera's format), shown with the Display tab's *Bezel* (README.md, "Settings") |
 

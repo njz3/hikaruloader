@@ -92,6 +92,7 @@ RingLink::RingLink () :
 	listener (NO_SOCKET),
 	in (NO_SOCKET),
 	out (NO_SOCKET),
+	looped (false),
 	connecting (false),
 	next_try (0),
 	lost (false),
@@ -146,6 +147,22 @@ RingLink::open (unsigned port_in, const char *addr_out, unsigned port_out)
 	int yes = 1;
 
 	close ();
+	if (port_in == port_out && (!strcmp (addr_out, "127.0.0.1") || !strcmp (addr_out, "localhost"))) {
+		/* Through a socket, its messages came back when the PC's
+		 * threads got to them: two runs of a game from the same start
+		 * went two ways (ATV Track's link), and two programs on this PC
+		 * with the same ports joined each other's ring */
+		looped = true;
+		lost = false;
+		rx.clear ();
+		rx_at = 0;
+		rx.insert (rx.end (), hello.begin (), hello.end ());
+		in_count++;
+		out_count_plain++;
+		out_count++;
+		HL_PRINT ("ring: closed on this node (PORT_OUT = PORT_IN on this PC): its messages come back to it");
+		return true;
+	}
 #ifdef _WIN32
 	WSADATA wsa;
 	if (WSAStartup (MAKEWORD (2, 2), &wsa)) {
@@ -159,14 +176,10 @@ RingLink::open (unsigned port_in, const char *addr_out, unsigned port_out)
 		return false;
 	}
 	setsockopt (listener, SOL_SOCKET, SO_REUSEADDR, (const char *) &yes, sizeof (yes));
-	/* Every interface, the previous cabinet another PC; a ring of one,
-	 * this PC alone (no firewall's question) */
+	/* Every interface, the previous cabinet another PC */
 	memset (&addr, 0, sizeof (addr));
 	addr.sin_family = AF_INET;
-	addr.sin_addr.s_addr = htonl (port_in == port_out &&
-	                              (!strcmp (addr_out, "127.0.0.1") ||
-	                               !strcmp (addr_out, "localhost")) ?
-	                              INADDR_LOOPBACK : INADDR_ANY);
+	addr.sin_addr.s_addr = htonl (INADDR_ANY);
 	addr.sin_port = htons ((uint16_t) port_in);
 	if (bind (listener, (struct sockaddr *) &addr, sizeof (addr)) ||
 	    listen (listener, 2)) {
@@ -191,6 +204,12 @@ RingLink::open (unsigned port_in, const char *addr_out, unsigned port_out)
 void
 RingLink::close ()
 {
+	if (looped) {
+		looped = false;
+		rx.clear ();
+		rx_at = 0;
+		return;
+	}
 	if (listener == NO_SOCKET)
 		return;
 	if (sender.joinable ()) {
@@ -221,6 +240,8 @@ RingLink::poll ()
 	fd_set set;
 	int yes = 1;
 
+	if (looped)
+		return true;
 	if (listener == NO_SOCKET)
 		return false;
 
@@ -299,6 +320,14 @@ RingLink::send (uint32_t type, const void *data, uint32_t size)
 	std::vector<uint8_t> msg;
 	size_t done = 0;
 
+	if (looped) {
+		if (rx.size () - rx_at + 8 + size > QUEUE_MOST)
+			return false;
+		put_header (rx, type, size);
+		if (size)
+			rx.insert (rx.end (), (const uint8_t *) data, (const uint8_t *) data + size);
+		return true;
+	}
 	if (queued) {
 		std::lock_guard<std::mutex> hold (out_lock);
 		/* No next node, or it stopped taking them: lost, as on a
@@ -470,6 +499,8 @@ RingLink::wait_us (unsigned timeout_us)
 	struct timeval wait;
 	fd_set set;
 
+	if (looped)
+		return rx.size () > rx_at;
 	if (in == NO_SOCKET)
 		return false;
 	wait.tv_sec = (long) (timeout_us / 1000000);
@@ -527,7 +558,7 @@ RingLink::receive (uint32_t *type, std::vector<uint8_t> &data, unsigned timeout_
 
 		if (take (type, data))
 			return true;
-		if (in == NO_SOCKET)
+		if (looped || in == NO_SOCKET)
 			return false;
 		if (queued && !timeout_ms) {
 			/* A read that does not wait */

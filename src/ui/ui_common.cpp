@@ -227,7 +227,7 @@ void drawGameTab(int screens, bool stick, bool views)
         }
     }
     ImGui::EndDisabled();
-    wrappedNote(tr("Applied when the settings close. F8 shows the next board."));
+    wrappedNote(tr("Applied when the settings close. F10 shows the next board."));
     (void) saved;
 
     // MULTI_SCREEN_VIEW: a hack for the deluxe cabinets whose views games.json measures
@@ -837,17 +837,17 @@ void drawAboutTab()
         const char *key, *what;
     } keys[] = {
         {"Tab", "Opens and closes the settings"},
-        {"F1", "Loads the state chosen, the latest by default"},
-        {"F2", "Chooses the state to load: a newer one"},
+        {"F1, 9", "Service"},
+        {"F2", "Test: the game's test menu"},
         {"F3", "Chooses the state to load: an older one"},
-        {"F4", "Saves the state, as the latest of the five kept"},
-        {"F5", "Test: the game's test menu"},
-        {"F6, 9", "Service"},
-        {"F7", "The card: in the reader, or taken back"},
-        {"F8", "NAOMI cabinets of several boards: the next board's picture"},
+        {"F4", "Chooses the state to load: a newer one"},
+        {"F5, P", "Pauses and resumes the game"},
+        {"F6", "Saves the state, as the latest of the five kept"},
+        {"F7", "Loads the state chosen, the latest by default"},
+        {"F8", "The card: in the reader, or taken back"},
         {"F9", "Quits the emulator"},
+        {"F10", "NAOMI cabinets of several boards: the next board's picture"},
         {"F11", "Shows and hides the frame rate"},
-        {"P", "Pauses and resumes the game"},
         {"Esc", "Back to the picker the game was started from, else quits"},
         {"5, 6, 7, 8", "Coins"},
         {"1, 2, 3, 4", "Start"},

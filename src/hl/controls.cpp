@@ -55,18 +55,18 @@ static const Controls::RowDef row_table[] = {
 	{ "Config", "Brake_DeadZone", CF, "500", "The brake's dead zone" },
 	{ "Config", "Aim_DeadZone", CF, "4000", "The dead zone of a stick moving a sight" },
 	{ "Config", "Aim_Speed", CF, "100", "How fast a stick moves a sight or a lever, in percent" },
-	{ "Config", "Axis_Key_Ramp", CF, "250",
+	{ "Config", "Axis_Key_Ramp", CF, "500",
 	  "A key or a button on an axis (the wheel, a pedal): milliseconds to go all the way, 0 at once" },
-	{ "Config", "Axis_Key_Return", CF, "100", "The same, back to the middle when let go or turned the other way" },
+	{ "Config", "Axis_Key_Return", CF, "250", "The same, back to the middle when let go or turned the other way" },
 
 	{ "Common", NULL, SW, NULL, "The cabinet's switches" },
-	{ "Common", "Test", SW, "KEY_F5", "The Test button" },
-	{ "Common", "Service", SW, "KEY_9, KEY_F6", "The Service button" },
+	{ "Common", "Test", SW, "KEY_F2", "The Test button" },
+	{ "Common", "Service", SW, "KEY_9, KEY_F1", "The Service button" },
 	{ "Common", "Coin1", SW, "KEY_5", "Coin 1" },
 	{ "Common", "Coin2", SW, "KEY_6", "Coin 2" },
 	{ "Common", "Coin3", SW, "KEY_7", "Coin 3 (the four-player cabinets)" },
 	{ "Common", "Coin4", SW, "KEY_8", "Coin 4" },
-	{ "Common", "Card", SW, "KEY_F7, GC0_BUTTON_GUIDE + GC0_BUTTON_Y",
+	{ "Common", "Card", SW, "KEY_F8, GC0_BUTTON_GUIDE + GC0_BUTTON_Y",
 	  "The player's card in the reader's slot, or taken back (Virtual-On 4, Club Kart...)" },
 	{ "Common", "VolumeUp", SW, "KEY_KeypadPlus, GC0_BUTTON_GUIDE + GC0_BUTTON_DPUP", "The cabinet's volume up button" },
 	{ "Common", "VolumeDown", SW, "KEY_KeypadMinus, GC0_BUTTON_GUIDE + GC0_BUTTON_DPDOWN", "The volume down button" },
@@ -219,19 +219,19 @@ static const Controls::RowDef row_table[] = {
 	{ "Pointer", "P4_StickY", AX, "GC3_AXIS_LEFTY", "Player 4's analog stick, up to down" },
 
 	{ "Emulator", NULL, SW, NULL, "The emulator's commands" },
-	{ "Emulator", "Pause", SW, "KEY_P, GC0_BUTTON_GUIDE + GC0_BUTTON_X", "Pauses and resumes the game" },
-	{ "Emulator", "SaveState", SW, "KEY_F4, GC0_BUTTON_GUIDE + GC0_BUTTON_RIGHTSHOULDER",
+	{ "Emulator", "Pause", SW, "KEY_F5, KEY_P, GC0_BUTTON_GUIDE + GC0_BUTTON_X", "Pauses and resumes the game" },
+	{ "Emulator", "SaveState", SW, "KEY_F6, GC0_BUTTON_GUIDE + GC0_BUTTON_RIGHTSHOULDER",
 	  "Saves the state, as the latest of the five kept" },
-	{ "Emulator", "LoadState", SW, "KEY_F1, GC0_BUTTON_GUIDE + GC0_BUTTON_LEFTSHOULDER",
+	{ "Emulator", "LoadState", SW, "KEY_F7, GC0_BUTTON_GUIDE + GC0_BUTTON_LEFTSHOULDER",
 	  "Loads the state chosen, the latest by default" },
-	{ "Emulator", "StateNewer", SW, "KEY_F2", "Chooses the state to load: a newer one" },
+	{ "Emulator", "StateNewer", SW, "KEY_F4", "Chooses the state to load: a newer one" },
 	{ "Emulator", "StateOlder", SW, "KEY_F3", "Chooses the state to load: an older one" },
 	{ "Emulator", "Menu", SW, "KEY_Tab, GC0_BUTTON_BACK, GC0_BUTTON_GUIDE + GC0_BUTTON_BACK", "Opens and closes the settings" },
 	{ "Emulator", "Back", SW, "KEY_Escape, GC0_BUTTON_GUIDE + GC0_BUTTON_B",
 	  "Back to the picker the game was started from, else quits" },
 	{ "Emulator", "Quit", SW, "KEY_F9, GC0_BUTTON_GUIDE + GC0_BUTTON_START", "Quits the emulator" },
 	{ "Emulator", "ShowFps", SW, "KEY_F11", "Shows and hides the frame rate" },
-	{ "Emulator", "NextScreen", SW, "KEY_F8", "NAOMI cabinets of several boards: the next board's picture" },
+	{ "Emulator", "NextScreen", SW, "KEY_F10", "NAOMI cabinets of several boards: the next board's picture" },
 
 	{ "ControllerGUIDs", NULL, CF, NULL,
 	  "P<n>_GUID = an SDL joystick GUID: that controller is player n's, JOY<n-1>,\n"
@@ -1589,8 +1589,8 @@ Controls::ramp_keys (const char *section, const char *key, double target)
 	Uint64 now = SDL_GetPerformanceCounter ();
 	double dt = k.last ? std::min ((double) (now - k.last) / (double) SDL_GetPerformanceFrequency (), 0.05) : 0.0;
 	std::string ramp_text = value ("Config", "Axis_Key_Ramp"), return_text = value ("Config", "Axis_Key_Return");
-	double ramp = (ramp_text.empty () ? 250 : atoi (ramp_text.c_str ())) / 1000.0;
-	double back = (return_text.empty () ? 100 : atoi (return_text.c_str ())) / 1000.0;
+	double ramp = (ramp_text.empty () ? 500 : atoi (ramp_text.c_str ())) / 1000.0;
+	double back = (return_text.empty () ? 250 : atoi (return_text.c_str ())) / 1000.0;
 	auto toward = [] (double from, double to, double step) {
 		return from < to ? std::min (from + step, to) : std::max (from - step, to);
 	};

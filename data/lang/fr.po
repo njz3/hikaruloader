@@ -331,8 +331,8 @@ msgid "not connected"
 msgstr "non connecté"
 
 #: src/ui/ui_common.cpp
-msgid "Applied when the settings close. F8 shows the next board."
-msgstr "Appliqué à la fermeture des réglages. F8 montre la carte suivante."
+msgid "Applied when the settings close. F10 shows the next board."
+msgstr "Appliqué à la fermeture des réglages. F10 montre la carte suivante."
 
 #: src/ui/ui_common.cpp
 msgid "As the cabinet"

@@ -495,7 +495,7 @@ Agent::run (const std::string &line)
 		} else
 			reply ("err usage: pointer N X Y BUTTONS [OFFSCREEN]");
 	} else if (!strcmp (cmd, "state")) {
-		/* F4, F1, F2 and F3 */
+		/* F6, F7, F4 and F3 */
 		int ret = 0;
 
 		if (!strcmp (args, "save"))

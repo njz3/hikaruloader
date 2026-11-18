@@ -328,7 +328,7 @@ msgid "not connected"
 msgstr ""
 
 #: src/ui/ui_common.cpp
-msgid "Applied when the settings close. F8 shows the next board."
+msgid "Applied when the settings close. F10 shows the next board."
 msgstr ""
 
 #: src/ui/ui_common.cpp

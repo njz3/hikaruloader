@@ -785,7 +785,11 @@ public:
 
 	unsigned boards;
 	std::atomic<uint16_t> status;
+	/* The memory as all the boards saw it at the last stop, and the words
+	 * the boards wrote in the slice before it (a word and its value), in the
+	 * boards' order */
 	std::vector<uint16_t> data;
+	std::vector<std::pair<uint32_t, uint16_t>> changes;
 };
 
 /* A board's side of that link: its G1 registers (005F7050-005F70C4) and its G2
@@ -808,9 +812,14 @@ public:
 	bool	 dma (uint32_t size, uint8_t *out);
 	/* SB_SFRES written: a slave is no longer ready */
 	void	 software_reset ();
-	/* All the boards stopped, between two slices: a slave's interrupt when
-	 * the master switched its bank */
+	/* All the boards stopped, between two slices. publish (), each board in
+	 * turn: its writes of the slice into the link's memory; then sync (), each
+	 * in turn: the others' into its own view, a slave's interrupt when the
+	 * master switched its bank */
+	void	 publish ();
 	void	 sync ();
+	/* A state loaded: the views as the link's memory */
+	void	 refresh ();
 
 private:
 	bool	 master () const { return id == 0; }
@@ -825,6 +834,11 @@ private:
 	 * threads' pace within a slice */
 	uint16_t dma_offset, seen_status;
 	bool	 ready_due, unready_due;
+	/* The link's memory as this board sees it within a slice: as at the last
+	 * stop but for its own writes since, kept for publish () */
+	std::vector<uint16_t> view;
+	std::vector<std::pair<uint32_t, uint16_t>> written;
+	void	 write (uint32_t at, uint16_t val);
 	/* The bank this board's G1 bus reads and writes */
 	uint16_t bank_status () const { return master () ? (uint16_t) link->status : seen_status; }
 };

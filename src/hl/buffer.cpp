@@ -92,6 +92,10 @@ Buffer::create (unsigned size, unsigned alignment, Order order)
 	ptr = allocate (size, alignment);
 	if (!ptr)
 		return NULL;
+	/* Zeroed, as the sections above: a memory the program reads before it
+	 * writes it (the NAOMI's SRAM of 32 KB, no backup yet) held what the heap
+	 * left there, and two runs of the BIOS from the same start differed */
+	memset (ptr, 0, size);
 	return new Buffer (ptr, size, order);
 }
 

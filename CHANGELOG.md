@@ -5,6 +5,34 @@ What each version brings, for those who play. How the versions are numbered
 and released: [DEVELOPMENT.md](DEVELOPMENT.md), "Versions and releases".
 
 
+Next version
+------------
+
+- The function keys as MAME's, in a new `controls.ini` (an existing one
+  keeps its keys): Test F2, Service F1 and 9, Pause F5 (P too), save a
+  state F6, load it F7, the state to load older F3 and newer F4, the card
+  F8, the next board's picture F10; Quit F9 and the frame rate F11 as
+  before.
+- A key or a button on an axis (the wheel, a pedal, a lever) goes all the
+  way in 500 ms by default, back to the middle in 250 ms (250 and 100
+  before): a new `controls.ini`; an existing one keeps its `Axis_Key_Ramp`
+  and `Axis_Key_Return`.
+- NAOMI: two runs of a game from the same start play the same. The BIOS
+  read its backup memory (SRAM, 32 KB) before writing it, and on a first
+  start it held what the PC's memory left there: zeros in about half the
+  runs, other bytes in the rest, and the BIOS went on differently from the
+  first second. The emulator's memories under 64 KB are now zeroed, as the
+  larger ones were. The cabinets of several boards also exchange their link's
+  memory at fixed points: what a board writes reaches the others at the
+  next of the stops the boards make 64 times a frame, in their order, no
+  longer as their threads go.
+- A cabinet alone on the network ring (`PORT_OUT` = `PORT_IN` on this PC, the
+  default) no longer opens a socket: what it sends comes back to it at
+  once. Over TCP its messages came back when the PC got to them, and ATV
+  Track's attract went another way in about one run in six; two programs
+  started at once with the same ports also joined each other's ring.
+
+
 0.8.8 (2026-11-18)
 ------------------
 

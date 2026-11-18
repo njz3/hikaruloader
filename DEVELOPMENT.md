@@ -258,7 +258,7 @@ The games read the cabinet through the MIE (315-6146), whose Z80 runs a
 program the game puts in its RAM; that program drives the JVS bus, where the
 I/O boards hang in a chain. Hikaruloader runs that Z80 (`src/cpu/z80`, its
 tests: `ctest -C RelWithDebInfo` in `build`), and emulates the bus and a Sega
-837-13551 I/O board on it (`src/hl/jvs.cpp`): Test (F5), Service (F6), the
+837-13551 I/O board on it (`src/hl/jvs.cpp`): Test (F2), Service (F1, 9), the
 coins (5, 6), Start (Enter), the arrows and four buttons, to bind in the
 settings (Tab). The analog channels (wheel, pedals) come from controls.ini's
 Driving section; from the shell too:
@@ -316,6 +316,28 @@ channel n at 2n), checked in the game's JVS TEST screen.
   EXIT; the game writes the record and its CRCs, and the nvram's `MIEE`
   block is the file. The BIOS's part (0 to 35) is a new cabinet's, rewritten
   from the settings at each start.
+- Without those files the backup RAM starts zeroed, as every emulated memory
+  (`hl::Buffer::create`): those under 64 KB came from the heap, the NAOMI's
+  SRAM of 32 KB among them, and held what it left there until 0.8.8; the
+  BIOS reads its blocks' sums at 00200008 and 00200100 before writing
+  them, and two runs of a game from boot went two ways from its 51st frame
+  (Crazy Taxi, Sega Strike Fighter), about one in two.
+- The boards of a cabinet (`src/mach/naomi/naomi-multiboard.cpp`) each read
+  and write their own view of the link's memory, the writes exchanged when
+  all stop (every 8 lines, in the boards' order); shared live, the slaves
+  went two ways from frame 678 of Sega Strike Fighter's attract in 7 runs
+  out of 8. Eight runs at once from boot now give the same memories (RAM,
+  VRAM, sound RAM of each board, the link's) for 1800 frames. Its side
+  boards' frame behind the master (`Renderer::late_middle`) is the same with
+  either: not the threads'.
+- A node of the ring that is its own next (`hl::RingLink`, `PORT_OUT` =
+  `PORT_IN` on 127.0.0.1, a cabinet alone by default) opens no socket: what
+  it sends is put back for its own `receive ()` at once (Gaelco's link at
+  the next line). Through TCP, ATV Track's link words came back when the
+  PC's threads got to them, and one run in six went another way from its
+  frame 401 (a word more in its link's queue, 0C0A1D80); several programs
+  on the PC with the default ports joined one another's ring. The Hikaru's
+  communication board did so already (`CommBoard::loop`).
 - The controls (`hl::GameControls`, `src/hl/gamecontrols.cpp`): every board
   (the JVS I/O boards of the Hikaru and the NAOMI, the Atomiswave's pads,
   Gaelco's ports and ADC, the MIEs' Test and Service, the card readers) asks
@@ -672,7 +694,7 @@ channel n at 2n), checked in the game's JVS TEST screen.
   (ports 09-0D, which the game's program at the Z80's 9000 drives):
   `machine.devices.card_reader:option ('log', 1)` logs its frames,
   `('insert', 1)` and `('take', 1)` move the card; `:info ()` where the
-  card is. The agent's input `Card` is the F7 key.
+  card is. The agent's input `Card` is the F8 key.
 - The outputs (`src/hl/outputs.cpp`, README's "Cabinet outputs"): the I/O
   boards declare their general outputs as the machine is built
   (`Outputs::board`), report the bytes of each outputs command (`jvs`) and
@@ -706,8 +728,8 @@ number: once a state is loaded, the emulation goes on from that frame. States
 are compressed. Until the first release their layout follows the machine's,
 so a state from another build may not load; Valkyrie's no longer do.
 
-- F4 saves `<game>-0.hlstate` (in the write directory's `<game>/` when there is
-  one), the others moved up to `-4`, the oldest; F1 loads the one F2 and F3
+- F6 saves `<game>-0.hlstate` (in the write directory's `<game>/` when there is
+  one), the others moved up to `-4`, the oldest; F7 loads the one F4 and F3
   have chosen, by default the latest (a `<game>.hlstate` of an older version
   counts as `-0` until the next save); `-l N` loads number `N` at startup,
   `-l FILE` loads `FILE`.
@@ -771,7 +793,7 @@ with Supermodel and sm2-emu.
 | `shot PATH` | The picture as a 24-bit BMP: `ok` |
 | `save PATH`, `load PATH` | Save states: `ok` |
 | `pointer N X Y BUTTONS [OFFSCREEN]` | Sets mouse or light gun N: X, Y from -1 to 1, buttons bits 0 left, 1 right, 2 middle |
-| `state [save\|load\|newer\|older]` | F4, F1, F2 and F3: `state N`, N the one chosen |
+| `state [save\|load\|newer\|older]` | F6, F7, F4 and F3: `state N`, N the one chosen |
 | `ram ADDR LEN`, `mem ADDR LEN` | LEN bytes (hex arguments, at most 100000) through the master SH-4's bus: `ram LEN` (decimal), then the bytes |
 | `poke ADDR VALUE [SIZE]` | A write through the same bus (hex; size 1, 2, 4): `ok` |
 | `frame` | `frame N` |

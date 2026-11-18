@@ -1461,6 +1461,9 @@ Naomi::run_frame ()
 					std::this_thread::yield ();
 			for (auto &b : boards)
 				if (b->link)
+					b->link->publish ();
+			for (auto &b : boards)
+				if (b->link)
 					b->link->sync ();
 		} else
 			run_slice (master ());
@@ -1534,6 +1537,9 @@ Naomi::on_load_state (hl::State *state)
 
 	for (auto &b : boards)
 		ret |= b->load_state (state);
+	for (auto &b : boards)
+		if (b->link)
+			b->link->refresh ();
 	return ret;
 }
 
