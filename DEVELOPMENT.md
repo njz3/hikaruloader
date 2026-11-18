@@ -279,7 +279,14 @@ channel n at 2n), checked in the game's JVS TEST screen.
   read when the game has no `.nvram` yet. The NAOMI's the same, its EEPROMs
   and its boards' settings two seconds after they change (its backup RAM
   went with those saves alone: a record taken in the middle of a game, and
-  Club Kart Prize's POWER DOWN IN GAME at the next boot).
+  Club Kart Prize's POWER DOWN IN GAME at the next boot). Its two X76F100s
+  (the main board's serial number, `EEPR`; the cartridge's, `X76F`) keep
+  the BIOS's read password, `iyhktmhm`, whatever a dump or a backup holds,
+  an erased serial number the dump's (`Board::nvram_read`): a zip's
+  `x76f100_eeprom.bin` of other passwords, taken by its name (the log then
+  gives its CRC against the one the game lists), stopped the BIOS at ERROR
+  03 BOARD MALFUNCTIONING on the NAOMI 2 screen (Initial D Ver. 3 Export,
+  0.8.6).
 - No memory left (another program took it): a NAOMI's scenes are built
   again in the vectors of those no drawing holds any more (`Holly::
   new_scene`: no allocation a frame; they grew from nothing at each list);

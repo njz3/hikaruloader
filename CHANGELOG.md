@@ -42,6 +42,20 @@ Next version
   panel).
 - NAOMI, WIDESCREEN: a game that clips its view to its whole screen draws
   its sides too (Sega Strike Fighter, Airline Pilots' cockpit).
+- A game whose files are missing (a GD-ROM's CHD: Initial D Ver. 3 Export)
+  says it could not be loaded and points to the log, which names the file,
+  no longer that it needs a machine Hikaruloader does not emulate.
+- NAOMI: the main board's and the cartridge's X76F100 keep the BIOS's
+  password whatever a zip or a game's backup holds: a `naomi2.zip` with
+  another `x76f100_eeprom.bin`, or a backup of another time, stopped the
+  BIOS on its NAOMI 2 screen at ERROR 03 BOARD MALFUNCTIONING (Initial D
+  Arcade Stage Ver. 3 Export). The log says when a file taken by its name
+  is not the dump the game lists (its CRC). The SH-4's IPRD that Initial D
+  Ver. 3 looks for at its start (an SH7750R's, not the NAOMI's) no longer
+  logs four errors: it reads 0, as on the board.
+- The log names the input that quit or went back to the picker (the key,
+  the joystick's button, axis or hat) and what the Back or Quit row binds:
+  a game closing by itself, a wheel's button bound to Back.
 - Jambo! Safari: the lever pushed up (LEVER UP) is *Shift down* now, pulled
   down (LEVER DOWN) *Shift up*: a sequential shifter pushed up shifts down.
 - The default keys closer to MAME's (a new `controls.ini`; an existing one

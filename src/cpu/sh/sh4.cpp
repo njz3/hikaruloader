@@ -988,6 +988,12 @@ sh4_ireg_get (Sh4 *ctx, unsigned size, uint32_t addr, void *val)
 	case INTC_IPRC:
 		set_ptr (val, size, IREG_GET (2, addr));
 		break;
+	/* The SH7750R's, not the NAOMI's SH-4: 0 whatever was written, the
+	 * games that look for it (Initial D Ver. 3: 1000, read back) find none,
+	 * as on the board, no longer an error in the log */
+	case INTC_IPRD:
+		set_ptr (val, size, 0);
+		break;
 	/* Port B, the GPIO interrupts' control: what was written (ATV
 	 * Track's) */
 	case BSC_PCTRB:
@@ -1244,6 +1250,9 @@ sh4_ireg_put (Sh4 *ctx, unsigned size, uint32_t addr, uint64_t val)
 		/* Bits 3-0 are reserved */
 		IREG_PUT (2, addr, val & 0xFFF0);
 		sh4_intc_update_priorities (ctx);
+		return 0;
+	/* None (above) */
+	case INTC_IPRD:
 		return 0;
 	/* DMAC */
 	case DMAC_SAR0:

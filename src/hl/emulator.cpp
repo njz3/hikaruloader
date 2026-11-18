@@ -151,6 +151,50 @@ Emulator::create_machine ()
 
 static Machine *running_machine = NULL;
 
+/* The input an event comes from, for the log: "the key Escape", "button 7
+ * of 'PRO Racing Wheel'"... (a game closing at once, the Back input bound
+ * to what the player's setup presses) */
+static std::string
+event_source (const SDL_Event &e)
+{
+	char text[256] = "";
+	auto joystick = [] (SDL_JoystickID id) {
+		SDL_Joystick *j = SDL_JoystickFromInstanceID (id);
+		const char *name = j ? SDL_JoystickName (j) : NULL;
+
+		return std::string (name ? name : "?");
+	};
+
+	switch (e.type) {
+	case SDL_KEYDOWN:
+		snprintf (text, sizeof (text), "the key %s", SDL_GetScancodeName (e.key.keysym.scancode));
+		break;
+	case SDL_JOYBUTTONDOWN:
+		snprintf (text, sizeof (text), "button %d of '%s' (JOY_BUTTON_%d)", e.jbutton.button + 1,
+		          joystick (e.jbutton.which).c_str (), e.jbutton.button);
+		break;
+	case SDL_JOYAXISMOTION:
+		snprintf (text, sizeof (text), "axis %d of '%s' at %d", e.jaxis.axis, joystick (e.jaxis.which).c_str (),
+		          e.jaxis.value);
+		break;
+	case SDL_JOYHATMOTION:
+		snprintf (text, sizeof (text), "hat %d of '%s' at %d", e.jhat.hat, joystick (e.jhat.which).c_str (),
+		          e.jhat.value);
+		break;
+	case SDL_CONTROLLERBUTTONDOWN:
+		snprintf (text, sizeof (text), "the controller's %s",
+		          SDL_GameControllerGetStringForButton ((SDL_GameControllerButton) e.cbutton.button));
+		break;
+	case SDL_CONTROLLERAXISMOTION:
+		snprintf (text, sizeof (text), "the controller's %s at %d",
+		          SDL_GameControllerGetStringForAxis ((SDL_GameControllerAxis) e.caxis.axis), e.caxis.value);
+		break;
+	default:
+		snprintf (text, sizeof (text), "event %u", e.type);
+	}
+	return text;
+}
+
 int
 Emulator::game_screens ()
 {
@@ -221,9 +265,18 @@ Emulator::load_game (const char *name, const char *log_path)
 				telemetry::Service::get ().start (mach);
 				return true;
 			}
-			HL_ERROR ("failed to load '%s': game name not in game list", rom_name);
-			snprintf (message, sizeof (message), ui::Interface::tr ("%s needs a machine Hikaruloader does not emulate."),
-			          entry ? entry->description : rom_name);
+			/* A machine it has that did not start (a file it lacks:
+			 * Initial D Ver. 3 Export without its GD-ROM's CHD, the
+			 * log saying which), or one it does not have */
+			if (!strcmp (game->mach, "hikaru") || !strcmp (game->mach, "gaelco") || !strcmp (game->mach, "naomi")) {
+				HL_ERROR ("failed to load '%s': its machine did not start (what it lacks: above)", rom_name);
+				snprintf (message, sizeof (message), ui::Interface::tr ("%s could not be loaded; see %s."),
+				          entry ? entry->description : rom_name, log_path);
+			} else {
+				HL_ERROR ("failed to load '%s': no machine '%s'", rom_name, game->mach);
+				snprintf (message, sizeof (message), ui::Interface::tr ("%s needs a machine Hikaruloader does not emulate."),
+				          entry ? entry->description : rom_name);
+			}
 			destroy (game);
 			Config::end_game ();
 		}
@@ -476,7 +529,8 @@ Emulator::process_events ()
 			continue;
 		switch (Input::handle_event (&event)) {
 		case ACTION_QUIT:
-			HL_PRINT ("quitting: the Quit input was pressed");
+			HL_PRINT ("quitting: the Quit input was pressed: %s (bound to %s)", event_source (event).c_str (),
+			          Controls::get ().value ("Emulator", "Quit").c_str ());
 			quit = true;
 			break;
 		case ACTION_BACK:
@@ -486,10 +540,8 @@ Emulator::process_events ()
 			if (agent || shell)
 				break;
 			back_to_picker = from_picker;
-			if (back_to_picker)
-				HL_PRINT ("back to the picker: the Back input was pressed");
-			else
-				HL_PRINT ("quitting: the Back input was pressed");
+			HL_PRINT ("%s: the Back input was pressed: %s (bound to %s)", back_to_picker ? "back to the picker" : "quitting",
+			          event_source (event).c_str (), Controls::get ().value ("Emulator", "Back").c_str ());
 			quit = true;
 			break;
 		case ACTION_PAUSE:

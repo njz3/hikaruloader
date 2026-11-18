@@ -354,6 +354,10 @@ Board::init ()
 
 	if (main_rom)
 		main_serial.load ((const uint8_t *) main_rom->ptr (0), main_rom->size ());
+	/* The BIOS reads it with its password, the cartridge's (below): a dump
+	 * of another (a zip's x76f100_eeprom.bin by its name, not its CRC)
+	 * would stop it at ERROR 03 BOARD MALFUNCTIONING */
+	memcpy (main_serial.image + hl::X76F100::IMAGE_READ_PASSWORD, "iyhktmhm", 8);
 
 	Cart::Type type = Cart::TYPE_ROM;
 	if (!strcmp (game->board, "m1"))
@@ -1003,10 +1007,28 @@ Board::nvram_read (const hl::Nvram &nvram)
 {
 	char name[5];
 	const std::vector<uint8_t> *d;
+	/* The X76F100s' passwords the BIOS's whatever the backup holds: the
+	 * main board's as its dump has them, the cartridge's forced at its load.
+	 * A backup of another dump or of another time with others (one erased
+	 * by eight wrong passwords: the BIOS's refused, Initial D Ver. 3 Export
+	 * stopped on the NAOMI 2 screen, ERROR 03 BOARD MALFUNCTIONING) keeps
+	 * the BIOS's; an erased serial number the dump's */
+	uint8_t dump[hl::X76F100::IMAGE_SIZE];
+	const unsigned PASSWORDS = hl::X76F100::IMAGE_WRITE_PASSWORD, DATA = hl::X76F100::IMAGE_DATA;
+	auto blank = [] (const uint8_t *p, size_t n) {
+		for (size_t i = 0; i < n; i++)
+			if (p[i])
+				return false;
+		return true;
+	};
 
+	memcpy (dump, main_serial.image, sizeof (dump));
 	block_name (name, NV_TYPES[0], index);
-	if ((d = nvram.get (name)))
-		main_serial.load (d->data (), d->size ());
+	if ((d = nvram.get (name)) && main_serial.load (d->data (), d->size ())) {
+		memcpy (main_serial.image + PASSWORDS, dump + PASSWORDS, DATA - PASSWORDS);
+		if (blank (main_serial.image + DATA, hl::X76F100::DATA_SIZE))
+			memcpy (main_serial.image + DATA, dump + DATA, hl::X76F100::DATA_SIZE);
+	}
 	block_name (name, NV_TYPES[1], index);
 	if (mie && (d = nvram.get (name)) && d->size () == sizeof (mie->eeprom.mem))
 		memcpy (mie->eeprom.mem, d->data (), d->size ());
@@ -1017,8 +1039,9 @@ Board::nvram_read (const hl::Nvram &nvram)
 	if ((d = nvram.get (name)) && d->size () == sram->size ())
 		memcpy (sram->ptr (0), d->data (), d->size ());
 	block_name (name, NV_TYPES[3], index);
-	if ((d = nvram.get (name)))
-		cart->eeprom.load (d->data (), d->size ());
+	memcpy (dump, cart->eeprom.image, sizeof (dump));
+	if ((d = nvram.get (name)) && cart->eeprom.load (d->data (), d->size ()))
+		memcpy (cart->eeprom.image + PASSWORDS, dump + PASSWORDS, DATA - PASSWORDS);
 	if (hopper && (d = nvram.get ("HOPR")))
 		hopper->load (d->data (), d->size ());
 	if (g2_board && (d = nvram.get ("G2RA")))

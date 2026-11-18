@@ -177,6 +177,10 @@ RomSet::load (const char *name, const char *alias, uint32_t crc, unsigned size)
 			return NULL;
 		HL_PRINT ("Loading %u bytes of '%s' from '%s' [%s]",
 		          size, name, archive->path ().c_str (), member->name.c_str ());
+		/* Taken by its name: another dump perhaps (a NAOMI's
+		 * x76f100_eeprom.bin of other passwords) */
+		if (crc && member->has_crc && member->crc != crc)
+			HL_PRINT ("'%s' is not the dump the game lists: its CRC %08X, not %08X", name, member->crc, crc);
 		/* The reason, in the log */
 		if (!archive->read (*member, buffer->ptr (0)))
 			destroy (buffer);
