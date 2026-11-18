@@ -5,6 +5,19 @@ What each version brings, for those who play. How the versions are numbered
 and released: [DEVELOPMENT.md](DEVELOPMENT.md), "Versions and releases".
 
 
+0.8.10 (2026-11-18)
+-------------------
+
+- Nothing changes in the games (each of the 101 sets tried plays as in
+  0.8.9). For those who work on the emulator: the memories hashed at each
+  frame (`HR_HASH`), and `tools/regress.py`, which compares two versions
+  frame by frame on every game (DEVELOPMENT.md, "Regressions").
+- Sega Strike Fighter's and Airline Pilots' side screens a frame behind the
+  middle one: measured, the games' own (the middle board sends the side
+  ones its views of the frame before); *Screens' view* keeps showing the
+  middle picture a frame late to join them.
+
+
 0.8.9 (2026-11-18)
 ------------------
 
