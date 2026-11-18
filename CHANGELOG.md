@@ -5,8 +5,8 @@ What each version brings, for those who play. How the versions are numbered
 and released: [DEVELOPMENT.md](DEVELOPMENT.md), "Versions and releases".
 
 
-Next version
-------------
+0.8.9 (2026-11-18)
+------------------
 
 - The function keys as MAME's, in a new `controls.ini` (an existing one
   keeps its keys): Test F2, Service F1 and 9, Pause F5 (P too), save a
