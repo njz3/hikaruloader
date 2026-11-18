@@ -5,8 +5,8 @@ What each version brings, for those who play. How the versions are numbered
 and released: [DEVELOPMENT.md](DEVELOPMENT.md), "Versions and releases".
 
 
-Next version
-------------
+0.8.8 (2026-11-18)
+------------------
 
 - NAOMI, Ferrari F355 Challenge deluxe, Airline Pilots and Sega Strike
   Fighter on three screens: *Screens' view* (`MULTI_SCREEN_VIEW`, a hack in
