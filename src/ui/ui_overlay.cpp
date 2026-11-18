@@ -16,7 +16,7 @@
  * along with Hikaruloader.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-// The Tab settings window over a running game, the frame rate (F12), and the
+// The Tab settings window over a running game, the frame rate (F11), and the
 // notice of a write directory that could not be written to.
 
 #include "ui/ui.h"

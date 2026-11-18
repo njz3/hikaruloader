@@ -52,6 +52,10 @@ static const char *multi_screen_names[NUM_MULTI_SCREEN] = {
 	"ONE", "SIDE_BY_SIDE", "WINDOWS"
 };
 
+static const char *screen_view_names[NUM_SCREEN_VIEWS] = {
+	"CABINET", "JOINED", "FLAT", "CURVED", "DOME", "PANINI"
+};
+
 static const char *display_names[NUM_DISPLAY_MODES] = {
 	"WINDOW", "FULLSCREEN", "BORDERLESS"
 };
@@ -140,6 +144,7 @@ Config::set_defaults ()
 	snprintf (cfg->screen_order, sizeof (cfg->screen_order), "AUTO");
 	for (int i = 0; i < MAX_SCREENS; i++)
 		snprintf (cfg->screen_display[i], sizeof (cfg->screen_display[i]), "AUTO");
+	cfg->multi_screen_view = VIEW_CABINET;
 	cfg->display_stretch = false;
 	cfg->window_scale = 1;	/* the Hikaru's own 640 x 480 */
 	cfg->aspect = ASPECT_ORIGINAL;
@@ -382,6 +387,8 @@ Config::set_value (const char *section, const char *key, const char *value)
 		else if (!strncasecmp (key, "SCREEN_", 7) && key[7] >= '1' && key[7] < '1' + MAX_SCREENS &&
 		         !strcasecmp (key + 8, "_DISPLAY"))
 			snprintf (cfg->screen_display[key[7] - '1'], sizeof (cfg->screen_display[0]), "%s", value);
+		else if (!strcasecmp (key, "MULTI_SCREEN_VIEW"))
+			cfg->multi_screen_view = parse_name (value, screen_view_names, NUM_SCREEN_VIEWS, cfg->multi_screen_view);
 		else if (!strcasecmp (key, "WINDOW_SCALE"))
 			cfg->window_scale = MAX2 (1, MIN2 (4, atoi (value)));
 		else if (!strcasecmp (key, "ASPECT_RATIO")) {
@@ -1049,6 +1056,17 @@ Config::write (FILE *fp) const
 	for (int i = 0; i < MAX_SCREENS; i++)
 		fprintf (fp, "SCREEN_%d_DISPLAY = %s\n", i + 1, cfg->screen_display[i][0] ? cfg->screen_display[i] : "AUTO");
 	fprintf (fp,
+	         "\n# A hack for a deluxe cabinet's three screens (F355 Challenge, Airline\n"
+	         "# Pilots, Strike Fighter) side by side or in windows: CABINET leaves its\n"
+	         "# side views turned\n"
+	         "# for its monitors' angle and edges (a gap between flat screens in 4:3, an\n"
+	         "# overlap in 16:9), JOINED turns them to meet the middle one's edges\n"
+	         "# (monitors touching, or one window over them), FLAT makes one flat\n"
+	         "# picture of them, CURVED a curved ultrawide one, DOME a panoramic dome's\n"
+	         "# and PANINI a wide one on a flat screen with straight vertical lines (the\n"
+	         "# 2D bent with the 3D in these four). Default: %s\n", screen_view_names[def.multi_screen_view]);
+	fprintf (fp, "MULTI_SCREEN_VIEW = %s\n", screen_view_names[cfg->multi_screen_view]);
+	fprintf (fp,
 	         "\n# The picture at whole multiples of its size only (1x, 2x, 3x...), for\n"
 	         "# even pixels, the frame's bars larger: true or false. Not with a\n"
 	         "# stretched or cropped picture, nor a stretched DISPLAY_MODE. Default: %s\n",
@@ -1069,7 +1087,7 @@ Config::write (FILE *fp) const
 	         "\n# The frame rate held, 10 to 240 frames a second. Default: %.1f\n", def.fps_target);
 	fprintf (fp, "FPS_TARGET = %.1f\n", cfg->fps_target);
 	fprintf (fp,
-	         "\n# The frame rate shown over the picture (F12 toggles it): true or false.\n"
+	         "\n# The frame rate shown over the picture (F11 toggles it): true or false.\n"
 	         "# Default: %s\n", bool_name (def.fps_overlay));
 	fprintf (fp, "FPS_OVERLAY_ENABLED = %s\n", bool_name (cfg->fps_overlay));
 	fprintf (fp,

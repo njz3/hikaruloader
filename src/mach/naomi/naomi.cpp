@@ -1454,6 +1454,7 @@ Naomi::run_frame ()
 	mix.clear ();
 	for (auto &b : boards)
 		b->end_frame (&mix);
+	share_view_words ();
 	for (size_t q = 0; q + 1 < mix.size (); q += 2) {
 		audio.push_back ((int16_t) std::max (-32768, std::min (32767, mix[q])));
 		audio.push_back ((int16_t) std::max (-32768, std::min (32767, mix[q + 1])));
@@ -1464,6 +1465,30 @@ Naomi::run_frame ()
 		reset (hl::RESET_HARD);
 	}
 	return 0;
+}
+
+/* MULTI_SCREEN_VIEW: the words of games.json's "share", from the master's
+ * main RAM to the other boards', all stopped (Airline Pilots' wings' flex:
+ * the master draws one of its 20 wings by its flight, its side boards the
+ * first, the index left out of what the master sends them; joined, the
+ * wings would not meet). The cabinet's view keeps the game's own */
+void
+Naomi::share_view_words ()
+{
+	if (!game || game->view_share.empty () || game->view_focal <= 0.0f || boards.size () < 2 || multi_screen == hl::MULTI_ONE ||
+	    hl::Config::get ()->multi_screen_view == hl::VIEW_CABINET || shown_boards () != screen_order)
+		return;
+	for (uint32_t at : game->view_share) {
+		uint32_t offs = at - 0x0C000000;
+
+		if (at < 0x0C000000 || offs + 4 > master ()->ram->size ())
+			continue;
+		uint64_t value = master ()->ram->get (4, offs);
+
+		for (size_t i = 1; i < boards.size (); i++)
+			if (offs + 4 <= boards[i]->ram->size ())
+				boards[i]->ram->put (4, offs, value);
+	}
 }
 
 void

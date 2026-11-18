@@ -332,6 +332,38 @@ msgid "Applied when the settings close. F8 shows the next board."
 msgstr ""
 
 #: src/ui/ui_common.cpp
+msgid "As the cabinet"
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "Joined"
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "Flat"
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "Curved (ultrawide)"
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "Panoramic dome"
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "Panini (wide, flat screen)"
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "Screens' view (hack)"
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "The cabinet's side views are turned for its monitors' angle and edges: a gap between flat screens in 4:3, an overlap in 16:9. Joined turns their 3D to meet the middle one's edges (monitors touching, or a window over them), the 2D as it is; the others make one picture of the three, a flat, curved or dome screen's, the 2D bent with the 3D. Side by side or in windows, at once."
+msgstr ""
+
+#: src/ui/ui_common.cpp
 msgid "Vulkan 1.3 (to come)"
 msgstr ""
 
@@ -516,7 +548,7 @@ msgid "Target frame rate"
 msgstr ""
 
 #: src/ui/ui_common.cpp
-msgid "Show the frame rate (F12)"
+msgid "Show the frame rate (F11)"
 msgstr ""
 
 #: src/ui/ui_common.cpp
@@ -1632,6 +1664,18 @@ msgid "Stick moving a sight"
 msgstr ""
 
 #: src/ui/ui_controls.cpp
+msgid "Sight speed (%)"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Axis key, travel (ms)"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "Axis key, return (ms)"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
 msgid "Keyboard"
 msgstr ""
 
@@ -1769,6 +1813,22 @@ msgstr ""
 
 #: src/ui/ui_controls.cpp
 msgid "All the controls"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "How fast a stick moves a sight (Brave Firefighters' nozzles) or a lever that stays where it is left (a thrust lever): 100 is the usual speed, 200 twice as fast"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "A key or a button on an axis (the wheel, a pedal, a lever): the milliseconds it takes to go all the way; 0 at once"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "The milliseconds it takes to come back to the middle, once let go or turned the other way; 0 at once"
+msgstr ""
+
+#: src/ui/ui_controls.cpp
+msgid "The dead zone: the part of the axis's travel around its middle, or of a pedal's from its rest, read as nothing; out of 32767, the axis's half travel"
 msgstr ""
 
 #: src/ui/ui_controls.cpp

@@ -5,6 +5,57 @@ What each version brings, for those who play. How the versions are numbered
 and released: [DEVELOPMENT.md](DEVELOPMENT.md), "Versions and releases".
 
 
+Next version
+------------
+
+- NAOMI, Ferrari F355 Challenge deluxe, Airline Pilots and Sega Strike
+  Fighter on three screens: *Screens' view* (`MULTI_SCREEN_VIEW`, a hack in
+  the Game tab). Their side views are turned for the cabinet's monitors, set
+  at an angle, and their edges: a gap between flat screens in 4:3, an
+  overlap in 16:9. *Joined* turns their 3D to meet the middle picture's
+  edges (monitors at an angle around the player), Airline Pilots' cockpit
+  with it, the HUD as it is; *Flat* (monitors side by side, its straight
+  lines straight across them), *Curved (ultrawide)*, *Panoramic dome* and
+  *Panini* make one picture of the three, the 2D bent with it. Each scene's
+  views (the angle between screens, the lens, the centre) are measured at
+  each frame on what the boards both draw: the attracts' scenes join too
+  (F355's driver seen close, its factory, its rankings, its zooms); those
+  whose screens each have a camera of their own stay as the cabinet shows
+  them, the window's title saying so. In 4:3 the cabinet's gap between
+  monitors shows what either board draws there (Airline Pilots' overhead
+  compass and far hangars, a house of F355's town), a side screen's own
+  text whole: the middle board's scene is drawn in the side screens' views
+  too and the two pictures meet pixel by pixel by their depths, with no
+  fade, the side views fogged as their boards fog them.
+  Airline Pilots' wings meet: its side boards, never told how the wings
+  flex, draw them bent upwards on the cabinet; joined, they flex as the
+  middle screen's.
+  Sega Strike Fighter joins in all its scenes of one view: its side boards
+  draw a frame behind the middle one in most of them, the middle screen is
+  then shown a frame late, the three the same moment; its title's sky, its
+  logo, its grid, its fleet, its helicopters and its training's cockpit
+  join too, the small views of the plane on its side screens staying in
+  their frames, and its crash, the middle screen's camera tilting alone.
+  Airline Pilots' attract joins in more scenes so (its plane at the gate,
+  its city, its take-off), its side boards a frame late there too. Its scenes each board draws for its own screen stay as the
+  cabinet shows them (its texts, its briefing room behind the mission's
+  panel).
+- NAOMI, WIDESCREEN: a game that clips its view to its whole screen draws
+  its sides too (Sega Strike Fighter, Airline Pilots' cockpit).
+- Jambo! Safari: the lever pushed up (LEVER UP) is *Shift down* now, pulled
+  down (LEVER DOWN) *Shift up*: a sequential shifter pushed up shifts down.
+- The default keys closer to MAME's (a new `controls.ini`; an existing one
+  keeps its keys): players 1 to 4 start on 1 to 4 (Enter no longer player
+  1's), Service on 9 too, player 1's buttons 3 to 6 on Space, Left Shift, Z,
+  X (World Kicks' kick on C), player 2's button 5 on E, players 3 and 4 on
+  I, K, J, L, Right Ctrl, Right Shift, Enter and on the keypad. The volume
+  is on the keypad's - and + (Page Up and Page Down changed it along with
+  NASCAR's gear), the frame rate on F11.
+- The Controls tab's options say their units: the dead zones out of 32767,
+  the sight's speed in %, a key on an axis in milliseconds (its time to the
+  end and back), each with a tooltip.
+
+
 0.8.7 (2026-11-16)
 ------------------
 

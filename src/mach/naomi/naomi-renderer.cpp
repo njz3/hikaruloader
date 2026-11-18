@@ -21,6 +21,7 @@
  */
 
 #include <algorithm>
+#include <array>
 #include <new>
 #include <chrono>
 #include <cmath>
@@ -30,6 +31,7 @@
 #include <mutex>
 #include <string>
 #include <thread>
+#include <unordered_set>
 
 #include "hl/config.h"
 #include "hl/core.h"
@@ -60,30 +62,63 @@ layout (location = 0) in vec3 in_pos;
 layout (location = 1) in vec2 in_uv;
 layout (location = 2) in vec4 in_base;
 layout (location = 3) in vec4 in_offset;
+layout (location = 4) in uint in_flat;
 out vec2 v_uv;
 out vec4 v_base;
 out vec4 v_offset;
 noperspective out float v_z;
+/* The vertex's W, the game's: across the turned view's triangles
+ * interpolated for its depth (linear in space) */
+out float v_w;
 uniform float u_width;
 uniform int u_stretch_2d;
 uniform int u_stretch_all;
 uniform vec2 u_scale;
 uniform vec2 u_target;
+uniform vec4 u_view;
+uniform vec2 u_view_c;
+uniform float u_view_f;
+uniform mat3 u_view_m;
+uniform int u_strip_pass;
 void main ()
 {
 	float w = 1.0 / in_pos.z;
 	bool flat_2d = in_pos.z >= 1.0 || in_pos.z <= 1.0001e-6;
 	/* At 640, and the 2D stretched: as before (the uniform's division
 	 * rounds otherwise, a few pixels a frame) */
-	float px = in_pos.x * u_scale.x, py = in_pos.y * u_scale.y;
-	float x = px / (u_target.x * 0.5) - 1.0;
+	float px = in_pos.x * u_scale.x, py = in_pos.y * u_scale.y, pw = 1.0;
+	/* MULTI_SCREEN_VIEW: the 3D turned about the eye, as the game's camera
+	 * turned so would draw it (u_view_m: the turn, about the vertical but
+	 * when the master's camera alone is shaken; u_view: z the game's focal
+	 * length, w 1; u_view_c: the view's centre; u_view_f: the focal length
+	 * drawn with; in_flat: bit 0 a 2D
+	 * triangle's vertex, draw_scene ()); in homogeneous coordinates, pw the
+	 * depth along the new axis over the old one, for the GPU to clip what
+	 * comes behind */
+	if (u_view.w != 0.0 && (in_flat & 1u) == 0u) {
+		vec2 d = (vec2 (px, py) - u_view_c) / u_view.z;
+		vec3 q = u_view_m * vec3 (d, 1.0);
+
+		pw = q.z;
+		px = u_view_c.x * pw + u_view_f * q.x;
+		py = u_view_c.y * pw + u_view_f * q.y;
+	}
+	float x = px / (u_target.x * 0.5) - pw;
 	if (u_width > 640.0 && u_stretch_all == 0 && !(u_stretch_2d != 0 && flat_2d))
-		x = (px + (u_width - 640.0) * 0.5) / (u_width * 0.5) - 1.0;
-	gl_Position = vec4 (x, 1.0 - py / (u_target.y * 0.5), 0.0, 1.0) * w;
+		x = (px + (u_width - 640.0) * 0.5 * pw) / (u_width * 0.5) - pw;
+	gl_Position = vec4 (x, pw - py / (u_target.y * 0.5), 0.0, pw) * w;
+	/* MULTI_SCREEN_VIEW's middle board in a side screen's view, for its
+	 * strip (View::strips): its HUD away (in_flat 5: 2D at a 1/W of 1 or
+	 * more, narrower than the screen), the side screen's own there; its
+	 * layers as wide as the screen kept, the side board's alike (F355's
+	 * race brightened by a white one at 30%), and its backgrounds */
+	if (u_strip_pass != 0 && (in_flat & 7u) == 5u)
+		gl_Position = vec4 (2.0, 2.0, 2.0, 1.0);
 	v_uv = in_uv;
 	v_base = in_base;
 	v_offset = in_offset;
 	v_z = in_pos.z;
+	v_w = w;
 }
 )";
 
@@ -96,6 +131,7 @@ in vec2 v_uv;
 in vec4 v_base;
 in vec4 v_offset;
 noperspective in float v_z;
+in float v_w;
 out vec4 out_color;
 uniform sampler2D u_tex;
 uniform usampler1D u_fog;
@@ -111,6 +147,21 @@ uniform float u_lod_bias;
 uniform float u_max_lod;
 uniform float u_shade_scale;
 uniform vec4 u_clip_out;
+uniform vec4 u_view;
+/* The fragment's 1/W: the turned view's (MULTI_SCREEN_VIEW) from the GPU's
+ * clipped and interpolated W */
+float frag_z ()
+{
+	return u_view.w != 0.0 ? gl_FragCoord.w : v_z;
+}
+/* The fragment's 1/W as the game's view has it, for its fog: the turned
+ * view's depth along the screen's axis, 2.9% deeper at the cut between
+ * Airline Pilots' boards than along the side board's, fogged it more than
+ * the middle board fogs the same point (MULTI_SCREEN_VIEW) */
+float game_z ()
+{
+	return u_view.w != 0.0 ? 1.0 / v_w : v_z;
+}
 #ifdef COLLECT
 layout (binding = 0, offset = 0) uniform atomic_uint u_count;
 layout (binding = 0, r32ui) uniform coherent uimage2D u_heads;
@@ -202,14 +253,14 @@ void main ()
 	 * its alpha by the coefficient, to fog what is under it once blended
 	 * (PowerVR 2, "Fog Control"; the three games use 0 and 2 only) */
 	if (fog == 0)
-		color.rgb = mix (color.rgb, u_fog_color, fog_table (v_z));
+		color.rgb = mix (color.rgb, u_fog_color, fog_table (game_z ()));
 	else if (fog == 1 && (u_flags & 32) != 0)
 		color.rgb = mix (color.rgb, u_fog_color_vertex, v_offset.a);
 	else if (fog == 3)
-		color = vec4 (u_fog_color, fog_table (v_z));
+		color = vec4 (u_fog_color, fog_table (game_z ()));
 	/* After the fog: the two passes add up to it once */
 	color *= trilinear;
-	float depth = v_z * u_zscale;
+	float depth = frag_z () * u_zscale;
 #ifdef COLLECT
 	/* Into its pixel's list, unless the opaque polygons hide it: always
 	 * "greater or equal" there, whatever the polygon's own test */
@@ -370,13 +421,16 @@ void main ()
 )";
 
 
+/* u_span: the part of the texture's width shown, its start and its width
+ * less 1 (0, 0: all of it) */
 static const char *blit_vs_src = R"(#version 430
 out vec2 v_uv;
 uniform int u_flip;
+uniform vec2 u_span;
 void main ()
 {
 	vec2 p = vec2 ((gl_VertexID << 1) & 2, gl_VertexID & 2);
-	v_uv = vec2 (p.x, u_flip != 0 ? 1.0 - p.y : p.y);
+	v_uv = vec2 (u_span.x + p.x * (1.0 + u_span.y), u_flip != 0 ? 1.0 - p.y : p.y);
 	gl_Position = vec4 (p * 2.0 - 1.0, 0.0, 1.0);
 }
 )";
@@ -407,21 +461,145 @@ void main ()
 }
 )";
 
+/* MULTI_SCREEN_VIEW's flat, curved, dome and Panini pictures (Projection):
+ * each pixel's direction through the projection, then the joined panel
+ * facing it, whose picture has it where the game's camera turned so puts it.
+ * Directions x to the right, y down, z ahead; the panels' textures bottom
+ * row first. u_mode: 2 a plane, 3 a cylinder (x its angle, y its height), 4
+ * a sphere (x and y its angles), 5 Panini's (d = 1: x is twice the tangent
+ * of half the angle, y the height over half of 1 plus its cosine) */
+static const char *proj_fs_src = R"(#version 430
+in vec2 v_uv;
+out vec4 out_color;
+uniform sampler2D u_tex;
+uniform int u_mode;
+uniform float u_panels;
+uniform vec2 u_panel;
+uniform float u_focal;
+uniform float u_cy;
+uniform float u_half;
+uniform float u_out_focal;
+uniform vec2 u_slot;
+void main ()
+{
+	float wide = u_panels * u_panel.x;
+	float x = (mix (u_slot.x, u_slot.y, v_uv.x) - 0.5) * wide / u_out_focal;
+	float y = ((1.0 - v_uv.y) * u_panel.y - u_cy) / u_out_focal;
+	vec3 d;
+	if (u_mode == 2)
+		d = vec3 (x, y, 1.0);
+	else if (u_mode == 3)
+		d = vec3 (sin (x), y, cos (x));
+	else if (u_mode == 4)
+		d = vec3 (sin (x) * cos (y), sin (y), cos (x) * cos (y));
+	else {
+		float a = 2.0 * atan (x * 0.5);
+		d = vec3 (sin (a), y * (1.0 + cos (a)) * 0.5, cos (a));
+	}
+	float side = (u_panels - 1.0) * 0.5;
+	float k = clamp (floor (atan (d.x, d.z) / (2.0 * u_half) + 0.5), -side, side);
+	float t = k * 2.0 * u_half, c = cos (t), s = sin (t);
+	float px = d.x * c - d.z * s, pz = d.x * s + d.z * c;
+	vec2 p = vec2 (u_panel.x * 0.5 + u_focal * px / pz, u_cy + u_focal * d.y / pz);
+	if (pz <= 1e-4 || p.x < 0.0 || p.x > u_panel.x || p.y < 0.0 || p.y > u_panel.y) {
+		out_color = vec4 (0.0, 0.0, 0.0, 1.0);
+		return;
+	}
+	out_color = vec4 (texture (u_tex, vec2 (((k + side) * u_panel.x + p.x) / wide, 1.0 - p.y / u_panel.y)).rgb, 1.0);
+}
+)";
+
+/* MULTI_SCREEN_VIEW's strips (BoardRenderer::fill_strip ()): over a side
+ * screen's joined picture, the middle board's scene drawn in that screen's
+ * view too (u_tex, u_depth; Picture::strip), in the same pixels: no fade,
+ * nothing resampled. Each board leaves out what lies wholly beyond its own
+ * view: in the directions the side board's view does not cover (the
+ * cabinet's gap between monitors, up to u_edge from the middle view's
+ * centre) each board has what the other left out (the side's: Airline
+ * Pilots' far hangars, a house of F355's town; the middle's: Airline
+ * Pilots' overhead compass). There the two pictures are joined as one depth
+ * buffer: the nearer of the two (u_depth, u_side_depth: 1/W by u_units, both
+ * along the side screen's axis); where both have the same surface, the
+ * middle's up to the cut (u_cut: the direction halfway between the two
+ * boards' own views, each board's picture beyond its own screen by half
+ * the gap at most, 2.2 degrees in Airline Pilots), both views solved on the
+ * vertices the boards both send (falling on each other to a tenth of a
+ * pixel in Airline Pilots); where the side board's 2D is (u_mask,
+ * View::mask_2d: its text, translucent, has no depth), the side board's.
+ * u_turn: the side screen's turn from the middle one; u_focal: both
+ * pictures'; u_side_span: the side picture's part shown */
+static const char *strip_fs_src = R"(#version 430
+in vec2 v_uv;
+out vec4 out_color;
+uniform sampler2D u_tex;
+uniform sampler2D u_depth;
+uniform sampler2D u_side_depth;
+uniform vec2 u_units;
+uniform vec2 u_side_span;
+uniform sampler2D u_mask;
+uniform int u_has_mask;
+uniform vec2 u_panel;
+uniform float u_focal;
+uniform float u_turn;
+uniform float u_edge;
+uniform float u_cut;
+void main ()
+{
+	float x = (v_uv.x - 0.5) * u_panel.x / u_focal;
+	float c = cos (u_turn), s = sin (u_turn);
+	float X = x * c + s, Z = -x * s + c;
+	if (Z <= 1e-4)
+		discard;
+	float from_middle = abs (u_focal * X / Z);
+	if (from_middle >= u_edge)
+		discard;
+	bool middle = from_middle < u_cut;
+	if (u_units.x > 0.0 && u_units.y > 0.0) {
+		float side = texture (u_side_depth, vec2 (mix (u_side_span.x, u_side_span.y, v_uv.x), v_uv.y)).r * u_units.y;
+		float mid = texture (u_depth, v_uv).r * u_units.x;
+		if (side > mid * 1.03 && side > 1e-6)
+			middle = false;
+		else if (mid > side * 1.03 && mid > 1e-6)
+			middle = true;
+	}
+	/* Where the side board's 2D or what it alone draws is, its pixels:
+	 * whole cells */
+	if (u_has_mask != 0 && texture (u_mask, vec2 (v_uv.x, 1.0 - v_uv.y)).r > 0.5)
+		middle = false;
+	if (!middle)
+		discard;
+	out_color = vec4 (texture (u_tex, v_uv).rgb, 1.0);
+}
+)";
+
 static const char *mod_vs_src = R"(#version 430
 layout (location = 0) in vec3 in_pos;
 noperspective out float v_z;
 uniform float u_width;
 uniform vec2 u_scale;
 uniform vec2 u_target;
+uniform vec4 u_view;
+uniform vec2 u_view_c;
+uniform float u_view_f;
+uniform mat3 u_view_m;
 void main ()
 {
 	float w = 1.0 / in_pos.z;
-	float px = in_pos.x * u_scale.x;
-	float x = px / (u_target.x * 0.5) - 1.0;
+	float px = in_pos.x * u_scale.x, py = in_pos.y * u_scale.y, pw = 1.0;
+	/* MULTI_SCREEN_VIEW: turned as the polygons' vertex shader turns them */
+	if (u_view.w != 0.0) {
+		vec2 d = (vec2 (px, py) - u_view_c) / u_view.z;
+		vec3 q = u_view_m * vec3 (d, 1.0);
+
+		pw = q.z;
+		px = u_view_c.x * pw + u_view_f * q.x;
+		py = u_view_c.y * pw + u_view_f * q.y;
+	}
+	float x = px / (u_target.x * 0.5) - pw;
 	/* WIDESCREEN: where the polygons' vertex shader puts them */
 	if (u_width > 640.0)
-		x = (px + (u_width - 640.0) * 0.5) / (u_width * 0.5) - 1.0;
-	gl_Position = vec4 (x, 1.0 - in_pos.y * u_scale.y / (u_target.y * 0.5), 0.0, 1.0) * w;
+		x = (px + (u_width - 640.0) * 0.5 * pw) / (u_width * 0.5) - pw;
+	gl_Position = vec4 (x, pw - py / (u_target.y * 0.5), 0.0, pw) * w;
 	v_z = in_pos.z;
 }
 )";
@@ -430,10 +608,11 @@ static const char *mod_fs_src = R"(#version 430
 noperspective in float v_z;
 out vec4 out_color;
 uniform float u_zscale;
+uniform vec4 u_view;
 void main ()
 {
 	out_color = vec4 (0.0);
-	gl_FragDepth = v_z * u_zscale;
+	gl_FragDepth = (u_view.w != 0.0 ? gl_FragCoord.w : v_z) * u_zscale;
 }
 )";
 
@@ -448,12 +627,13 @@ layout (std430, binding = 0) coherent buffer Nodes { Node nodes[]; };
 noperspective in float v_z;
 uniform float u_zscale;
 uniform int u_mode;
+uniform vec4 u_view;
 #define VOLUMES 0x80000000u
 #define STENCIL 0x20000000u
 #define INSIDE 0x10000000u
 void main ()
 {
-	float depth = v_z * u_zscale;
+	float depth = (u_view.w != 0.0 ? gl_FragCoord.w : v_z) * u_zscale;
 	uint i = imageLoad (u_heads, ivec2 (gl_FragCoord.xy)).r;
 
 	while (i != 0u) {
@@ -857,6 +1037,11 @@ locate (P &p)
 	p.u_clip_out = glGetUniformLocation (p.id, "u_clip_out");
 	p.u_lod_bias = glGetUniformLocation (p.id, "u_lod_bias");
 	p.u_max_lod = glGetUniformLocation (p.id, "u_max_lod");
+	p.u_view = glGetUniformLocation (p.id, "u_view");
+	p.u_view_c = glGetUniformLocation (p.id, "u_view_c");
+	p.u_view_f = glGetUniformLocation (p.id, "u_view_f");
+	p.u_view_m = glGetUniformLocation (p.id, "u_view_m");
+	p.u_strip_pass = glGetUniformLocation (p.id, "u_strip_pass");
 }
 
 void
@@ -882,6 +1067,10 @@ BoardRenderer::setup ()
 		oit.u_zscale = glGetUniformLocation (oit.volumes, "u_zscale");
 		oit.u_width = glGetUniformLocation (oit.volumes, "u_width");
 		oit.u_scale = glGetUniformLocation (oit.volumes, "u_scale");
+		oit.u_view = glGetUniformLocation (oit.volumes, "u_view");
+		oit.u_view_c = glGetUniformLocation (oit.volumes, "u_view_c");
+		oit.u_view_f = glGetUniformLocation (oit.volumes, "u_view_f");
+		oit.u_view_m = glGetUniformLocation (oit.volumes, "u_view_m");
 		oit.u_target = glGetUniformLocation (oit.volumes, "u_target");
 		glGenVertexArrays (1, &oit.vao);
 		if (!oit.volumes)
@@ -893,11 +1082,41 @@ BoardRenderer::setup ()
 	}
 	blit_program = hl::gl::compile_program (blit_vs_src, blit_fs_src);
 	u_blit_tex = glGetUniformLocation (blit_program, "u_tex");
+	u_blit_span = glGetUniformLocation (blit_program, "u_span");
 	mod_program = hl::gl::compile_program (mod_vs_src, mod_fs_src);
 	u_mod_zscale = glGetUniformLocation (mod_program, "u_zscale");
 	u_mod_width = glGetUniformLocation (mod_program, "u_width");
 	u_mod_scale = glGetUniformLocation (mod_program, "u_scale");
 	u_mod_target = glGetUniformLocation (mod_program, "u_target");
+	u_mod_view = glGetUniformLocation (mod_program, "u_view");
+	u_mod_view_c = glGetUniformLocation (mod_program, "u_view_c");
+	u_mod_view_f = glGetUniformLocation (mod_program, "u_view_f");
+	u_mod_view_m = glGetUniformLocation (mod_program, "u_view_m");
+	proj_program = hl::gl::compile_program (blit_vs_src, proj_fs_src);
+	u_proj_tex = glGetUniformLocation (proj_program, "u_tex");
+	u_proj_mode = glGetUniformLocation (proj_program, "u_mode");
+	u_proj_panels = glGetUniformLocation (proj_program, "u_panels");
+	u_proj_panel = glGetUniformLocation (proj_program, "u_panel");
+	u_proj_focal = glGetUniformLocation (proj_program, "u_focal");
+	u_proj_cy = glGetUniformLocation (proj_program, "u_cy");
+	u_proj_half = glGetUniformLocation (proj_program, "u_half");
+	u_proj_out_focal = glGetUniformLocation (proj_program, "u_out_focal");
+	u_proj_slot = glGetUniformLocation (proj_program, "u_slot");
+	if (!proj_program)
+		HL_ERROR ("naomi: no MULTI_SCREEN_VIEW projection");
+	strip_program = hl::gl::compile_program (blit_vs_src, strip_fs_src);
+	u_strip_tex = glGetUniformLocation (strip_program, "u_tex");
+	u_strip_panel = glGetUniformLocation (strip_program, "u_panel");
+	u_strip_focal = glGetUniformLocation (strip_program, "u_focal");
+	u_strip_turn = glGetUniformLocation (strip_program, "u_turn");
+	u_strip_edge = glGetUniformLocation (strip_program, "u_edge");
+	u_strip_cut = glGetUniformLocation (strip_program, "u_cut");
+	u_strip_depth = glGetUniformLocation (strip_program, "u_depth");
+	u_strip_side_depth = glGetUniformLocation (strip_program, "u_side_depth");
+	u_strip_units = glGetUniformLocation (strip_program, "u_units");
+	u_strip_side_span = glGetUniformLocation (strip_program, "u_side_span");
+	u_strip_mask = glGetUniformLocation (strip_program, "u_mask");
+	u_strip_has_mask = glGetUniformLocation (strip_program, "u_has_mask");
 
 	glGenVertexArrays (1, &vao);
 	glGenVertexArrays (1, &blit_vao);
@@ -912,6 +1131,11 @@ BoardRenderer::setup ()
 	glVertexAttribPointer (2, GL_BGRA, GL_UNSIGNED_BYTE, GL_TRUE, sizeof (Vertex), (void *) offsetof (Vertex, base));
 	glEnableVertexAttribArray (3);
 	glVertexAttribPointer (3, GL_BGRA, GL_UNSIGNED_BYTE, GL_TRUE, sizeof (Vertex), (void *) offsetof (Vertex, offset));
+	/* MULTI_SCREEN_VIEW's 2D marks, on while the view turns (draw_scene ()) */
+	glGenBuffers (1, &flag_vbo);
+	glBindBuffer (GL_ARRAY_BUFFER, flag_vbo);
+	glVertexAttribIPointer (4, 1, GL_UNSIGNED_BYTE, 1, (void *) 0);
+	glVertexAttribI4ui (4, 0, 0, 0, 0);
 
 	glGenVertexArrays (1, &mod_vao);
 	glGenBuffers (1, &mod_vbo);
@@ -996,12 +1220,14 @@ BoardRenderer::set_scene_uniforms (const Program &p)
 	glUniform1i (p.u_fog, 1);
 	glUniform1f (p.u_zscale, 1.0f / std::max (d.scene->max_z, d.background_z));
 	glUniform1f (p.u_width, d.to_texture ? 640.0f : (float) width);
-	glUniform1i (p.u_stretch_2d, hl::Config::get ()->widescreen_2d == hl::WIDESCREEN_2D_STRETCHED);
+	glUniform1i (p.u_stretch_2d, hl::Config::get ()->widescreen_2d == hl::WIDESCREEN_2D_STRETCHED && width > 640);
+	glUniform1i (p.u_strip_pass, strip_pass ? 1 : 0);
 	glUniform1i (p.u_stretch_all, d.stretch_all);
 	glUniform2f (p.u_scale, d.scale_x, d.scale_y);
 	glUniform2f (p.u_target, pixel_x, pixel_y);
 	glUniform1f (p.u_pt_ref, d.pt_alpha_ref / 255.0f);
 	glUniform1f (p.u_shade_scale, (d.shad_scale & 255) / 256.0f);
+	set_view_uniforms (d, p.u_view, p.u_view_c, p.u_view_f, p.u_view_m);
 	glUniform3f (p.u_fog_color, ((d.fog_color >> 16) & 255) / 255.0f, ((d.fog_color >> 8) & 255) / 255.0f,
 	             (d.fog_color & 255) / 255.0f);
 	glUniform3f (p.u_fog_color_vertex, ((d.fog_color_vertex >> 16) & 255) / 255.0f,
@@ -1016,6 +1242,28 @@ BoardRenderer::set_scene_uniforms (const Program &p)
 
 		glUniform1f (p.u_fog_density, m * powf (2.0f, (float) e));
 	}
+}
+
+/* The view (MULTI_SCREEN_VIEW): turned for a scene to the screen, not one to
+ * a texture, nor one the widescreen codes squeeze */
+bool
+BoardRenderer::view_on (const Draw &d) const
+{
+	return view.focal > 0.0f && (view.turn != 0.0f || (view.out_focal > 0.0f && view.out_focal != view.focal)) &&
+	       !d.to_texture && !d.stretch_all;
+}
+
+void
+BoardRenderer::set_view_uniforms (const Draw &d, GLint u_view, GLint u_view_c, GLint u_view_f, GLint u_view_m) const
+{
+	bool on = view_on (d);
+	float c = cosf (view.turn), s = sinf (view.turn);
+	const float yaw[9] = { c, 0.0f, s, 0.0f, 1.0f, 0.0f, -s, 0.0f, c };
+
+	glUniform4f (u_view, c, s, view.focal, on ? 1.0f : 0.0f);
+	glUniform2f (u_view_c, 320.0f, view.centre_y);
+	glUniform1f (u_view_f, view.out_focal > 0.0f ? view.out_focal : view.focal);
+	glUniformMatrix3fv (u_view_m, 1, GL_TRUE, view.rotated ? view.rot : yaw);
 }
 
 /* A batch, or its part in one of a modifier volume's two areas: its TSP and
@@ -1102,6 +1350,13 @@ BoardRenderer::draw_batch (const Program &p, const Draw &d, const Batch &b, bool
 		float x0 = ox + b.x0 * d.scale_x * sx, x1 = ox + b.x1 * d.scale_x * sx;
 		float y0 = target->h - b.y1 * d.scale_y * sy, y1 = target->h - b.y0 * d.scale_y * sy;
 
+		/* WIDESCREEN: a clip as wide as the screen leaves its sides to the
+		 * 3D drawn beyond (Strike Fighter clips its whole view so) */
+		if (ox > 0.0f && b.x0 == 0 && b.x1 * d.scale_x >= 640.0f) {
+			x0 = 0.0f;
+			x1 = (float) target->w;
+		}
+
 		if (b.clip_on) {
 			glEnable (GL_SCISSOR_TEST);
 			glScissor ((GLint) x0, (GLint) y0, (GLsizei) (x1 - x0), (GLsizei) (y1 - y0));
@@ -1158,6 +1413,7 @@ BoardRenderer::draw_modifiers (const Draw &d, float sx, float sy)
 	glUniform1f (u_mod_width, d.to_texture || d.stretch_all ? 640.0f : (float) width);
 	glUniform2f (u_mod_scale, d.scale_x, d.scale_y);
 	glUniform2f (u_mod_target, pixel_x, pixel_y);
+	set_view_uniforms (d, u_mod_view, u_mod_view_c, u_mod_view_f, u_mod_view_m);
 	glBindVertexArray (mod_vao);
 	glBindBuffer (GL_ARRAY_BUFFER, mod_vbo);
 	glBufferData (GL_ARRAY_BUFFER, scene.mod_vertices.size () * sizeof (float), scene.mod_vertices.data (), GL_STREAM_DRAW);
@@ -1222,6 +1478,7 @@ BoardRenderer::draw_translucent_volumes ()
 	glUniform1f (oit.u_width, d.to_texture || d.stretch_all ? 640.0f : (float) width);
 	glUniform2f (oit.u_scale, d.scale_x, d.scale_y);
 	glUniform2f (oit.u_target, pixel_x, pixel_y);
+	set_view_uniforms (d, oit.u_view, oit.u_view_c, oit.u_view_f, oit.u_view_m);
 	glBindVertexArray (mod_vao);
 	glBindBuffer (GL_ARRAY_BUFFER, mod_vbo);
 	glBufferData (GL_ARRAY_BUFFER, scene.mod_vertices.size () * sizeof (float), scene.mod_vertices.data (), GL_STREAM_DRAW);
@@ -1310,6 +1567,17 @@ BoardRenderer::background_vertices (const Draw &d, Vertex *quad) const
 	quad[5] = bl;
 }
 
+/* A batch drawn in a part of the screen, an inset with a view of its own: its
+ * user clip a tile or more narrower than the screen (Sega Strike Fighter's
+ * side screens' small views of the plane; its whole view clipped to the
+ * screen's width, its demonstrations' to a band of it). MULTI_SCREEN_VIEW
+ * leaves it where it is, as the 2D */
+static bool
+inset (const Batch &b, const Draw &d)
+{
+	return b.clip_on && (float) (b.x1 - b.x0) * d.scale_x <= 608.0f;
+}
+
 /* Whether the opaque or punch-through lists have shadowed polygons and volumes
  * to shadow them */
 static bool
@@ -1392,6 +1660,49 @@ BoardRenderer::draw_scene (const Draw &d, Target &t, bool to_texture)
 		background_vertices (d, quad);
 		glBufferSubData (GL_ARRAY_BUFFER, background.first * sizeof (Vertex), sizeof (quad), quad);
 	}
+	/* The view turned (MULTI_SCREEN_VIEW): each triangle's vertices marked
+	 * 2D when its 1/W is the same at its three, 1 or more (the HUD's) or
+	 * the far plane's (the backgrounds, the background plane): those stay
+	 * where they are, the others turn, Airline Pilots' cockpit among them
+	 * (3D near the eye, a 1/W up to 90; its boards' cockpits are the same
+	 * model, their vertices falling on each other's once turned) */
+	glBindBuffer (GL_ARRAY_BUFFER, flag_vbo);
+	/* In the middle board's strip pass (View::strips) bit 1 too, a 2D
+	 * triangle as wide as the screen, and bit 2, a 2D one at a 1/W of 1 or
+	 * more (the HUD's; vs_src) */
+	if (view_on (d)) {
+		auto mark = [&] (const std::vector<Vertex> &v, size_t at) {
+			for (size_t i = 0; i + 2 < v.size (); i += 3) {
+				float z = v[i].z;
+				uint8_t flat = z == v[i + 1].z && z == v[i + 2].z && (z >= 1.0f || z <= 1.0001e-6f);
+
+				if (flat && strip_pass) {
+					float lo = std::min ({ v[i].x, v[i + 1].x, v[i + 2].x }) * d.scale_x;
+					float hi = std::max ({ v[i].x, v[i + 1].x, v[i + 2].x }) * d.scale_x;
+
+					flat |= (lo <= 0.5f && hi >= 639.5f ? 2 : 0) | (z >= 1.0f ? 4 : 0);
+				}
+				flags[at + i] = flags[at + i + 1] = flags[at + i + 2] = flat;
+			}
+		};
+
+		flags.assign (background.first + 6, strip_pass ? 3 : 1);
+		mark (scene.vertices, 0);
+		mark (scene.vertices1, vertices1_at);
+		/* The insets' 3D as the 2D, left out of the strips as the HUD */
+		for (const std::vector<Batch> &list : scene.batches)
+			for (const Batch &b : list)
+				if (inset (b, d)) {
+					std::fill (flags.begin () + b.first, flags.begin () + b.first + b.count, strip_pass ? 5 : 1);
+					if (b.two_volume)
+						std::fill (flags.begin () + vertices1_at + b.first1,
+						           flags.begin () + vertices1_at + b.first1 + b.count, strip_pass ? 5 : 1);
+				}
+		glBufferData (GL_ARRAY_BUFFER, flags.size (), flags.data (), GL_STREAM_DRAW);
+		glEnableVertexAttribArray (4);
+	} else
+		glDisableVertexAttribArray (4);
+	glBindBuffer (GL_ARRAY_BUFFER, vbo);
 	set_scene_uniforms (program);
 	glActiveTexture (GL_TEXTURE1);
 	glBindTexture (GL_TEXTURE_1D, fog_tex);
@@ -1676,12 +1987,20 @@ BoardRenderer::take (Holly *holly, unsigned &quiet)
 	return f;
 }
 
-Picture
-BoardRenderer::draw_picture ()
+BoardRenderer::Frame
+BoardRenderer::take_frame ()
 {
 	unsigned q = frames_without;
-	Frame f = take (holly, q);
 
+	return take (holly, q);
+}
+
+Picture
+BoardRenderer::draw_picture (const View &v)
+{
+	Frame f = take_frame ();
+
+	f.view = v;
 	return draw_frame (f);
 }
 
@@ -1706,6 +2025,7 @@ BoardRenderer::draw_frame_now (Frame &f)
 	const Draw *for_screen = NULL;
 	Picture picture;
 
+	view = f.view;
 	make_target (screen, width * scale, height * scale);
 	for (const Draw &d : draws) {
 		if (d.to_texture) {
@@ -1719,16 +2039,41 @@ BoardRenderer::draw_frame_now (Frame &f)
 		} else
 			for_screen = &d;
 	}
+	bool strips = false;
+
 	if (for_screen) {
 		draw_scene (*for_screen, screen, false);
 		shown_color = filter_lines (*for_screen);
+		shown_depth_unit = std::max (for_screen->scene->max_z, for_screen->background_z);
 		frames_without = 0;
+		/* MULTI_SCREEN_VIEW's middle board: its scene in the side screens'
+		 * views too, for their strips (Picture::strip) */
+		if (view.strips && !for_screen->stretch_all) {
+			View own = view;
+
+			for (int k = 0; k < 2; k++) {
+				view.turn = own.strip_turn[k];
+				view.rotated = false;
+				strip_pass = true;
+				make_target (strip_targets[k], width * scale, height * scale);
+				draw_scene (*for_screen, strip_targets[k], false);
+				strip_pass = false;
+			}
+			view = own;
+			strips = true;
+		}
 	} else if (frames_without < 1000)
 		frames_without++;
 
-	if (frames_without == 0 || frames_without < 4)
+	if (frames_without == 0 || frames_without < 4) {
 		picture.texture = shown_color;
-	else if (show_vram (f)) {
+		picture.depth = screen.depth;
+		picture.depth_unit = shown_depth_unit;
+		for (int k = 0; strips && k < 2; k++) {
+			picture.strip[k] = strip_targets[k].color;
+			picture.strip_depth[k] = strip_targets[k].depth;
+		}
+	} else if (show_vram (f)) {
 		picture.texture = vram_tex;
 		picture.flip = true;
 	}
@@ -1755,10 +2100,178 @@ BoardRenderer::blit (const Picture &p)
 	glBindTexture (GL_TEXTURE_2D, p.texture);
 	glUniform1i (u_blit_tex, 0);
 	glUniform1i (glGetUniformLocation (blit_program, "u_flip"), p.flip ? 1 : 0);
+	glUniform2f (u_blit_span, p.x0, p.x1 - p.x0 - 1.0f);
 	glDrawArrays (GL_TRIANGLES, 0, 3);
 	glBindVertexArray (0);
 	glUseProgram (0);
 	glBindTexture (GL_TEXTURE_2D, 0);
+}
+
+void
+BoardRenderer::fill_strip (const Picture &middle, int k, const Picture &side, const std::vector<uint8_t> *mask_2d,
+                           float panel_w, float panel_h, float focal, float turn, float cut, float edge)
+{
+	bool mask = mask_2d && mask_2d->size () == (size_t) View::MASK_W * View::MASK_H;
+	bool depths = middle.strip_depth[k] && side.depth && !side.flip && middle.depth_unit > 0.0f && side.depth_unit > 0.0f;
+
+	if (!middle.strip[k] || !strip_program)
+		return;
+	glDisable (GL_DEPTH_TEST);
+	/* Each pixel the middle picture's or left as the side's (strip_fs_src),
+	 * nothing blended */
+	glDisable (GL_BLEND);
+	glUseProgram (strip_program);
+	glBindVertexArray (blit_vao);
+	glActiveTexture (GL_TEXTURE0);
+	glBindTexture (GL_TEXTURE_2D, middle.strip[k]);
+	glUniform1i (u_strip_tex, 0);
+	glUniform2f (u_strip_panel, panel_w, panel_h);
+	glUniform1f (u_strip_focal, focal);
+	glUniform1f (u_strip_turn, turn);
+	glUniform1f (u_strip_edge, edge);
+	glUniform1f (u_strip_cut, cut);
+	glUniform2f (u_strip_units, depths ? middle.depth_unit : 0.0f, depths ? side.depth_unit : 0.0f);
+	glUniform2f (u_strip_side_span, side.x0, side.x1);
+	glUniform1i (u_strip_depth, 1);
+	glUniform1i (u_strip_side_depth, 2);
+	glUniform1i (u_strip_mask, 3);
+	glUniform1i (u_strip_has_mask, mask);
+	if (mask) {
+		glActiveTexture (GL_TEXTURE3);
+		if (!strip_mask_tex) {
+			glGenTextures (1, &strip_mask_tex);
+			glBindTexture (GL_TEXTURE_2D, strip_mask_tex);
+			glTexImage2D (GL_TEXTURE_2D, 0, GL_R8, View::MASK_W, View::MASK_H, 0, GL_RED, GL_UNSIGNED_BYTE, NULL);
+			glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+			glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+			glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+			glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+			glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
+		} else
+			glBindTexture (GL_TEXTURE_2D, strip_mask_tex);
+		glPixelStorei (GL_UNPACK_ALIGNMENT, 1);
+		glTexSubImage2D (GL_TEXTURE_2D, 0, 0, 0, View::MASK_W, View::MASK_H, GL_RED, GL_UNSIGNED_BYTE, mask_2d->data ());
+		glPixelStorei (GL_UNPACK_ALIGNMENT, 4);
+		glActiveTexture (GL_TEXTURE0);
+	}
+	if (depths) {
+		glActiveTexture (GL_TEXTURE1);
+		glBindTexture (GL_TEXTURE_2D, middle.strip_depth[k]);
+		glActiveTexture (GL_TEXTURE2);
+		glBindTexture (GL_TEXTURE_2D, side.depth);
+		glActiveTexture (GL_TEXTURE0);
+	}
+	glDrawArrays (GL_TRIANGLES, 0, 3);
+	if (mask) {
+		glActiveTexture (GL_TEXTURE3);
+		glBindTexture (GL_TEXTURE_2D, 0);
+		glActiveTexture (GL_TEXTURE0);
+	}
+	if (depths) {
+		glActiveTexture (GL_TEXTURE2);
+		glBindTexture (GL_TEXTURE_2D, 0);
+		glActiveTexture (GL_TEXTURE1);
+		glBindTexture (GL_TEXTURE_2D, 0);
+		glActiveTexture (GL_TEXTURE0);
+	}
+	glDisable (GL_BLEND);
+	glBindVertexArray (0);
+	glUseProgram (0);
+	glBindTexture (GL_TEXTURE_2D, 0);
+}
+
+void
+BoardRenderer::project (const Picture &src, const Projection &pr)
+{
+	if (!src.texture || !proj_program)
+		return;
+	glDisable (GL_DEPTH_TEST);
+	glDisable (GL_BLEND);
+	glUseProgram (proj_program);
+	glBindVertexArray (blit_vao);
+	glActiveTexture (GL_TEXTURE0);
+	glBindTexture (GL_TEXTURE_2D, src.texture);
+	glUniform1i (u_proj_tex, 0);
+	glUniform1i (u_proj_mode, pr.mode);
+	glUniform1f (u_proj_panels, (float) pr.panels);
+	glUniform2f (u_proj_panel, pr.panel_w, pr.panel_h);
+	glUniform1f (u_proj_focal, pr.focal);
+	glUniform1f (u_proj_cy, pr.centre_y);
+	glUniform1f (u_proj_half, pr.half);
+	glUniform1f (u_proj_out_focal, pr.out_focal);
+	glUniform2f (u_proj_slot, pr.x0, pr.x1);
+	glDrawArrays (GL_TRIANGLES, 0, 3);
+	glBindVertexArray (0);
+	glUseProgram (0);
+	glBindTexture (GL_TEXTURE_2D, 0);
+}
+
+/* MULTI_SCREEN_VIEW's projections (proj_fs_src): x and y of an edge of the
+ * picture over its focal length, the angles they reach, and the height of
+ * a direction there over its horizontal distance */
+static float
+edge_angle (int mode, float x)
+{
+	switch (mode) {
+	case hl::VIEW_FLAT:	return atanf (x);
+	case hl::VIEW_PANINI:	return 2.0f * atanf (x * 0.5f);
+	default:		return x;
+	}
+}
+
+static float
+height_at (int mode, float y, float angle)
+{
+	switch (mode) {
+	case hl::VIEW_FLAT:	return y * cosf (angle);
+	case hl::VIEW_DOME:	return tanf (std::min (y, 1.5f));
+	case hl::VIEW_PANINI:	return y * (1.0f + cosf (angle)) * 0.5f;
+	default:		return y;
+	}
+}
+
+/* The picture's rows up to the edge nearest its centre, across its whole
+ * width, in the panels' pictures: at each angle the panel facing it shows
+ * heights up to its own over its focal length, less at its sides by the
+ * cosine of the angle from its middle; the panels together reach panels
+ * times half on either side. The smallest focal length that keeps both in,
+ * by halves (the edge's angle and height both fall as it grows); a plane
+ * stops at 80 degrees */
+float
+out_focal (const Projection &p)
+{
+	const float pi = 3.14159265f;
+	float rows = std::min (p.centre_y, p.panel_h - p.centre_y);
+	float reach = std::min (p.panels * p.half, p.mode == hl::VIEW_FLAT ? 80.0f * pi / 180.0f : pi);
+	float half_w = p.panels * p.panel_w * 0.5f;
+	auto fits = [&] (float F) {
+		float edge = edge_angle (p.mode, half_w / F), y = rows / F;
+
+		if (edge > reach)
+			return false;
+		/* Each step, and the panels' edges, where they show the least
+		 * (a pixel to spare: the texture's filtering) */
+		for (int i = 0; i <= 64 + (int) p.panels; i++) {
+			float a = i <= 64 ? edge * i / 64.0f : std::min (edge, (2 * (i - 64) - 1) * p.half);
+			float k = std::min (floorf (a / (2.0f * p.half) + 0.5f), (p.panels - 1) * 0.5f);
+			float shown = (rows - 1.0f) / p.focal * cosf (std::min (fabsf (a - k * 2.0f * p.half), p.half));
+
+			if (height_at (p.mode, y, a) > shown)
+				return false;
+		}
+		return true;
+	};
+	float lo = p.focal * 0.05f, hi = p.focal * 100.0f;
+
+	for (int i = 0; i < 40; i++) {
+		float mid = (lo + hi) * 0.5f;
+
+		if (fits (mid))
+			hi = mid;
+		else
+			lo = mid;
+	}
+	return hi;
 }
 
 Renderer::Renderer (Naomi *naomi_) :
@@ -1845,6 +2358,10 @@ Renderer::~Renderer ()
 		glDeleteFramebuffers (1, &wide_fb);
 	if (wide_color)
 		glDeleteTextures (1, &wide_color);
+	if (proj_fb)
+		glDeleteFramebuffers (1, &proj_fb);
+	if (proj_color)
+		glDeleteTextures (1, &proj_color);
 	hl::set_layout_screens (1);
 	hl::Window::place (-1, 0, 0);
 	hl::Window::set_title_detail ("");
@@ -1921,12 +2438,38 @@ Renderer::update_titles ()
 		at += (size_t) snprintf (text, sizeof (text), " - boards");
 		for (i = 0; i < shown.size (); i++)
 			at += (size_t) snprintf (text + at, sizeof (text) - at, " %u", shown[i] + 1);
+		snprintf (text + at, sizeof (text) - at, "%s", view_label.c_str ());
 	} else
-		snprintf (text, sizeof (text), " - board %u", shown[0] + 1);
+		snprintf (text, sizeof (text), " - board %u%s", shown[0] + 1, view_label.c_str ());
 	hl::Window::set_title_detail (text);
 	for (i = 1; i < outputs.size () && i < shown.size (); i++) {
-		snprintf (text, sizeof (text), "%s - board %u", naomi->game->name, shown[i] + 1);
+		snprintf (text, sizeof (text), "%s - board %u%s", naomi->game->name, shown[i] + 1, view_label.c_str ());
 		outputs[i].window->set_title (text);
+	}
+}
+
+/* The titles say the view the boards are drawn in (MULTI_SCREEN_VIEW), when
+ * one is: " (16:9 Panini)"; the one chosen held back in a scene of other
+ * cameras (measured_scene ()): " (16:9 Panini: off in this scene)"; again
+ * at each change */
+void
+Renderer::note_views (const std::vector<unsigned> &shown, const std::vector<BoardRenderer::View> &v)
+{
+	static const char *const names[hl::NUM_SCREEN_VIEWS] = {
+		"", "Joined", "Flat", "Curved", "Dome", "Panini"
+	};
+	int mode = hl::Config::get ()->multi_screen_view;
+	const hl::Game *game = naomi->game;
+	std::string label;
+
+	if (mode > hl::VIEW_CABINET && mode < hl::NUM_SCREEN_VIEWS && game && game->view_focal > 0.0f &&
+	    naomi->multi_screen != hl::MULTI_ONE && shown.size () > 1 && shown == naomi->screen_order) {
+		label = std::string (" (") + (width > 640 ? "16:9 " : "4:3 ") + names[mode];
+		label += (!v.empty () && v[0].focal > 0.0f) ? ")" : ": off in this scene)";
+	}
+	if (label != view_label) {
+		view_label = label;
+		update_titles ();
 	}
 }
 
@@ -1969,6 +2512,1427 @@ Renderer::side_by_side (const std::vector<unsigned> &shown, const std::vector<Pi
 	return wide;
 }
 
+/*
+ * MULTI_SCREEN_VIEW
+ *
+ * A deluxe cabinet's boards draw a view each with the same eye, the side
+ * ones turned (games.json "screen_view", a game's race: F355 Challenge's
+ * side views 87.14 degrees from the middle one, each 80.7 wide in 4:3;
+ * Airline Pilots' 45, each 40.6 wide, its turn the side boards' matrix at
+ * 0C0F1304; each scene's own solved at each frame, solve_views ()): its
+ * monitors' angle and their edges, a gap between flat screens side by side,
+ * an overlap once WIDESCREEN widens each. JOINED turns the side
+ * views' 3D to meet the middle one's edges, the k-th screen from the middle
+ * by k times the field of a screen (twice half), in the vertex shaders (the
+ * 3D the games send beyond their 640, as WIDESCREEN shows, fills what the
+ * turn brings in); their 2D, the HUD and Airline Pilots' cockpit, stays as
+ * it is. The other views take the joined pictures through a projection
+ * (proj_fs_src): a plane, a cylinder, a sphere, Panini's; their 2D bent with
+ * the 3D.
+ */
+/* A frame's scene for the screen: its last one (draw_frame_now ()'s) */
+static const Draw *
+screen_draw (const BoardRenderer::Frame &f)
+{
+	const Draw *found = NULL;
+
+	for (const Draw &d : f.draws)
+		if (!d.to_texture && d.scene)
+			found = &d;
+	return found;
+}
+
+/*
+ * The views, each scene's own (F355's race 87.14 degrees between screens with
+ * a focal length of 376.7, its driver seen close in its attract 35.57 and
+ * 1082.5, the factory 81.19 and 415.7, the rankings 54 and 686.3, the
+ * starting grid 1.43 and 27580; Airline
+ * Pilots' 45 and 864.7, its centre row 156 in the cockpit, 240 behind the
+ * plane), solved at each frame on the points the middle board and a side one
+ * both draw. The same vertex of the same model, found by its texture
+ * coordinates and colour (once in each board's list), is the same point of
+ * the world in each board's view (x, y on its screen, 1/W the inverse of its
+ * depth along that view's axis): the side view's turned into the middle one's
+ * about the vertical through the eye, it falls on the middle one's. Its
+ * depths give the turn t and the focal length f, z_side / z_middle =
+ * cos t - sin t (x_side - 320) / f; its rows the centre cy, (y_side - cy)
+ * z_middle = (y_middle - cy) z_side. A scene whose side views are not the
+ * middle one's turned (Airline Pilots' plane on the ground, each screen its
+ * own camera; a turn or a focal length not the same on both sides) leaves
+ * most points apart: the views as the cabinet's there
+ */
+/* A vertex of a triangle the views turn: not the 2D, whose three vertices
+ * have the same 1/W, 1 or more or the far plane's (draw_scene ()) */
+static bool
+is_3d (const std::vector<Vertex> &v, size_t i)
+{
+	size_t t = i - i % 3;
+	float z = v[t].z;
+
+	if (t + 2 >= v.size () || v[i].z <= 1e-6f)
+		return false;
+	return !(z == v[t + 1].z && z == v[t + 2].z && (z >= 1.0f || z <= 1.0001e-6f));
+}
+
+/* The same vertex: at the same place (a vertex of several triangles, in the
+ * list once for each) */
+static inline bool
+same_place (const Vertex &a, const Vertex &b)
+{
+	return a.x == b.x && a.y == b.y && a.z == b.z;
+}
+
+/* A board's textured 3D vertices by their texture coordinates and colour: the
+ * index of the one vertex with that key (once, or at the same place each time:
+ * Sega Strike Fighter's sky over its title, none of its keys once in a list),
+ * -2 when several places have it */
+struct KeyTable {
+	struct Slot {
+		uint64_t key;
+		int32_t at;
+	};
+	std::vector<Slot> slots;
+	/* A bit by key: most keys looked for (the side boards' points out of
+	 * the middle one's view) not there, told at once */
+	std::vector<uint64_t> bits;
+	size_t mask = 0;
+
+	/* A vertex's key, 0 for none (not textured, at the far plane); its
+	 * triangle's 3D (is_3d ()) */
+	static uint64_t key (const Vertex &x)
+	{
+		uint32_t u, w;
+
+		if ((x.u == 0.0f && x.v == 0.0f) || x.z <= 1e-6f)
+			return 0;
+		memcpy (&u, &x.u, 4);
+		memcpy (&w, &x.v, 4);
+		uint64_t k = ((uint64_t) u << 32 | w) ^ ((uint64_t) x.base * 0x9E3779B97F4A7C15ull);
+		return k ? k : 1;
+	}
+	static size_t slot (uint64_t k) { return (size_t) ((k * 0xD6E8FEB86659FD93ull) >> 32); }
+	static uint32_t bit (uint64_t k) { return (uint32_t) ((k * 0x9FB21C651E98DF25ull) >> 44); }
+	void build (const std::vector<Vertex> &v)
+	{
+		size_t size = 1024;
+
+		while (size * 2 < v.size () * 3)
+			size <<= 1;
+		slots.assign (size, Slot { 0, -1 });
+		bits.assign ((1u << 20) / 64, 0);
+		mask = size - 1;
+		for (size_t i = 0; i < v.size (); i++) {
+			if (i % 3 == 0 && !is_3d (v, i)) {
+				i += 2;
+				continue;
+			}
+			uint64_t k = key (v[i]);
+			uint32_t b;
+			size_t h;
+
+			if (!k)
+				continue;
+			b = bit (k);
+			bits[b >> 6] |= 1ull << (b & 63);
+			for (h = slot (k) & mask; slots[h].at != -1 && slots[h].key != k; h = (h + 1) & mask)
+				;
+			if (slots[h].at == -1)
+				slots[h] = Slot { k, (int32_t) i };
+			else if (slots[h].at >= 0 && !same_place (v[slots[h].at], v[i]))
+				slots[h].at = -2;
+		}
+	}
+	int32_t find (uint64_t k) const
+	{
+		uint32_t b = bit (k);
+		size_t h;
+
+		if (!((bits[b >> 6] >> (b & 63)) & 1))
+			return -1;
+		for (h = slot (k) & mask; slots[h].at != -1; h = (h + 1) & mask)
+			if (slots[h].key == k)
+				return slots[h].at;
+		return -1;
+	}
+};
+
+/* A point both boards draw: x, y, 1/W on the side board's screen, on the
+ * middle one's */
+struct ViewPair {
+	float xs, ys, zs, xm, ym, zm;
+};
+
+/* The side view's turn from the middle one, the focal length, the centre row;
+ * pairs: the points both have, agree: those it brings on the middle one's,
+ * agree_y: their rows too, elsewhere: those of another copy of a model
+ * (agreeing ()), out of the count */
+struct SideView {
+	float turn = 0.0f, focal = 0.0f, cy = 240.0f;
+	unsigned pairs = 0, agree = 0, agree_y = 0, elsewhere = 0;
+	/* The points on each other in their rows too nearer by four than the
+	 * others (solve_side ()) */
+	bool near = false;
+	unsigned counted () const { return pairs - elsewhere; }
+};
+
+/* The pairs a turn and a focal length (from A = cos t, B = -sin t / f) bring
+ * on the middle board's points, to a pixel and 1% of their depth (rows: in
+ * their rows too, cy the centre row).
+ * elsewhere: of the others, those that tell nothing: brought out of the
+ * middle board's screen 200 pixels or more from where the middle board has
+ * their key, a tenth of the focal length (another copy of the model, 700 to
+ * 2400 pixels away; a camera a frame apart some 50: Airline Pilots' plane
+ * at the gate, at 4000), the one the side board has out of
+ * the middle board's view: Sega Strike Fighter's bomber, a second one by the
+ * left board's top edge, 1500 pixels to the left of the middle view where
+ * the middle board has the first; its fleet's ships; its ground's tiles, the
+ * middle board's 2000 pixels off its other edge; a model in an inset's view
+ * of its own); the middle board's a screen or more off its screen (a point
+ * by the plane of the eye, 80000 pixels away, each board's to a percent) */
+static unsigned
+agreeing (const std::vector<ViewPair> &p, double A, double B, std::vector<uint8_t> *mark, float cy = 240.0f,
+          unsigned *elsewhere = NULL, bool rows = false)
+{
+	double s = sqrt (std::max (0.0, 1.0 - A * A)) * (B < 0.0 ? 1.0 : -1.0), f = -s / B;
+	unsigned n = 0;
+
+	if (elsewhere)
+		*elsewhere = 0;
+	for (size_t i = 0; i < p.size (); i++) {
+		double Z = 1.0 / p[i].zs, X = (p[i].xs - 320.0) / f * Z;
+		double Xm = X * A + Z * s, Zm = -X * s + Z * A;
+		bool ok = Zm > 0.0 && fabs (320.0 + f * Xm / Zm - p[i].xm) < 1.0 && fabs (1.0 / Zm - p[i].zm) < 0.01 * p[i].zm &&
+		          (!rows || fabs (cy + (p[i].ys - cy) * Z / Zm - p[i].ym) < 1.0);
+
+		n += ok;
+		if (mark)
+			(*mark)[i] = ok;
+		if (ok || !elsewhere)
+			continue;
+		double x = Zm > 0.0 ? 320.0 + f * Xm / Zm : 0.0, y = Zm > 0.0 ? cy + (p[i].ys - cy) * Z / Zm : 0.0;
+
+		*elsewhere += Zm <= 0.0 ||
+		              ((x < 0.0 || x > 640.0 || y < 0.0 || y > 480.0) && hypot (x - p[i].xm, y - p[i].ym) >= std::max (200.0, 0.1 * f)) ||
+		              p[i].xm < -640.0f || p[i].xm > 1280.0f || p[i].ym < -480.0f || p[i].ym > 960.0f;
+	}
+	return n;
+}
+
+static SideView
+solve_side (const std::vector<ViewPair> &p, float cy_before)
+{
+	SideView v;
+	size_t n = p.size (), i;
+	uint32_t seed = 12345;
+	auto pick = [&] () {
+		seed = seed * 1664525u + 1013904223u;
+		return (size_t) ((seed >> 8) % n);
+	};
+	/* A turn under 90 degrees, a focal length up to a million (F355's
+	 * starting grid seen with a long lens: 1.43 degrees and 27580, the side
+	 * screens the middle one's picture 690 pixels on, a monitor's 640 and
+	 * its frame's 50) */
+	auto valid = [] (double A, double B) {
+		double f = B != 0.0 ? sqrt (std::max (0.0, 1.0 - A * A)) / fabs (B) : 0.0;
+		return A > 0.0 && A < 0.99999 && f > 50.0 && f < 1.0e6;
+	};
+	double best_A = 0.0, best_B = 0.0;
+	unsigned best = 0;
+
+	v.pairs = (unsigned) n;
+	if (n < 8)
+		return v;
+	/* From two pairs at a time, the one most of 128 of them agree with, in
+	 * their rows too (the centre row from the pair of depths farther apart),
+	 * until nine in ten do: the points on each other in x and in depth alone
+	 * some by chance (Sega Strike Fighter's training, its world held a frame
+	 * apart by each board while its cockpit is on each other: some of the
+	 * world's) */
+	static thread_local std::vector<ViewPair> some;
+	auto row_of = [&] (const ViewPair &a, const ViewPair &b) {
+		const ViewPair &w = fabsf (a.zm - a.zs) / a.zs > fabsf (b.zm - b.zs) / b.zs ? a : b;
+
+		return fabsf (w.zm - w.zs) > 0.02f * w.zs ? (w.ys * w.zm - w.ym * w.zs) / (w.zm - w.zs) : cy_before;
+	};
+	float best_cy = cy_before;
+
+	some.clear ();
+	for (i = 0; i < n; i += std::max<size_t> (1, n / 128))
+		some.push_back (p[i]);
+	for (int k = 0; k < 200 && best * 10 < some.size () * 9; k++) {
+		const ViewPair &a = p[pick ()], &b = p[pick ()];
+		double da = a.xs - 320.0, db = b.xs - 320.0;
+
+		if (fabs (da - db) < 10.0)
+			continue;
+		double ra = a.zs / a.zm, rb = b.zs / b.zm, B = (ra - rb) / (da - db), A = ra - B * da;
+
+		if (!valid (A, B))
+			continue;
+		float cy = row_of (a, b);
+		unsigned m = agreeing (some, A, B, NULL, cy, NULL, true);
+
+		if (m > best) {
+			best = m;
+			best_A = A;
+			best_B = B;
+			best_cy = cy;
+		}
+	}
+	if (best < 4)
+		return v;
+	/* Fitted again on all those that agree */
+	std::vector<uint8_t> mark (n);
+	double sx = 0.0, sy = 0.0, sxx = 0.0, sxy = 0.0, c = 0.0;
+
+	agreeing (p, best_A, best_B, &mark, best_cy, NULL, true);
+	for (i = 0; i < n; i++)
+		if (mark[i]) {
+			double x = p[i].xs - 320.0, y = p[i].zs / p[i].zm;
+
+			sx += x;
+			sy += y;
+			sxx += x * x;
+			sxy += x * y;
+			c++;
+		}
+	double den = c * sxx - sx * sx;
+
+	if (den != 0.0) {
+		double B = (c * sxy - sx * sy) / den, A = (sy - B * sx) / c;
+
+		if (valid (A, B) &&
+		    agreeing (p, A, B, NULL, best_cy, NULL, true) >= agreeing (p, best_A, best_B, NULL, best_cy, NULL, true)) {
+			best_A = A;
+			best_B = B;
+		}
+	}
+	/* The centre row from those on each other in their rows then */
+	agreeing (p, best_A, best_B, &mark, best_cy, NULL, true);
+	double s = sqrt (std::max (0.0, 1.0 - best_A * best_A)) * (best_B < 0.0 ? 1.0 : -1.0);
+
+	v.turn = (float) atan2 (s, best_A);
+	v.focal = (float) (-s / best_B);
+	/* The centre row: each pair's, of depths apart enough, the median */
+	std::vector<float> rows;
+
+	for (i = 0; i < n; i++)
+		if (mark[i] && fabsf (p[i].zm - p[i].zs) > 0.02f * p[i].zs)
+			rows.push_back ((p[i].ys * p[i].zm - p[i].ym * p[i].zs) / (p[i].zm - p[i].zs));
+	v.cy = best_cy;
+	if (rows.size () >= 8) {
+		std::nth_element (rows.begin (), rows.begin () + rows.size () / 2, rows.end ());
+		v.cy = rows[rows.size () / 2];
+	}
+	v.agree = agreeing (p, best_A, best_B, &mark);
+	for (i = 0; i < n; i++)
+		v.agree_y += mark[i] && fabsf (v.cy + (p[i].ys - v.cy) * p[i].zm / p[i].zs - p[i].ym) < 1.0f;
+	agreeing (p, best_A, best_B, NULL, v.cy, &v.elsewhere);
+	/* Near: those on each other in their rows too, the nearest of them four
+	 * times nearer at least than the others' middle depth, 16 of them at
+	 * least (an eye apart would bring the far points on each other, not
+	 * the near ones) */
+	std::vector<float> others;
+	float nearest = 1e30f;
+	unsigned full = agreeing (p, best_A, best_B, &mark, v.cy, NULL, true);
+
+	for (i = 0; i < n; i++)
+		if (mark[i])
+			nearest = std::min (nearest, 1.0f / p[i].zm);
+		else
+			others.push_back (1.0f / p[i].zm);
+	if (full >= 16 && others.size () >= 8) {
+		std::nth_element (others.begin (), others.begin () + others.size () / 2, others.end ());
+		v.near = nearest * 4.0f <= others[others.size () / 2];
+	}
+	return v;
+}
+
+/* The middle board's key table of a scene, built once: this frame's and the
+ * one before (Renderer::held_middle) kept, each solved against */
+static const KeyTable &
+middle_keys (const Draw &m)
+{
+	struct Slot {
+		std::shared_ptr<Scene> scene;	/* kept alive: no other at its address */
+		KeyTable table;
+	};
+	static thread_local Slot slots[2];
+	static thread_local int last = 0;
+
+	for (int k = 0; k < 2; k++)
+		if (slots[k].scene == m.scene) {
+			last = k;
+			return slots[k].table;
+		}
+	last ^= 1;
+	slots[last].scene = m.scene;
+	slots[last].table.build (m.scene->vertices);
+	return slots[last].table;
+}
+
+/* A board's 3D vertices by a key, a chain each (vote_pairs ()): KIND_UV_COLOUR
+ * their texture coordinates and colour (a key many have: a grid's tiles),
+ * KIND_COLOUR their colour alone (the texture coordinates each board's own:
+ * Sega Strike Fighter's logo, its reflections) */
+struct KeyChains {
+	enum { BITS = 16, KIND_UV_COLOUR = 0, KIND_COLOUR = 1 };
+	std::vector<int32_t> head, next;
+
+	static uint64_t key (const Vertex &x, int kind)
+	{
+		uint32_t u, w;
+		uint64_t k;
+
+		if (x.z <= 1e-6f || x.z >= 1.0f)
+			return 0;
+		memcpy (&u, &x.u, 4);
+		memcpy (&w, &x.v, 4);
+		k = kind == KIND_COLOUR ? (uint64_t) x.base + 1 : (((uint64_t) u << 32 | w) ^ ((uint64_t) x.base * 0x9E3779B97F4A7C15ull));
+		k *= 0xD6E8FEB86659FD93ull;
+		return k ? k : 1;
+	}
+	void build (const std::vector<Vertex> &v, int kind)
+	{
+		head.assign ((size_t) 1 << BITS, -1);
+		next.assign (v.size (), -1);
+		for (size_t i = 0; i + 2 < v.size (); i += 3) {
+			if (!is_3d (v, i))
+				continue;
+			for (size_t j = i; j < i + 3; j++) {
+				uint64_t k = key (v[j], kind);
+
+				if (!k)
+					continue;
+				size_t h = (size_t) (k >> (64 - BITS));
+
+				next[j] = head[h];
+				head[h] = (int32_t) j;
+			}
+		}
+	}
+};
+
+/* The middle board's chains of a scene, of a kind, built once */
+static const KeyChains &
+middle_key_chains (const Draw &m, int kind)
+{
+	static thread_local KeyChains tables[2];
+	static thread_local std::shared_ptr<Scene> built[2];	/* kept alive: no other at its address */
+
+	if (built[kind] != m.scene) {
+		tables[kind].build (m.scene->vertices, kind);
+		built[kind] = m.scene;
+	}
+	return tables[kind];
+}
+
+/* A side board's pairs with the middle one by a vote, when too few keys are
+ * once in each board's list (Sega Strike Fighter's grid of tiles, its logo's
+ * texture coordinates each board's own): each vertex of the side board's with
+ * each of the middle board's of the same key (KeyChains) makes a candidate,
+ * a focal length f and a turn t; two views of one eye turned about the
+ * vertical through it see a point at depths whose ratio is the cosines' of
+ * its angles from their axes: r = z_side / z_middle, f^2 = (dxs^2 - r^2 dxm^2)
+ * / (r^2 - 1), t = atan (dxm / f) - atan (dxs / f) (dx: from the centre
+ * column). The (f, t) most candidates have (the grid's 3700 of 6700, the
+ * others spread), each side vertex's first candidate there; sign: the turn's
+ * (the left board's to the left). Its rows tell nothing to the vote:
+ * solve_side ()'s centre row checks them */
+/* log2 (x) to some 0.005, atan (x) to 1e-5 radians, fast (vote_pairs ()) */
+static inline float
+fast_log2 (float x)
+{
+	uint32_t b;
+	float m;
+
+	memcpy (&b, &x, 4);
+	float e = (float) ((int) (b >> 23) - 127);
+
+	b = (b & 0x7FFFFFu) | 0x3F800000u;
+	memcpy (&m, &b, 4);
+	return e + (-0.34484843f * m + 2.02466578f) * m - 0.67487759f;
+}
+
+static inline float
+fast_atan (float x)
+{
+	bool big = fabsf (x) > 1.0f;
+	float y = big ? 1.0f / x : x, y2 = y * y;
+	float a = y * (0.9998660f + y2 * (-0.3302995f + y2 * (0.1801410f + y2 * (-0.0851330f + y2 * 0.0208351f))));
+
+	return big ? (x > 0.0f ? 1.5707963f : -1.5707963f) - a : a;
+}
+
+static bool
+vote_pairs (const Draw &d, const Draw &m, float sign, std::vector<ViewPair> &out)
+{
+	/* Some 128 of the side board's triangles, spread over its list, each
+	 * vertex's key's first 1024 of the middle board's */
+	enum { NF = 300, NT = 360, MAX_CANDIDATES = 400000, MAX_CHAIN = 1024, TRIANGLES = 128 };
+	struct Candidate {
+		uint16_t bf, bt;
+		uint32_t s, q;
+		float f, turn;
+	};
+	static thread_local std::vector<uint32_t> hist;
+	static thread_local std::vector<float> fs, ts;
+	static thread_local std::vector<uint32_t> rows;
+	static thread_local std::vector<Candidate> cands;
+	static thread_local std::unordered_set<uint64_t> used;
+	const std::vector<Vertex> &sv = d.scene->vertices, &mv = m.scene->vertices;
+	const float lf0 = fast_log2 (100.0f), lf1 = fast_log2 (1.0e5f);
+	size_t stride = 3 * std::max<size_t> (1, sv.size () / 3 / TRIANGLES);
+
+	for (int kind = KeyChains::KIND_UV_COLOUR; kind <= KeyChains::KIND_COLOUR; kind++) {
+		const KeyChains &mc = middle_key_chains (m, kind);
+
+		hist.assign ((size_t) NF * NT, 0);
+		cands.clear ();
+		for (size_t i = 0; i + 2 < sv.size () && cands.size () < MAX_CANDIDATES; i += stride) {
+			if (!is_3d (sv, i))
+				continue;
+			for (size_t j = i; j < i + 3; j++) {
+				uint64_t k = KeyChains::key (sv[j], kind);
+				float xs = sv[j].x * d.scale_x - 320.0f;
+				int walked = 0;
+
+				if (!k)
+					continue;
+				for (int32_t q = mc.head[(size_t) (k >> (64 - KeyChains::BITS))]; q >= 0 && walked < MAX_CHAIN;
+				     q = mc.next[q], walked++) {
+					const Vertex &t = mv[q];
+
+					if (KeyChains::key (t, kind) != k)
+						continue;
+					float r = sv[j].z / t.z, r2 = r * r, xm = t.x * m.scale_x - 320.0f;
+
+					if (fabsf (r2 - 1.0f) < 1e-3f)
+						continue;
+					float f2 = (xs * xs - r2 * xm * xm) / (r2 - 1.0f);
+
+					if (!(f2 > 1.0e4f && f2 < 1.0e10f))
+						continue;
+					/* atan (xm / f) - atan (xs / f) */
+					float f = sqrtf (f2), turn = fast_atan ((xm - xs) * f / (f2 + xm * xs));
+
+					if (f2 + xm * xs < 0.0f)
+						turn += turn < 0.0f ? 3.1415927f : -3.1415927f;
+					int bf = (int) ((0.5f * fast_log2 (f2) - lf0) / (lf1 - lf0) * NF);
+					int bt = (int) ((turn * 57.29578f + 90.0f) * 2.0f);
+
+					if (turn * sign <= 0.0f || bf < 0 || bf >= NF || bt < 0 || bt >= NT)
+						continue;
+					hist[(size_t) bf * NT + bt]++;
+					cands.push_back ({ (uint16_t) bf, (uint16_t) bt, (uint32_t) j, (uint32_t) q, f, turn });
+				}
+			}
+		}
+		/* The most, three bins by three */
+		unsigned best = 0;
+		int pf = 0, pt = 0;
+
+		for (int a = 1; a + 1 < NF; a++)
+			for (int b = 1; b + 1 < NT; b++) {
+				unsigned n = 0;
+
+				if (!hist[(size_t) a * NT + b])
+					continue;
+				for (int da = -1; da <= 1; da++)
+					for (int db = -1; db <= 1; db++)
+						n += hist[(size_t) (a + da) * NT + b + db];
+				if (n > best) {
+					best = n;
+					pf = a;
+					pt = b;
+				}
+			}
+		if (best < 8)
+			continue;
+		/* The peak's focal length and turn, their medians; its centre row,
+		 * the one most of its pairs make ((ys - cy) zm = (ym - cy) zs, of
+		 * depths apart enough): the vote's pairs on each other in x and in
+		 * depth, not all in their rows (Sega Strike Fighter's rings, points
+		 * of a colour at the same x and depth up and down each, 60% of
+		 * them) */
+		fs.clear ();
+		ts.clear ();
+		rows.assign (960, 0);
+		for (const Candidate &c : cands)
+			if (abs ((int) c.bf - pf) <= 1 && abs ((int) c.bt - pt) <= 1) {
+				const Vertex &s = sv[c.s], &t = mv[c.q];
+
+				fs.push_back (c.f);
+				ts.push_back (c.turn);
+				if (fabsf (t.z - s.z) > 0.02f * s.z) {
+					float cy = (s.y * d.scale_y * t.z - t.y * m.scale_y * s.z) / (t.z - s.z);
+
+					if (cy >= -240.0f && cy < 720.0f)
+						rows[(size_t) (cy + 240.0f)]++;
+				}
+			}
+		std::nth_element (fs.begin (), fs.begin () + fs.size () / 2, fs.end ());
+		std::nth_element (ts.begin (), ts.begin () + ts.size () / 2, ts.end ());
+		float f = fs[fs.size () / 2], turn = ts[ts.size () / 2], cy = 240.0f, cs = cosf (turn), sn = sinf (turn);
+		unsigned most = 0;
+
+		for (size_t r = 1; r + 1 < rows.size (); r++)
+			if (rows[r - 1] + rows[r] + rows[r + 1] > most) {
+				most = rows[r - 1] + rows[r] + rows[r + 1];
+				cy = (float) r - 240.0f + 0.5f;
+			}
+		/* Those on each other then, to two pixels and 2% of their depth;
+		 * each side vertex (each place) once */
+		out.clear ();
+		used.clear ();
+		for (const Candidate &c : cands) {
+			if (abs ((int) c.bf - pf) > 1 || abs ((int) c.bt - pt) > 1)
+				continue;
+			const Vertex &s = sv[c.s], &t = mv[c.q];
+			float Z = 1.0f / s.z, X = (s.x * d.scale_x - 320.0f) / f * Z, Y = (s.y * d.scale_y - cy) / f * Z;
+			float Xm = X * cs + Z * sn, Zm = -X * sn + Z * cs;
+
+			if (Zm <= 1e-6f || fabsf (320.0f + f * Xm / Zm - t.x * m.scale_x) > 2.0f ||
+			    fabsf (cy + f * Y / Zm - t.y * m.scale_y) > 2.0f || fabsf (1.0f / Zm - t.z) > 0.02f * t.z)
+				continue;
+			uint32_t xb, yb, zb;
+
+			memcpy (&xb, &s.x, 4);
+			memcpy (&yb, &s.y, 4);
+			memcpy (&zb, &s.z, 4);
+			if (!used.insert (((uint64_t) xb << 32 | yb) ^ (uint64_t) zb * 0x9E3779B97F4A7C15ull).second)
+				continue;
+			out.push_back ({ s.x * d.scale_x, s.y * d.scale_y, s.z, t.x * m.scale_x, t.y * m.scale_y, t.z });
+			if (out.size () >= 2048)
+				break;
+		}
+		if (out.size () >= 8)
+			return true;
+	}
+	out.clear ();
+	return false;
+}
+
+/* 3x3 matrices, rows first */
+static void
+mat3_mul (const double *a, const double *b, double *out)
+{
+	double r[9];
+
+	for (int i = 0; i < 3; i++)
+		for (int j = 0; j < 3; j++)
+			r[i * 3 + j] = a[i * 3] * b[j] + a[i * 3 + 1] * b[3 + j] + a[i * 3 + 2] * b[6 + j];
+	memcpy (out, r, sizeof (r));
+}
+
+/* A turn about the vertical (to the right: x' = x cos t + z sin t) */
+static void
+mat3_yaw (double t, double *out)
+{
+	double c = cos (t), s = sin (t);
+	const double m[9] = { c, 0.0, s, 0.0, 1.0, 0.0, -s, 0.0, c };
+
+	memcpy (out, m, sizeof (m));
+}
+
+/* The master's camera shaken alone (Sega Strike Fighter's crash: its side
+ * boards' views turned 90 degrees from each other about their vertical, to
+ * 0.02 pixel, the middle one 3.5 degrees in pitch and 3.7 in roll from
+ * their middle): the rotation S of the middle view from the rig's middle,
+ * the side views the rig's still (turned yaw either way about it, the focal
+ * length f, the centre row cy): x_middle = S Ry (+-yaw) x_side, on both
+ * sides' pairs at once. Gauss-Newton from no rotation, on the pairs within
+ * a distance halved at each step, 150 pixels to one (another copy of a
+ * model far off); agree: each side's pairs then on each other to a pixel in
+ * x and y and 1% of their depth */
+static void
+solve_shake_from (const std::vector<ViewPair> *pairs, int sides, float yaw, float f, float cy, double *S, unsigned *agree,
+                  unsigned *either)
+{
+	double R[2][9];
+	float thr = 400.0f;
+
+	mat3_yaw (-yaw, R[0]);
+	mat3_yaw (yaw, R[1]);
+	for (int i = 0; i < 9; i++)
+		S[i] = i % 4 == 0 ? 1.0 : 0.0;
+	for (int it = 0; it < 12; it++) {
+		double JJ[9] = { 0 }, Jr[3] = { 0 };
+		unsigned n = 0;
+
+		for (int k = 0; k < 2; k++) {
+			double M[9];
+
+			if (!((sides >> k) & 1))
+				continue;
+			mat3_mul (S, R[k], M);
+			for (const ViewPair &p : pairs[k]) {
+				double Z = 1.0 / p.zs, P[3] = { (p.xs - 320.0) / f * Z, (p.ys - cy) / f * Z, Z }, u[3];
+
+				for (int i = 0; i < 3; i++)
+					u[i] = M[i * 3] * P[0] + M[i * 3 + 1] * P[1] + M[i * 3 + 2] * P[2];
+				if (u[2] <= 1e-6)
+					continue;
+				double px = 320.0 + f * u[0] / u[2], py = cy + f * u[1] / u[2];
+				double rx = p.xm - px, ry = p.ym - py;
+
+				if (fabs (rx) > thr || fabs (ry) > thr)
+					continue;
+				/* The point turned by w x u: d px / d w, d py / d w */
+				double a = f / u[2], bx = -f * u[0] / (u[2] * u[2]), by = -f * u[1] / (u[2] * u[2]);
+				double jx[3] = { bx * u[1], a * u[2] - bx * u[0], -a * u[1] };
+				double jy[3] = { -a * u[2] + by * u[1], -by * u[0], a * u[0] };
+
+				for (int i = 0; i < 3; i++) {
+					for (int j = 0; j < 3; j++)
+						JJ[i * 3 + j] += jx[i] * jx[j] + jy[i] * jy[j];
+					Jr[i] += jx[i] * rx + jy[i] * ry;
+				}
+				n++;
+			}
+		}
+		if (n < 8)
+			break;
+		/* JJ w = Jr, by Cramer */
+		double det = JJ[0] * (JJ[4] * JJ[8] - JJ[5] * JJ[7]) - JJ[1] * (JJ[3] * JJ[8] - JJ[5] * JJ[6]) +
+		             JJ[2] * (JJ[3] * JJ[7] - JJ[4] * JJ[6]);
+
+		if (fabs (det) < 1e-30)
+			break;
+		double w[3];
+
+		for (int c = 0; c < 3; c++) {
+			double m[9];
+
+			memcpy (m, JJ, sizeof (m));
+			for (int r = 0; r < 3; r++)
+				m[r * 3 + c] = Jr[r];
+			w[c] = (m[0] * (m[4] * m[8] - m[5] * m[7]) - m[1] * (m[3] * m[8] - m[5] * m[6]) +
+			        m[2] * (m[3] * m[7] - m[4] * m[6])) / det;
+		}
+		/* S = exp ([w]x) S (Rodrigues) */
+		double t = sqrt (w[0] * w[0] + w[1] * w[1] + w[2] * w[2]), E[9];
+
+		if (t > 1e-12) {
+			double x = w[0] / t, y = w[1] / t, z = w[2] / t, c = cos (t), s = sin (t), v = 1.0 - c;
+			const double e[9] = { c + x * x * v, x * y * v - z * s, x * z * v + y * s,
+			                      y * x * v + z * s, c + y * y * v, y * z * v - x * s,
+			                      z * x * v - y * s, z * y * v + x * s, c + z * z * v };
+
+			memcpy (E, e, sizeof (E));
+			mat3_mul (E, S, S);
+		}
+		thr = std::max (1.0f, thr * 0.5f);
+	}
+	/* The pairs on each other shaken, and those either shaken or not */
+	for (int k = 0; k < 2; k++) {
+		double M[9];
+
+		agree[k] = either[k] = 0;
+		mat3_mul (S, R[k], M);
+		for (const ViewPair &p : pairs[k]) {
+			double Z = 1.0 / p.zs, P[3] = { (p.xs - 320.0) / f * Z, (p.ys - cy) / f * Z, Z };
+			bool on[2];
+
+			for (int w = 0; w < 2; w++) {
+				const double *T = w ? R[k] : M;
+				double u[3];
+
+				for (int i = 0; i < 3; i++)
+					u[i] = T[i * 3] * P[0] + T[i * 3 + 1] * P[1] + T[i * 3 + 2] * P[2];
+				on[w] = u[2] > 1e-6 && fabs (320.0 + f * u[0] / u[2] - p.xm) < 1.0 &&
+				        fabs (cy + f * u[1] / u[2] - p.ym) < 1.0 && fabs (1.0 / u[2] - p.zm) < 0.01 * p.zm;
+			}
+			agree[k] += on[0];
+			either[k] += on[0] || on[1];
+		}
+	}
+}
+
+/* solve_shake_from () on both sides, on the left alone, on the right alone:
+ * the one whose side the less on each other has the most (Sega Strike
+ * Fighter's crash: the right board's points high over its screen on each
+ * other unshaken, the master drawing them so, the world below shaken, its
+ * left board's all) */
+static void
+solve_shake (const std::vector<ViewPair> *pairs, float yaw, float f, float cy, double *S, unsigned *agree,
+             unsigned *either)
+{
+	double best = -1.0;
+
+	for (int sides = 3; sides >= 1; sides--) {
+		double T[9];
+		unsigned a[2], e[2];
+
+		solve_shake_from (pairs, sides, yaw, f, cy, T, a, e);
+		double worst = std::min ((double) a[0] / std::max<size_t> (1, pairs[0].size ()),
+		                         (double) a[1] / std::max<size_t> (1, pairs[1].size ()));
+
+		if (worst > best) {
+			best = worst;
+			memcpy (S, T, sizeof (T));
+			memcpy (agree, a, sizeof (a));
+			memcpy (either, e, sizeof (e));
+		}
+	}
+}
+
+/* Both side views solved, the same turn either way and the same focal
+ * length: true; enough: each had points enough (else none to tell) */
+bool
+Renderer::solve_views (const std::vector<BoardRenderer::Frame> &frames, const Draw *m, float *yaw, float *focal,
+                       float *centre, bool *enough) const
+{
+	static thread_local std::vector<std::pair<uint64_t, uint32_t>> found;
+	static thread_local std::vector<ViewPair> pairs[2];
+	SideView v[2];
+
+	*enough = false;
+	views_shaken = false;
+	if (!m || frames.size () != 3)
+		return false;
+	const KeyTable &middle = middle_keys (*m);
+
+	for (int k = 0; k < 2; k++) {
+		const Draw *d = screen_draw (frames[k ? 2 : 0]);
+
+		if (!d)
+			return false;
+		const std::vector<Vertex> &sv = d->scene->vertices, &mv = m->scene->vertices;
+
+		/* The side's vertices whose key the middle has once, those whose key
+		 * the side has once too */
+		found.clear ();
+		for (size_t i = 0; i < sv.size (); i++) {
+			if (i % 3 == 0 && !is_3d (sv, i)) {
+				i += 2;
+				continue;
+			}
+			uint64_t k = KeyTable::key (sv[i]);
+
+			if (k && middle.find (k) >= 0)
+				found.push_back ({ k, (uint32_t) i });
+		}
+		std::sort (found.begin (), found.end ());
+		pairs[k].clear ();
+		for (size_t a = 0, b; a < found.size (); a = b) {
+			bool one = true;
+
+			for (b = a + 1; b < found.size () && found[b].first == found[a].first; b++)
+				one = one && same_place (sv[found[b].second], sv[found[a].second]);
+			if (!one)
+				continue;
+			const Vertex &s = sv[found[a].second], &t = mv[middle.find (found[a].first)];
+
+			pairs[k].push_back ({ s.x * d->scale_x, s.y * d->scale_y, s.z, t.x * m->scale_x, t.y * m->scale_y, t.z });
+		}
+		v[k] = solve_side (pairs[k], steady_cy);
+		if (v[k].pairs < 8 && vote_pairs (*d, *m, k ? 1.0f : -1.0f, pairs[k]))
+			v[k] = solve_side (pairs[k], steady_cy);
+	}
+	*enough = v[0].pairs >= 8 && v[1].pairs >= 8;
+	/* A side solved: five of its points on each other at least, two in five
+	 * of those not of another copy of a model (SideView::elsewhere), half
+	 * their rows too (the others what moves between the boards' frames, a
+	 * key two models share, Airline Pilots' wings flexed by each board;
+	 * F355's race seen from the car, its left board 59%) */
+	bool solved[2];
+
+	for (int k = 0; k < 2; k++)
+		solved[k] = v[k].pairs >= 8 && v[k].agree >= 5 && v[k].agree * 5 >= v[k].counted () * 2 &&
+		            v[k].agree_y * 2 >= v[k].counted ();
+	/* Both, solved each on its own, the same turn either way and the same
+	 * focal length to a hundredth of a degree and 0.5% (one rig: the views
+	 * of one eye; two fits apart so close no chance makes) */
+	if (solved[0] && solved[1] && fabsf (v[0].turn + v[1].turn) <= 0.0035f &&
+	    fabsf (v[0].focal - v[1].focal) <= 0.005f * v[1].focal && v[1].turn > 0.0f) {
+		*yaw = (v[1].turn - v[0].turn) * 0.5f;
+		*focal = (v[0].focal + v[1].focal) * 0.5f;
+		*centre = (v[0].cy + v[1].cy) * 0.5f;
+		return true;
+	}
+	/* Or both near (SideView::near), the same turn either way and the same
+	 * focal length (Sega Strike Fighter's training: its cockpit on each
+	 * other, its world each board's a frame apart, held while it shows how
+	 * to fire; 12% of the left board's points) */
+	if (v[0].near && v[1].near && fabsf (v[0].turn + v[1].turn) <= 0.0035f &&
+	    fabsf (v[0].focal - v[1].focal) <= 0.005f * v[1].focal && v[1].turn > 0.0f) {
+		*yaw = (v[1].turn - v[0].turn) * 0.5f;
+		*focal = (v[0].focal + v[1].focal) * 0.5f;
+		*centre = (v[0].cy + v[1].cy) * 0.5f;
+		return true;
+	}
+	/* Or one, nine in ten of its points on each other, while the other has
+	 * too few to tell (a cut: F355's race, its left board 7) or has its own
+	 * turned the other way among its points: a tenth of them and four at
+	 * least, or half when under 8 tell (the others a model drawn several
+	 * times, each board seeing other ones: Sega Strike Fighter's
+	 * helicopters, 24% of the left board's points; its fleet, one) */
+	for (int k = 0; k < 2; k++) {
+		if (!solved[k] || v[k].agree * 10 < v[k].counted () * 9 || (k ? v[k].turn <= 0.0f : v[k].turn >= 0.0f))
+			continue;
+		double A = cos (v[k].turn), B = -sin (v[k].turn) / v[k].focal;
+		unsigned away = 0, other = v[!k].pairs < 8 ? 0 : agreeing (pairs[!k], A, -B, NULL, v[k].cy, &away);
+		unsigned tell = v[!k].pairs - away;
+
+		/* Or the views on (steady_views ()) as it has them: the other's
+		 * points another copy's all but a few (its fleet: the left board's
+		 * ships, three of their points by the middle board's top edge) */
+		bool same = views_left && fabsf (fabsf (v[k].turn) - steady_yaw) <= 0.0035f &&
+		            fabsf (v[k].focal - steady_f) <= 0.005f * steady_f;
+
+		if (same || v[!k].pairs < 8 || (tell < 8 ? other * 2 >= tell : other >= 4 && other * 10 >= tell)) {
+			*yaw = fabsf (v[k].turn);
+			*focal = v[k].focal;
+			*centre = v[k].cy;
+			return true;
+		}
+	}
+	/* Or, the views on, the rig as it was with the master's camera shaken
+	 * alone (solve_shake ()): from 0.2 to 25 degrees, each side's pairs on
+	 * each other shaken, 16 at least, or not shaken (the crash's points
+	 * high over the right board's screen), three in four (Airline Pilots'
+	 * plane at the gate, its side boards' cameras between two of the
+	 * master's frames: a fifth on each other with no shake) */
+	if (views_left && steady_f > 0.0f && v[0].pairs >= 8 && v[1].pairs >= 8) {
+		double S[9];
+		unsigned agree[2], either[2];
+
+		solve_shake (pairs, steady_yaw, steady_f, steady_cy, S, agree, either);
+		double angle = acos (std::max (-1.0, std::min (1.0, (S[0] + S[4] + S[8] - 1.0) * 0.5)));
+
+		if (angle >= 0.0035 && angle <= 0.44 && agree[0] >= 16 && agree[1] >= 16 && either[0] * 4 >= v[0].pairs * 3 &&
+		    either[1] * 4 >= v[1].pairs * 3) {
+			for (int i = 0; i < 9; i++)
+				views_shake[i] = (float) S[i];
+			views_shaken = true;
+			*yaw = steady_yaw;
+			*focal = steady_f;
+			*centre = steady_cy;
+			return true;
+		}
+	}
+	return false;
+}
+
+/* solve_views () from frame to frame: on once solved two frames in a row (not
+ * for a frame alone: Airline Pilots' camera, turning, solved at a still
+ * moment), the views kept while they move less than a pixel (a frame's
+ * solution varies by a little), kept through 10 frames of too few points (a
+ * turn in the scenery), off after 4 frames more when points enough do not
+ * agree (a cut to another scene's cameras; the boards' frames apart while
+ * the camera moves, for a frame or two: Airline Pilots' plane at the gate,
+ * its side boards' cameras a frame late but now and then; Sega Strike
+ * Fighter's cuts between scenes of the same views, 4 frames apart).
+ * Steady, solved every other frame (Airline Pilots' 40000 vertices a board,
+ * some 1.5 ms); each frame while they move (F355's zooms) */
+bool
+Renderer::steady_views (const std::vector<BoardRenderer::Frame> &frames, float *yaw, float *focal,
+                        float *centre) const
+{
+	float y, f, cy;
+	bool enough = false, solved = false;
+
+	if (views_left && views_steady && (views_frames++ & 1)) {
+		*yaw = steady_yaw;
+		*focal = steady_f;
+		*centre = steady_cy;
+		return true;
+	}
+	/* Against the middle board's scene that goes with the side ones' (its
+	 * last, or the one before: middle_late) first, then the other one */
+	const Draw *now = frames.size () == 3 ? screen_draw (frames[1]) : NULL;
+	const Draw *before = held_valid ? &held_middle : NULL;
+
+	for (int k = 0; k < 2 && !solved; k++) {
+		bool late = middle_late != (k == 1), more = false;
+
+		solved = solve_views (frames, late ? before : now, &y, &f, &cy, &more);
+		enough |= more;
+		if (solved)
+			middle_late = late;
+	}
+	if (solved) {
+		/* Shaken: solved at each frame, the shake moving */
+		views_steady = views_left && !views_shaken && fabsf (y - steady_yaw) <= 0.002f &&
+		               fabsf (f - steady_f) <= 0.003f * f && fabsf (cy - steady_cy) <= 1.0f;
+		if (!views_steady) {
+			steady_yaw = y;
+			steady_f = f;
+			steady_cy = cy;
+		}
+		if (views_left || views_solved)
+			views_left = 10;
+		views_solved = true;
+	} else {
+		views_steady = views_solved = false;
+		views_left = !views_left ? 0 : enough ? std::min (views_left - 1, 4u) : views_left - 1;
+	}
+	*yaw = steady_yaw;
+	*focal = steady_f;
+	*centre = steady_cy;
+	return views_left != 0;
+}
+
+/* View::mask_2d's cells (MASK_CELL pixels of a side screen's 640x480) */
+struct CellGrid {
+	std::vector<uint8_t> in;
+	bool any = false;
+	/* The columns of cells looked at: the strip's (views ()) */
+	int lo = 0, hi = BoardRenderer::View::MASK_W - 1;
+
+	CellGrid () : in ((size_t) BoardRenderer::View::MASK_W * BoardRenderer::View::MASK_H, 0) {}
+	/* Each cell whose middle is in the triangle */
+	void tri (const float *x, const float *y)
+	{
+		const int W = BoardRenderer::View::MASK_W, H = BoardRenderer::View::MASK_H;
+		const float cell = (float) BoardRenderer::View::MASK_CELL;
+		float area = (x[1] - x[0]) * (y[2] - y[0]) - (x[2] - x[0]) * (y[1] - y[0]);
+
+		if (area == 0.0f)
+			return;
+		int c0 = std::max (lo, (int) floorf (std::max (-1.0e6f, std::min ({ x[0], x[1], x[2] })) / cell));
+		int c1 = std::min (hi, (int) floorf (std::min (1.0e6f, std::max ({ x[0], x[1], x[2] })) / cell));
+		int r0 = std::max (0, (int) floorf (std::max (-1.0e6f, std::min ({ y[0], y[1], y[2] })) / cell));
+		int r1 = std::min (H - 1, (int) floorf (std::min (1.0e6f, std::max ({ y[0], y[1], y[2] })) / cell));
+
+		for (int r = r0; r <= r1; r++)
+			for (int c = c0; c <= c1; c++) {
+				float px = (c + 0.5f) * cell, py = (r + 0.5f) * cell, e[3];
+
+				for (int k = 0; k < 3; k++) {
+					int l = (k + 1) % 3;
+
+					e[k] = ((x[l] - x[k]) * (py - y[k]) - (px - x[k]) * (y[l] - y[k])) * (area > 0.0f ? 1.0f : -1.0f);
+				}
+				if (e[0] >= 0.0f && e[1] >= 0.0f && e[2] >= 0.0f) {
+					in[(size_t) r * W + c] = 1;
+					any = true;
+				}
+			}
+	}
+	/* The cells and those around them (a letter, a wheel's rim by a
+	 * triangle's edge); none: empty */
+	void to_mask (std::vector<uint8_t> &m) const
+	{
+		const int W = BoardRenderer::View::MASK_W, H = BoardRenderer::View::MASK_H;
+
+		m.clear ();
+		if (!any)
+			return;
+		m.assign ((size_t) W * H, 0);
+		for (int r = 0; r < H; r++)
+			for (int c = 0; c < W; c++)
+				if (in[(size_t) r * W + c])
+					for (int dr = -1; dr <= 1; dr++)
+						for (int dc = -1; dc <= 1; dc++)
+							if (r + dr >= 0 && r + dr < H && c + dc >= 0 && c + dc < W)
+								m[(size_t) (r + dr) * W + c + dc] = 255;
+	}
+};
+
+/* A side screen's 2D (View::mask_2d): its triangles of the same 1/W at their
+ * three vertices, 1 or more (as draw_scene () tells them; F355's trademark
+ * notice over its race's start, at 100, each a 2.7% of the screen), and its
+ * insets. Not the far plane's (the backgrounds), nor a triangle over a
+ * quarter of the screen: a fade's (F355's scenes fade in by a quad over the
+ * whole screen) */
+static void
+mask_2d (const Draw &d, CellGrid &g)
+{
+	const std::vector<Vertex> &v = d.scene->vertices;
+
+	/* Its insets too (inset ()), their clips' rectangles */
+	for (const std::vector<Batch> &list : d.scene->batches)
+		for (const Batch &b : list)
+			if (inset (b, d) && b.count) {
+				float x0 = b.x0 * d.scale_x, x1 = b.x1 * d.scale_x, y0 = b.y0 * d.scale_y, y1 = b.y1 * d.scale_y;
+				float xa[3] = { x0, x1, x1 }, ya[3] = { y0, y0, y1 }, xb[3] = { x0, x1, x0 }, yb[3] = { y0, y1, y1 };
+
+				g.tri (xa, ya);
+				g.tri (xb, yb);
+			}
+
+	for (size_t t = 0; t + 2 < v.size (); t += 3) {
+		float z = v[t].z, x[3], y[3];
+
+		if (z < 1.0f || z != v[t + 1].z || z != v[t + 2].z)
+			continue;
+		for (int k = 0; k < 3; k++) {
+			x[k] = v[t + k].x * d.scale_x;
+			y[k] = v[t + k].y * d.scale_y;
+		}
+		if (fabsf ((x[1] - x[0]) * (y[2] - y[0]) - (x[2] - x[0]) * (y[1] - y[0])) * 0.5f > 640.0f * 480.0f * 0.25f)
+			continue;
+		g.tri (x, y);
+	}
+}
+
+/* The middle board's textured 3D vertices by their texture coordinates
+ * alone (several share them: a car's four wheels) and by the cell of CELL
+ * pixels of its screen they are in, a chain each (a tiled texture's corners
+ * by the thousand all over a city, Sega Strike Fighter's, but a few in a
+ * cell) */
+struct UvChains {
+	enum { BITS = 18, CELL = 32 };
+	std::vector<int32_t> head, next;
+
+	static uint64_t key (const Vertex &x)
+	{
+		uint32_t u, w;
+
+		if ((x.u == 0.0f && x.v == 0.0f) || x.z <= 1e-6f)
+			return 0;
+		memcpy (&u, &x.u, 4);
+		memcpy (&w, &x.v, 4);
+		return ((uint64_t) u << 32 | w) * 0x9E3779B97F4A7C15ull;
+	}
+	static int cell (float p)
+	{
+		return (int) floorf (std::max (-1.0e6f, std::min (1.0e6f, p)) / CELL);
+	}
+	static size_t bucket (uint64_t k, int cx, int cy)
+	{
+		uint64_t h = (k ^ ((uint64_t) (uint32_t) cx * 0xC2B2AE3D27D4EB4Full) ^ ((uint64_t) (uint32_t) cy * 0x165667B19E3779F9ull)) *
+		             0x9E3779B97F4A7C15ull;
+
+		return (size_t) (h >> (64 - BITS));
+	}
+	void build (const Draw &m)
+	{
+		const std::vector<Vertex> &v = m.scene->vertices;
+
+		head.assign ((size_t) 1 << BITS, -1);
+		next.assign (v.size (), -1);
+		for (size_t i = 0; i + 2 < v.size (); i += 3) {
+			if (!is_3d (v, i))
+				continue;
+			for (size_t j = i; j < i + 3; j++) {
+				uint64_t k = key (v[j]);
+
+				if (!k)
+					continue;
+				size_t h = bucket (k, cell (v[j].x * m.scale_x), cell (v[j].y * m.scale_y));
+
+				next[j] = head[h];
+				head[h] = (int32_t) j;
+			}
+		}
+	}
+};
+
+/* The middle board's chains of a scene, built once */
+static const UvChains &
+middle_chains (const Draw &m)
+{
+	static thread_local UvChains table;
+	static thread_local std::shared_ptr<Scene> built;	/* kept alive: no other at its address */
+
+	if (built != m.scene) {
+		table.build (m);
+		built = m.scene;
+	}
+	return table;
+}
+
+/* What the side board alone draws by the seam (View::mask_2d too): its
+ * textured 3D triangles none of whose vertices the middle board has, a
+ * vertex of the same texture coordinates where the side board's falls in
+ * the middle view (its turn yaw, its focal length and centre: views ()'s),
+ * within 20 pixels and 10% of its depth (each board flexes Airline Pilots'
+ * wings its own way, up to 12 pixels apart there; a car's other wheels are
+ * far); put where the joined view (view) shows them on the side screen,
+ * within 200 pixels of its inner edge (inner: the edge's x). The objects
+ * the middle board leaves out as out of its view: a car's wheel by F355's
+ * factory (30% of the left board's vertices there not in the middle one's
+ * list), its wheel arch the middle board's, 2% deeper: no depth tells them
+ * apart. Texture coordinates alone: a vertex's colour is lit for each
+ * board's view (Airline Pilots' wing, its letters) */
+static void
+side_only (const Draw &d, const Draw &m, const UvChains &middle, const double *to_middle,
+           const BoardRenderer::View &view, float inner, CellGrid &g)
+{
+	const std::vector<Vertex> &v = d.scene->vertices, &mv = m.scene->vertices;
+	float f = view.focal, fo = view.out_focal > 0.0f ? view.out_focal : view.focal, cy = view.centre_y;
+	/* The side board's view to its screen's (View::rot, or its turn), to
+	 * the middle board's (to_middle) */
+	double P[9], R[9];
+
+	if (view.rotated)
+		for (int k = 0; k < 9; k++)
+			P[k] = view.rot[k];
+	else
+		mat3_yaw (view.turn, P);
+	memcpy (R, to_middle, sizeof (R));
+	if (f <= 0.0f)
+		return;
+	for (size_t i = 0; i + 2 < v.size (); i += 3) {
+		float x[3], y[3], dx[3], dy[3];
+		uint64_t key[3];
+		bool keep = is_3d (v, i);
+
+		/* On the side screen, by its inner edge */
+		for (int k = 0; k < 3 && keep; k++) {
+			const Vertex &p = v[i + k];
+			float pw;
+
+			key[k] = UvChains::key (p);
+			dx[k] = (p.x * d.scale_x - 320.0f) / f;
+			dy[k] = (p.y * d.scale_y - cy) / f;
+			pw = (float) (P[6] * dx[k] + P[7] * dy[k] + P[8]);
+			keep = key[k] && pw > 1e-4f;
+			x[k] = 320.0f + fo * (float) (P[0] * dx[k] + P[1] * dy[k] + P[2]) / pw;
+			y[k] = cy + fo * (float) (P[3] * dx[k] + P[4] * dy[k] + P[5]) / pw;
+		}
+		if (!keep || std::min ({ fabsf (x[0] - inner), fabsf (x[1] - inner), fabsf (x[2] - inner) }) > 200.0f)
+			continue;
+		/* None of its vertices where the middle board would have it (the
+		 * cells around; a chain looked at for 64 vertices at most, past
+		 * that taken as there) */
+		for (int k = 0; k < 3 && keep; k++) {
+			float Z = 1.0f / v[i + k].z, X = dx[k] * Z, Y = dy[k] * Z;
+			float Xm = (float) (R[0] * X + R[1] * Y + R[2] * Z), Ym = (float) (R[3] * X + R[4] * Y + R[5] * Z);
+			float Zm = (float) (R[6] * X + R[7] * Y + R[8] * Z);
+
+			if (Zm <= 1e-6f)
+				continue;
+			float xm = 320.0f + f * Xm / Zm, ym = cy + f * Ym / Zm, zm = 1.0f / Zm;
+			int cx = UvChains::cell (xm), cyc = UvChains::cell (ym);
+
+			for (int n = 0; n < 9 && keep; n++) {
+				int looked = 0;
+
+				for (int32_t j = middle.head[UvChains::bucket (key[k], cx + n % 3 - 1, cyc + n / 3 - 1)]; j >= 0 && keep;
+				     j = middle.next[j]) {
+					const Vertex &q = mv[j];
+
+					keep = ++looked < 64 &&
+					       !(UvChains::key (q) == key[k] && fabsf (q.x * m.scale_x - xm) < 20.0f &&
+					         fabsf (q.y * m.scale_y - ym) < 20.0f && fabsf (q.z - zm) < 0.1f * zm);
+				}
+			}
+		}
+		if (keep)
+			g.tri (x, y);
+	}
+}
+
+/* The game has views to solve (games.json "screen_view"), the boards shown
+ * are its screens, a view other than the cabinet's chosen */
+bool
+Renderer::views_wanted (const std::vector<unsigned> &shown) const
+{
+	const hl::Game *game = naomi->game;
+
+	return game && game->view_focal > 0.0f && shown.size () >= 2 && naomi->multi_screen != hl::MULTI_ONE &&
+	       hl::Config::get ()->multi_screen_view != hl::VIEW_CABINET && shown == naomi->screen_order;
+}
+
+/* The side boards a frame behind the middle one (middle_late: their views
+ * solved on its scene before its last; Sega Strike Fighter's attract, its
+ * camera passed on to them a frame late, the 3D one frame apart, some 50
+ * pixels while it turns): the middle board's scene for the screen drawn a
+ * frame late, its last kept (held_middle) for the next frame, the three
+ * screens the same moment. Else its last kept all the same, the next frame
+ * solved on both */
+void
+Renderer::late_middle (const std::vector<unsigned> &shown, std::vector<BoardRenderer::Frame> &frames,
+                       const std::vector<BoardRenderer::View> &v)
+{
+	Draw *now = NULL;
+
+	if (frames.size () != 3 || !views_wanted (shown)) {
+		held_middle = Draw ();
+		held_valid = middle_late = false;
+		return;
+	}
+	for (Draw &d : frames[1].draws)
+		if (!d.to_texture && d.scene)
+			now = &d;
+	if (v.size () == 3 && v[0].focal > 0.0f && middle_late && held_valid) {
+		if (now) {
+			std::swap (*now, held_middle);
+			held_shown = false;
+		} else if (!held_shown) {
+			/* None since: the one kept, at last */
+			frames[1].draws.push_back (held_middle);
+			held_shown = true;
+		}
+		return;
+	}
+	if (now) {
+		held_middle = *now;
+		held_valid = held_shown = true;
+	}
+}
+
+std::vector<BoardRenderer::View>
+Renderer::views (const std::vector<unsigned> &shown, const std::vector<BoardRenderer::Frame> &frames) const
+{
+	size_t n = shown.size (), i;
+	std::vector<BoardRenderer::View> v (n);
+	float centre = 240.0f, f = 0.0f, yaw = 0.0f;
+
+	if (!views_wanted (shown) || !steady_views (frames, &yaw, &f, &centre))
+		return v;
+	float half = atanf (width * 0.5f / f);
+	/* The outer screens' far edges no farther than the boards draw (their
+	 * views' edges): with WIDESCREEN the screens are wider than the turn
+	 * between them, the side views would turn outwards past what the games
+	 * draw (Airline Pilots' cockpit, missing there); the screens' field
+	 * narrowed so, the picture a little larger (some 12%) */
+	float outer = (float) (n - 1) * 0.5f, joined = std::min (half, (outer * yaw + half) / (2.0f * outer + 1.0f));
+
+	/* Each board's view to the middle one's: turned by yaw, the master's
+	 * shake on it (solve_shake ()) */
+	std::vector<std::array<double, 9>> to_middle (n);
+
+	for (i = 0; i < n; i++) {
+		float k = (float) i - outer;
+
+		v[i].turn = k * (yaw - 2.0f * joined);
+		v[i].focal = f;
+		v[i].out_focal = joined < half ? width * 0.5f / tanf (joined) : f;
+		v[i].centre_y = centre;
+		mat3_yaw (k * yaw, to_middle[i].data ());
+		if (views_shaken && n == 3 && i != n / 2) {
+			double S[9], screen[9];
+
+			for (int j = 0; j < 9; j++)
+				S[j] = views_shake[j];
+			mat3_mul (S, to_middle[i].data (), to_middle[i].data ());
+			mat3_yaw (-k * 2.0f * joined, screen);
+			mat3_mul (screen, to_middle[i].data (), screen);
+			for (int j = 0; j < 9; j++)
+				v[i].rot[j] = (float) screen[j];
+			v[i].rotated = true;
+		}
+	}
+	/* In 4:3 the middle board's scene drawn in the side screens' views too,
+	 * their axes 2 x joined either side of its own (strip_turn: to the
+	 * left the view turns the scene to the right): their strips by their
+	 * inner edges (fill_strips ()), but where their 2D is and what the
+	 * middle board left out */
+	const Draw *m = n == 3 && frames.size () == 3 ? screen_draw (frames[1]) : NULL;
+
+	if (middle_late && held_valid)
+		m = &held_middle;
+
+	if (width < 854 && n == 3) {
+		v[1].strips = true;
+		v[1].strip_turn[0] = 2.0f * joined;
+		v[1].strip_turn[1] = -2.0f * joined;
+		for (i = 0; i < n && i < frames.size (); i++)
+			if (i != n / 2)
+				if (const Draw *d = screen_draw (frames[i])) {
+					CellGrid g;
+					/* Only the strip's columns: from the side screen's inner
+					 * edge to its board's own view's (fill_strips ()), 16
+					 * pixels more (Airline Pilots' 74 pixels, Sega Strike
+					 * Fighter's 250 with a long lens; a side screen's 2D
+					 * rasterized all over took 2.5 ms in its missions) */
+					float gap = 320.0f + f * tanf (std::max (-1.5f, std::min (1.5f, 3.0f * half - yaw))) - 16.0f;
+					const int cell = BoardRenderer::View::MASK_CELL;
+
+					if (i < n / 2)
+						g.lo = std::max (0, (int) floorf (gap / cell));
+					else
+						g.hi = std::min (BoardRenderer::View::MASK_W - 1, (int) floorf ((640.0f - gap) / cell));
+
+					mask_2d (*d, g);
+					if (m)
+						side_only (*d, *m, middle_chains (*m), to_middle[i].data (), v[i], i < n / 2 ? 640.0f : 0.0f,
+						           g);
+					g.to_mask (v[i].mask_2d);
+				}
+	}
+	return v;
+}
+
+/* Over the side screens of the joined pictures (side_by_side ()'s texture,
+ * bound), by their inner edges, the middle board's scene drawn in their
+ * views (Picture::strip): in the cabinet's gap between its monitors each
+ * board has what the other one leaves out (Airline Pilots' overhead
+ * compass, 22 to 25 degrees from the middle, the middle board's) */
+void
+Renderer::fill_strips (const std::vector<Picture> &pictures, const std::vector<BoardRenderer::View> &v,
+                       BoardRenderer *with)
+{
+	size_t n = pictures.size (), middle = n / 2, i;
+	unsigned scale = (unsigned) std::max (1, hl::Config::get ()->render_scale);
+
+	if (n != 3 || v.size () != n || !pictures[middle].strip[0] || !pictures[middle].strip[1])
+		return;
+	float f = v[middle].out_focal > 0.0f ? v[middle].out_focal : v[middle].focal;
+	float step = 2.0f * atanf (width * 0.5f / f);
+
+	glBindFramebuffer (GL_FRAMEBUFFER, wide_fb);
+	glDisable (GL_SCISSOR_TEST);
+	for (i = middle - 1; i <= middle + 1; i += 2) {
+		/* The side screen's turn from its board's view (View::turn) and
+		 * the middle screen's field make the boards' turn; the cut halfway
+		 * between their views, the side board's own view from its edge */
+		float k = (float) i - (float) middle, yaw = v[i].turn / k + step;
+		float cut = f * tanf (std::min (yaw * 0.5f, 1.55f));
+		float edge = f * tanf (std::min (yaw - atanf (width * 0.5f / v[i].focal), 1.55f));
+
+		glViewport ((GLint) (i * width * scale), 0, width * scale, height * scale);
+		with->fill_strip (pictures[middle], i < middle ? 0 : 1, pictures[i], &v[i].mask_2d, (float) width,
+		                  (float) height, f, k * step, cut, edge);
+	}
+	glBindFramebuffer (GL_FRAMEBUFFER, 0);
+}
+
+Projection
+Renderer::projection (const std::vector<BoardRenderer::View> &v) const
+{
+	int mode = hl::Config::get ()->multi_screen_view;
+	Projection p;
+
+	if (v.empty () || v[0].focal <= 0.0f || mode < hl::VIEW_FLAT || mode >= hl::NUM_SCREEN_VIEWS)
+		return p;
+	p.mode = mode;
+	p.panels = (unsigned) v.size ();
+	p.panel_w = (float) width;
+	p.panel_h = (float) height;
+	/* The joined panels' focal length (View::out_focal) */
+	p.focal = v[0].out_focal > 0.0f ? v[0].out_focal : v[0].focal;
+	p.centre_y = v[0].centre_y;
+	p.half = atanf (width * 0.5f / p.focal);
+	p.out_focal = out_focal (p);
+	return p;
+}
+
+Picture
+Renderer::projected (const Picture &wide, const Projection &pr, BoardRenderer *with)
+{
+	Picture out;
+
+	if (!proj_fb) {
+		glGenFramebuffers (1, &proj_fb);
+		glGenTextures (1, &proj_color);
+	}
+	glBindFramebuffer (GL_FRAMEBUFFER, proj_fb);
+	if (proj_w != wide_w || proj_h != wide_h) {
+		glBindTexture (GL_TEXTURE_2D, proj_color);
+		glTexImage2D (GL_TEXTURE_2D, 0, GL_RGBA8, wide_w, wide_h, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+		glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+		glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+		glBindTexture (GL_TEXTURE_2D, 0);
+		glFramebufferTexture2D (GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, proj_color, 0);
+		proj_w = wide_w;
+		proj_h = wide_h;
+	}
+	glDisable (GL_SCISSOR_TEST);
+	glViewport (0, 0, proj_w, proj_h);
+	with->project (wide, pr);
+	glBindFramebuffer (GL_FRAMEBUFFER, 0);
+	out.texture = proj_color;
+	return out;
+}
+
 /* A picture of w x h in a window, as the [Display] settings want it */
 void
 Renderer::show (Output &out, const Picture &p, BoardRenderer *blitter, unsigned w, unsigned h)
@@ -2001,16 +3965,42 @@ Renderer::show (Output &out, const Picture &p, BoardRenderer *blitter, unsigned 
 
 void
 Renderer::present_pictures (const std::vector<unsigned> &shown, const std::vector<Picture> &pictures,
-                            BoardRenderer *with)
+                            BoardRenderer *with, const std::vector<BoardRenderer::View> &drawn_in)
 {
 	size_t i;
 
 	if (shown.empty ())
 		return;
+	Projection pr = projection (drawn_in);
+	BoardRenderer *blit_with = with ? with : drawer (shown[0]);
+	bool joined = shown.size () > 1 && !drawn_in.empty () && drawn_in[0].focal > 0.0f;
+
 	if (naomi->multi_screen == hl::MULTI_SIDE_BY_SIDE && shown.size () > 1) {
 		Picture wide = side_by_side (shown, pictures, with);
 
-		show (outputs[0], wide, with ? with : drawer (shown[0]), width * (unsigned) shown.size (), height);
+		if (joined)
+			fill_strips (pictures, drawn_in, blit_with);
+		if (pr.mode)
+			wide = projected (wide, pr, blit_with);
+		show (outputs[0], wide, blit_with, width * (unsigned) shown.size (), height);
+		return;
+	}
+	/* The joined pictures in windows: each its part of them */
+	if (joined) {
+		Picture all = side_by_side (shown, pictures, with);
+
+		fill_strips (pictures, drawn_in, blit_with);
+		if (pr.mode)
+			all = projected (all, pr, blit_with);
+
+		for (i = outputs.size (); i-- > 0;)
+			if (i < shown.size ()) {
+				Picture part = all;
+
+				part.x0 = (float) i / (float) shown.size ();
+				part.x1 = (float) (i + 1) / (float) shown.size ();
+				show (outputs[i], part, blit_with, width, height);
+			}
 		return;
 	}
 	/* The main one last: its swap, after this, waits for the screen */
@@ -2030,14 +4020,25 @@ Renderer::on_end_frame ()
 		threaded_end_frame (shown);
 		return;
 	}
+	std::vector<BoardRenderer::View> v;
+
 	try {
+		std::vector<BoardRenderer::Frame> frames;
+
 		for (i = 0; i < shown.size (); i++)
-			pictures.push_back (drawer (shown[i])->draw_picture ());
+			frames.push_back (drawer (shown[i])->take_frame ());
+		v = views (shown, frames);
+		note_views (shown, v);
+		late_middle (shown, frames, v);
+		for (i = 0; i < shown.size (); i++) {
+			frames[i].view = v[i];
+			pictures.push_back (drawer (shown[i])->draw_frame (frames[i]));
+		}
 	} catch (const std::bad_alloc &) {
 		HL_ERROR_FEW ("naomi: no memory left (another program took it?): a frame not drawn");
 		return;
 	}
-	present_pictures (shown, pictures, NULL);
+	present_pictures (shown, pictures, NULL, v);
 }
 
 /*
@@ -2069,10 +4070,24 @@ struct Renderer::Thread {
 		GLuint		 texture = 0, fb = 0;
 		int		 w = 0, h = 0;
 		bool		 flip = false, valid = false;
+		float		 x0 = 0.0f, x1 = 1.0f;
+		/* Its depth, copied while the screens' views are on */
+		GLuint		 depth = 0;
+		int		 depth_w = 0, depth_h = 0;
+		float		 depth_unit = 0.0f;
+		/* The middle board's scene in the side screens' views and their
+		 * depths (Picture::strip), copied */
+		struct Strip {
+			GLuint	 texture = 0, depth = 0;
+			int	 w = 0, h = 0;
+			bool	 valid = false;
+		} strips[2];
 	};
 	struct Set {
 		std::vector<unsigned> shown;
 		std::vector<Out> outs;
+		/* The views they were drawn in */
+		std::vector<BoardRenderer::View> views;
 		/* The thread done with it; the window done showing it */
 		GLsync		 drawn = 0, shown_sync = 0;
 	} sets[2];
@@ -2199,6 +4214,14 @@ Renderer::thread_main (Renderer *owner)
 				glDeleteFramebuffers (1, &o.fb);
 			if (o.texture)
 				glDeleteTextures (1, &o.texture);
+			if (o.depth)
+				glDeleteTextures (1, &o.depth);
+			for (auto &c : o.strips) {
+				if (c.texture)
+					glDeleteTextures (1, &c.texture);
+				if (c.depth)
+					glDeleteTextures (1, &c.depth);
+			}
 		}
 		if (s.drawn)
 			glDeleteSync (s.drawn);
@@ -2226,6 +4249,9 @@ Renderer::draw_job ()
 		s.shown_sync = 0;
 	}
 	s.shown = t->job_shown;
+	s.views.clear ();
+	for (const BoardRenderer::Frame &f : t->job_frames)
+		s.views.push_back (f.view);
 	s.outs.resize (s.shown.size ());
 	for (i = 0; i < s.shown.size () && i < t->job_frames.size (); i++) {
 		Picture p = drawer (s.shown[i])->draw_frame (t->job_frames[i]);
@@ -2234,6 +4260,10 @@ Renderer::draw_job ()
 
 		o.valid = p.texture != 0;
 		o.flip = p.flip;
+		o.x0 = p.x0;
+		o.x1 = p.x1;
+		for (auto &c : o.strips)
+			c.valid = false;
 		if (!o.valid)
 			continue;
 		glBindTexture (GL_TEXTURE_2D, p.texture);
@@ -2265,6 +4295,54 @@ Renderer::draw_job ()
 		glDisable (GL_SCISSOR_TEST);
 		glBlitFramebuffer (0, 0, w, h, 0, 0, w, h, GL_COLOR_BUFFER_BIT, GL_NEAREST);
 		glBindFramebuffer (GL_FRAMEBUFFER, 0);
+		/* MULTI_SCREEN_VIEW's strips (fill_strips ()): the depth too */
+		o.depth_unit = 0.0f;
+		if (p.depth && p.depth_unit > 0.0f && t->job_frames[i].view.focal > 0.0f) {
+			if (!o.depth || o.depth_w != w || o.depth_h != h) {
+				if (!o.depth)
+					glGenTextures (1, &o.depth);
+				glBindTexture (GL_TEXTURE_2D, o.depth);
+				glTexImage2D (GL_TEXTURE_2D, 0, GL_DEPTH32F_STENCIL8, w, h, 0, GL_DEPTH_STENCIL,
+				              GL_FLOAT_32_UNSIGNED_INT_24_8_REV, NULL);
+				glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+				glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+				glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
+				glBindTexture (GL_TEXTURE_2D, 0);
+				o.depth_w = w;
+				o.depth_h = h;
+			}
+			glCopyImageSubData (p.depth, GL_TEXTURE_2D, 0, 0, 0, 0, o.depth, GL_TEXTURE_2D, 0, 0, 0, 0, w, h, 1);
+			o.depth_unit = p.depth_unit;
+		}
+		for (int k = 0; k < 2; k++) {
+			auto &c = o.strips[k];
+
+			if (!p.strip[k] || !p.strip_depth[k] || o.depth_unit <= 0.0f)
+				continue;
+			if (!c.texture || c.w != w || c.h != h) {
+				if (!c.texture) {
+					glGenTextures (1, &c.texture);
+					glGenTextures (1, &c.depth);
+				}
+				glBindTexture (GL_TEXTURE_2D, c.texture);
+				glTexImage2D (GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+				glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+				glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+				glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
+				glBindTexture (GL_TEXTURE_2D, c.depth);
+				glTexImage2D (GL_TEXTURE_2D, 0, GL_DEPTH32F_STENCIL8, w, h, 0, GL_DEPTH_STENCIL,
+				              GL_FLOAT_32_UNSIGNED_INT_24_8_REV, NULL);
+				glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+				glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+				glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
+				glBindTexture (GL_TEXTURE_2D, 0);
+				c.w = w;
+				c.h = h;
+			}
+			glCopyImageSubData (p.strip[k], GL_TEXTURE_2D, 0, 0, 0, 0, c.texture, GL_TEXTURE_2D, 0, 0, 0, 0, w, h, 1);
+			glCopyImageSubData (p.strip_depth[k], GL_TEXTURE_2D, 0, 0, 0, 0, c.depth, GL_TEXTURE_2D, 0, 0, 0, 0, w, h, 1);
+			c.valid = true;
+		}
 	}
 	t->job_frames.clear ();
 	if (s.drawn)
@@ -2290,11 +4368,20 @@ Renderer::present (unsigned set)
 
 		p.texture = o.valid ? o.texture : 0;
 		p.flip = o.flip;
+		p.x0 = o.x0;
+		p.x1 = o.x1;
+		p.depth = o.depth_unit > 0.0f ? o.depth : 0;
+		p.depth_unit = o.depth_unit;
+		for (int k = 0; k < 2; k++)
+			if (o.strips[k].valid) {
+				p.strip[k] = o.strips[k].texture;
+				p.strip_depth[k] = o.strips[k].depth;
+			}
 		pictures.push_back (p);
 	}
 	if (!blitter)
 		blitter.reset (new BoardRenderer (naomi->boards[0]->holly, width, height));
-	present_pictures (s.shown, pictures, blitter.get ());
+	present_pictures (s.shown, pictures, blitter.get (), s.views);
 	/* Shown twice (flush ()): the first one's sync, done with */
 	if (s.shown_sync)
 		client_wait (s.shown_sync);
@@ -2317,6 +4404,12 @@ Renderer::threaded_end_frame (const std::vector<unsigned> &shown)
 			frames.push_back (BoardRenderer::take (naomi->boards[b]->holly, quiet[b]));
 			at_once |= frames.back ().to_texture;
 		}
+		std::vector<BoardRenderer::View> v = views (shown, frames);
+
+		note_views (shown, v);
+		late_middle (shown, frames, v);
+		for (size_t k = 0; k < frames.size (); k++)
+			frames[k].view = v[k];
 	} catch (const std::bad_alloc &) {
 		HL_ERROR_FEW ("naomi: no memory left (another program took it?): a frame not drawn");
 		return;

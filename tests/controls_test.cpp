@@ -376,19 +376,27 @@ test_view_change (void)
 	       hl::Controls::get ().value ("Driving", "ViewChange") == "KEY_V, GC0_BUTTON_Y");
 }
 
-/* Player 2: MAME's keys, the second controller; players 3 and 4: the third
- * and fourth controllers */
+/* MAME's keys for the players (start, stick, buttons), the coins and
+ * Service; each player's controller, the n-th */
 static void
 test_players (void)
 {
 	hl::Controls &c = hl::Controls::get ();
 
+	check ("player 1: start", c.value ("Player1", "P1_Start") == "KEY_1, GC0_BUTTON_START");
+	check ("player 1: button 3", c.value ("Player1", "P1_Button3") == "KEY_Space, GC0_BUTTON_X");
 	check ("player 2: start", c.value ("Player2", "P2_Start") == "KEY_2, GC1_BUTTON_START");
 	check ("player 2: up", c.value ("Player2", "P2_Up").rfind ("KEY_R, GC1_BUTTON_DPUP", 0) == 0);
 	check ("player 2: button 3", c.value ("Player2", "P2_Button3") == "KEY_Q, GC1_BUTTON_X");
-	check ("player 3: start", c.value ("Player3", "P3_Start") == "GC2_BUTTON_START");
+	check ("player 2: button 5", c.value ("Player2", "P2_Button5") == "KEY_E, GC1_BUTTON_LEFTSHOULDER");
+	check ("player 3: start", c.value ("Player3", "P3_Start") == "KEY_3, GC2_BUTTON_START");
+	check ("player 3: up", c.value ("Player3", "P3_Up").rfind ("KEY_I, GC2_BUTTON_DPUP", 0) == 0);
+	check ("player 3: button 3", c.value ("Player3", "P3_Button3") == "KEY_Return, GC2_BUTTON_X");
+	check ("player 4: right", c.value ("Player4", "P4_Right").rfind ("KEY_Keypad6, GC3_BUTTON_DPRIGHT", 0) == 0);
 	check ("player 4: button 6", c.value ("Player4", "P4_Button6") == "GC3_BUTTON_RIGHTSHOULDER");
 	check ("coin 3: 7", c.value ("Common", "Coin3") == "KEY_7");
+	check ("service: 9", c.value ("Common", "Service").rfind ("KEY_9", 0) == 0);
+	check ("volume: the keypad's plus", c.value ("Common", "VolumeUp").rfind ("KEY_KeypadPlus,", 0) == 0);
 }
 
 /* A mouse or a light gun, each its own */
@@ -494,7 +502,7 @@ test_profiles (const std::string &dir)
 	check ("profile: put on its steering", c.value ("Driving", "Steering").find (joy + "AXIS_0") != std::string::npos);
 	check ("profile: its start", c.value ("Player1", "P1_Start").find (joy + "BUTTON_0") != std::string::npos);
 	check ("profile: its player's other defaults gone", c.value ("Player1", "P1_Up").find (joy) == std::string::npos);
-	check ("profile: the keys kept", c.value ("Player1", "P1_Start").rfind ("KEY_Return", 0) == 0);
+	check ("profile: the keys kept", c.value ("Player1", "P1_Start").rfind ("KEY_1", 0) == 0);
 	check ("profile: done once", !c.value ("ControllerGUIDs", ("P" + std::to_string (p + 1) + "_Profiled").c_str ()).empty ());
 	SDL_JoystickSetVirtualButton (wheel, 7, 1);
 	pump ();

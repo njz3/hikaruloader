@@ -164,6 +164,13 @@ Emulator::game_has_stick ()
 }
 
 bool
+Emulator::game_has_views ()
+{
+	return running_machine && running_machine->game && running_machine->game->view_focal > 0.0f &&
+	       running_machine->screens () > 1;
+}
+
+bool
 Emulator::load_game (const char *name, const char *log_path)
 {
 	char message[512] = "", folders[2048];

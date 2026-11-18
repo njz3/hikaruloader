@@ -164,6 +164,19 @@ public:
 		uint32_t at, value, from;
 	};
 	std::vector<WideCode> widescreen;
+	/* Its deluxe cabinet's views (games.json "screen_view", a clone's its
+	 * parent's), in its race: the focal length of its 3D in pixels of its
+	 * 640x480 screen, the turn of the right screen's view from the middle
+	 * one's in degrees (the left one's the other way); view_focal 0: none.
+	 * Each scene's own are solved at each frame on the points its boards
+	 * both draw (naomi::Renderer::solve_views ()): these mark the games
+	 * that have them */
+	float view_focal = 0, view_yaw = 0;
+	/* "share": words of the main RAM the master's board gives the others at
+	 * each frame while the screens are joined (MULTI_SCREEN_VIEW): what the
+	 * game's link leaves out and they draw by (Airline Pilots' wings' flex,
+	 * 0C154CEC: its side boards draw the first of its 20 wings) */
+	std::vector<uint32_t> view_share;
 	std::vector<GameSection> sections;
 
 private:

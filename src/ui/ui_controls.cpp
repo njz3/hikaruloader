@@ -189,6 +189,9 @@ const char *actionLabel(const std::string &key)
         {"ShowFps", N_("Show the frame rate")},
         {"NextScreen", N_("Next board's picture (several boards)")},
         {"Aim", N_("Stick moving a sight")},
+        {"Aim_Speed", N_("Sight speed (%)")},
+        {"Axis_Key_Ramp", N_("Axis key, travel (ms)")},
+        {"Axis_Key_Return", N_("Axis key, return (ms)")},
     };
     for (const auto &l : labels)
         if (!strcasecmp(key.c_str(), l.key))
@@ -745,26 +748,36 @@ void mappingPage()
     ImGui::EndPopup();
 }
 
-// The [Config] options: the dead zones as sliders, the toggles as boxes, the
-// rest as numbers; each change saved
+// The [Config] options: the dead zones as sliders (out of an axis's 32767),
+// the toggles as boxes, the rest as numbers, each with its unit and a
+// tooltip; each change saved
 void drawOptions()
 {
+    static const struct
+    {
+        const char *key, *tip;
+    } tips[] = {
+        {"Aim_Speed", N_("How fast a stick moves a sight (Brave Firefighters' nozzles) or a lever that stays where it is left (a thrust lever): 100 is the usual speed, 200 twice as fast")},
+        {"Axis_Key_Ramp", N_("A key or a button on an axis (the wheel, a pedal, a lever): the milliseconds it takes to go all the way; 0 at once")},
+        {"Axis_Key_Return", N_("The milliseconds it takes to come back to the middle, once let go or turned the other way; 0 at once")},
+    };
     hl::Controls &controls = hl::Controls::get();
     for (const auto &row : controls.rows("Config"))
     {
         size_t len = row.key.size();
         bool deadZone = len > 9 && !strcasecmp(row.key.c_str() + len - 9, "_DeadZone");
         bool toggle = len > 7 && !strcasecmp(row.key.c_str() + len - 7, "_Toggle");
-        std::string label = std::string(deadZone ? actionLabel(row.key.substr(0, len - 9)) : row.key.c_str()) + "##" + row.key;
+        std::string label = std::string(actionLabel(deadZone ? row.key.substr(0, len - 9) : row.key)) + "##" + row.key;
         char value[32];
         if (deadZone)
         {
             int v = atoi(row.value.c_str());
-            if (ImGui::SliderInt(label.c_str(), &v, 0, 16000))
+            if (ImGui::SliderInt(label.c_str(), &v, 0, 16000, "%d / 32767"))
             {
                 snprintf(value, sizeof value, "%d", v);
                 controls.set_value("Config", row.key.c_str(), value);
             }
+            ImGui::SetItemTooltip("%s", tr("The dead zone: the part of the axis's travel around its middle, or of a pedal's from its rest, read as nothing; out of 32767, the axis's half travel"));
         }
         else if (toggle)
         {
@@ -780,6 +793,9 @@ void drawOptions()
                 snprintf(value, sizeof value, "%d", v);
                 controls.set_value("Config", row.key.c_str(), value);
             }
+            for (const auto &t : tips)
+                if (!strcasecmp(row.key.c_str(), t.key))
+                    ImGui::SetItemTooltip("%s", tr(t.tip));
         }
     }
 }

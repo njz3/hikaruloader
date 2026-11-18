@@ -182,7 +182,7 @@ void restartNote(bool inGame)
 void wrappedNote(const char *text);
 
 // The options of the game running: its screens, for a cabinet of several
-void drawGameTab(int screens, bool stick)
+void drawGameTab(int screens, bool stick, bool views)
 {
     hl::Config *cfg = hl::Config::get ();
     bool saved = false;
@@ -229,6 +229,20 @@ void drawGameTab(int screens, bool stick)
     ImGui::EndDisabled();
     wrappedNote(tr("Applied when the settings close. F8 shows the next board."));
     (void) saved;
+
+    // MULTI_SCREEN_VIEW: a hack for the deluxe cabinets whose views games.json measures
+    if (!views)
+        return;
+    ImGui::Separator();
+    const char *viewLabels[] = {tr("As the cabinet"), tr("Joined"), tr("Flat"), tr("Curved (ultrawide)"),
+                                tr("Panoramic dome"), tr("Panini (wide, flat screen)")};
+    ImGui::BeginDisabled(cfg->multi_screen == hl::MULTI_ONE);
+    ImGui::Combo(tr("Screens' view (hack)"), &cfg->multi_screen_view, viewLabels, IM_ARRAYSIZE(viewLabels));
+    ImGui::EndDisabled();
+    wrappedNote(tr("The cabinet's side views are turned for its monitors' angle and edges: a gap between flat screens in "
+                   "4:3, an overlap in 16:9. Joined turns their 3D to meet the middle one's edges (monitors touching, or a "
+                   "window over them), the 2D as it is; the others make one picture of the three, a flat, curved or dome "
+                   "screen's, the 2D bent with the 3D. Side by side or in windows, at once."));
 }
 
 void drawDisplayTab()
@@ -353,7 +367,7 @@ void drawDisplayTab()
     ImGui::BeginDisabled(!cfg->fps_limiter);
     ImGui::SliderFloat(tr("Target frame rate"), &cfg->fps_target, 30.0f, 120.0f, "%.1f");
     ImGui::EndDisabled();
-    ImGui::Checkbox(tr("Show the frame rate (F12)"), &cfg->fps_overlay);
+    ImGui::Checkbox(tr("Show the frame rate (F11)"), &cfg->fps_overlay);
     ImGui::Checkbox(tr("Show the frame number in the title bar"), &cfg->title_frame);
     ImGui::Checkbox(tr("Hide the mouse pointer"), &cfg->hide_cursor);
     ImGui::Checkbox(tr("Capture the mouse with a click"), &cfg->capture_mouse);
@@ -828,15 +842,15 @@ void drawAboutTab()
         {"F3", "Chooses the state to load: an older one"},
         {"F4", "Saves the state, as the latest of the five kept"},
         {"F5", "Test: the game's test menu"},
-        {"F6", "Service"},
+        {"F6, 9", "Service"},
         {"F7", "The card: in the reader, or taken back"},
         {"F8", "NAOMI cabinets of several boards: the next board's picture"},
         {"F9", "Quits the emulator"},
-        {"F12", "Shows and hides the frame rate"},
+        {"F11", "Shows and hides the frame rate"},
         {"P", "Pauses and resumes the game"},
         {"Esc", "Back to the picker the game was started from, else quits"},
-        {"5, 6", "Coins"},
-        {"Enter", "Start"},
+        {"5, 6, 7, 8", "Coins"},
+        {"1, 2, 3, 4", "Start"},
         {"Alt+Enter", "Full screen or window"},
     };
     if (ImGui::BeginTable("##keys", 2, ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_RowBg))
@@ -1095,7 +1109,7 @@ void drawSettings(bool *open, bool inGame)
         // Only when the game running has options of its own
         if (inGame && (hl::Emulator::game_screens() > 1 || hl::Emulator::game_has_stick()) && ImGui::BeginTabItem(tr("Game")))
         {
-            drawGameTab(hl::Emulator::game_screens(), hl::Emulator::game_has_stick());
+            drawGameTab(hl::Emulator::game_screens(), hl::Emulator::game_has_stick(), hl::Emulator::game_has_views());
             ImGui::EndTabItem();
         }
         if (ImGui::BeginTabItem(tr("Enhancements")))
@@ -1165,7 +1179,7 @@ void drawSettings(bool *open, bool inGame)
     ImGui::End();
 }
 
-void drawGameSettings(bool *open, const char *description, int screens, bool stick)
+void drawGameSettings(bool *open, const char *description, int screens, bool stick, bool views)
 {
     const char *game = hl::Config::game();
     char title[256];
@@ -1202,7 +1216,7 @@ void drawGameSettings(bool *open, const char *description, int screens, bool sti
         }
         if ((screens > 1 || stick) && ImGui::BeginTabItem(tr("Game")))
         {
-            drawGameTab(screens, stick);
+            drawGameTab(screens, stick, views);
             ImGui::EndTabItem();
         }
         if (ImGui::BeginTabItem(tr("Enhancements")))

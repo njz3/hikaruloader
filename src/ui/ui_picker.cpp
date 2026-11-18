@@ -86,9 +86,10 @@ struct Picker
     }
 
     // What its Game tab shows, from games.json: its monitors (the "screens"
-    // listed, else its boards), an analog stick among its controls; each
-    // field the game's, else its parent's, as hl::GameControls takes them
-    void gameTabFacts(int index, int *screens, bool *stick) const
+    // listed, else its boards), an analog stick among its controls, its
+    // screens' views measured ("screen_view"); each field the game's, else
+    // its parent's, as hl::GameControls and hl::Game take them
+    void gameTabFacts(int index, int *screens, bool *stick, bool *views) const
     {
         const hl::GameEntry &g = game(entries[index]);
         const hl::GameEntry *parent = g.parent[0] ? list->find(g.parent) : nullptr;
@@ -115,6 +116,7 @@ struct Picker
         json_object_foreach(field("controls"), key, value)
             if (isStick(key))
                 *stick = true;
+        *views = *screens > 1 && json_is_number(json_object_get(field("screen_view"), "focal"));
     }
 
     void scan()
@@ -446,9 +448,9 @@ bool ui::Interface::pick_game (hl::GameList *list, char *name, size_t size, cons
             {
                 bool open = true;
                 int screens;
-                bool stick;
-                p->gameTabFacts(p->gameSettings, &screens, &stick);
-                ui::drawGameSettings(&open, p->game(p->entries[p->gameSettings]).description, screens, stick);
+                bool stick, views;
+                p->gameTabFacts(p->gameSettings, &screens, &stick, &views);
+                ui::drawGameSettings(&open, p->game(p->entries[p->gameSettings]).description, screens, stick, views);
                 // A controller's B closes them too, unsaved, but first a list opened in them
                 if (ImGui::IsKeyPressed(ImGuiKey_GamepadFaceRight, false) && !p->popupWasOpen)
                     open = false;

@@ -32,11 +32,41 @@
 
 namespace naomi {
 
-/* What a board shows: a texture, the rows bottom up or not; 0 for nothing */
+/* What a board shows: a texture, the rows bottom up or not; 0 for nothing.
+ * x0, x1: the part of its width shown */
 struct Picture {
 	GLuint texture = 0;
 	bool flip = false;
+	float x0 = 0.0f, x1 = 1.0f;
+	/* Its depth, when drawn from a scene (MULTI_SCREEN_VIEW's strips): a
+	 * depth texture of the same size, a fragment's 1/W its value times
+	 * depth_unit (0: none) */
+	GLuint depth = 0;
+	float depth_unit = 0.0f;
+	/* MULTI_SCREEN_VIEW's middle board: its scene drawn too in the left
+	 * and the right screens' views (BoardRenderer::View::strips), each with
+	 * its depth, for their strips (Renderer::fill_strips ()); 0: none */
+	GLuint strip[2] = { 0, 0 }, strip_depth[2] = { 0, 0 };
 };
+
+/* MULTI_SCREEN_VIEW's flat, curved, dome and Panini pictures: the screens'
+ * pictures, joined (side by side in a texture, panels turned by twice half
+ * from each other), seen through another projection; in pixels of a game's
+ * screen */
+struct Projection {
+	int	 mode = 0;	/* hl::VIEW_* */
+	unsigned panels = 1;
+	float	 panel_w = 640.0f, panel_h = 480.0f;
+	float	 focal = 1.0f, centre_y = 240.0f, half = 0.5f;
+	/* The focal length of the picture made, out_focal () */
+	float	 out_focal = 1.0f;
+	/* The part of the whole picture's width drawn */
+	float	 x0 = 0.0f, x1 = 1.0f;
+};
+
+/* The smallest focal length showing the panels' whole width without a
+ * black area beyond their pictures (Projection::out_focal) */
+float	 out_focal (const Projection &p);
 
 /* Draws one board's Holly: its scenes at RENDER_SCALE x 640x480, those to a
  * texture at their own size back into its VRAM; see naomi-renderer.cpp */
@@ -57,27 +87,71 @@ public:
 	}
 	static void operator delete (void *ptr) { ::operator delete (ptr); }
 
+	/* The view its scenes for the screen are drawn in (MULTI_SCREEN_VIEW):
+	 * their 3D turned by turn radians about the vertical through the eye
+	 * (to the right), as the game would draw it with that camera; focal,
+	 * centre_y: the game's projection, in pixels of its screen; focal 0:
+	 * as the game draws it; out_focal: the one drawn with (larger: the
+	 * picture enlarged) */
+	struct View {
+		float turn = 0.0f, focal = 0.0f, centre_y = 240.0f, out_focal = 0.0f;
+		/* rotated: the turn about another axis, rot (rows first; turn its
+		 * part about the vertical): a side board's when the master's
+		 * camera alone is shaken (Renderer::views ()) */
+		bool rotated = false;
+		float rot[9] = { 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f };
+		/* The middle board's, in 4:3: its scene drawn again in the left
+		 * and the right screens' views, turned by strip_turn[0] and [1]
+		 * (Picture::strip), its 2D but the layers as wide as the screen
+		 * left out */
+		bool strips = false;
+		float strip_turn[2] = { 0.0f, 0.0f };
+		/* A side screen's strip (Renderer::fill_strips ()): the cells of
+		 * MASK_CELL pixels of its 640x480 its 2D covers, MASK_W x MASK_H, the
+		 * top row first; empty: none */
+		enum { MASK_CELL = 4, MASK_W = 640 / MASK_CELL, MASK_H = 480 / MASK_CELL };
+		std::vector<uint8_t> mask_2d;
+	};
+
 	/* What a frame's drawing takes of the board, on the machine's thread:
 	 * its scenes (copies of what they read), and the framebuffer the game
-	 * shows when it has had no scene for the screen for a while */
+	 * shows when it has had no scene for the screen for a while; the view
+	 * they are drawn in */
 	struct Frame {
 		std::vector<Draw> draws;
 		bool to_texture = false, has_screen = false;
 		bool vram = false;
 		unsigned vram_w = 0, vram_h = 0;
 		std::vector<uint32_t> vram_rgba;
+		View view;
 	};
 	/* quiet: the frames without a scene for the screen, this one counted */
 	static Frame take (Holly *holly, unsigned &quiet);
+	/* This frame's, as draw_picture () takes it */
+	Frame	 take_frame ();
 	/* The frame drawn: its picture (a scene to a texture back into the
 	 * VRAM, the machine waiting) */
 	Picture	 draw_frame (Frame &f);
 	/* draw_frame's work, which may run out of memory */
 	Picture	 draw_frame_now (Frame &f);
-	/* This frame's scenes */
-	Picture	 draw_picture ();
+	/* This frame's scenes, in that view */
+	Picture	 draw_picture (const View &view = View ());
 	/* A picture over the bound framebuffer's viewport */
 	void	 blit (const Picture &p);
+	/* The joined screens' picture src (Projection) over the bound
+	 * framebuffer's viewport */
+	void	 project (const Picture &src, const Projection &pr);
+	/* Over a side screen's joined picture (the bound viewport, side's
+	 * picture), the middle board's picture in that screen's view (middle's
+	 * strip[k]) where the two boards' views do not cover each other
+	 * (MULTI_SCREEN_VIEW: the cabinet's gap between monitors, up to edge,
+	 * the side board's own view's edge): the nearer of the two, the
+	 * middle's up to cut where they draw the same; the side's where its
+	 * 2D is (mask_2d: View's, NULL none). cut, edge: pixels from the middle
+	 * view's centre; turn: the side screen's from the middle one; focal:
+	 * both pictures' */
+	void	 fill_strip (const Picture &middle, int k, const Picture &side, const std::vector<uint8_t> *mask_2d,
+		             float panel_w, float panel_h, float focal, float turn, float cut, float edge);
 	/* WIDESCREEN switched: the screen's scenes that wide from the next */
 	void	 set_width (unsigned w) { width = w; }
 
@@ -94,6 +168,7 @@ private:
 		GLint u_flags, u_tex, u_fog, u_zscale, u_fog_color, u_fog_color_vertex, u_fog_density;
 		GLint u_width, u_stretch_2d, u_stretch_all, u_clamp_max, u_clamp_min;
 		GLint u_scale, u_target, u_pt_ref, u_lod_bias, u_max_lod, u_shade_scale, u_clip_out;
+		GLint u_view, u_view_c, u_view_f, u_view_m, u_strip_pass;
 		/* The collecting one's (else -1) */
 		GLint u_tag, u_max_nodes, u_opaque_depth, u_node_flags;
 	};
@@ -113,6 +188,10 @@ private:
 	void draw_modifiers (const Draw &d, float sx, float sy);
 	void background_vertices (const Draw &d, Vertex *quad) const;
 	void set_scene_uniforms (const Program &p);
+	/* The view turns d's 3D (View): a scene for the screen */
+	bool view_on (const Draw &d) const;
+	/* The view's uniforms (View) of a program drawing d: u_view, u_view_c */
+	void set_view_uniforms (const Draw &d, GLint u_view, GLint u_view_c, GLint u_view_f, GLint u_view_m) const;
 	bool oit_buffers (unsigned w, unsigned h);
 	void destroy_oit ();
 	void draw_translucent_per_pixel ();
@@ -125,8 +204,9 @@ private:
 
 	Holly *holly;
 	unsigned width, height;
-	/* The drawing going on */
+	/* The drawing going on, its view */
 	const Draw *draw = nullptr;
+	View view;
 	Target *target = nullptr;
 	float pixel_x = 1.0f, pixel_y = 1.0f;
 	int punch_flag = 0;
@@ -144,13 +224,31 @@ private:
 
 	Program program = {}, collect = {};
 	GLuint blit_program, mod_program;
-	GLint u_blit_tex, u_mod_zscale, u_mod_width, u_mod_scale, u_mod_target;
+	GLint u_blit_tex, u_blit_span, u_mod_zscale, u_mod_width, u_mod_scale, u_mod_target;
+	GLint u_mod_view, u_mod_view_c, u_mod_view_f, u_mod_view_m;
+	/* Projection's */
+	GLuint proj_program = 0;
+	GLint u_proj_tex, u_proj_mode, u_proj_panels, u_proj_panel, u_proj_focal, u_proj_cy, u_proj_half;
+	GLint u_proj_out_focal, u_proj_slot;
+	/* fill_strip ()'s */
+	GLuint strip_program = 0;
+	GLint u_strip_tex, u_strip_panel, u_strip_focal, u_strip_turn, u_strip_edge, u_strip_cut;
+	GLint u_strip_depth, u_strip_side_depth, u_strip_units, u_strip_side_span, u_strip_mask, u_strip_has_mask;
+	GLuint strip_mask_tex = 0;
 	GLuint vao, vbo, mod_vao, mod_vbo, blit_vao, fog_tex, vram_tex;
+	/* The vertices' 2D marks while the view turns (draw_scene ()) */
+	GLuint flag_vbo;
+	std::vector<uint8_t> flags;
+	/* The middle board's scene in the side screens' views (View::strips),
+	 * being drawn: its HUD left out (vs_src) */
+	bool strip_pass = false;
+	Target strip_targets[2];
 
 	Target screen, offscreen, filtered;
 	GLuint filter_program = 0;
 	GLint u_filter_tex, u_filter_line, u_filter_coef;
 	GLuint shown_color = 0;	/* the last picture for the screen */
+	float shown_depth_unit = 0.0f;	/* its depth's (Picture::depth_unit) */
 	/* The frames since a scene was drawn for the screen */
 	unsigned frames_without = 1000;
 
@@ -162,6 +260,7 @@ private:
 		/* The translucent modifier volumes' program */
 		GLuint volumes = 0;
 		GLint u_mode = -1, u_zscale = -1, u_width = -1, u_scale = -1, u_target = -1;
+		GLint u_view = -1, u_view_c = -1, u_view_f = -1, u_view_m = -1;
 		unsigned w = 0, h = 0;
 		uint32_t max_nodes = 0;
 		unsigned frames = 0;
@@ -177,7 +276,8 @@ public:
 	explicit Renderer (Naomi *naomi);
 	~Renderer () override;
 
-	/* The windows' titles: which board each shows */
+	/* The windows' titles: which board each shows, the view they are drawn
+	 * in (MULTI_SCREEN_VIEW) */
 	void	 update_titles ();
 	void	 apply_multi_screen () override;
 	void	 apply_widescreen () override;
@@ -199,10 +299,53 @@ private:
 	void	 show (Output &out, const Picture &p, BoardRenderer *blitter, unsigned w, unsigned h);
 	Picture	 side_by_side (const std::vector<unsigned> &shown, const std::vector<Picture> &pictures,
 		               BoardRenderer *with);
+	/* MULTI_SCREEN_VIEW: each shown board's view for these frames; all as
+	 * the game's when the game has none measured, the boards are not its
+	 * screens, or the scene is not one of the views measured */
+	std::vector<BoardRenderer::View> views (const std::vector<unsigned> &shown,
+	                                        const std::vector<BoardRenderer::Frame> &frames) const;
+	/* The side views' turn from the middle one, the focal length and the
+	 * centre row, solved on the points the boards both draw; false: a scene
+	 * of other cameras (enough: there were points enough to tell) */
+	bool	 solve_views (const std::vector<BoardRenderer::Frame> &frames, const Draw *middle, float *yaw, float *focal,
+		              float *centre, bool *enough) const;
+	/* The same, steadied from frame to frame */
+	bool	 steady_views (const std::vector<BoardRenderer::Frame> &frames, float *yaw, float *focal,
+		               float *centre) const;
+	mutable float steady_yaw = 0.0f, steady_f = 0.0f, steady_cy = 240.0f;
+	mutable unsigned views_left = 0, views_frames = 0;
+	mutable bool views_steady = false, views_solved = false;
+	/* The game has views and they are wanted for the boards shown */
+	bool	 views_wanted (const std::vector<unsigned> &shown) const;
+	/* The middle board's last scene for the screen (held_valid), shown
+	 * (held_shown); the side boards a frame behind it (middle_late): its
+	 * picture shown a frame late (late_middle ()) */
+	Draw	 held_middle;
+	bool	 held_valid = false, held_shown = true;
+	mutable bool middle_late = false;
+	/* The master's camera shaken alone (solve_shake ()): the middle view's
+	 * rotation from the rig's, rows first */
+	mutable bool views_shaken = false;
+	mutable float views_shake[9] = { 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f };
+	void	 late_middle (const std::vector<unsigned> &shown, std::vector<BoardRenderer::Frame> &frames,
+		              const std::vector<BoardRenderer::View> &v);
+	/* The titles told the views of this frame's drawing */
+	void	 note_views (const std::vector<unsigned> &shown, const std::vector<BoardRenderer::View> &v);
+	/* What the titles say of them: " (16:9 Panini)", " (16:9 Panini: off in
+	 * this scene)", or nothing */
+	std::string view_label;
+	/* The projection the boards' joined pictures, drawn in those views, go
+	 * through; mode 0: none (CABINET, JOINED, a scene of other cameras) */
+	Projection projection (const std::vector<BoardRenderer::View> &drawn_in) const;
+	/* The side screens' strips from the middle board drawn wider */
+	void	 fill_strips (const std::vector<Picture> &pictures, const std::vector<BoardRenderer::View> &v,
+		              BoardRenderer *with);
+	/* The joined pictures through it, in the projection's texture */
+	Picture	 projected (const Picture &wide, const Projection &pr, BoardRenderer *with);
 	/* The pictures where MULTI_SCREEN wants them; with: the blitter
 	 * (NULL: each board's) */
 	void	 present_pictures (const std::vector<unsigned> &shown, const std::vector<Picture> &pictures,
-		                   BoardRenderer *with);
+		                   BoardRenderer *with, const std::vector<BoardRenderer::View> &drawn_in);
 
 	bool	 start_thread ();
 	void	 stop_thread ();
@@ -218,6 +361,8 @@ private:
 	std::vector<Output> outputs;
 	GLuint	 wide_fb = 0, wide_color = 0;
 	unsigned wide_w = 0, wide_h = 0;
+	GLuint	 proj_fb = 0, proj_color = 0;
+	unsigned proj_w = 0, proj_h = 0;
 	/* The monitors the windows were opened on (SCREEN_<n>_DISPLAY) */
 	std::string displays;
 

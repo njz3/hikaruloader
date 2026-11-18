@@ -427,6 +427,205 @@ channel n at 2n), checked in the game's JVS TEST screen.
   nothing, written from the boot too). The game computes its view at a
   race's or a scene's start: switched during one, the right picture comes
   at the next.
+- A deluxe cabinet's views, `screen_view` in `data/games.json` (a clone's its
+  parent's): `{"focal" : 864.7, "yaw" : 45, "share" : ["0C154CEC"]}`, the
+  focal length of its 3D in pixels of the 640x480 screen and the turn of the
+  right screen's view from the middle one's in degrees (the left one's the
+  other way), in the game's race, and the words of the main RAM the master
+  gives the other boards while their screens are joined (below: Airline
+  Pilots' wings); they mark the games `MULTI_SCREEN_VIEW` serves (`Renderer::views`,
+  `naomi-renderer.cpp`). Each scene's own are solved at each frame
+  (`Renderer::solve_views`) on the vertices the middle board and a side one
+  both send: the same vertex of the same model, found by its texture
+  coordinates and colour (a key each board's list has once; untextured, 2D
+  and far-plane vertices left out), is the same point of the world in each
+  view (x, y on the screen, 1/W the inverse of its depth along that view's
+  axis). Its depths give the side view's turn t and the focal length f,
+  `z_side / z_middle = cos t - sin t (x_side - 320) / f`, by RANSAC (two
+  pairs a guess, the one most of 128 pairs agree with, to a pixel and 1% of
+  their depth, fitted again on all those that agree); its rows the centre
+  row cy, `(y_side - cy) z_middle = (y_middle - cy) z_side`, their median.
+  The values: F355 Challenge's race 87.14 degrees and 376.7, its attract's
+  driver close 35.56 and 1082.3, the factory 81.19 and 415.7, the rankings
+  54 and 686.3, a zoom followed frame by frame (2.4 degrees and 16500 to 7
+  and 5500), a scene at 28.57 and 1361.3, the starting grid with a long
+  lens 1.43 and 27580 (the side screens the middle one's picture 690 pixels
+  on: a monitor's 640 and its frame's 50; a focal length taken up to a
+  million); Airline Pilots 45 and 864.7 (its
+  side boards' matrix at 0C0F1304, sin -0.7071 and 0.7071), its cockpit
+  view projecting with its centre at row 156 (the horizon raised over the
+  dashboard, near and far points alike), its chase view at 240; Sega Strike
+  Fighter 45 (its own at 0C26E608) and 864.7 in its cockpit (below). A side
+  is solved with 8 pairs or more, five on each other at least, two in five
+  of those that tell and half their rows too (what moves between the
+  boards' frames, a key two models share; F355's race seen from the car,
+  its left board down to 52%); both
+  sides with the same turn either way and the same focal length to a
+  hundredth of a degree and 0.5%, or one, nine in ten of its pairs on each
+  other, while the other has fewer than 8 (a cut: F355's race, its left
+  board 7). The views come on once solved two frames in a row, stay through
+  10 frames of too few points, go off at once when points enough do not
+  agree (a cut to a scene of other cameras; the boards' frames apart while
+  the camera turns, their rows a few pixels apart; Airline Pilots' plane at
+  the gate before its side boards were solved a frame late: 55% and turns
+  10.9 and 9.6 degrees on the master's last frame, to 0.001 pixel on the
+  one before). Steady, solved every other frame (Airline
+  Pilots' 40000 vertices a board, some 1.5 ms: reading them); F355's 0.3 ms.
+  Sega Strike Fighter's side boards draw a frame behind the master in most
+  of its scenes (its attract's, its training's, its missions' at times),
+  Airline Pilots' in its attract's (its plane at the gate, close by its
+  engine, its fuselage at 10.1 degrees and 4067, its city at 13.5 and 3045,
+  its take-off down to 2.7 and 15300, its logo at 45 and 879):
+  their vertices on the master's previous frame's to 0.01 pixel, some 50
+  pixels from its last's while the camera turns. Each frame is solved on the
+  middle board's last scene and on the one before (`Renderer::held_middle`),
+  the one that went with the side boards' first; with the one before, the
+  middle board's picture is shown a frame late (`Renderer::late_middle`:
+  its scene for the screen drawn at the next frame, its last kept), the
+  three screens the same moment. Its scenes' views: 45 and 864.7 (its
+  cockpit, centre row 156 there; most of its attract), 38.13 and 1054.9,
+  32.14 and 1294.9, 30.61 and 1373.8, 26.88 and 1608.7, 18.44 and 2594.5,
+  15.63 and 3249. Keys repeated at the same place count once (a vertex of
+  several triangles: its title's sky, none of its keys once in a list).
+  A side with fewer than 8 pairs is paired by a vote (`vote_pairs`: its
+  grid of tiles, each tile's key the same; its logo, the texture
+  coordinates each board's own, reflections): each of its vertices and each
+  of the middle board's with the same texture coordinates and colour (or
+  colour alone) make a candidate, `f^2 = (dxs^2 - r^2 dxm^2) / (r^2 - 1)`,
+  `r = z_side / z_middle`, `t = atan (dxm / f) - atan (dxs / f)` (a point's
+  depths in two views of one eye are as the cosines of its angles from
+  their axes; dx from the centre column), voted in 300 x 360 bins; the
+  peak's median f and t, the centre row its pairs' most common one (its
+  rings: points of a colour at the same x and depth above and below each
+  other), the pairs on each other in x, y and depth then (the grid 3700 of
+  6700 candidates). Not with pairs enough: Airline Pilots' plane at the
+  gate has a peak at 10 degrees from its far points. The pairs that tell
+  nothing are not counted (SideView::elsewhere): those brought out of the
+  middle board's screen 200 pixels or a tenth of the focal length from
+  where the middle board has their key (another copy of the model: its
+  bomber, a second one by the left board's top edge 1500 pixels to the left
+  of the middle view; its fleet's ships; its ground's tiles; a model in an
+  inset's own view; a camera a frame apart moves them some 50 pixels at a
+  focal length of 4000), and those of the middle board's a screen or more
+  off its screen (by the plane of the eye, 80000 pixels away). RANSAC's
+  guesses count the pairs on each other in their rows too (the centre row
+  from the guess's pair of depths farther apart): in x and depth alone some
+  by chance. A side nine in ten on each other also does with the other's
+  pairs on each other with its turn the other way (a tenth of them, four at
+  least, half when under 8 tell), or as the views on have them; both sides
+  near also (SideView::near: 16 pairs at least on each other in their rows
+  too, the nearest four times nearer than the others' middle depth; an eye
+  apart would put the far points on each other, not the near ones): its
+  training's cockpit on each other while it shows how to fire, the world
+  held a frame apart by each board (12% of the left board's points). The
+  views on, the master's camera shaken or turned alone (its crash: its side
+  boards' views 90 degrees from each other about their vertical to 0.02
+  pixel, the middle one tilted from their middle, 5 to 10 degrees over 4
+  seconds; its left board's points all on the middle one's with a whole
+  rotation, none with a turn): the rig kept (turn, focal length, centre
+  row) and the middle view's rotation S from it solved on both sides' pairs
+  at once, `x_middle = S Ry (+-yaw) x_side` (`solve_shake`: Gauss-Newton
+  from none, on the pairs within a distance halved at each step from 400
+  pixels, from both sides, the left alone and the right alone, the one
+  whose side less on each other has the most); taken from 0.2 to 25
+  degrees, each side 16 pairs at least on each other, three in four on
+  each other shaken or not (the crash's points high over the right board's
+  screen, the master drawing them unshaken; Airline Pilots' plane at the
+  gate: a fifth with no shake, not taken). The side boards' 3D then turned
+  by `Ry (-+2 joined) S Ry (+-yaw)` (View::rot, a matrix in the vertex
+  shaders, u_view_m; a turn about the vertical otherwise), solved at each
+  frame. The views off when points enough do not agree after 4 frames more
+  (Airline Pilots' plane at the gate, its side boards a frame late but for
+  a frame or two now and then; Strike Fighter's cuts between scenes of the
+  same views, a few frames of them apart). Left in the cabinet's views: the scenes in 2D, its 3D texts (each board's
+  letters facing its own camera, none drawn by two boards), its mission's
+  briefing room (the middle board's in an inset with a projection of its
+  own, a panel over its screen). The fixed values with
+  the centre alone measured before missed the attracts' scenes, and put
+  Airline Pilots' cockpit centre at 153; the pictures' overlaps before that
+  gave values sliding along a ridge. The vertex shaders' 2D, left where it
+  is, is a triangle whose 1/W is the same at its three vertices and 1 or
+  more (the HUD), or the far plane's. With WIDESCREEN the side views would
+  turn outwards, past what the games draw (the cockpit's sill there
+  missing): the joined screens' field is narrowed to (outer screen's turn +
+  a board's half field) / (2 x outer + 1), the 3D drawn with that focal
+  length (View::out_focal, u_view_f), some 12% larger.
+  In 4:3 the cabinet's gap between its monitors, between the middle board's
+  640 and a side one's (Airline Pilots' 20.3 to 24.7 degrees), has what each
+  board sends beyond its edge, not what it leaves out as out of its view:
+  each board leaves out what lies wholly beyond its own view (Airline
+  Pilots' overhead compass, the middle board's alone; at its take-off 512
+  vertices of far hangars the left board's alone, 23 of a nearer building
+  the middle board's alone; a house by F355's factory, the left board's
+  alone). The middle board's scene is drawn too in each side screen's view
+  (View::strips, strip_turn: turned by 2 x the joined half field, as the
+  side boards' are turned; Picture::strip, its depth, the same pixels as the
+  side screen's: nothing resampled), its HUD left out (in_flat 5: 2D at a
+  1/W of 1 or more, narrower than the screen), its 2D as wide as the screen
+  kept (the side screen's own there, each board drawing it alike: F355's
+  race brightened by a white layer at 30%, 4DFFFFFF, over the whole
+  screen; left out of a middle picture drawn wider, its strips came out
+  darker), its backgrounds too. Over the side screen, from its inner edge
+  to the side board's own view's edge (`fill_strips`, strip_fs_src), the
+  two pictures are joined as one depth buffer, no fade: the nearer of the
+  two by 3% (both depths along the side screen's axis); where both have
+  the same surface the middle's up to the cut, the direction halfway between
+  the two boards' own views (22.5 degrees in Airline Pilots: each board's
+  picture beyond its own view by 2.2 degrees at most), the side's beyond.
+  Solved on the vertices both boards send, the views put them on each
+  other: Airline Pilots' take-off and climb, 1944 to 3471 pairs a side, a
+  median of 0.05 to 0.1 pixel apart, 90% under 0.5 (the solve's own focal
+  length, turn and centre again: 864.7, 44.998, 240.0); the columns' steps
+  at the cut those of the columns around (Airline Pilots 1, F355 9; the
+  wider middle picture faded in had a step of 118 to 168 in F355's race,
+  its white layer missing). The fog of a turned view by the game's depth
+  (fs_src game_z (), v_w: W across the triangle, linear in space): by the
+  turned view's depth, along the screen's axis, the cut's point 2.9%
+  deeper than along the side board's own, the side board fogged Airline
+  Pilots' sky 2 to 4 levels brighter than the middle one there. Where the
+  side board alone draws something, its pixels too (`side_only`: its
+  textured 3D triangles none of whose vertices the middle board has, a
+  vertex of the same texture coordinates where the side board's falls in
+  the middle view, within 20 pixels and 10% of its depth; F355's car's
+  wheel by its factory, 30% of the left board's vertices there not in the
+  middle board's list, its wheel arch the middle board's, 2% deeper: no
+  depth tells them apart; texture coordinates alone, a vertex's colour lit
+  for each board's view; the middle board's vertices chained by texture
+  coordinates and by cell of 32 pixels of its screen, the cells around
+  looked at, 64 vertices each at most: a city's tiled textures by the
+  thousand); where
+  the side board's 2D is, its pixels (a side screen's own text: F355's
+  trademark notice over its race's start, 2D at 1/W 100, translucent, no
+  depth), not a triangle over a quarter of the screen (a fade's quad over
+  the whole screen). Both masks in whole cells of 4 pixels and those around
+  (View::mask_2d, worked out with the views on the machine's thread), over
+  the strip's columns alone, from the side screen's inner edge to its
+  board's own view's, 16 pixels more (a side screen's 2D rasterized all
+  over took 2.5 ms a frame in Sega Strike Fighter's missions; the views
+  some 2 ms a frame there now). What both boards leave out (an object
+  wholly in the gap) none draws. A batch whose user clip is a tile or more
+  narrower than the screen is an inset with a view of its own (Sega Strike
+  Fighter's side screens' small views of the plane in its missions; its
+  whole view clipped to the screen's width, its demonstrations' to a band
+  of it): its 3D left where it is, as the 2D, out of the strips as the
+  HUD, in the side screen's mask by its clip's rectangle (`inset`).
+  Airline Pilots' side boards draw other wings than the master's: the plane
+  has 20 of them, from the most bent upwards to the most bent downwards
+  (its draw table's entries 1942 to 1961), the one drawn the plane object's
+  +E88, set at each frame from word 7 of the record at 0C154CD0
+  (0C154CEC). The master's flight writes that word (10 in level flight and
+  on the ground); the side boards take the record from the packet the
+  master sends them at each frame (0C05ECA0 copies it from 0DD5B698) but
+  not that word, which the packet does not have: left at 0, they draw the
+  first wing, bent upwards (in the climbing chase view their vertices 0.8
+  pixels apart from the middle board's at the root, 6 to 12 in the strip,
+  30 at the tips; the fuselage, the tailplane, the ground and the far
+  clouds within 0.05; each board's matrix inverted on the vertices it
+  sends: the model's own vertices apart, y 0.03306 against 0.01945). The
+  game's own, the cabinet's view keeps it. Joined, the master gives the
+  other boards that word at each frame, after it, all boards stopped
+  (`Naomi::share_view_words`, `screen_view`'s "share"): they draw its wing
+  from the next frame on, the wings and their letters meet.
 - SGNASCAR has the I/O board of the racing cabinets, an 837-13844, and on it
   the drive board of a Model 3 (Sega Rally 2's, EPR-20512): its program on an
   emulated Z80 when the srally2 set has it, simulated otherwise

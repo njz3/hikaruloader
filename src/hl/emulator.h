@@ -70,6 +70,8 @@ public:
 	static int game_screens ();
 	/* The game running has a stick whose up and down can be inverted */
 	static bool game_has_stick ();
+	/* The game running has its screens' views measured (MULTI_SCREEN_VIEW) */
+	static bool game_has_views ();
 	/* Frees the machine and its game, for the picker's next one */
 	void	 unload_game ();
 

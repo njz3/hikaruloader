@@ -388,6 +388,18 @@ Game::create (GameList *game_list, const char *path, const char *name, const cha
 			game->card_reader = text_of ("card_reader");
 			game->hopper = text_of ("hopper");
 			game->cabinet = text_of ("cabinet");
+
+			json_t *view = inherited ("screen_view");
+
+			if (json_is_number (json_object_get (view, "focal"))) {
+				game->view_focal = (float) json_number_value (json_object_get (view, "focal"));
+				game->view_yaw = (float) json_number_value (json_object_get (view, "yaw"));
+			}
+			json_t *share = json_object_get (view, "share");
+
+			for (size_t k = 0; k < json_array_size (share); k++)
+				if (json_is_string (json_array_get (share, k)))
+					game->view_share.push_back ((uint32_t) strtoul (json_string_value (json_array_get (share, k)), NULL, 16));
 		}
 		{
 			json_t *screens = json_object_get (entry->root, "screens");

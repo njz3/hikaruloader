@@ -1135,6 +1135,8 @@ public:
 	const char *debug_string () override;
 	void	 next_screen () override;
 	unsigned screens () const override { return (unsigned) screen_order.size (); }
+	/* MULTI_SCREEN_VIEW joined: games.json's screen_view "share" */
+	void	 share_view_words ();
 
 	std::vector<std::unique_ptr<Board>> boards;
 	std::vector<int32_t> mix;	/* the frame's sound, all boards' */

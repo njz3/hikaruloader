@@ -335,6 +335,38 @@ msgid "Applied when the settings close. F8 shows the next board."
 msgstr "Appliqué à la fermeture des réglages. F8 montre la carte suivante."
 
 #: src/ui/ui_common.cpp
+msgid "As the cabinet"
+msgstr "Comme la borne"
+
+#: src/ui/ui_common.cpp
+msgid "Joined"
+msgstr "Écrans joints"
+
+#: src/ui/ui_common.cpp
+msgid "Flat"
+msgstr "Écran plat"
+
+#: src/ui/ui_common.cpp
+msgid "Curved (ultrawide)"
+msgstr "Écran incurvé (ultralarge)"
+
+#: src/ui/ui_common.cpp
+msgid "Panoramic dome"
+msgstr "Dôme panoramique"
+
+#: src/ui/ui_common.cpp
+msgid "Panini (wide, flat screen)"
+msgstr "Panini (large, écran plat)"
+
+#: src/ui/ui_common.cpp
+msgid "Screens' view (hack)"
+msgstr "Vue des écrans (hack)"
+
+#: src/ui/ui_common.cpp
+msgid "The cabinet's side views are turned for its monitors' angle and edges: a gap between flat screens in 4:3, an overlap in 16:9. Joined turns their 3D to meet the middle one's edges (monitors touching, or a window over them), the 2D as it is; the others make one picture of the three, a flat, curved or dome screen's, the 2D bent with the 3D. Side by side or in windows, at once."
+msgstr "Les vues latérales de la borne sont tournées pour l'angle de ses moniteurs et leurs bords : un vide entre des écrans plats en 4:3, un chevauchement en 16:9. Écrans joints tourne leur 3D jusqu'aux bords de celle du milieu (moniteurs qui se touchent, ou une fenêtre sur les trois), la 2D telle quelle ; les autres font une seule image des trois, d'un écran plat, incurvé ou d'un dôme, la 2D courbée avec la 3D. Côte à côte ou en fenêtres, aussitôt."
+
+#: src/ui/ui_common.cpp
 msgid "Vulkan 1.3 (to come)"
 msgstr "Vulkan 1.3 (à venir)"
 
@@ -519,8 +551,8 @@ msgid "Target frame rate"
 msgstr "Fréquence visée"
 
 #: src/ui/ui_common.cpp
-msgid "Show the frame rate (F12)"
-msgstr "Afficher la fréquence d'images (F12)"
+msgid "Show the frame rate (F11)"
+msgstr "Afficher la fréquence d'images (F11)"
 
 #: src/ui/ui_common.cpp
 msgid "Show the frame number in the title bar"
@@ -1635,6 +1667,18 @@ msgid "Stick moving a sight"
 msgstr "Stick déplaçant un viseur"
 
 #: src/ui/ui_controls.cpp
+msgid "Sight speed (%)"
+msgstr "Vitesse du viseur (%)"
+
+#: src/ui/ui_controls.cpp
+msgid "Axis key, travel (ms)"
+msgstr "Touche d'axe, aller (ms)"
+
+#: src/ui/ui_controls.cpp
+msgid "Axis key, return (ms)"
+msgstr "Touche d'axe, retour (ms)"
+
+#: src/ui/ui_controls.cpp
 msgid "Keyboard"
 msgstr "Clavier"
 
@@ -1773,6 +1817,22 @@ msgstr "Contrôles de ce jeu"
 #: src/ui/ui_controls.cpp
 msgid "All the controls"
 msgstr "Tous les contrôles"
+
+#: src/ui/ui_controls.cpp
+msgid "How fast a stick moves a sight (Brave Firefighters' nozzles) or a lever that stays where it is left (a thrust lever): 100 is the usual speed, 200 twice as fast"
+msgstr "La vitesse à laquelle un stick déplace un viseur (les lances de Brave Firefighters) ou une manette qui reste où on la laisse (une manette des gaz) : 100 est la vitesse normale, 200 deux fois plus vite"
+
+#: src/ui/ui_controls.cpp
+msgid "A key or a button on an axis (the wheel, a pedal, a lever): the milliseconds it takes to go all the way; 0 at once"
+msgstr "Une touche ou un bouton sur un axe (le volant, une pédale, une manette) : les millisecondes pour aller jusqu'au bout ; 0 tout de suite"
+
+#: src/ui/ui_controls.cpp
+msgid "The milliseconds it takes to come back to the middle, once let go or turned the other way; 0 at once"
+msgstr "Les millisecondes pour revenir au milieu, une fois relâchée ou tournée de l'autre côté ; 0 tout de suite"
+
+#: src/ui/ui_controls.cpp
+msgid "The dead zone: the part of the axis's travel around its middle, or of a pedal's from its rest, read as nothing; out of 32767, the axis's half travel"
+msgstr "La zone morte : la part de la course de l'axe autour de son milieu, ou de celle d'une pédale depuis son repos, lue comme rien ; sur 32767, la demi-course de l'axe"
 
 #: src/ui/ui_controls.cpp
 msgid "Its whole turn"

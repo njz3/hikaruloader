@@ -51,9 +51,10 @@ void drawSettings(bool *open, bool inGame);
 // One game's settings from the picker, the game not running: those
 // games/<set>.ini can hold (display, enhancements, sound, emulation, its Game
 // tab when it has one), as hl::Config::begin_game () read them, saved for it
-// alone; nothing applied to the picker's window. screens and stick: what its
-// Game tab shows (its boards, an analog stick)
-void drawGameSettings(bool *open, const char *description, int screens, bool stick);
+// alone; nothing applied to the picker's window. screens, stick and views:
+// what its Game tab shows (its boards, an analog stick, its screens' views
+// measured: MULTI_SCREEN_VIEW)
+void drawGameSettings(bool *open, const char *description, int screens, bool stick, bool views);
 // Set when the games folders changed: the picker scans them again, at once
 // for a folder added, the field left, Save or Scan again; for one typed in
 // with the field still being edited, once the settings are closed.

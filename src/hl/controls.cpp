@@ -35,8 +35,11 @@ namespace hl {
 /* controls.ini's rows, in the file's order: a section's line (key NULL) its
  * note, then its rows, each its default bindings (the controllers' as
  * linuxloader and windowsloader have them, the pedals on half an axis: a
- * game controller's stick at rest is not half a throttle) and its note. The
- * game's roles are these rows' keys (GameControls), unique in the file */
+ * game controller's stick at rest is not half a throttle; the players' keys
+ * MAME's, starts, coins, Service, sticks and buttons, the volume on the
+ * keypad: a key is the one marked so in the keyboard's layout, and an
+ * AZERTY's minus is its 6, Coin 2) and its note. The game's roles are these
+ * rows' keys (GameControls), unique in the file */
 #define SW Controls::ROW_SWITCH
 #define AX Controls::ROW_AXIS
 #define LV Controls::ROW_LEVER
@@ -58,29 +61,29 @@ static const Controls::RowDef row_table[] = {
 
 	{ "Common", NULL, SW, NULL, "The cabinet's switches" },
 	{ "Common", "Test", SW, "KEY_F5", "The Test button" },
-	{ "Common", "Service", SW, "KEY_F6", "The Service button" },
+	{ "Common", "Service", SW, "KEY_9, KEY_F6", "The Service button" },
 	{ "Common", "Coin1", SW, "KEY_5", "Coin 1" },
 	{ "Common", "Coin2", SW, "KEY_6", "Coin 2" },
 	{ "Common", "Coin3", SW, "KEY_7", "Coin 3 (the four-player cabinets)" },
 	{ "Common", "Coin4", SW, "KEY_8", "Coin 4" },
 	{ "Common", "Card", SW, "KEY_F7, GC0_BUTTON_GUIDE + GC0_BUTTON_Y",
 	  "The player's card in the reader's slot, or taken back (Virtual-On 4, Club Kart...)" },
-	{ "Common", "VolumeUp", SW, "KEY_PageUp, GC0_BUTTON_GUIDE + GC0_BUTTON_DPUP", "The cabinet's volume up button" },
-	{ "Common", "VolumeDown", SW, "KEY_PageDown, GC0_BUTTON_GUIDE + GC0_BUTTON_DPDOWN", "The volume down button" },
+	{ "Common", "VolumeUp", SW, "KEY_KeypadPlus, GC0_BUTTON_GUIDE + GC0_BUTTON_DPUP", "The cabinet's volume up button" },
+	{ "Common", "VolumeDown", SW, "KEY_KeypadMinus, GC0_BUTTON_GUIDE + GC0_BUTTON_DPDOWN", "The volume down button" },
 
 	{ "Player1", NULL, SW, NULL, "Player 1's start, stick and buttons" },
-	{ "Player1", "P1_Start", SW, "KEY_Return, GC0_BUTTON_START", "Start" },
+	{ "Player1", "P1_Start", SW, "KEY_1, GC0_BUTTON_START", "Start" },
 	{ "Player1", "P1_Up", SW, "KEY_Up, GC0_BUTTON_DPUP, GC0_AXIS_LEFTY_NEGATIVE, JOY0_HAT0_UP", "Up" },
 	{ "Player1", "P1_Down", SW, "KEY_Down, GC0_BUTTON_DPDOWN, GC0_AXIS_LEFTY_POSITIVE, JOY0_HAT0_DOWN", "Down" },
 	{ "Player1", "P1_Left", SW, "KEY_Left, GC0_BUTTON_DPLEFT, GC0_AXIS_LEFTX_NEGATIVE, JOY0_HAT0_LEFT", "Left" },
 	{ "Player1", "P1_Right", SW, "KEY_Right, GC0_BUTTON_DPRIGHT, GC0_AXIS_LEFTX_POSITIVE, JOY0_HAT0_RIGHT", "Right" },
 	{ "Player1", "P1_Button1", SW, "KEY_LeftCtrl, GC0_BUTTON_A", "Button 1" },
 	{ "Player1", "P1_Button2", SW, "KEY_LeftAlt, GC0_BUTTON_B", "Button 2" },
-	{ "Player1", "P1_Button3", SW, "KEY_LeftShift, GC0_BUTTON_X", "Button 3" },
-	{ "Player1", "P1_Button4", SW, "KEY_Z, GC0_BUTTON_Y", "Button 4" },
-	{ "Player1", "P1_Button5", SW, "KEY_X, GC0_BUTTON_LEFTSHOULDER", "Button 5" },
-	{ "Player1", "P1_Button6", SW, "KEY_C, GC0_BUTTON_RIGHTSHOULDER", "Button 6" },
-	{ "Player1", "P1_Kick", PD, "KEY_Space, GC0_AXIS_RIGHTTRIGGER", "A kick at the ball, its strength (World Kicks)" },
+	{ "Player1", "P1_Button3", SW, "KEY_Space, GC0_BUTTON_X", "Button 3" },
+	{ "Player1", "P1_Button4", SW, "KEY_LeftShift, GC0_BUTTON_Y", "Button 4" },
+	{ "Player1", "P1_Button5", SW, "KEY_Z, GC0_BUTTON_LEFTSHOULDER", "Button 5" },
+	{ "Player1", "P1_Button6", SW, "KEY_X, GC0_BUTTON_RIGHTSHOULDER", "Button 6" },
+	{ "Player1", "P1_Kick", PD, "KEY_C, GC0_AXIS_RIGHTTRIGGER", "A kick at the ball, its strength (World Kicks)" },
 
 	{ "Player2", NULL, SW, NULL, "Player 2's start, stick and buttons" },
 	{ "Player2", "P2_Start", SW, "KEY_2, GC1_BUTTON_START", "Start" },
@@ -92,33 +95,33 @@ static const Controls::RowDef row_table[] = {
 	{ "Player2", "P2_Button2", SW, "KEY_S, GC1_BUTTON_B", "Button 2" },
 	{ "Player2", "P2_Button3", SW, "KEY_Q, GC1_BUTTON_X", "Button 3" },
 	{ "Player2", "P2_Button4", SW, "KEY_W, GC1_BUTTON_Y", "Button 4" },
-	{ "Player2", "P2_Button5", SW, "KEY_I, GC1_BUTTON_LEFTSHOULDER", "Button 5" },
-	{ "Player2", "P2_Button6", SW, "KEY_K, GC1_BUTTON_RIGHTSHOULDER", "Button 6" },
+	{ "Player2", "P2_Button5", SW, "KEY_E, GC1_BUTTON_LEFTSHOULDER", "Button 5" },
+	{ "Player2", "P2_Button6", SW, "GC1_BUTTON_RIGHTSHOULDER", "Button 6" },
 	{ "Player2", "P2_Kick", PD, "GC1_AXIS_RIGHTTRIGGER", "A kick at the ball, its strength" },
 
 	{ "Player3", NULL, SW, NULL, "Player 3's start, stick and buttons (the four-player games)" },
-	{ "Player3", "P3_Start", SW, "GC2_BUTTON_START", "Start" },
-	{ "Player3", "P3_Up", SW, "GC2_BUTTON_DPUP, GC2_AXIS_LEFTY_NEGATIVE", "Up" },
-	{ "Player3", "P3_Down", SW, "GC2_BUTTON_DPDOWN, GC2_AXIS_LEFTY_POSITIVE", "Down" },
-	{ "Player3", "P3_Left", SW, "GC2_BUTTON_DPLEFT, GC2_AXIS_LEFTX_NEGATIVE", "Left" },
-	{ "Player3", "P3_Right", SW, "GC2_BUTTON_DPRIGHT, GC2_AXIS_LEFTX_POSITIVE", "Right" },
-	{ "Player3", "P3_Button1", SW, "GC2_BUTTON_A", "Button 1" },
-	{ "Player3", "P3_Button2", SW, "GC2_BUTTON_B", "Button 2" },
-	{ "Player3", "P3_Button3", SW, "GC2_BUTTON_X", "Button 3" },
+	{ "Player3", "P3_Start", SW, "KEY_3, GC2_BUTTON_START", "Start" },
+	{ "Player3", "P3_Up", SW, "KEY_I, GC2_BUTTON_DPUP, GC2_AXIS_LEFTY_NEGATIVE", "Up" },
+	{ "Player3", "P3_Down", SW, "KEY_K, GC2_BUTTON_DPDOWN, GC2_AXIS_LEFTY_POSITIVE", "Down" },
+	{ "Player3", "P3_Left", SW, "KEY_J, GC2_BUTTON_DPLEFT, GC2_AXIS_LEFTX_NEGATIVE", "Left" },
+	{ "Player3", "P3_Right", SW, "KEY_L, GC2_BUTTON_DPRIGHT, GC2_AXIS_LEFTX_POSITIVE", "Right" },
+	{ "Player3", "P3_Button1", SW, "KEY_RightCtrl, GC2_BUTTON_A", "Button 1" },
+	{ "Player3", "P3_Button2", SW, "KEY_RightShift, GC2_BUTTON_B", "Button 2" },
+	{ "Player3", "P3_Button3", SW, "KEY_Return, GC2_BUTTON_X", "Button 3" },
 	{ "Player3", "P3_Button4", SW, "GC2_BUTTON_Y", "Button 4" },
 	{ "Player3", "P3_Button5", SW, "GC2_BUTTON_LEFTSHOULDER", "Button 5" },
 	{ "Player3", "P3_Button6", SW, "GC2_BUTTON_RIGHTSHOULDER", "Button 6" },
 	{ "Player3", "P3_Kick", PD, "GC2_AXIS_RIGHTTRIGGER", "A kick at the ball, its strength" },
 
 	{ "Player4", NULL, SW, NULL, "Player 4's start, stick and buttons (the four-player games)" },
-	{ "Player4", "P4_Start", SW, "GC3_BUTTON_START", "Start" },
-	{ "Player4", "P4_Up", SW, "GC3_BUTTON_DPUP, GC3_AXIS_LEFTY_NEGATIVE", "Up" },
-	{ "Player4", "P4_Down", SW, "GC3_BUTTON_DPDOWN, GC3_AXIS_LEFTY_POSITIVE", "Down" },
-	{ "Player4", "P4_Left", SW, "GC3_BUTTON_DPLEFT, GC3_AXIS_LEFTX_NEGATIVE", "Left" },
-	{ "Player4", "P4_Right", SW, "GC3_BUTTON_DPRIGHT, GC3_AXIS_LEFTX_POSITIVE", "Right" },
-	{ "Player4", "P4_Button1", SW, "GC3_BUTTON_A", "Button 1" },
-	{ "Player4", "P4_Button2", SW, "GC3_BUTTON_B", "Button 2" },
-	{ "Player4", "P4_Button3", SW, "GC3_BUTTON_X", "Button 3" },
+	{ "Player4", "P4_Start", SW, "KEY_4, GC3_BUTTON_START", "Start" },
+	{ "Player4", "P4_Up", SW, "KEY_Keypad8, GC3_BUTTON_DPUP, GC3_AXIS_LEFTY_NEGATIVE", "Up" },
+	{ "Player4", "P4_Down", SW, "KEY_Keypad2, GC3_BUTTON_DPDOWN, GC3_AXIS_LEFTY_POSITIVE", "Down" },
+	{ "Player4", "P4_Left", SW, "KEY_Keypad4, GC3_BUTTON_DPLEFT, GC3_AXIS_LEFTX_NEGATIVE", "Left" },
+	{ "Player4", "P4_Right", SW, "KEY_Keypad6, GC3_BUTTON_DPRIGHT, GC3_AXIS_LEFTX_POSITIVE", "Right" },
+	{ "Player4", "P4_Button1", SW, "KEY_Keypad0, GC3_BUTTON_A", "Button 1" },
+	{ "Player4", "P4_Button2", SW, "KEY_Keypad., GC3_BUTTON_B", "Button 2" },
+	{ "Player4", "P4_Button3", SW, "KEY_KeypadEnter, GC3_BUTTON_X", "Button 3" },
 	{ "Player4", "P4_Button4", SW, "GC3_BUTTON_Y", "Button 4" },
 	{ "Player4", "P4_Button5", SW, "GC3_BUTTON_LEFTSHOULDER", "Button 5" },
 	{ "Player4", "P4_Button6", SW, "GC3_BUTTON_RIGHTSHOULDER", "Button 6" },
@@ -227,7 +230,7 @@ static const Controls::RowDef row_table[] = {
 	{ "Emulator", "Back", SW, "KEY_Escape, GC0_BUTTON_GUIDE + GC0_BUTTON_B",
 	  "Back to the picker the game was started from, else quits" },
 	{ "Emulator", "Quit", SW, "KEY_F9, GC0_BUTTON_GUIDE + GC0_BUTTON_START", "Quits the emulator" },
-	{ "Emulator", "ShowFps", SW, "KEY_F12", "Shows and hides the frame rate" },
+	{ "Emulator", "ShowFps", SW, "KEY_F11", "Shows and hides the frame rate" },
 	{ "Emulator", "NextScreen", SW, "KEY_F8", "NAOMI cabinets of several boards: the next board's picture" },
 
 	{ "ControllerGUIDs", NULL, CF, NULL,
@@ -409,6 +412,9 @@ key_scancode (const std::string &name)
 		{ "LSHIFT", "LEFTSHIFT" }, { "RSHIFT", "RIGHTSHIFT" }, { "LCTRL", "LEFTCTRL" },
 		{ "RCTRL", "RIGHTCTRL" }, { "LALT", "LEFTALT" }, { "RALT", "RIGHTALT" },
 		{ "COMMA", "," }, { "PERIOD", "." }, { "PAGEUP", "PAGEUP" },
+		/* A plus in a name is a combination's: Plus written */
+		{ "PLUS", "+" }, { "KEYPADPLUS", "KEYPAD+" }, { "KPPLUS", "KEYPAD+" },
+		{ "MINUS", "-" }, { "KEYPADMINUS", "KEYPAD-" }, { "KPMINUS", "KEYPAD-" },
 	};
 	std::string n = normalize (name);
 	int sc;
@@ -1711,9 +1717,15 @@ Controls::capture (int player, CaptureKind kind)
 static std::string
 key_token (int scancode)
 {
-	std::string name = SDL_GetKeyName (SDL_GetKeyFromScancode ((SDL_Scancode) scancode));
-	name.erase (std::remove (name.begin (), name.end (), ' '), name.end ());
-	return name.empty () ? "" : "KEY_" + name;
+	std::string name = SDL_GetKeyName (SDL_GetKeyFromScancode ((SDL_Scancode) scancode)), out;
+
+	/* A plus would be a combination's (KEY_Keypad+): Plus */
+	for (char c : name)
+		if (c == '+')
+			out += "Plus";
+		else if (c != ' ')
+			out += c;
+	return out.empty () ? "" : "KEY_" + out;
 }
 
 void

@@ -167,11 +167,15 @@ Keys and controllers
 
 | By default | Action |
 |---|---|
-| F5, F6 | Test and Service. Test opens the game's test menu: its settings, its bookkeeping, the BIOS's system settings |
-| 5, 6 | Coins |
-| Enter, a controller's Start | Start |
+| F5; 9, F6 | Test and Service. Test opens the game's test menu: its settings, its bookkeeping, the BIOS's system settings |
+| 5, 6, 7, 8 | Coins |
+| 1, 2, 3, 4; a controller's Start | Start, players 1 to 4 |
 | The arrows, a controller's D-pad or left stick | Up, down, left, right |
-| Left Ctrl, Left Alt, Left Shift, Z; a controller's A, B, X, Y | Buttons 1 to 4 |
+| Left Ctrl, Left Alt, Space, Left Shift, Z, X; a controller's A, B, X, Y, L1, R1 | Buttons 1 to 6 |
+| R, F, D, G and A, S, Q, W, E | Player 2's stick and buttons 1 to 5 |
+| I, K, J, L and Right Ctrl, Right Shift, Enter | Player 3's stick and buttons 1 to 3 |
+| The keypad's 8, 2, 4, 6 and 0, ., Enter | Player 4's stick and buttons 1 to 3 |
+| The keypad's -, +; Guide + D-pad down, up | The cabinet's volume |
 | A controller's left stick and triggers, a wheel's axes | Steering, accelerator, brake (the arrows too: all the way in 250 ms, back to the middle in 100 ms, `Axis_Key_Ramp` and `Axis_Key_Return` in `controls.ini`'s `[Config]`) |
 | Page Up, Page Down; a controller's R1, L1 | NASCAR Arcade's gear up, down |
 | V; a controller's Y | The view change (`ViewChange`, linuxloader's name): NASCAR Arcade, Initial D, 18 Wheeler... |
@@ -181,11 +185,16 @@ Keys and controllers
 | A mouse or a light gun | Brave Firefighters' sights, Planet Harriers' stick (see "Mice and light guns") |
 | Tab; a controller's Back, Guide + Back | Settings |
 | F7; Guide + Y | Virtual-On 4's and Club Kart's card: in the reader's slot, or taken back (see below) |
-| F12 | The frame rate over the picture |
+| F11 | The frame rate over the picture |
 | F8 | NAOMI cabinets of several boards: the next board's picture; with several screens, the middle one and a board without a screen in turn (F355 Deluxe's master) |
 | F9; Guide + Start | Quit |
 | Alt+Enter | Full screen (the desktop's) or a window, for this start |
 | Escape; Guide + B | Back to the picker, or quit |
+
+The players' keys, the starts, the coins and Service are MAME's; a key is
+the one marked so on the keyboard in use (an AZERTY's A too), so the volume
+is on the keypad, an AZERTY's minus being its 6. An existing `controls.ini`
+keeps its keys.
 
 The Controls tab of the settings binds each action to keys, to the
 controllers' buttons and axes (a wheel and its pedals included, with their
@@ -374,6 +383,32 @@ effect at once.
   its mode and its place on the desktop, or AUTO. In the file, `SCREEN_1_DISPLAY` to `SCREEN_3_DISPLAY`:
   a part of its name (`DELL`), `INDEX:1` counting from 0, or the number of its `DISPLAY` device
   (`2`); the log lists the monitors at its start.
+- *Screens' view (hack)* (`MULTI_SCREEN_VIEW`), in the same tab, for the deluxe cabinets of
+  three screens whose views are measured (Ferrari F355 Challenge deluxe, Airline Pilots, Sega
+  Strike Fighter), side by side or in windows, applied at once. Their side views are turned for
+  the cabinet's monitors, set at an angle, and for their edges: on flat screens side by side, a
+  gap between the pictures in 4:3, an overlap once `WIDESCREEN` widens them. `CABINET` (the
+  default) leaves them so; `JOINED` turns their 3D to meet the middle picture's edges, for
+  monitors set at an angle around the player (on flat ones, a straight line bends at the
+  seams), Airline Pilots' cockpit with it, the HUD as it is; with `WIDESCREEN` the 3D a little
+  larger (some 12%), the outer screens' edges no farther than the games draw; in 4:3 what lies in
+  the cabinet's gap between monitors taken from the board that draws it (Airline Pilots' overhead
+  compass, a house of F355's town), pixel by pixel by depth with no fade, a side screen's own
+  text kept; Airline Pilots' side
+  screens then draw the wings flexed as the middle one's (on the cabinet they draw them bent
+  upwards, the game never telling them otherwise). `FLAT` makes one
+  flat picture of the three, for monitors side by side or a window over them: the straight lines
+  stay straight across the seams; `CURVED` a curved ultrawide monitor's, `DOME` a panoramic
+  dome's, and `PANINI` a wide one for a flat screen whose vertical lines stay straight; the 2D
+  bent with the 3D in these four, the picture's edges a little cut so that nothing beyond the
+  games' views shows. Each scene's views (the angle between screens, the lens, the centre) are
+  measured at each frame on what the boards both draw: every scene whose screens show one view
+  changes, the attracts' too (F355's driver seen close, its factory, its rankings, a zoom);
+  those whose screens each have a camera of their own (Sega Strike Fighter's texts and its
+  briefing room) stay as the cabinet shows them, the title saying "off in this scene". Where the
+  side boards draw a frame behind the middle one (most of Sega Strike Fighter's scenes, Airline
+  Pilots' attract), the middle screen is shown a frame late, the three screens the same moment. With `FLAT` and `PANINI` a
+  scene that spans most of a half circle stretches its side screens' 2D (F355's rankings).
 - *Display mode* (`DISPLAY_MODE`): window, full screen or borderless full
   screen (both at the desktop's resolution: no mode change), the frame at
   its shape in the middle; or *stretched* (`WINDOW_STRETCH`...), the frame
@@ -381,7 +416,7 @@ effect at once.
   640x480.
 - *Whole multiples only* (`INTEGER_SCALE`): the picture at 1x, 2x, 3x... its
   size, for even pixels, with larger black bars.
-- Also v-sync, the frame limiter and its rate, the frame rate shown (F12),
+- Also v-sync, the frame limiter and its rate, the frame rate shown (F11),
   the frame number in the title (to report a glitch), the mouse pointer
   hidden (the default; it comes back in the picker and the settings).
 
@@ -419,7 +454,9 @@ stretched display mode, `SCALE_FILTER` is read as `SCALING_FILTER`, and
   in `data/games.json`): the whole picture is stretched, nothing missing at
   the sides, the texts and the HUD a little wider. Their view changes at the
   next race or scene. F355 Challenge and Tokyo Bus Guide have none: their 3D
-  is seen wider as the other games' without codes.
+  is seen wider as the other games' without codes. A game that clips its
+  view to its whole screen (Sega Strike Fighter, Airline Pilots' cockpit)
+  shows its sides too.
   Switched during a game, it applies when the settings close; the game sees
   the wider view from the next time it computes its own.
 - *Draw distance* (x1 to x4): the scenery's detailed models and its fog go
@@ -986,7 +1023,7 @@ When something goes wrong
   lists the files each game needs, and which ones the games folder lacks;
   a NAOMI or Atomiswave game needs its machine in `MACHINES` (`[Picker]`).
 - The game is slow: lower the SH-4 clock, 100 MHz at the least (57 for the
-  games but Air Trix, in `SH4_CLOCK`) and the drawing on its own thread; the frame rate (F12) shows
+  games but Air Trix, in `SH4_CLOCK`) and the drawing on its own thread; the frame rate (F11) shows
   the gain.
 - The picture is a frame late: turn off the drawing on its own thread.
 - The attract is silent: check that the Attract sound is ON.

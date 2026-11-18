@@ -46,6 +46,21 @@ enum {
 
 enum { MAX_SCREENS = 3 };
 
+/* [Display] MULTI_SCREEN_VIEW: the screens of a game whose views games.json
+ * measures ("screen_view": a deluxe cabinet's), side by side or in windows */
+enum {
+	VIEW_CABINET,	/* as the cabinet: the side views turned for its
+			 * monitors' angle and edges, a gap or an overlap
+			 * between flat screens */
+	VIEW_JOINED,	/* the side views turned to meet the middle one's edges */
+	VIEW_FLAT,	/* one plane over the screens */
+	VIEW_CURVED,	/* a cylinder: a curved ultrawide monitor */
+	VIEW_DOME,	/* a sphere: a panoramic dome */
+	VIEW_PANINI,	/* Panini's: a wide field on a flat screen, the
+			 * vertical lines straight */
+	NUM_SCREEN_VIEWS
+};
+
 /* [Picker] MACHINES: the machines whose games the picker lists, bits */
 enum {
 	PICKER_HIKARU	= 1 << 0,
@@ -212,6 +227,8 @@ public:
 	char		screen_order[32];
 	/* Each screen's monitor (hl::Window::find_display); empty or AUTO */
 	char		screen_display[MAX_SCREENS][64];
+	/* VIEW_*: a deluxe cabinet's screens as one view; taken at once */
+	int		multi_screen_view;
 	int		display_mode;
 	/* --display-mode: name (WINDOW, FULLSCREEN or BORDERLESS, each also
 	 * _STRETCH) in use for this start, in place of the file's, which save ()

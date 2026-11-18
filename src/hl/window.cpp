@@ -577,7 +577,7 @@ Window::frame_done (const char *message)
 		update_title ();
 	}
 
-	/* The renderer's debug flags, shown with the frame rate (F12) */
+	/* The renderer's debug flags, shown with the frame rate (F11) */
 	snprintf (last_message, sizeof (last_message), "%s", message);
 }
 
