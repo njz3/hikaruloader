@@ -94,14 +94,27 @@ def read(path):
 
 
 def compare(a, b):
-    """'' when the same, else the first frame and memories that differ"""
+    """'' when the same, else the first frame and memories that differ: those
+    both programs name (a memory named in one only, a buffer named since, is
+    told by renamed ())"""
     for (fa, ma), (fb, mb) in zip(a, b):
-        if ma != mb:
-            names = sorted(k for k in set(ma) | set(mb) if ma.get(k) != mb.get(k))
+        names = sorted(k for k in set(ma) & set(mb) if ma[k] != mb[k])
+        if names:
             return 'differ at frame %d: %s' % (fa, ', '.join(names))
     if len(a) != len(b):
         return 'one stopped at frame %d, the other at %d' % (len(a), len(b))
     return ''
+
+
+def renamed(a, b):
+    """The memories one program names and the other does not"""
+    if not a or not b:
+        return ''
+    ma, mb = a[0][1], b[0][1]
+    only_a, only_b = sorted(set(ma) - set(mb)), sorted(set(mb) - set(ma))
+    if not only_a and not only_b:
+        return ''
+    return ' (not compared: %s in a only, %s in b only)' % (', '.join(only_a) or 'none', ', '.join(only_b) or 'none')
 
 
 def all_sets(roms):
@@ -152,9 +165,10 @@ def main():
         (ha, ea), (hb, eb) = out['a'], out['b']
         if ea and ea.startswith('did not start') and eb and eb.startswith('did not start'):
             return game, 'left: ' + ea
-        verdict = compare(read(ha), read(hb))
+        fa, fb = read(ha), read(hb)
+        verdict = compare(fa, fb)
         problems = '; '.join('%s %s' % (w, e) for w, e in (('a', ea), ('b', eb)) if e)
-        return game, (verdict or 'same over %d frames' % len(read(ha))) + ('; ' + problems if problems else '')
+        return game, (verdict or 'same over %d frames' % len(fa)) + renamed(fa, fb) + ('; ' + problems if problems else '')
 
     start = time.time()
     counts = {'same': 0, 'differ': 0, 'left': 0}
