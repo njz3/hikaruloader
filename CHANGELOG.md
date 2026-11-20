@@ -5,6 +5,17 @@ What each version brings, for those who play. How the versions are numbered
 and released: [DEVELOPMENT.md](DEVELOPMENT.md), "Versions and releases".
 
 
+Next version
+------------
+
+- Leaving a game, back to the picker or out of the program, stops every force
+  on the wheel and the controllers' rumble. The NAOMI's servo board (Club
+  Kart, The King of Route 66, Driving Simulator), Gaelco's motor (ATV Track,
+  Smashing Drive) and the Atomiswave's wheel games left their last force
+  playing in the picker, until the next game sent its own; out of the
+  program, the device's effects are now stopped and closed.
+
+
 0.8.10 (2026-11-18)
 -------------------
 

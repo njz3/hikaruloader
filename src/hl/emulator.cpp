@@ -29,6 +29,7 @@
 #include "hl/emulator.h"
 #include "hl/pointers.h"
 #include "hl/ffb-effects.h"
+#include "hl/ffb.h"
 #include "hl/shell.h"
 #include "hl/agent.h"
 #include "hl/audio.h"
@@ -77,8 +78,27 @@ Emulator::Emulator () :
 	stop_message[0] = '\0';
 }
 
+/* A game gone: the forces it left on the wheel and the controllers stopped.
+ * The drive boards' stop as they go, but the NAOMI's servo board, Gaelco's
+ * motor and the Atomiswave's wheel left their last force playing, in the
+ * picker and the next game until it sent its own */
+static void
+stop_forces_before (Machine *mach)
+{
+	GameRumble::stop (mach ? mach->frame : 0);
+}
+
+static void
+stop_forces_after (uint64_t frame)
+{
+	ForceFeedback::set (ForceFeedback::STOP, 0.0f, frame);
+}
+
 Emulator::~Emulator ()
 {
+	uint64_t frame = mach ? mach->frame : 0;
+
+	stop_forces_before (mach);
 	/* mame_stop, the game's last line */
 	Outputs::get ()->stop ();
 	telemetry::Service::get ().stop ();
@@ -86,6 +106,7 @@ Emulator::~Emulator ()
 	destroy (agent);
 	destroy (shell);
 	destroy (mach);
+	stop_forces_after (frame);
 	destroy (game);
 	destroy (game_list);
 }
@@ -289,12 +310,16 @@ Emulator::load_game (const char *name, const char *log_path)
 void
 Emulator::unload_game ()
 {
+	uint64_t frame = mach ? mach->frame : 0;
+
 	running_machine = NULL;
 	Controls::get ().set_game (NULL);
 	GameControls::get ().set_game (NULL, NULL);
+	stop_forces_before (mach);
 	Outputs::get ()->stop ();
 	telemetry::Service::get ().stop ();
 	destroy (mach);
+	stop_forces_after (frame);
 	destroy (game);
 	Config::end_game ();
 	Bezel::set_game (NULL, NULL);

@@ -20,6 +20,7 @@
 #include "hl/archive.h"
 #include "hl/pointers.h"
 #include "hl/emulator.h"
+#include "hl/ffb.h"
 #include "hl/shell.h"
 #include "hl/window.h"
 #include "hl/config.h"
@@ -190,6 +191,9 @@ finalize (void)
 	if (emulator && emulator->mach)
 		hl::Profile::report (emulator->mach->frame);
 	hl::destroy (emulator);
+	/* The stops queued sent, then the device's effects stopped and closed:
+	 * the program gone, a wheel kept its last force on some drivers */
+	hl::ForceFeedback::shutdown ();
 	ui::Interface::shutdown ();
 	hl::Log::close ();
 }
