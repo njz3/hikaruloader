@@ -5,8 +5,8 @@ What each version brings, for those who play. How the versions are numbered
 and released: [DEVELOPMENT.md](DEVELOPMENT.md), "Versions and releases".
 
 
-Next version
-------------
+0.8.11 (2026-11-20)
+-------------------
 
 - Leaving a game, back to the picker or out of the program, stops every force
   on the wheel and the controllers' rumble. The NAOMI's servo board (Club
