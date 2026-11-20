@@ -5,8 +5,8 @@ What each version brings, for those who play. How the versions are numbered
 and released: [DEVELOPMENT.md](DEVELOPMENT.md), "Versions and releases".
 
 
-Next version
-------------
+0.8.12 (2026-11-20)
+-------------------
 
 - Paused (P, F5, the settings open), the wheel is let go: every force and
   the controllers' rumble off, the game's back at the resume. A drive
