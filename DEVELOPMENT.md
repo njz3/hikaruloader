@@ -83,7 +83,7 @@ commands, `ls ()` the machine's objects:
 |---|---|
 | `emu` | The emulator: `pause ()`, `resume ()`, `step ([frames])`, `frame ()`, `status ()`, `reset ()`, `save_state (path)`, `load_state (path)`, `screenshot (path)`, `input (name, held)`, `hook (event, fn)`, `quit ()`... |
 | `machine.cpus.master` | The SH-4s, also `machine.cpus.slave`: their registers as fields (`cpu.pc`, `cpu.r0`, `cpu.sr`, `cpu.fr0`..., to read and write); `cpu:step ([count])` runs count instructions of that CPU alone; `cpu:bpset (addr)`, `cpu:bpclear ([addr])`, `cpu:bplist ()` |
-| `machine.memory.ram_m` | The memories: `ram_m`, `ram_s`, `cmdram`, `fb`, `texram0`, `texram1`, `aica_ram_m`, `aica_ram_s`, `mie_ram`, `bram`, `bootrom`, `eprom`, `maskrom`, `iregs_m`, `iregs_s`; `mem.size`, `mem:dump (path [, offset [, length]])`, `mem:load (path [, offset])` |
+| `machine.memory.ram_m` | The memories: `ram_m`, `ram_s`, `cmdram`, `fb`, `texram0`, `texram1`, `aica_ram_m`, `aica_ram_s`, `mie_ram`, `bram`, `bootrom`, `eprom`, `maskrom`, `iregs_m`, `iregs_s` (the Hikaru's; a NAOMI's `ram`, `vram`, `sram`, `aica_ram`, `iregs`, its other boards' with their number after, `ram1`, `vram2`...); `mem.size`, `mem:dump (path [, offset [, length]])`, `mem:load (path [, offset])` |
 | `machine.devices.gpu` | The chips' registers: `gpu`, `memctl_m`, `memctl_s`, `mie`, `mscomm`, `aica_m`, `aica_s`...; `dev:info ()`, their state in a line; `dev:option (name, value)`, a debugging option, e.g. the GPU's `log_cp` (the command lists, disassembled to the log, with `emu.verbose (1)`) |
 
 To find where a CPU spends its time: `cpu:profile (true)`, run some frames,
@@ -221,6 +221,9 @@ In the environment:
   1964-01-01 00:00, decimal or 0x hex) whatever the PC's time. In agent
   mode it starts at 0x5BFC8900 (26 Nov 2012 00:00) without it, so that runs
   repeat.
+- `HR_DISPLAY=<n>`: the window opens on SDL's display n (the log lists them
+  at the start, `INDEX:n`), for runs kept off the monitor one works on; the
+  window centred again stays on its monitor.
 - `HR_HASH=<file>`: each memory of the machine hashed at the end of each
   frame, a line a frame: `F <frame> <name>=<hash>...` (`Machine::write_hashes`:
   its buffers, named as the Lua shell names them, a NAOMI board's with its
@@ -273,10 +276,12 @@ each set run once with each program (`HR_HASH`), the first frame where they
 differ and which memories: for a change that must not move a game. Without
 `--b`, the same program twice: whether each game's runs repeat.
 `--all` takes the sets of `data/games.json` whose zip, or their parent's, is
-in `--roms` (one not starting, a file missing, is left out); `--ini` gives
+in `--roms` (several folders separated by `;`, as `-R` takes them: the zips
+in one, the CHDs in another; one not starting, a file missing, is left out); `--ini` gives
 the runs' `hikaruloader.ini`; the runs stay in `--work`. Both programs
-from 0.8.10 on (`HR_HASH`). On 2026-11-18 the 101 sets whose files are on
-the development PC repeated over 1800 frames (39 minutes, 8 runs at once).
+from 0.8.10 on (`HR_HASH`). On 2026-11-20 the 273 sets whose files are on
+the development PC (all but `prem11` and `mirstad`) started and repeated over
+1800 frames (about 2 hours, 8 runs at once).
 A difference is then narrowed with `HR_HASH_BLOCKS` at its frame, the
 blocks' bytes read with the agent's `ram` and the writer found with the Lua
 shell's `cpu:wpset` and `"write"` hook (above, "Lua shell").
@@ -524,7 +529,11 @@ channel n at 2n), checked in the game's JVS TEST screen.
   hundredth of a degree and 0.5%, or one, nine in ten of its pairs on each
   other, while the other has fewer than 8 (a cut: F355's race, its left
   board 7). The views come on once solved two frames in a row, stay through
-  10 frames of too few points, go off at once when points enough do not
+  10 frames of too few points, and as long as both side screens draw no 3D
+  (fewer than 4 triangles of a pixel or more on the screen: Sega Strike
+  Fighter's jet over the middle screen alone, its left board's 24 others
+  folded into a corner; nothing there they would turn, nor against them),
+  go off at once when points enough do not
   agree (a cut to a scene of other cameras; the boards' frames apart while
   the camera turns, their rows a few pixels apart; Airline Pilots' plane at
   the gate before its side boards were solved a frame late: 55% and turns

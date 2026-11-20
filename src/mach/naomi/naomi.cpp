@@ -574,6 +574,21 @@ Board::init ()
 		machine->add_memory ("sram", sram);
 		machine->add_memory ("aica_ram", aica_ram);
 		machine->add_memory ("iregs", cpu->iregs);
+	} else if (index < 4) {
+		/* The other boards' for the Lua shell too, their number after
+		 * (machine.memory.ram1) */
+		static const char *names[3][5] = {
+			{ "ram1", "vram1", "sram1", "aica_ram1", "iregs1" },
+			{ "ram2", "vram2", "sram2", "aica_ram2", "iregs2" },
+			{ "ram3", "vram3", "sram3", "aica_ram3", "iregs3" },
+		};
+		const char *const *n = names[index - 1];
+
+		machine->add_memory (n[0], ram);
+		machine->add_memory (n[1], vram);
+		machine->add_memory (n[2], sram);
+		machine->add_memory (n[3], aica_ram);
+		machine->add_memory (n[4], cpu->iregs);
 	}
 	return true;
 }

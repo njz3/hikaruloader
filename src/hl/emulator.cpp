@@ -895,12 +895,16 @@ Emulator::run (int num_frames)
 		if (!paused && !ui::Interface::settings_open ()) {
 			if (num_frames > 0 && frame++ >= num_frames)
 				break;
+			ForceFeedback::pause (false, mach->frame);
 			if (run_frame () != STOP_NONE && shell)
 				shell->notify (stop_message);
 		} else {
 			/* The telemetry's last frame again, as a pause */
 			telemetry::Service::get ().on_pause ();
 			GameRumble::stop (mach->frame);
+			/* The wheel let go: a drive board's last force, a servo's
+			 * spring, played on while nothing ran */
+			ForceFeedback::pause (true, mach->frame);
 			Window::present_paused ();
 		}
 		limit_frame_rate ();

@@ -181,6 +181,16 @@ Window::toggle_fullscreen ()
 		apply_display ();
 }
 
+/* Centred on the monitor the window is on (HR_DISPLAY's at first), not
+ * sent back to the first one */
+static int
+centered ()
+{
+	int display = shared_window ? SDL_GetWindowDisplayIndex (shared_window) : 0;
+
+	return (int) SDL_WINDOWPOS_CENTERED_DISPLAY (display < 0 ? 0 : display);
+}
+
 void
 Window::apply_display ()
 {
@@ -197,7 +207,7 @@ Window::apply_display ()
 			applied_mode = -1;
 		}
 		if (place_display < 0)
-			SDL_SetWindowPosition (shared_window, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
+			SDL_SetWindowPosition (shared_window, centered (), centered ());
 		else
 			SDL_SetWindowPosition (shared_window, place_x, place_y);
 	}
@@ -219,7 +229,7 @@ Window::apply_display ()
 		SDL_SetWindowSize (shared_window, native_w * cfg->window_scale,
 		                   native_h * cfg->window_scale);
 		if (place_display < 0)
-			SDL_SetWindowPosition (shared_window, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
+			SDL_SetWindowPosition (shared_window, centered (), centered ());
 		else
 			SDL_SetWindowPosition (shared_window, place_x, place_y);
 		applied_scale = cfg->window_scale;
@@ -775,9 +785,12 @@ Window::open (unsigned width, unsigned height)
 	SDL_GL_SetAttribute (SDL_GL_CONTEXT_PROFILE_MASK,
 	                     SDL_GL_CONTEXT_PROFILE_CORE);
 
-	shared_window = SDL_CreateWindow ("Hikaruloader",
-	                                  SDL_WINDOWPOS_CENTERED,
-	                                  SDL_WINDOWPOS_CENTERED,
+	/* HR_DISPLAY=<n>: on SDL's display n (the log lists them, INDEX:n) */
+	int display = hl_util_get_int_option ("HR_DISPLAY", -1);
+	int at = display >= 0 && display < SDL_GetNumVideoDisplays () ?
+	         (int) SDL_WINDOWPOS_CENTERED_DISPLAY (display) : (int) SDL_WINDOWPOS_CENTERED;
+
+	shared_window = SDL_CreateWindow ("Hikaruloader", at, at,
 	                                  width, height,
 	                                  SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE |
 	                                  SDL_WINDOW_ALLOW_HIGHDPI);

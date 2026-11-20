@@ -105,11 +105,13 @@ def compare(a, b):
 
 
 def all_sets(roms):
-    """Those whose zip, or their parent's (a clone in a merged set), is there"""
+    """Those whose zip, or their parent's (a clone in a merged set), is in one
+    of the folders (several separated by ';', as -R takes them)"""
     games = json.load(open(os.path.join(ROOT, 'data', 'games.json'), encoding='utf-8'))
+    folders = [f for f in roms.split(';') if f]
 
     def there(name):
-        return any(os.path.exists(os.path.join(roms, name + ext)) for ext in ('.zip', '.7z'))
+        return any(os.path.exists(os.path.join(f, name + ext)) for f in folders for ext in ('.zip', '.7z'))
     return [g['name'] for g in games['roms'] if there(g['name']) or (g.get('parent') and there(g['parent']))]
 
 
@@ -117,7 +119,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--a', required=True, help='the reference program')
     ap.add_argument('--b', help='the program checked (default: --a again)')
-    ap.add_argument('--roms', required=True, help='the ROMs folder')
+    ap.add_argument("--roms", required=True, help="the ROMs folder, several separated by ';' (zips, CHDs)")
     ap.add_argument('--frames', type=int, default=1800)
     ap.add_argument('--jobs', type=int, default=4, help='games run at once (each run of a pair too)')
     ap.add_argument('--all', action='store_true', help="every set of data/games.json found in --roms")

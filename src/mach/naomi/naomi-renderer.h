@@ -315,6 +315,9 @@ private:
 	mutable float steady_yaw = 0.0f, steady_f = 0.0f, steady_cy = 240.0f;
 	mutable unsigned views_left = 0, views_frames = 0;
 	mutable bool views_steady = false, views_solved = false;
+	/* Both side boards' scenes without 3D (solve_views ()): nothing there
+	 * the views would turn, nor against them */
+	mutable bool views_bare = false;
 	/* The game has views and they are wanted for the boards shown */
 	bool	 views_wanted (const std::vector<unsigned> &shown) const;
 	/* The middle board's last scene for the screen (held_valid), shown

@@ -5,6 +5,18 @@ What each version brings, for those who play. How the versions are numbered
 and released: [DEVELOPMENT.md](DEVELOPMENT.md), "Versions and releases".
 
 
+Next version
+------------
+
+- Paused (P, F5, the settings open), the wheel is let go: every force and
+  the controllers' rumble off, the game's back at the resume. A drive
+  board's last force, a servo board's spring, played on while nothing ran.
+- NAOMI, *Screens' view* joined, Sega Strike Fighter: the jet flying over
+  the middle screen alone in its attract no longer brings back the
+  cabinet's views for 2 or 3 frames as it crosses an edge. While the side
+  screens draw no 3D, the views stay as they are.
+
+
 0.8.11 (2026-11-20)
 -------------------
 

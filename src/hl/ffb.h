@@ -83,6 +83,10 @@ public:
 	/* Player 1's controller's motors, each frame while they turn: sent
 	 * again every half second, as SDL stops them after a while */
 	static void	 rumble (float low, float high, uint64_t frame);
+	/* Paused (the game, its settings, a breakpoint): every force and motor
+	 * off on the devices, the game's kept and sent again when on is false;
+	 * the game's changes meanwhile kept, not sent */
+	static void	 pause (bool on, uint64_t frame);
 	/* The rumble goes to these players' controllers, whatever the device
 	 * chosen; -1: back to the usual one. A controller left out stops */
 	static void	 rumble_for (int player, int second = -1);

@@ -3283,14 +3283,44 @@ bool
 Renderer::solve_views (const std::vector<BoardRenderer::Frame> &frames, const Draw *m, float *yaw, float *focal,
                        float *centre, bool *enough) const
 {
+	/* Fewer 3D triangles on each side screen: bare (views_bare) */
+	static const unsigned BARE_MOST = 4;
 	static thread_local std::vector<std::pair<uint64_t, uint32_t>> found;
 	static thread_local std::vector<ViewPair> pairs[2];
 	SideView v[2];
 
 	*enough = false;
 	views_shaken = false;
+	views_bare = false;
 	if (!m || frames.size () != 3)
 		return false;
+	/* The side screens black but for their 2D (Sega Strike Fighter's jet
+	 * flying over the middle screen alone, its attract's): their 3D
+	 * triangles on the screen, a pixel at least (the left board's 24 there,
+	 * a model folded into the screen's corner, are not) */
+	views_bare = true;
+	for (int k = 0; k < 2 && views_bare; k++)
+		if (const Draw *d = screen_draw (frames[k ? 2 : 0])) {
+			const std::vector<Vertex> &sv = d->scene->vertices;
+			unsigned n = 0;
+
+			for (size_t i = 0; i + 2 < sv.size () && n < BARE_MOST; i += 3) {
+				if (!is_3d (sv, i))
+					continue;
+				float x[3], y[3];
+
+				for (int j = 0; j < 3; j++) {
+					x[j] = sv[i + j].x * d->scale_x;
+					y[j] = sv[i + j].y * d->scale_y;
+				}
+				float area = fabsf ((x[1] - x[0]) * (y[2] - y[0]) - (x[2] - x[0]) * (y[1] - y[0])) * 0.5f;
+
+				if (area >= 1.0f && std::max ({ x[0], x[1], x[2] }) > 0.0f && std::min ({ x[0], x[1], x[2] }) < width &&
+				    std::max ({ y[0], y[1], y[2] }) > 0.0f && std::min ({ y[0], y[1], y[2] }) < 480.0f)
+					n++;
+			}
+			views_bare = n < BARE_MOST;
+		}
 	const KeyTable &middle = middle_keys (*m);
 
 	for (int k = 0; k < 2; k++) {
@@ -3464,6 +3494,13 @@ Renderer::steady_views (const std::vector<BoardRenderer::Frame> &frames, float *
 		if (views_left || views_solved)
 			views_left = 10;
 		views_solved = true;
+	} else if (views_left && views_bare) {
+		/* No 3D on the side screens: the views kept as they are, their
+		 * strips going on with the middle board's picture (Sega Strike
+		 * Fighter's jet, its nose over the edge: 2 or 3 frames of the
+		 * cabinet's views at each attract, 10 frames after it left the
+		 * side screens) */
+		views_solved = false;
 	} else {
 		views_steady = views_solved = false;
 		views_left = !views_left ? 0 : enough ? std::min (views_left - 1, 4u) : views_left - 1;

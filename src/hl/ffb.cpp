@@ -43,6 +43,9 @@ namespace hl {
 static std::atomic<unsigned> sine_period_ms (SINE_PERIOD_MS);
 
 static float current[ForceFeedback::NUM_EFFECTS];
+/* Paused (ForceFeedback::pause): the device's forces and the controllers'
+ * motors off, current[] the game's, sent again at the resume */
+static bool held;
 static std::atomic<float> spring_center;
 static std::vector<ForceFeedback::Record> records;
 
@@ -337,7 +340,7 @@ wake_sender (void)
 static void
 send_force (ForceFeedback::Effect effect, float force)
 {
-	if (!haptic)
+	if (!haptic || (held && force != 0.0f))
 		return;
 	std::lock_guard<std::mutex> lock (sender.lock);
 	sender.queued[effect] = true;
@@ -431,9 +434,24 @@ send_rumble (uint64_t frame)
 		                      (SDL_Joystick *) Controls::get ().player_joystick (rumble_second_player) : NULL;
 		sender.rumble_second = (other && other != joystick) ? SDL_JoystickInstanceID (other) : -1;
 	}
-	sender.rumble_low = level (current[ForceFeedback::RUMBLE_LOW]);
-	sender.rumble_high = level (current[ForceFeedback::RUMBLE_HIGH]);
+	sender.rumble_low = held ? 0 : level (current[ForceFeedback::RUMBLE_LOW]);
+	sender.rumble_high = held ? 0 : level (current[ForceFeedback::RUMBLE_HIGH]);
 	wake_sender ();
+}
+
+void
+ForceFeedback::pause (bool on, uint64_t frame)
+{
+	unsigned i;
+
+	if (on == held)
+		return;
+	held = on;
+	for (i = CONSTANT; i < RUMBLE_LOW; i++)
+		if (current[i] != 0.0f)
+			send_force ((Effect) i, on ? 0.0f : device_force ((Effect) i, current[i]));
+	if (current[RUMBLE_LOW] + current[RUMBLE_HIGH] > 0)
+		send_rumble (frame);
 }
 
 void
@@ -453,8 +471,8 @@ ForceFeedback::rumble (float low, float high, uint64_t frame)
 		changed = true;
 		keep_record (frame, effects[i], f);
 	}
-	if (changed || (current[RUMBLE_LOW] + current[RUMBLE_HIGH] > 0 &&
-	                (rumble_sent == ~0ull || frame - rumble_sent >= 30 || frame < rumble_sent)))
+	if (!held && (changed || (current[RUMBLE_LOW] + current[RUMBLE_HIGH] > 0 &&
+	                          (rumble_sent == ~0ull || frame - rumble_sent >= 30 || frame < rumble_sent))))
 		send_rumble (frame);
 }
 
