@@ -95,6 +95,84 @@ struct ModVol {
 	uint32_t first, count;
 };
 
+/*
+ * The NAOMI 2's lighting by the graphics card (ELAN_LIGHTING GPU): what the
+ * Elan leaves a scene of its vertices to light (Elan::flush_lighting ()), lit
+ * by the renderer's compute shaders before it draws them, the scene's
+ * vertices given their colours there (BoardRenderer::light_scene ()). The
+ * shaders read these as they are (std430)
+ */
+
+/* A vertex to light: its position, normal and colours before, in the view's
+ * space; then its colours as the screen takes them (add: an untextured one's
+ * offset added to its base) */
+struct LitVertex {
+	float	 pos[3], normal[3];
+	float	 base[4], offset[4];
+	uint32_t set;		/* its light set's index */
+	uint32_t add;
+};
+
+/* A point where a clipped edge crosses the near plane: its colours between
+ * two vertices', each lit (a LitVertex's index) or known (a, b -1) */
+struct ClipColor {
+	int32_t	 a, b;
+	float	 t;
+	float	 base[2][4], offset[2][4];
+	float	 out_base[4], out_offset[4];
+};
+
+/* A scene's vertex to colour: a LitVertex's (ref >= 0) or a ClipColor's (ref
+ * -2 - its index) */
+struct ColorRef {
+	uint32_t at;
+	int32_t	 ref;
+};
+
+/* A light, as the shaders read it */
+struct GpuLight {
+	float	 direction[4];	/* to the light; w 1: parallel */
+	float	 position[4];	/* w 1: by the distance, 0: by its inverse */
+	float	 color[4];
+	float	 atten[4];	/* by the distance a, b, by the angle a, b */
+	/* What it lights (bit 0 the diffuse, 1 the specular), whether it is
+	 * attenuated (bit 2 by the distance, 3 by the angle); its routing; the
+	 * diffuse's and the specular's sides */
+	int32_t	 flags, routing, dmode, smode;
+};
+
+/* The lights a vertex was lit with, as the shaders read them */
+struct GpuLightSet {
+	float	 ambient_base[4], ambient_offset[4];
+	float	 gloss;
+	uint32_t count;
+	/* Bit 0: what is over 1 in the base goes to the offset; 1 and 2: the
+	 * ambient by the base's, the offset's colour */
+	uint32_t flags;
+	uint32_t pad;
+	GpuLight lights[16];
+};
+
+struct SceneLighting {
+	std::vector<GpuLightSet> sets;
+	std::vector<LitVertex> lit;
+	std::vector<ClipColor> clips;
+	std::vector<ColorRef> refs;
+
+	bool	 empty () const { return refs.empty (); }
+	void	 clear ()
+	{
+		sets.clear ();
+		lit.clear ();
+		clips.clear ();
+		refs.clear ();
+	}
+};
+
+/* A renderer lights the scenes (its compute shaders made): the Elan leaves
+ * them its vertices with ELAN_LIGHTING GPU */
+extern std::atomic<bool> gpu_lighting;
+
 /* What the TA made of a list of parameters */
 struct Scene {
 	std::vector<Vertex> vertices;
@@ -105,10 +183,13 @@ struct Scene {
 	/* Those of the translucent modifier volume list, in the same vertices */
 	std::vector<ModVol> mod_volumes_tr;
 	float max_z = 1e-6f;
+	/* Its vertices to light, with ELAN_LIGHTING GPU (else none) */
+	SceneLighting lighting;
 
 	/* Empty again, the vectors' room kept */
 	void clear ()
 	{
+		lighting.clear ();
 		vertices.clear ();
 		vertices1.clear ();
 		for (std::vector<Batch> &b : batches)
@@ -481,6 +562,10 @@ public:
 	uint32_t fb_r_ctrl () const { return pvr[0x44 / 4]; }
 	uint32_t fb_r_sof1 () const { return pvr[0x50 / 4]; }
 	uint32_t fb_r_size () const { return pvr[0x5C / 4]; }
+	/* The display reads a framebuffer a scene for the screen was drawn to
+	 * lately (FB_R_SOF1 one of rendered's), its VRAM as it was then: the
+	 * picture drawn stands for it (BoardRenderer::take ()) */
+	bool	 shows_rendered () const;
 
 	hl::Buffer *vram;
 	uint32_t frames;
@@ -564,6 +649,17 @@ private:
 	/* No memory for what the TA or a drawing made: dropped, said now and then */
 	void	 no_memory (const char *what);
 	std::vector<Draw> draws;
+	/* The framebuffers the last two scenes for the screen were drawn to,
+	 * with a hash of their VRAM then (fb_hash ()): the core's pictures are
+	 * not written in our VRAM, they stay with the GPU; the VRAM changed
+	 * since, the processor wrote there */
+	struct Rendered {
+		uint32_t at;
+		uint64_t hash;
+		bool	 valid;
+	};
+	Rendered rendered[2] = {};
+	uint64_t fb_hash (uint32_t at) const;
 	/* The textures' copies, for those that did not change at the next
 	 * STARTRENDER */
 	TextureMap kept_textures;
@@ -665,30 +761,8 @@ private:
 		bool	 use_base_over, ambient_material_base, ambient_material_offset;
 		float	 ambient_base[4], ambient_offset[4];
 	};
-	/* A vertex to light: its position, normal and colours before; then its
-	 * colours as the screen takes them (an untextured one's base with its
-	 * offset added) */
-	struct LitVertex {
-		float	 pos[3], normal[3];
-		float	 base[4], offset[4];
-		uint32_t set;
-		bool	 add;
-	};
-	/* A point where a clipped edge crosses the near plane: its colours
-	 * between two vertices', each lit (a LitVertex) or known (a, b -1) */
-	struct ClipColor {
-		int	 a, b;
-		float	 t;
-		float	 base[2][4], offset[2][4];
-		float	 out_base[4], out_offset[4];
-	};
-	/* A scene's vertex to colour: a LitVertex's (ref >= 0) or a
-	 * ClipColor's (ref -2 - its index) */
-	struct Patch {
-		Scene	*scene;
-		uint32_t at;
-		int	 ref;
-	};
+	/* A light set as the shaders read it */
+	static void gpu_set (const LightSet &set, GpuLightSet &out);
 
 	void	 command_word (unsigned index, uint32_t data);
 	/* False when it stopped on an error */
@@ -751,12 +825,14 @@ private:
 
 	/* The vertices lit at the next flush_lighting (): on several threads,
 	 * each alone (the same colours whatever their number), the clipped
-	 * points' after, then the scenes' vertices coloured */
+	 * points' after, then the scenes' vertices coloured (patches, those of
+	 * scenes[i] from scene_from[i]); or all left to the renderer */
 	std::vector<LightSet> sets;
 	std::vector<LitVertex> lit;
 	std::vector<ClipColor> clips;
-	std::vector<Patch> patches;
+	std::vector<ColorRef> patches;
 	std::vector<std::shared_ptr<Scene>> scenes;
+	std::vector<size_t> scene_from;
 	bool	 list_gouraud;
 	std::unique_ptr<Workers> workers;
 

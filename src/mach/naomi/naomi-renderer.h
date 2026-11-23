@@ -122,6 +122,11 @@ public:
 		bool to_texture = false, has_screen = false;
 		bool vram = false;
 		unsigned vram_w = 0, vram_h = 0;
+		/* No scene for a while, but the display reads a framebuffer one
+		 * was drawn to, untouched since (Holly::shows_rendered ()): the
+		 * last picture drawn shown on, not the VRAM (a game showing its
+		 * loading screen, drawn once in a while) */
+		bool rendered = false;
 		std::vector<uint32_t> vram_rgba;
 		View view;
 	};
@@ -187,6 +192,9 @@ private:
 	                 bool opaque);
 	void draw_modifiers (const Draw &d, float sx, float sy);
 	void background_vertices (const Draw &d, Vertex *quad) const;
+	/* ELAN_LIGHTING GPU: the scene's vertices to light (Scene::lighting)
+	 * lit, their colours put in vbo, as draw_scene () filled it */
+	void light_scene (const Scene &scene);
 	void set_scene_uniforms (const Program &p);
 	/* The view turns d's 3D (View): a scene for the screen */
 	bool view_on (const Draw &d) const;
@@ -236,6 +244,12 @@ private:
 	GLint u_strip_depth, u_strip_side_depth, u_strip_units, u_strip_side_span, u_strip_mask, u_strip_has_mask;
 	GLuint strip_mask_tex = 0;
 	GLuint vao, vbo, mod_vao, mod_vbo, blit_vao, fog_tex, vram_tex;
+	/* light_scene ()'s compute shaders, the lighting's and the colouring's;
+	 * the buffers of the light sets, the vertices to light, their colours,
+	 * the clipped points and the vertices to colour */
+	GLuint light_program = 0, color_program = 0;
+	GLint u_light_count = -1, u_color_count = -1;
+	GLuint light_buffers[5] = {};
 	/* The vertices' 2D marks while the view turns (draw_scene ()) */
 	GLuint flag_vbo;
 	std::vector<uint8_t> flags;

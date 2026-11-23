@@ -229,6 +229,26 @@ In the environment:
   colours whatever the threads: Club Kart 2003, Club Kart Prize, Virtua
   Fighter 4 and Initial D3 pixel-identical to 0.8.12, their memories too
   (`tools/regress.py`). `HR_PROFILE`'s Elan counts the flush.
+  With `ELAN_LIGHTING = GPU` the flush leaves them to the renderer instead,
+  with the scene (`Scene::lighting`: the light sets, the vertices to light,
+  the clipped points, the scene's vertices to colour; the vectors swapped,
+  not copied): `BoardRenderer::light_scene` lights them with two compute
+  shaders (`light_cs_src`, the same operations as `Elan::light`;
+  `color_cs_src`, the clipped points and `pack`'s bytes written into the
+  vertex buffer) before the scene is drawn. The GPU's square roots,
+  divisions and powers are not the processor's to the last bit: a colour
+  may come a step (1/255) off, a picture read back into the VRAM with it.
+  Without a compute shader (OpenGL below 4.3) the processor lights them.
+- A NAOMI frame without a scene for the screen (`BoardRenderer::take`,
+  `draw_frame_now`) shows the last picture drawn for 3 frames, then the
+  framebuffer the display reads in the VRAM (`read_vram`: what the
+  processor drew there, the BIOS's screens); but on and on the picture
+  drawn while the display reads a framebuffer one of the two last scenes
+  for the screen was drawn to, its VRAM unchanged since
+  (`Holly::shows_rendered`: a hash of a word in four of a line in two at
+  the STARTRENDER and then): the board's drawings are not written in our
+  VRAM. King of Route 66's loading screen, drawn every 14 frames, flickered
+  black.
 - `HR_DISPLAY=<n>`: the window opens on SDL's display n (the log lists them
   at the start, `INDEX:n`), for runs kept off the monitor one works on; the
   window centred again stays on its monitor.

@@ -136,7 +136,7 @@ def main():
     ap.add_argument('--frames', type=int, default=1800)
     ap.add_argument('--jobs', type=int, default=4, help='games run at once (each run of a pair too)')
     ap.add_argument('--all', action='store_true', help="every set of data/games.json found in --roms")
-    ap.add_argument('--ini', help="a hikaruloader.ini for the runs (default: an empty one, the defaults)")
+    ap.add_argument('--ini', help="a hikaruloader.ini for the runs (default: the defaults, the frame number in the title bar)")
     ap.add_argument('--work', help='where the runs go (default: a temporary folder)')
     ap.add_argument('--timeout', type=float, default=1200, help='seconds a run may take')
     ap.add_argument('sets', nargs='*')
@@ -147,7 +147,7 @@ def main():
     sets = args.sets + (all_sets(args.roms) if args.all else [])
     if not sets:
         sys.exit('regress: no set (name them, or --all)')
-    ini = open(args.ini).read() if args.ini else '[Display]\n'
+    ini = open(args.ini).read() if args.ini else '[Display]\nTITLE_FRAME_NUMBER = true\n'
     work = args.work or tempfile.mkdtemp(prefix='hlregress_')
     os.makedirs(work, exist_ok=True)
     print('regress: %s against %s, %d sets, %d frames, in %s' %

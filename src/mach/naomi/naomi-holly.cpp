@@ -223,6 +223,7 @@ Holly::reset (hl::ResetType type)
 	delayed.clear ();
 	contexts.clear ();
 	draws.clear ();
+	rendered[0] = rendered[1] = {};
 	building = std::make_shared<Scene> ();
 	frames = 0;
 	line_now = 0;
@@ -1468,11 +1469,56 @@ Holly::start_render ()
 		d.background_shadow = (tag >> 27) & 1;
 	}
 	try {
+		bool screen = !d.to_texture;
+		uint32_t at = d.fb_w_sof1 & 0x00FFFFFC;
+
 		keep_textures (d);
 		draws.push_back (std::move (d));
+		if (screen) {
+			if (!(rendered[0].valid && rendered[0].at == at))
+				rendered[1] = rendered[0];
+			rendered[0] = { at, fb_hash (at), true };
+		}
 	} catch (const std::bad_alloc &) {
 		no_memory ("a picture");
 	}
+}
+
+/* A framebuffer's VRAM as the display reads it (FB_R_SIZE's lines), a word
+ * in four of a line in two: enough to tell the processor drew there */
+uint64_t
+Holly::fb_hash (uint32_t at) const
+{
+	uint32_t size = fb_r_size ();
+	unsigned line = (size & 0x3FF) + 1, lines = ((size >> 10) & 0x3FF) + 1, modulus = (size >> 20) & 0x3FF;
+	const uint8_t *base = (const uint8_t *) vram->ptr (0);
+	uint64_t h = 0xCBF29CE484222325ull;
+
+	if (!base || vram->size () < 0x01000000)
+		return 0;
+	at &= 0x00FFFFFC;
+	for (unsigned y = 0; y < lines; y++) {
+		if (!(y & 1))
+			for (unsigned x = 0; x < line; x += 4) {
+				uint32_t w;
+
+				memcpy (&w, base + map32 ((at + x * 4) & 0x00FFFFFC), 4);
+				h = (h ^ w) * 0x100000001B3ull;
+			}
+		at += line * 4 + (modulus ? (modulus - 1) * 4 : 0);
+	}
+	return h;
+}
+
+bool
+Holly::shows_rendered () const
+{
+	uint32_t at = fb_r_sof1 () & 0x00FFFFFC;
+
+	for (const Rendered &r : rendered)
+		if (r.valid && r.at == at)
+			return fb_hash (at) == r.hash;
+	return false;
 }
 
 /* The textures of a drawing as they are now (renders end before the games go
@@ -1812,6 +1858,7 @@ Holly::load_state (hl::State *state)
 	LOAD (frames);
 	delayed.clear ();
 	contexts.clear ();
+	rendered[0] = rendered[1] = {};
 	building = std::make_shared<Scene> ();
 	irl_pins = -2;
 	update_irq ();

@@ -668,6 +668,235 @@ void main ()
 )";
 
 /*
+ * The NAOMI 2's Lighting by the GPU (ELAN_LIGHTING GPU)
+ *
+ * The Elan's vertices to light come with their scene (Scene::lighting, see
+ * naomi-elan.cpp): light_cs_src lights them as Elan::light () does, one
+ * vertex an invocation, into their colours; color_cs_src then puts each scene
+ * vertex's colours (a lit vertex's, or a clipped point's between two) in the
+ * vertex buffer, as pack () makes them. The same operations in the same
+ * order, but the GPU's square roots, divisions and powers are not the
+ * processor's to the last bit: a colour may come a step (1/255) off.
+ */
+static const char *light_cs_src = R"(#version 430
+layout (local_size_x = 64) in;
+struct Light {
+	vec4 direction;
+	vec4 position;
+	vec4 color;
+	vec4 atten;
+	int flags;
+	int routing;
+	int dmode;
+	int smode;
+};
+struct LightSet {
+	vec4 ambient_base;
+	vec4 ambient_offset;
+	float gloss;
+	uint count;
+	uint flags;
+	uint pad;
+	Light lights[16];
+};
+struct Lit {
+	float pos[3];
+	float normal[3];
+	float base[4];
+	float offset[4];
+	uint set;
+	uint add;
+};
+layout (std430, binding = 1) readonly buffer Sets { LightSet sets[]; };
+layout (std430, binding = 2) readonly buffer Lits { Lit lit[]; };
+layout (std430, binding = 3) writeonly buffer Colors { vec4 colors[]; };
+uniform uint u_count;
+
+float clamp01 (float f)
+{
+	return f < 0.0 ? 0.0 : f > 1.0 ? 1.0 : f;
+}
+
+float power01 (float x, float gloss)
+{
+	return x <= 0.0 ? 0.0 : x >= 1.0 ? 1.0 : pow (x, gloss);
+}
+
+void main ()
+{
+	uint i = gl_GlobalInvocationID.x;
+
+	if (i >= u_count)
+		return;
+
+	uint s = lit[i].set;
+	vec3 pos = vec3 (lit[i].pos[0], lit[i].pos[1], lit[i].pos[2]);
+	vec3 normal = vec3 (lit[i].normal[0], lit[i].normal[1], lit[i].normal[2]);
+	vec4 base = vec4 (lit[i].base[0], lit[i].base[1], lit[i].base[2], lit[i].base[3]);
+	vec4 offset = vec4 (lit[i].offset[0], lit[i].offset[1], lit[i].offset[2], lit[i].offset[3]);
+	vec3 diffuse = vec3 (0.0), specular = vec3 (0.0);
+	float diffuse_alpha = 0.0, specular_alpha = 0.0;
+	vec3 eye = pos;
+	float len = sqrt (dot (eye, eye));
+
+	if (len > 0.0)
+		eye /= len;
+
+	float d = 2.0 * dot (normal, eye);
+	vec3 reflected = eye - d * normal;
+	/* No specular colour: its terms left out, as Elan::light () */
+	bool no_offset = offset.r == 0.0 && offset.g == 0.0 && offset.b == 0.0;
+	uint count = sets[s].count;
+	float gloss = sets[s].gloss;
+
+	for (uint k = 0u; k < count; k++) {
+		Light l = sets[s].lights[k];
+		bool parallel = l.direction.w != 0.0;
+		vec3 t = parallel ? l.direction.xyz : l.position.xyz - pos;
+		float dist = sqrt (dot (t, t));
+		float kd = 1.0, ka = 1.0;
+
+		if (!parallel && dist > 0.0)
+			t /= dist;
+		/* By the distance, then the angle: a point's light */
+		if (!parallel && (l.flags & 4) != 0)
+			kd = clamp01 (l.atten.y * (l.position.w != 0.0 ? dist : 1.0 / dist) + l.atten.x);
+		if (!parallel && (l.flags & 8) != 0) {
+			float to_axis = dot (t, l.direction.xyz);
+
+			ka = clamp01 ((1.0 - (0.0 < to_axis ? to_axis : 0.0)) * l.atten.w + l.atten.z);
+		}
+
+		vec3 color = l.color.rgb * kd * ka;
+		float to_normal = dot (normal, t);
+		float to_reflected = dot (t, reflected);
+		/* ROUTE_SUB, BASE_FACTOR */
+		float polarity = (l.routing & 8) != 0 ? -2.0 : 2.0;
+
+		if ((l.flags & 1) != 0) {
+			float factor = polarity;
+
+			if (l.dmode == 0)
+				factor *= max (to_normal, 0.0);
+			else if (l.dmode == 1)
+				factor *= abs (to_normal);
+			if ((l.routing & 4) != 0)
+				diffuse_alpha += color.r * factor;
+			else if ((l.routing & 2) != 0)
+				specular += color * factor * base.rgb;
+			else
+				diffuse += color * factor * base.rgb;
+		}
+		if ((l.flags & 2) != 0 && !(no_offset && (l.routing & 4) == 0)) {
+			float factor = polarity;
+
+			if (l.smode == 0)
+				factor *= clamp01 (power01 (max (to_reflected, 0.0), gloss));
+			else if (l.smode == 1)
+				factor *= clamp01 (power01 (abs (to_reflected), gloss));
+			if ((l.routing & 4) != 0)
+				specular_alpha += color.r * factor;
+			else if ((l.routing & 1) != 0)
+				specular += color * factor * offset.rgb;
+			else
+				diffuse += color * factor * offset.rgb;
+		}
+	}
+
+	uint f = sets[s].flags;
+
+	diffuse += sets[s].ambient_base.rgb * ((f & 2u) != 0u ? base.rgb : vec3 (1.0));
+	specular += sets[s].ambient_offset.rgb * ((f & 4u) != 0u ? offset.rgb : vec3 (1.0));
+	base = vec4 (diffuse, base.a + diffuse_alpha);
+	offset = vec4 (specular, offset.a + specular_alpha);
+	/* What is over 1 in the base goes to the offset */
+	if ((f & 1u) != 0u)
+		offset += max (base - 1.0, 0.0);
+	base = clamp (base, 0.0, 1.0);
+	offset = clamp (offset, 0.0, 1.0);
+	if (lit[i].add != 0u)
+		base += offset;
+	colors[2u * i] = base;
+	colors[2u * i + 1u] = offset;
+}
+)";
+
+static const char *color_cs_src = R"(#version 430
+layout (local_size_x = 64) in;
+struct Clip {
+	int a;
+	int b;
+	float t;
+	float base[8];
+	float offset[8];
+	float out_base[4];
+	float out_offset[4];
+};
+struct Ref {
+	uint at;
+	int ref;
+};
+layout (std430, binding = 3) readonly buffer Colors { vec4 colors[]; };
+layout (std430, binding = 4) readonly buffer Clips { Clip clips[]; };
+layout (std430, binding = 5) readonly buffer Refs { Ref refs[]; };
+/* The vertex buffer, 7 words a vertex (Vertex): base the sixth, offset the
+ * seventh */
+layout (std430, binding = 6) buffer Vertices { uint words[]; };
+uniform uint u_count;
+
+uint to_byte (float f)
+{
+	return f <= 0.0 ? 0u : f >= 1.0 ? 255u : uint (f * 255.0 + 0.5);
+}
+
+uint pack_color (vec4 c)
+{
+	return (to_byte (c.a) << 24) | (to_byte (c.r) << 16) | (to_byte (c.g) << 8) | to_byte (c.b);
+}
+
+void main ()
+{
+	uint i = gl_GlobalInvocationID.x;
+
+	if (i >= u_count)
+		return;
+
+	Ref r = refs[i];
+	vec4 base, offset;
+
+	if (r.ref >= 0) {
+		base = colors[2 * r.ref];
+		offset = colors[2 * r.ref + 1];
+	} else {
+		int k = -2 - r.ref;
+		int ends[2] = int[2] (clips[k].a, clips[k].b);
+		vec4 b[2], o[2];
+
+		for (int e = 0; e < 2; e++) {
+			if (ends[e] >= 0) {
+				b[e] = colors[2 * ends[e]];
+				o[e] = colors[2 * ends[e] + 1];
+			} else {
+				int at = 4 * e;
+
+				b[e] = vec4 (clips[k].base[at], clips[k].base[at + 1], clips[k].base[at + 2],
+				             clips[k].base[at + 3]);
+				o[e] = vec4 (clips[k].offset[at], clips[k].offset[at + 1], clips[k].offset[at + 2],
+				             clips[k].offset[at + 3]);
+			}
+		}
+
+		float t = clips[k].t;
+
+		base = b[0] + (b[1] - b[0]) * t;
+		offset = o[0] + (o[1] - o[0]) * t;
+	}
+	words[r.at * 7u + 5u] = pack_color (base);
+	words[r.at * 7u + 6u] = pack_color (offset);
+}
+)";
+
+/*
  * The Textures
  * ============
  *
@@ -1012,6 +1241,9 @@ BoardRenderer::~BoardRenderer ()
 {
 	for (auto &it : textures)
 		glDeleteTextures (1, &it.second.id);
+	glDeleteBuffers (5, light_buffers);
+	hl::gl::destroy_program (light_program);
+	hl::gl::destroy_program (color_program);
 	destroy_oit ();
 }
 
@@ -1136,6 +1368,20 @@ BoardRenderer::setup ()
 	glBindBuffer (GL_ARRAY_BUFFER, flag_vbo);
 	glVertexAttribIPointer (4, 1, GL_UNSIGNED_BYTE, 1, (void *) 0);
 	glVertexAttribI4ui (4, 0, 0, 0, 0);
+
+	/* ELAN_LIGHTING GPU's (light_scene ()) */
+	light_program = hl::gl::compile_compute (light_cs_src);
+	color_program = hl::gl::compile_compute (color_cs_src);
+	u_light_count = glGetUniformLocation (light_program, "u_count");
+	u_color_count = glGetUniformLocation (color_program, "u_count");
+	glGenBuffers (5, light_buffers);
+	if (light_program && color_program)
+		gpu_lighting = true;
+	else {
+		if (hl::Config::get ()->elan_lighting == hl::ELAN_LIGHTING_GPU)
+			HL_ERROR ("naomi: the NAOMI 2's vertices lit by the processor (ELAN_LIGHTING GPU needs OpenGL 4.3)");
+		gpu_lighting = false;
+	}
 
 	glGenVertexArrays (1, &mod_vao);
 	glGenBuffers (1, &mod_vbo);
@@ -1504,6 +1750,45 @@ BoardRenderer::draw_translucent_volumes ()
 	}
 }
 
+void
+BoardRenderer::light_scene (const Scene &scene)
+{
+	static_assert (sizeof (Vertex) == 28 && offsetof (Vertex, base) == 20 && offsetof (Vertex, offset) == 24,
+	               "color_cs_src writes a Vertex's 7 words");
+	static_assert (sizeof (GpuLight) == 80 && sizeof (GpuLightSet) == 1328 && sizeof (LitVertex) == 64 &&
+	               sizeof (ClipColor) == 108 && sizeof (ColorRef) == 8, "the shaders' std430");
+	const SceneLighting &l = scene.lighting;
+
+	if (l.empty () || !light_program || !color_program)
+		return;
+
+	auto upload = [] (GLuint buffer, GLuint binding, size_t bytes, const void *data) {
+		glBindBuffer (GL_SHADER_STORAGE_BUFFER, buffer);
+		glBufferData (GL_SHADER_STORAGE_BUFFER, (GLsizeiptr) std::max<size_t> (bytes, 16), bytes ? data : NULL,
+		              GL_STREAM_DRAW);
+		glBindBufferBase (GL_SHADER_STORAGE_BUFFER, binding, buffer);
+	};
+	upload (light_buffers[0], 1, l.sets.size () * sizeof (GpuLightSet), l.sets.data ());
+	upload (light_buffers[1], 2, l.lit.size () * sizeof (LitVertex), l.lit.data ());
+	upload (light_buffers[2], 3, l.lit.size () * 32, NULL);
+	upload (light_buffers[3], 4, l.clips.size () * sizeof (ClipColor), l.clips.data ());
+	upload (light_buffers[4], 5, l.refs.size () * sizeof (ColorRef), l.refs.data ());
+	glBindBufferBase (GL_SHADER_STORAGE_BUFFER, 6, vbo);
+	if (!l.lit.empty ()) {
+		glUseProgram (light_program);
+		glUniform1ui (u_light_count, (GLuint) l.lit.size ());
+		glDispatchCompute ((GLuint) ((l.lit.size () + 63) / 64), 1, 1);
+		glMemoryBarrier (GL_SHADER_STORAGE_BARRIER_BIT);
+	}
+	glUseProgram (color_program);
+	glUniform1ui (u_color_count, (GLuint) l.refs.size ());
+	glDispatchCompute ((GLuint) ((l.refs.size () + 63) / 64), 1, 1);
+	glMemoryBarrier (GL_VERTEX_ATTRIB_ARRAY_BARRIER_BIT);
+	for (GLuint binding = 1; binding <= 6; binding++)
+		glBindBufferBase (GL_SHADER_STORAGE_BUFFER, binding, 0);
+	glBindBuffer (GL_SHADER_STORAGE_BUFFER, 0);
+}
+
 /* The background polygon: the plane of its three vertices, the depth and the
  * coordinates and colours by 1/W, at the corners of the picture. When its
  * three vertices do not make a plane, its first vertex's values everywhere */
@@ -1659,6 +1944,11 @@ BoardRenderer::draw_scene (const Draw &d, Target &t, bool to_texture)
 
 		background_vertices (d, quad);
 		glBufferSubData (GL_ARRAY_BUFFER, background.first * sizeof (Vertex), sizeof (quad), quad);
+	}
+	/* The NAOMI 2's vertices lit there (ELAN_LIGHTING GPU) */
+	if (!scene.lighting.empty ()) {
+		light_scene (scene);
+		glUseProgram (program.id);
 	}
 	/* The view turned (MULTI_SCREEN_VIEW): each triangle's vertices marked
 	 * 2D when its 1/W is the same at its three, 1 or more (the HUD's) or
@@ -1982,8 +2272,11 @@ BoardRenderer::take (Holly *holly, unsigned &quiet)
 		quiet = 0;
 	else if (quiet < 1000)
 		quiet++;
-	if (!f.has_screen && quiet >= 4)
-		read_vram (holly, f);
+	if (!f.has_screen && quiet >= 4) {
+		f.rendered = holly->shows_rendered ();
+		if (!f.rendered)
+			read_vram (holly, f);
+	}
 	return f;
 }
 
@@ -2065,7 +2358,7 @@ BoardRenderer::draw_frame_now (Frame &f)
 	} else if (frames_without < 1000)
 		frames_without++;
 
-	if (frames_without == 0 || frames_without < 4) {
+	if (frames_without < 4 || f.rendered) {
 		picture.texture = shown_color;
 		picture.depth = screen.depth;
 		picture.depth_unit = shown_depth_unit;

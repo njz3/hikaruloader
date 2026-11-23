@@ -25,6 +25,7 @@
 #include <emmintrin.h>
 #include <cstring>
 
+#include "hl/config.h"
 #include "hl/core.h"
 #include "hl/machine.h"
 #include "hl/profile.h"
@@ -192,10 +193,12 @@ struct Elan::Transformed {
 	float base[4], offset[4];
 	Vertex screen;
 	/* Its screen's colours, and those base and offset stand for, to come
-	 * from a vertex lit later (a Patch's ref; -1: those here); a flat
+	 * from a vertex lit later (a ColorRef's ref; -1: those here); a flat
 	 * triangle's last vertex has the next one's screen colours */
 	int ref, fref;
 };
+
+std::atomic<bool> gpu_lighting { false };
 
 Elan::Elan (Board *board_, hl::Buffer *ram_) :
 	hl::Device (board_->machine),
@@ -531,6 +534,10 @@ Elan::update_lights ()
  * lists of 600 or so, took half the frame on one thread. Nothing else of the
  * Holly's reads the colours before it draws them (its batches, its culling,
  * its depths are the positions').
+ *
+ * With ELAN_LIGHTING GPU, all that is left to the renderer instead, with the
+ * scene (Scene::lighting): its compute shaders light the vertices in the same
+ * way when it draws the scene, the processor's work only to keep them.
  */
 
 /* A cosine to the gloss's power: none when the light is behind and all
@@ -789,6 +796,39 @@ Elan::~Elan ()
 }
 
 void
+Elan::gpu_set (const LightSet &set, GpuLightSet &out)
+{
+	memset (&out, 0, sizeof (out));
+	memcpy (out.ambient_base, set.ambient_base, sizeof (out.ambient_base));
+	memcpy (out.ambient_offset, set.ambient_offset, sizeof (out.ambient_offset));
+	out.gloss = set.gloss;
+	out.count = set.count;
+	out.flags = (set.use_base_over ? 1 : 0) | (set.ambient_material_base ? 2 : 0) |
+	            (set.ambient_material_offset ? 4 : 0);
+	for (unsigned i = 0; i < set.count; i++) {
+		const Light &l = set.lights[i];
+		GpuLight &g = out.lights[i];
+
+		for (unsigned c = 0; c < 3; c++) {
+			g.direction[c] = l.direction[c];
+			g.position[c] = l.position[c];
+			g.color[c] = l.color[c];
+		}
+		g.direction[3] = l.parallel ? 1.0f : 0.0f;
+		g.position[3] = l.dist_mode ? 1.0f : 0.0f;
+		g.atten[0] = l.dist_a;
+		g.atten[1] = l.dist_b;
+		g.atten[2] = l.angle_a;
+		g.atten[3] = l.angle_b;
+		g.flags = (l.diffuse ? 1 : 0) | (l.specular ? 2 : 0) | (set.masks[LM_HAS_DIST][i] ? 4 : 0) |
+		          (set.masks[LM_HAS_ANGLE][i] ? 8 : 0);
+		g.routing = (int32_t) l.routing;
+		g.dmode = (int32_t) l.dmode;
+		g.smode = (int32_t) l.smode;
+	}
+}
+
+void
 Elan::flush_lighting ()
 {
 	/* Fewer on one thread: waking the others would cost more */
@@ -797,6 +837,47 @@ Elan::flush_lighting ()
 	if (lit.empty () && patches.empty ())
 		return;
 	HL_PROFILE (ELAN);
+	if (hl::Config::get ()->elan_lighting == hl::ELAN_LIGHTING_GPU && gpu_lighting.load ()) {
+		/* Left to the renderer: each scene its vertices to colour, with
+		 * all the lit ones and the clipped points (as they are, when the
+		 * scene has none yet: the vectors swapped with its empty ones) */
+		for (size_t k = 0; k < scenes.size (); k++) {
+			SceneLighting &l = scenes[k]->lighting;
+			size_t from = scene_from[k], to = k + 1 < scenes.size () ? scene_from[k + 1] : patches.size ();
+			uint32_t set_at = (uint32_t) l.sets.size ();
+			int32_t lit_at = (int32_t) l.lit.size (), clip_at = (int32_t) l.clips.size ();
+			size_t s0 = l.sets.size ();
+
+			l.sets.resize (s0 + sets.size ());
+			for (size_t i = 0; i < sets.size (); i++)
+				gpu_set (sets[i], l.sets[s0 + i]);
+			if (scenes.size () == 1 && l.empty () && l.lit.empty () && l.clips.empty () && set_at == 0) {
+				l.lit.swap (lit);
+				l.clips.swap (clips);
+				l.refs.swap (patches);
+				continue;
+			}
+			for (const LitVertex &v : lit) {
+				l.lit.push_back (v);
+				l.lit.back ().set += set_at;
+			}
+			for (const ClipColor &c : clips) {
+				l.clips.push_back (c);
+				if (c.a >= 0)
+					l.clips.back ().a += lit_at;
+				if (c.b >= 0)
+					l.clips.back ().b += lit_at;
+			}
+			for (size_t i = from; i < to; i++) {
+				ColorRef r = patches[i];
+
+				r.ref = r.ref >= 0 ? r.ref + lit_at : r.ref - clip_at;
+				l.refs.push_back (r);
+			}
+		}
+		drop_lighting ();
+		return;
+	}
 	if (lit.size () >= SPREAD_LEAST) {
 		if (!workers) {
 			/* The machine's thread lights too; the drawing thread and
@@ -830,10 +911,16 @@ Elan::flush_lighting ()
 	}
 	/* The scenes' vertices, each its own too */
 	auto colour = [this] (size_t from, size_t to) {
+		size_t k = std::upper_bound (scene_from.begin (), scene_from.end (), from) - scene_from.begin () - 1;
+
 		for (size_t i = from; i < to; i++) {
-			const Patch &p = patches[i];
-			Vertex &v = p.scene->vertices[p.at];
+			const ColorRef &p = patches[i];
 			const float *base, *offset;
+
+			while (k + 1 < scene_from.size () && scene_from[k + 1] <= i)
+				k++;
+
+			Vertex &v = scenes[k]->vertices[p.at];
 
 			if (p.ref >= 0) {
 				base = lit[p.ref].base;
@@ -861,6 +948,7 @@ Elan::drop_lighting ()
 	clips.clear ();
 	patches.clear ();
 	scenes.clear ();
+	scene_from.clear ();
 }
 
 /*
@@ -958,11 +1046,13 @@ Elan::emit (const Transformed &a, const Transformed &b, const Transformed &c)
 	int refs[3] = { list_gouraud ? a.ref : c.ref, list_gouraud ? b.ref : c.ref, c.ref };
 	Scene *scene = holly->elan_scene ().get ();
 
-	if (scenes.empty () || scenes.back ().get () != scene)
+	if (scenes.empty () || scenes.back ().get () != scene) {
 		scenes.push_back (holly->elan_scene ());
+		scene_from.push_back (patches.size ());
+	}
 	for (int k = 0; k < 3; k++)
 		if (refs[k] != -1)
-			patches.push_back ({ scene, (uint32_t) (at + k), refs[k] });
+			patches.push_back ({ (uint32_t) (at + k), refs[k] });
 }
 
 /*

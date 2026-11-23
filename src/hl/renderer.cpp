@@ -163,6 +163,41 @@ gl::compile_program (const char *vs_src, const char *fs_src)
 	return id;
 }
 
+GLuint
+gl::compile_compute (const char *cs_src)
+{
+	char info[512];
+	GLuint id, cs;
+	GLint status;
+
+	if (!GLEW_VERSION_4_3 && !GLEW_ARB_compute_shader)
+		return 0;
+	cs = glCreateShader (GL_COMPUTE_SHADER);
+	if (!cs)
+		return 0;
+	glShaderSource (cs, 1, (const GLchar **) &cs_src, NULL);
+	glCompileShader (cs);
+	glGetShaderiv (cs, GL_COMPILE_STATUS, &status);
+	if (!status) {
+		glGetShaderInfoLog (cs, sizeof (info), NULL, info);
+		HL_ERROR ("could not compile a GLSL compute shader: '%s'", info);
+		glDeleteShader (cs);
+		return 0;
+	}
+	id = glCreateProgram ();
+	glAttachShader (id, cs);
+	glLinkProgram (id);
+	glDeleteShader (cs);
+	glGetProgramiv (id, GL_LINK_STATUS, &status);
+	if (!status) {
+		glGetProgramInfoLog (id, sizeof (info), NULL, info);
+		HL_ERROR ("could not link a GLSL compute program: '%s'", info);
+		glDeleteProgram (id);
+		return 0;
+	}
+	return id;
+}
+
 void
 gl::destroy_program (GLuint program)
 {

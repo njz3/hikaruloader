@@ -389,6 +389,15 @@ void drawDisplayTab()
                                  "graphics card."));
     ImGui::PopTextWrapPos();
 
+    // ELAN_LIGHTING: read at each scene (naomi::Elan::flush_lighting)
+    const char *lightingLabels[] = {tr("Processor (CPU)"), tr("Graphics card (GPU)")};
+    ImGui::Combo(tr("NAOMI 2 lighting"), &cfg->elan_lighting, lightingLabels, IM_ARRAYSIZE(lightingLabels));
+    ImGui::PushTextWrapPos(0.0f);
+    ImGui::TextDisabled("%s", tr("The NAOMI 2's lights (Club Kart, Initial D, Virtua Fighter 4...): on the processor's cores, as the "
+                                 "board lights, or by the graphics card's shaders, the processor free for the rest (OpenGL 4.3; a "
+                                 "colour a step off here and there)."));
+    ImGui::PopTextWrapPos();
+
     ImGui::Checkbox(tr("Widescreen 3D (16:9)"), &cfg->widescreen);
     ImGui::BeginDisabled(!cfg->widescreen);
     const char *layerLabels[] = {tr("4:3, in the middle"), tr("Stretched to 16:9")};

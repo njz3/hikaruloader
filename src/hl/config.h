@@ -102,6 +102,15 @@ enum Widescreen2d {
 	NUM_WIDESCREEN_2D
 };
 
+/* ELAN_LIGHTING: where the NAOMI 2's vertices are lit (its Elan's lights):
+ * on the processor's cores, or by the graphics card's shaders */
+enum ElanLighting {
+	ELAN_LIGHTING_CPU,
+	ELAN_LIGHTING_GPU,
+
+	NUM_ELAN_LIGHTING
+};
+
 /* How the picture is scaled to the window: sharp, or smooth (fewer rows,
  * 240 on a CRT: each one the mean of two instead of one in two dropped) */
 enum ScaleFilter {
@@ -270,6 +279,8 @@ public:
 	/* The translucent polygons sorted at each pixel (OpenGL 4.3, without
 	 * MSAA), else each mesh as a whole; taken at once */
 	bool		sort_translucent_pixels;
+	/* An ElanLighting, taken at once */
+	int		elan_lighting;
 	/* The 3D at 16:9 (854x480), the 2D layers as widescreen_2d says;
 	 * taken at the game's start */
 	bool		widescreen;

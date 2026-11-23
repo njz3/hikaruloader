@@ -16,6 +16,23 @@ Next version
   PC (a laptop): the Elan's part of a frame went from about 11 ms to 5, the
   frame under the 16.7 ms of 60 frames a second there when the PC runs at
   its speed.
+- NAOMI 2: the lighting can also be done by the graphics card (*NAOMI 2
+  lighting* in the display settings, `ELAN_LIGHTING = GPU`; the processor
+  by default), its shaders lighting the vertices as the processor does,
+  the processor free for the rest. Club Kart, Initial D3, Virtua Fighter 4,
+  King of Route 66, Wild Riders and Soul Surfer the same to the pixel;
+  Beach Spikers and Virtua Striker 3 a few pixels a step off (1/255). At
+  Club Kart 2003's race start on the development PC, a quarter less of the
+  processor's time (all its cores: about 27 ms a frame to 21), the frame 4
+  to 7% shorter; more for a processor of few cores.
+- NAOMI: the screens a game draws once in a while are shown on, no longer
+  black after 3 frames: King of Route 66's white screen before its attract
+  (frame 2900 or so) flickered black; Metal Slug 6's "Now Loading" and its
+  WARNING, The King of Fighters Neowave's "Now Loading", F355 Challenge
+  Twin's link screen, the SEGA logos of Club Kart and 18 Wheeler... were
+  black or a band of garbage. With no new picture, the video memory was
+  shown, where the board's drawings are not; now the picture drawn while
+  the game shows the framebuffer it was drawn to, untouched since.
 
 
 0.8.12 (2026-11-20)

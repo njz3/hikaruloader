@@ -77,6 +77,10 @@ static const char *widescreen_2d_names[NUM_WIDESCREEN_2D] = {
 	"CENTERED", "STRETCHED"
 };
 
+static const char *elan_lighting_names[NUM_ELAN_LIGHTING] = {
+	"CPU", "GPU"
+};
+
 static const char *filter_names[NUM_FILTERS] = {
 	"NEAREST", "LINEAR"
 };
@@ -164,6 +168,7 @@ Config::set_defaults ()
 	cfg->capture_mouse = false;
 	cfg->threaded_rendering = true;
 	cfg->sort_translucent_pixels = true;
+	cfg->elan_lighting = ELAN_LIGHTING_CPU;
 	cfg->widescreen = false;
 	cfg->widescreen_2d = WIDESCREEN_2D_CENTERED;
 	cfg->scale_filter = FILTER_NEAREST;
@@ -437,6 +442,8 @@ Config::set_value (const char *section, const char *key, const char *value)
 			cfg->threaded_rendering = parse_bool (value);
 		else if (!strcasecmp (key, "SORT_TRANSLUCENT_PIXELS"))
 			cfg->sort_translucent_pixels = parse_bool (value);
+		else if (!strcasecmp (key, "ELAN_LIGHTING"))
+			cfg->elan_lighting = parse_name (value, elan_lighting_names, NUM_ELAN_LIGHTING, cfg->elan_lighting);
 		else if (!strcasecmp (key, "WIDESCREEN"))
 			cfg->widescreen = parse_bool (value);
 		else if (!strcasecmp (key, "WIDESCREEN_2D"))
@@ -1116,6 +1123,13 @@ Config::write (FILE *fp) const
 	         "# weak graphics card. true or false. Default: %s\n",
 	         bool_name (def.sort_translucent_pixels));
 	fprintf (fp, "SORT_TRANSLUCENT_PIXELS = %s\n", bool_name (cfg->sort_translucent_pixels));
+	fprintf (fp,
+	         "\n# The NAOMI 2's lighting (Club Kart, Initial D, Virtua Fighter 4...):\n"
+	         "# CPU, on the processor's cores, as the board lights; GPU, by the\n"
+	         "# graphics card's shaders, the processor free for the rest (OpenGL 4.3;\n"
+	         "# colours a step off at most here and there). Taken at once.\n"
+	         "# Default: %s\n", elan_lighting_names[def.elan_lighting]);
+	fprintf (fp, "ELAN_LIGHTING = %s\n", elan_lighting_names[cfg->elan_lighting]);
 	fprintf (fp,
 	         "\n# The 3D at 16:9 (854x480): the scene seen wider, its middle as the\n"
 	         "# game draws it. The game may leave objects out at the sides. Also in\n"

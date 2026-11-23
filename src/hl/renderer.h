@@ -102,6 +102,8 @@ void	clear_errors ();
  * first times, then once in a while) */
 GLenum	check_error (const char *file, int line);
 GLuint	compile_program (const char *vs_src, const char *fs_src);
+/* A compute shader's program (OpenGL 4.3); 0 when it cannot be made */
+GLuint	compile_compute (const char *cs_src);
 void	destroy_program (GLuint program);
 void	print_uniforms (GLuint program);
 } /* namespace gl */

@@ -442,6 +442,12 @@ stretched display mode, `SCALE_FILTER` is read as `SCALING_FILTER`, and
   with OpenGL 4.3 and no MSAA; off, or without them, each mesh is sorted as
   a whole, lighter for a weak graphics card. The Gaelco games' too (their
   chip sorts them so); off, each of their triangles is sorted whole.
+- *NAOMI 2 lighting* (`ELAN_LIGHTING`): the lights of the NAOMI 2 games
+  (Club Kart, Initial D, Virtua Fighter 4...) worked out by the processor
+  (CPU, on several of its cores, by default) or by the graphics card's
+  shaders (GPU, OpenGL 4.3), the processor then free for the rest: for a PC
+  whose processor slows these games while its graphics card has time to
+  spare. The colours may come a step off here and there.
 - *Widescreen 3D (16:9)*: the 3D is drawn at 854x480 and seen wider; its
   middle stays as the game draws it. The 2D (texts, logos) stays 4:3 in the
   middle, or is stretched to 16:9 for a game that needs it. The games were
