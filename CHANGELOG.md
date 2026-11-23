@@ -25,6 +25,10 @@ Next version
   Club Kart 2003's race start on the development PC, a quarter less of the
   processor's time (all its cores: about 27 ms a frame to 21), the frame 4
   to 7% shorter; more for a processor of few cores.
+- NAOMI: the textures checked for changes at each picture two and a half
+  times faster, a twentieth of Club Kart 2003's frame down to a fiftieth;
+  the drawing no longer asks the graphics driver for anything at each
+  frame (each question made it wait for the driver's own thread).
 - NAOMI: the screens a game draws once in a while are shown on, no longer
   black after 3 frames: King of Route 66's white screen before its attract
   (frame 2900 or so) flickered black; Metal Slug 6's "Now Loading" and its

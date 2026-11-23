@@ -1294,6 +1294,7 @@ BoardRenderer::setup ()
 		collect.u_opaque_depth = glGetUniformLocation (collect.id, "u_opaque_depth");
 		collect.u_node_flags = glGetUniformLocation (collect.id, "u_node_flags");
 		oit.resolve = hl::gl::compile_program (resolve_vs_src, resolve_fs_src);
+		oit.u_below = glGetUniformLocation (oit.resolve, "u_below");
 		oit.volumes = hl::gl::compile_program (mod_vs_src, mod_tr_fs_src);
 		oit.u_mode = glGetUniformLocation (oit.volumes, "u_mode");
 		oit.u_zscale = glGetUniformLocation (oit.volumes, "u_zscale");
@@ -1314,6 +1315,7 @@ BoardRenderer::setup ()
 	}
 	blit_program = hl::gl::compile_program (blit_vs_src, blit_fs_src);
 	u_blit_tex = glGetUniformLocation (blit_program, "u_tex");
+	u_blit_flip = glGetUniformLocation (blit_program, "u_flip");
 	u_blit_span = glGetUniformLocation (blit_program, "u_span");
 	mod_program = hl::gl::compile_program (mod_vs_src, mod_fs_src);
 	u_mod_zscale = glGetUniformLocation (mod_program, "u_zscale");
@@ -2392,7 +2394,7 @@ BoardRenderer::blit (const Picture &p)
 	glActiveTexture (GL_TEXTURE0);
 	glBindTexture (GL_TEXTURE_2D, p.texture);
 	glUniform1i (u_blit_tex, 0);
-	glUniform1i (glGetUniformLocation (blit_program, "u_flip"), p.flip ? 1 : 0);
+	glUniform1i (u_blit_flip, p.flip ? 1 : 0);
 	glUniform2f (u_blit_span, p.x0, p.x1 - p.x0 - 1.0f);
 	glDrawArrays (GL_TRIANGLES, 0, 3);
 	glBindVertexArray (0);
@@ -4894,8 +4896,10 @@ BoardRenderer::draw_translucent_per_pixel ()
 	glBlitFramebuffer (0, 0, oit.w, oit.h, 0, 0, oit.w, oit.h, GL_DEPTH_BUFFER_BIT, GL_NEAREST);
 	glBindFramebuffer (GL_FRAMEBUFFER, target->fb);
 
+	/* Emptied by the GPU: written from here, the driver would wait for
+	 * the last frame's collecting to be done with it */
 	glBindBuffer (GL_ATOMIC_COUNTER_BUFFER, oit.counter);
-	glBufferSubData (GL_ATOMIC_COUNTER_BUFFER, 0, sizeof (zero), &zero);
+	glClearBufferSubData (GL_ATOMIC_COUNTER_BUFFER, GL_R32UI, 0, sizeof (zero), GL_RED_INTEGER, GL_UNSIGNED_INT, &zero);
 	glBindBufferBase (GL_ATOMIC_COUNTER_BUFFER, 0, oit.counter);
 	glBindBufferBase (GL_SHADER_STORAGE_BUFFER, 0, oit.nodes);
 	glBindImageTexture (0, oit.heads, 0, GL_FALSE, 0, GL_READ_WRITE, GL_R32UI);
@@ -4938,7 +4942,7 @@ BoardRenderer::draw_translucent_per_pixel ()
 
 	/* Resolved over the whole picture */
 	glUseProgram (oit.resolve);
-	glUniform1i (glGetUniformLocation (oit.resolve, "u_below"), OIT_BELOW_UNIT);
+	glUniform1i (oit.u_below, OIT_BELOW_UNIT);
 	glBindVertexArray (oit.vao);
 	glDrawArrays (GL_TRIANGLES, 0, 3);
 	glMemoryBarrier (GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);

@@ -232,7 +232,7 @@ private:
 
 	Program program = {}, collect = {};
 	GLuint blit_program, mod_program;
-	GLint u_blit_tex, u_blit_span, u_mod_zscale, u_mod_width, u_mod_scale, u_mod_target;
+	GLint u_blit_tex, u_blit_span, u_blit_flip, u_mod_zscale, u_mod_width, u_mod_scale, u_mod_target;
 	GLint u_mod_view, u_mod_view_c, u_mod_view_f, u_mod_view_m;
 	/* Projection's */
 	GLuint proj_program = 0;
@@ -274,6 +274,8 @@ private:
 		/* The translucent modifier volumes' program */
 		GLuint volumes = 0;
 		GLint u_mode = -1, u_zscale = -1, u_width = -1, u_scale = -1, u_target = -1;
+		/* The resolving program's */
+		GLint u_below = -1;
 		GLint u_view = -1, u_view_c = -1, u_view_f = -1, u_view_m = -1;
 		unsigned w = 0, h = 0;
 		uint32_t max_nodes = 0;

@@ -768,7 +768,8 @@ Holly::ta_triangle (Vertex a, Vertex b, Vertex c, const Vertex *second, int *fir
 		scene->vertices1.push_back (b1);
 		scene->vertices1.push_back (c1);
 	}
-	scene->max_z = std::max ({ scene->max_z, a.z, b.z, c.z });
+	/* As std::max ({...}) would, without its call a triangle */
+	scene->max_z = std::max (std::max (std::max (scene->max_z, a.z), b.z), c.z);
 	batch.count += 3;
 }
 
@@ -1523,6 +1524,51 @@ Holly::shows_rendered () const
 
 /* The textures of a drawing as they are now (renders end before the games go
  * on writing the next picture to the VRAM; the frame is drawn much later) */
+/* A texture's bytes hashed, to tell when they change: xxHash64's rounds over
+ * 32-byte stripes, four lanes that run side by side (a word at a time, each
+ * multiply awaiting the last, took a twentieth of Club Kart's frame), what is
+ * left after */
+static uint64_t
+texture_hash (const uint8_t *p, size_t bytes, uint64_t seed)
+{
+	const uint64_t P1 = 0x9E3779B185EBCA87ull, P2 = 0xC2B2AE3D27D4EB4Full, P3 = 0x165667B19E3779F9ull;
+	const uint64_t P4 = 0x85EBCA77C2B2AE63ull;
+	auto rotl = [] (uint64_t x, int r) { return (x << r) | (x >> (64 - r)); };
+	auto mix = [&] (uint64_t acc, uint64_t in) { return rotl (acc + in * P2, 31) * P1; };
+	uint64_t v[4] = { seed + P1 + P2, seed + P2, seed, seed - P1 }, h;
+	size_t i = 0;
+
+	for (; i + 32 <= bytes; i += 32)
+		for (int k = 0; k < 4; k++) {
+			uint64_t w;
+
+			memcpy (&w, p + i + k * 8, 8);
+			v[k] = mix (v[k], w);
+		}
+	h = rotl (v[0], 1) + rotl (v[1], 7) + rotl (v[2], 12) + rotl (v[3], 18);
+	for (int k = 0; k < 4; k++)
+		h = (h ^ mix (0, v[k])) * P1 + P4;
+	h += bytes;
+	for (; i + 8 <= bytes; i += 8) {
+		uint64_t w;
+
+		memcpy (&w, p + i, 8);
+		h = rotl (h ^ mix (0, w), 27) * P1 + P4;
+	}
+	for (; i + 4 <= bytes; i += 4) {
+		uint32_t w;
+
+		memcpy (&w, p + i, 4);
+		h = rotl (h ^ (uint64_t) w * P1, 23) * P2 + P3;
+	}
+	h ^= h >> 33;
+	h *= P2;
+	h ^= h >> 29;
+	h *= P3;
+	h ^= h >> 32;
+	return h;
+}
+
 void
 Holly::keep_textures (Draw &d)
 {
@@ -1533,22 +1579,19 @@ Holly::keep_textures (Draw &d)
 		if (d.textures.count (key))
 			return;
 		uint32_t bytes = texture_size (tcw, tsp, d.text_control);
-		uint32_t addr = (tcw & 0x1FFFFF) << 3, i;
+		uint32_t addr = (tcw & 0x1FFFFF) << 3;
 
 		if (addr + bytes > vram->size ())
 			return;
-		const uint32_t *p = (const uint32_t *) vram->ptr (addr);
-		uint64_t hash = (0xCBF29CE484222325ull ^ stride) * 0x100000001B3ull;
-
-		for (i = 0; i < bytes / 4; i++)
-			hash = (hash ^ p[i]) * 0x100000001B3ull;
+		const uint8_t *p = (const uint8_t *) vram->ptr (addr);
+		uint64_t hash = texture_hash (p, bytes, stride);
 
 		std::shared_ptr<const TextureData> &kept = kept_textures[key];
 
 		if (!kept || kept->hash != hash) {
 			std::shared_ptr<TextureData> copy = std::make_shared<TextureData> ();
 
-			copy->bytes.assign ((const uint8_t *) p, (const uint8_t *) p + bytes);
+			copy->bytes.assign (p, p + bytes);
 			copy->hash = hash;
 			kept = copy;
 		}
