@@ -726,7 +726,7 @@ Holly::ta_batch ()
 }
 
 void
-Holly::ta_triangle (Vertex a, Vertex b, Vertex c, const Vertex *second)
+Holly::ta_triangle (Vertex a, Vertex b, Vertex c, const Vertex *second, int *first)
 {
 	Scene *scene = building.get ();
 	unsigned cull = (ta.isp >> 27) & 3;
@@ -757,6 +757,8 @@ Holly::ta_triangle (Vertex a, Vertex b, Vertex c, const Vertex *second)
 			return;
 	}
 	Batch &batch = ta_batch ();
+	if (first)
+		*first = (int) scene->vertices.size ();
 	scene->vertices.push_back (a);
 	scene->vertices.push_back (b);
 	scene->vertices.push_back (c);
@@ -1212,14 +1214,18 @@ Holly::elan_polygon (unsigned list, uint32_t isp, uint32_t tsp, uint32_t tcw, bo
 	ta.new_batch = 1;
 }
 
-void
+int
 Holly::elan_triangle (const Vertex &a, const Vertex &b, const Vertex &c)
 {
+	int first = -1;
+
 	try {
-		ta_triangle (a, b, c);
+		ta_triangle (a, b, c, NULL, &first);
 	} catch (const std::bad_alloc &) {
 		no_memory ("a triangle");
+		first = -1;
 	}
+	return first;
 }
 
 void
@@ -1368,6 +1374,10 @@ Holly::start_render ()
 {
 	uint32_t base = pvr[PVR_PARAM_BASE] & 0x00F00000;
 	Context *found = NULL;
+
+	/* The Elan's vertices coloured in the scenes */
+	if (board->elan)
+		board->elan->flush_lighting ();
 
 	after (RENDER_LINES, IST_EOR_ISP | IST_EOR_TSP | IST_EOR_VIDEO);
 
@@ -1541,6 +1551,9 @@ Holly::pvr_write (unsigned reg, uint32_t val, uint32_t old)
 			ta.new_batch = 1;
 			pvr[PVR_TA_NEXT_OPB] = pvr[PVR_OPB_INIT];
 			pvr[PVR_TA_ITP] = pvr[PVR_TA_ISP_BASE];
+			/* The Elan's vertices coloured in the scene ending */
+			if (board->elan)
+				board->elan->flush_lighting ();
 			building = new_scene ();
 			for (Context &c : contexts)
 				if (c.base == base)

@@ -44,6 +44,8 @@ public:
 		MEMCTL,
 		GPU_CP,		/* the command processor: the meshes built */
 		GPU_EVENTS,	/* hblank, vblank: the GPU's IRQs and lists */
+		ELAN,		/* the NAOMI 2's: its lists transformed and lit, in
+				 * the master SH-4's time (its writes start them) */
 		MIE,		/* the Z80, the JVS bus, the I/O board */
 		AICA,		/* both, all of them */
 		AICA_ARM,	/* their ARM7s */

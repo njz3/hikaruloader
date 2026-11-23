@@ -159,7 +159,7 @@ Profiling and debugging variables
 
 In the environment:
 
-- `HR_PROFILE=1` measures each part of the frames (the SH-4s, the GPU, the
+- `HR_PROFILE=1` measures each part of the frames (the SH-4s, the NAOMI's master one and its Elan apart, the GPU, the
   MIE, the AICAs and their ARM7s, voices and effects, the renderer and its
   drawing thread, the sound output) and writes the tree to the log on the
   way out, in milliseconds a frame. `HR_ARM_PROFILE=1` and
@@ -221,6 +221,14 @@ In the environment:
   1964-01-01 00:00, decimal or 0x hex) whatever the PC's time. In agent
   mode it starts at 0x5BFC8900 (26 Nov 2012 00:00) without it, so that runs
   repeat.
+- The NAOMI 2's Elan lights its vertices late (`src/mach/naomi/naomi-elan.cpp`,
+  "The Lighting"): each kept with the lights of its time, its triangles sent
+  with their colours to come, then all lit on several threads before the
+  Holly draws the scene or starts another (`Elan::flush_lighting`, from
+  `Holly::start_render` and `PVR_LIST_INIT`). Each vertex alone, the same
+  colours whatever the threads: Club Kart 2003, Club Kart Prize, Virtua
+  Fighter 4 and Initial D3 pixel-identical to 0.8.12, their memories too
+  (`tools/regress.py`). `HR_PROFILE`'s Elan counts the flush.
 - `HR_DISPLAY=<n>`: the window opens on SDL's display n (the log lists them
   at the start, `INDEX:n`), for runs kept off the monitor one works on; the
   window centred again stays on its monitor.

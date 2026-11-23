@@ -5,6 +5,19 @@ What each version brings, for those who play. How the versions are numbered
 and released: [DEVELOPMENT.md](DEVELOPMENT.md), "Versions and releases".
 
 
+Next version
+------------
+
+- NAOMI 2 (Club Kart, Initial D, Virtua Fighter 4...): the Elan's lighting
+  done on several of the PC's cores, four lights at a time, and the
+  specular terms of a model without a specular colour left out; the same
+  pictures to the pixel. Club Kart 2003's race start, some 57000 vertices
+  of 6 lights a frame, slowed to about 45 frames a second on the development
+  PC (a laptop): the Elan's part of a frame went from about 11 ms to 5, the
+  frame under the 16.7 ms of 60 frames a second there when the PC runs at
+  its speed.
+
+
 0.8.12 (2026-11-20)
 -------------------
 

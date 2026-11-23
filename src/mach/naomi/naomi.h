@@ -495,7 +495,11 @@ public:
 	int	 elan_list () const { return ta.list; }
 	/* A polygon's words, as the TA's header would have left them */
 	void	 elan_polygon (unsigned list, uint32_t isp, uint32_t tsp, uint32_t tcw, bool shadow);
-	void	 elan_triangle (const Vertex &a, const Vertex &b, const Vertex &c);
+	/* The index of its first vertex in the scene, -1 when it was left
+	 * out (culled, behind) */
+	int	 elan_triangle (const Vertex &a, const Vertex &b, const Vertex &c);
+	/* The scene its triangles go to */
+	const std::shared_ptr<Scene> &elan_scene () const { return building; }
 	/* A modifier volume, and its triangles: three xyz on the screen */
 	void	 elan_modifier (unsigned list, uint32_t isp);
 	void	 elan_mod_triangle (const float *xyz);
@@ -523,7 +527,7 @@ private:
 	void	 ta_sprite (const uint32_t *w);
 	void	 ta_modifier (const uint32_t *w);
 	void	 ta_store (Vertex v, const Vertex &v1, bool end);
-	void	 ta_triangle (Vertex a, Vertex b, Vertex c, const Vertex *second = NULL);
+	void	 ta_triangle (Vertex a, Vertex b, Vertex c, const Vertex *second = NULL, int *first = NULL);
 	Batch	&ta_batch ();
 	void	 yuv_data (const uint32_t *w, unsigned words);
 	void	 yuv_block ();
@@ -616,6 +620,7 @@ private:
 class Elan : public hl::Device {
 public:
 	Elan (Board *board, hl::Buffer *ram);
+	~Elan () override;
 
 	int	 get (unsigned size, uint32_t addr, void *val) override;
 	int	 put (unsigned size, uint32_t addr, uint64_t val) override;
@@ -625,11 +630,15 @@ public:
 
 	/* As each line ends */
 	void	 line ();
+	/* The vertices lit since the last time, their colours put in the
+	 * scenes: before the Holly draws a scene or starts another */
+	void	 flush_lighting ();
 
 private:
 	enum { MAX_LIGHTS = 16 };
 
 	struct Transformed;
+	struct Workers;
 	struct Light {
 		float	 color[3];
 		float	 direction[3];	/* to the light */
@@ -637,6 +646,48 @@ private:
 		bool	 parallel, diffuse, specular, dist_mode;
 		unsigned routing, dmode, smode;
 		float	 dist_a, dist_b, angle_a, angle_b;
+	};
+	/* The lights' fields one by one, for light_terms ()'s four lights at a
+	 * time (SSE); masks all ones or zero */
+	enum {
+		LS_DX, LS_DY, LS_DZ, LS_PX, LS_PY, LS_PZ, LS_R, LS_G, LS_B,
+		LS_DIST_A, LS_DIST_B, LS_ANGLE_A, LS_ANGLE_B, NUM_LS
+	};
+	enum { LM_PARALLEL, LM_DIST_MODE, LM_HAS_DIST, LM_HAS_ANGLE, NUM_LM };
+	/* What the lighting reads, as update_lights () and update_gmp () leave
+	 * it; a list's vertices are lit later with the one of their time */
+	struct LightSet {
+		unsigned count;
+		Light	 lights[MAX_LIGHTS];
+		float	 soa[NUM_LS][MAX_LIGHTS];
+		uint32_t masks[NUM_LM][MAX_LIGHTS];
+		float	 gloss;
+		bool	 use_base_over, ambient_material_base, ambient_material_offset;
+		float	 ambient_base[4], ambient_offset[4];
+	};
+	/* A vertex to light: its position, normal and colours before; then its
+	 * colours as the screen takes them (an untextured one's base with its
+	 * offset added) */
+	struct LitVertex {
+		float	 pos[3], normal[3];
+		float	 base[4], offset[4];
+		uint32_t set;
+		bool	 add;
+	};
+	/* A point where a clipped edge crosses the near plane: its colours
+	 * between two vertices', each lit (a LitVertex) or known (a, b -1) */
+	struct ClipColor {
+		int	 a, b;
+		float	 t;
+		float	 base[2][4], offset[2][4];
+		float	 out_base[4], out_offset[4];
+	};
+	/* A scene's vertex to colour: a LitVertex's (ref >= 0) or a
+	 * ClipColor's (ref -2 - its index) */
+	struct Patch {
+		Scene	*scene;
+		uint32_t at;
+		int	 ref;
 	};
 
 	void	 command_word (unsigned index, uint32_t data);
@@ -658,10 +709,18 @@ private:
 	void	 modifier_triangle (const float *a, const float *b, const float *c);
 	bool	 in_depth_range (const uint32_t *w, uint32_t count, unsigned words, bool *clip) const;
 	void	 view_position (const uint32_t *w, float *out) const;
-	void	 light_vertex (Transformed &v, const float *normal) const;
+	/* The light set of the vertices lit now, kept once for them */
+	uint32_t light_set ();
+	static void light (const LightSet &set, LitVertex &v);
+	static void light_terms (const LightSet &set, const float *pos, const float *normal, const float *reflected,
+		                 float (*color)[MAX_LIGHTS], float *to_normal, float *to_reflected);
 	void	 project (Transformed &v) const;
-	void	 clip_point (const Transformed &a, float da, const Transformed &b, float db, Transformed &out) const;
+	void	 clip_point (const Transformed &a, float da, const Transformed &b, float db, Transformed &out);
 	void	 triangle (const Transformed &a, const Transformed &b, const Transformed &c, bool clip);
+	/* A triangle to the Holly, its vertices to colour later kept */
+	void	 emit (const Transformed &a, const Transformed &b, const Transformed &c);
+	/* What a reset or a state leaves of the vertices to light: nothing */
+	void	 drop_lighting ();
 
 	Board	*board;
 	hl::Buffer *ram;
@@ -685,12 +744,21 @@ private:
 	float	 env_u, env_v;
 	uint32_t gmp_params;
 	float	 gmp_diffuse[4], gmp_specular[4];
-	float	 gloss;
 	bool	 lights_changed;
-	Light	 lights[MAX_LIGHTS];
-	unsigned light_count;
-	bool	 use_base_over, ambient_material_base, ambient_material_offset;
-	float	 ambient_base[4], ambient_offset[4];
+	LightSet ls;
+	/* Its changes, and the one kept last in sets */
+	uint64_t ls_changes, ls_kept;
+
+	/* The vertices lit at the next flush_lighting (): on several threads,
+	 * each alone (the same colours whatever their number), the clipped
+	 * points' after, then the scenes' vertices coloured */
+	std::vector<LightSet> sets;
+	std::vector<LitVertex> lit;
+	std::vector<ClipColor> clips;
+	std::vector<Patch> patches;
+	std::vector<std::shared_ptr<Scene>> scenes;
+	bool	 list_gouraud;
+	std::unique_ptr<Workers> workers;
 
 	/* Within a model */
 	bool	 culling_reversed, open_volume, shadowed_volume;

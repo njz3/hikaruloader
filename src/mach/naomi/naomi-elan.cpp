@@ -21,10 +21,13 @@
 
 #include <algorithm>
 #include <cmath>
+#include <functional>
+#include <emmintrin.h>
 #include <cstring>
 
 #include "hl/core.h"
 #include "hl/machine.h"
+#include "hl/profile.h"
 #include "hl/state.h"
 
 #include "cpu/sh/sh4.h"
@@ -188,6 +191,10 @@ struct Elan::Transformed {
 	float u, v;
 	float base[4], offset[4];
 	Vertex screen;
+	/* Its screen's colours, and those base and offset stand for, to come
+	 * from a vertex lit later (a Patch's ref; -1: those here); a flat
+	 * triangle's last vertex has the next one's screen colours */
+	int ref, fref;
 };
 
 Elan::Elan (Board *board_, hl::Buffer *ram_) :
@@ -233,6 +240,7 @@ Elan::reset (hl::ResetType type)
 	memset (s.cmd, 0, sizeof (s.cmd));
 	culling_reversed = open_volume = shadowed_volume = false;
 	model_tsp = 0;
+	drop_lighting ();
 	if (type == hl::RESET_HARD) {
 		ram->clear ();
 		reset_projection ();
@@ -340,7 +348,12 @@ Elan::command_word (unsigned index, uint32_t data)
 	if (index != 7)
 		return;
 	commands = 0;
-	if (run ((const uint8_t *) s.cmd, sizeof (s.cmd), 0) && !s.dma_lines)
+	bool ok;
+	{
+		HL_PROFILE (ELAN);
+		ok = run ((const uint8_t *) s.cmd, sizeof (s.cmd), 0);
+	}
+	if (ok && !s.dma_lines)
 		s.reg74 |= 2;
 }
 
@@ -403,7 +416,8 @@ Elan::update_gmp ()
 	memset (gmp_diffuse, 0, sizeof (gmp_diffuse));
 	memset (gmp_specular, 0, sizeof (gmp_specular));
 	gmp_params = 0;
-	gloss = 0.0f;
+	ls.gloss = 0.0f;
+	ls_changes++;
 	if (s.gmp == NONE || s.gmp > RAM_SIZE - SIZE_GMP)
 		return;
 
@@ -411,7 +425,7 @@ Elan::update_gmp ()
 	unsigned frac = w[1] & 31, exp = (w[1] >> 5) & 7;
 
 	gmp_params = w[2];
-	gloss = powf (2.0f, (float) exp - 1.0f) * (1.0f + (float) frac / 32.0f);
+	ls.gloss = powf (2.0f, (float) exp - 1.0f) * (1.0f + (float) frac / 32.0f);
 	if (gmp_params & GMP_D0)
 		unpack (w[3], gmp_diffuse);
 	if (gmp_params & GMP_S0)
@@ -427,25 +441,26 @@ Elan::update_lights ()
 	if (!lights_changed)
 		return;
 	lights_changed = false;
-	light_count = 0;
-	use_base_over = false;
-	ambient_material_base = ambient_material_offset = false;
-	memset (ambient_base, 0, sizeof (ambient_base));
-	memset (ambient_offset, 0, sizeof (ambient_offset));
+	ls_changes++;
+	ls.count = 0;
+	ls.use_base_over = false;
+	ls.ambient_material_base = ls.ambient_material_offset = false;
+	memset (ls.ambient_base, 0, sizeof (ls.ambient_base));
+	memset (ls.ambient_offset, 0, sizeof (ls.ambient_offset));
 	if (s.light_model == NONE || s.light_model > RAM_SIZE - SIZE_LIGHT)
 		return;
 
 	const uint32_t *m = (const uint32_t *) (ram_base + s.light_model);
 	uint32_t diffuse_mask = m[2] & 0xFFFF, specular_mask = m[2] >> 16;
 
-	ambient_material_base = (m[1] >> 5) & 1;
-	ambient_material_offset = (m[1] >> 6) & 1;
-	use_base_over = (m[1] >> 9) & 1;
-	unpack (m[3], ambient_base);
-	unpack (m[4], ambient_offset);
+	ls.ambient_material_base = (m[1] >> 5) & 1;
+	ls.ambient_material_offset = (m[1] >> 6) & 1;
+	ls.use_base_over = (m[1] >> 9) & 1;
+	unpack (m[3], ls.ambient_base);
+	unpack (m[4], ls.ambient_offset);
 
 	for (i = 0; i < MAX_LIGHTS; i++) {
-		Light &l = lights[light_count];
+		Light &l = ls.lights[ls.count];
 
 		l.diffuse = (diffuse_mask >> i) & 1;
 		l.specular = (specular_mask >> i) & 1;
@@ -483,103 +498,369 @@ Elan::update_lights ()
 		}
 		if (l.parallel)
 			normalize3 (l.direction);
-		light_count++;
+		{
+			unsigned n = ls.count;
+			const float *f[NUM_LS] = {
+				&l.direction[0], &l.direction[1], &l.direction[2], &l.position[0], &l.position[1],
+				&l.position[2], &l.color[0], &l.color[1], &l.color[2], &l.dist_a, &l.dist_b,
+				&l.angle_a, &l.angle_b,
+			};
+
+			for (unsigned k = 0; k < NUM_LS; k++)
+				ls.soa[k][n] = *f[k];
+			ls.masks[LM_PARALLEL][n] = l.parallel ? ~0u : 0;
+			ls.masks[LM_DIST_MODE][n] = l.dist_mode ? ~0u : 0;
+			ls.masks[LM_HAS_DIST][n] = (l.dist_a != 1.0f || l.dist_b != 0.0f) ? ~0u : 0;
+			ls.masks[LM_HAS_ANGLE][n] = (l.angle_a != 1.0f || l.angle_b != 0.0f) ? ~0u : 0;
+		}
+		ls.count++;
 	}
 }
 
 /*
  * The Lighting
+ *
+ * A list's vertices are not lit as they come: each is kept with the lights
+ * of its time (a LightSet, once for all those of the same lights), its
+ * triangles sent to the Holly with their colours to come, and the clipped
+ * edges' points with the vertices they are between. Before the Holly draws a
+ * scene or starts another (flush_lighting ()), all of them are lit on several
+ * threads, each vertex alone (the same colours whatever the threads), the
+ * clipped points worked out from them, and the scenes' vertices given their
+ * colours: Club Kart's start, some 57000 vertices of 6 lights a frame in 100
+ * lists of 600 or so, took half the frame on one thread. Nothing else of the
+ * Holly's reads the colours before it draws them (its batches, its culling,
+ * its depths are the positions').
  */
 
+/* A cosine to the gloss's power: none when the light is behind and all
+ * when straight without powf, as powf gives them (the gloss above 0) */
+static inline float
+power01 (float x, float gloss)
+{
+	if (x <= 0.0f)
+		return 0.0f;
+	if (x >= 1.0f)
+		return 1.0f;
+	return powf (x, gloss);
+}
+
+/* SSE: f where the mask is set, else g */
+static inline __m128
+select4 (__m128 mask, __m128 f, __m128 g)
+{
+	return _mm_or_ps (_mm_and_ps (mask, f), _mm_andnot_ps (mask, g));
+}
+
+/* clamp01 (), its comparisons the same (a NaN goes through) */
+static inline __m128
+clamp4 (__m128 f)
+{
+	const __m128 zero = _mm_setzero_ps (), one = _mm_set1_ps (1.0f);
+
+	return select4 (_mm_cmplt_ps (f, zero), zero, select4 (_mm_cmpgt_ps (f, one), one, f));
+}
+
+/* dot3 (), its sums in the same order */
+static inline __m128
+dot4 (__m128 ax, __m128 ay, __m128 az, __m128 bx, __m128 by, __m128 bz)
+{
+	return _mm_add_ps (_mm_add_ps (_mm_mul_ps (ax, bx), _mm_mul_ps (ay, by)), _mm_mul_ps (az, bz));
+}
+
+/* Each light's attenuated colour and its cosines to the normal and to the
+ * reflected eye, four lights at a time: the same operations as one at a
+ * time, in the same order (the sums stay a light at a time, in the lights'
+ * order: light ()) */
 void
-Elan::light_vertex (Transformed &v, const float *normal) const
+Elan::light_terms (const LightSet &set, const float *pos, const float *normal, const float *reflected,
+                   float (*color)[MAX_LIGHTS], float *to_normal, float *to_reflected)
+{
+	const __m128 zero = _mm_setzero_ps (), one = _mm_set1_ps (1.0f);
+	const __m128 vx = _mm_set1_ps (pos[0]), vy = _mm_set1_ps (pos[1]), vz = _mm_set1_ps (pos[2]);
+	const __m128 nx = _mm_set1_ps (normal[0]), ny = _mm_set1_ps (normal[1]), nz = _mm_set1_ps (normal[2]);
+	const __m128 rx = _mm_set1_ps (reflected[0]), ry = _mm_set1_ps (reflected[1]), rz = _mm_set1_ps (reflected[2]);
+	unsigned i;
+
+	for (i = 0; i < set.count; i += 4) {
+		auto field = [&] (unsigned f) { return _mm_loadu_ps (&set.soa[f][i]); };
+		auto mask = [&] (unsigned m) { return _mm_castsi128_ps (_mm_loadu_si128 ((const __m128i *) &set.masks[m][i])); };
+		const __m128 parallel = mask (LM_PARALLEL);
+		const __m128 dx = field (LS_DX), dy = field (LS_DY), dz = field (LS_DZ);
+		/* To the light: its direction, or from the vertex to it,
+		 * normalised (normalize3 ()) */
+		__m128 tx = select4 (parallel, dx, _mm_sub_ps (field (LS_PX), vx));
+		__m128 ty = select4 (parallel, dy, _mm_sub_ps (field (LS_PY), vy));
+		__m128 tz = select4 (parallel, dz, _mm_sub_ps (field (LS_PZ), vz));
+		const __m128 dist = _mm_sqrt_ps (dot4 (tx, ty, tz, tx, ty, tz));
+		const __m128 norm = _mm_andnot_ps (parallel, _mm_cmpgt_ps (dist, zero));
+
+		tx = select4 (norm, _mm_div_ps (tx, dist), tx);
+		ty = select4 (norm, _mm_div_ps (ty, dist), ty);
+		tz = select4 (norm, _mm_div_ps (tz, dist), tz);
+
+		/* By the distance, then the angle: a point's light */
+		__m128 kd = clamp4 (_mm_add_ps (_mm_mul_ps (field (LS_DIST_B),
+		                                           select4 (mask (LM_DIST_MODE), dist, _mm_div_ps (one, dist))),
+		                                field (LS_DIST_A)));
+		const __m128 to_axis = dot4 (tx, ty, tz, dx, dy, dz);
+		const __m128 cosine = _mm_sub_ps (one, select4 (_mm_cmplt_ps (zero, to_axis), to_axis, zero));
+		__m128 ka = clamp4 (_mm_add_ps (_mm_mul_ps (cosine, field (LS_ANGLE_B)), field (LS_ANGLE_A)));
+
+		kd = select4 (_mm_andnot_ps (parallel, mask (LM_HAS_DIST)), kd, one);
+		ka = select4 (_mm_andnot_ps (parallel, mask (LM_HAS_ANGLE)), ka, one);
+		for (unsigned c = 0; c < 3; c++)
+			_mm_storeu_ps (&color[c][i], _mm_mul_ps (_mm_mul_ps (field (LS_R + c), kd), ka));
+		_mm_storeu_ps (&to_normal[i], dot4 (nx, ny, nz, tx, ty, tz));
+		_mm_storeu_ps (&to_reflected[i], dot4 (tx, ty, tz, rx, ry, rz));
+	}
+}
+
+/* A vertex lit with its lights, then the ambient, the colours clamped and an
+ * untextured one's offset added to its base, as the screen takes them */
+void
+Elan::light (const LightSet &set, LitVertex &v)
 {
 	float diffuse[3] = { 0, 0, 0 }, specular[3] = { 0, 0, 0 };
 	float diffuse_alpha = 0.0f, specular_alpha = 0.0f;
 	float eye[3] = { v.pos[0], v.pos[1], v.pos[2] }, reflected[3], d;
+	/* light_terms ()'s (the lights four at a time: MAX_LIGHTS a multiple
+	 * of 4) */
+	alignas (16) float color[3][MAX_LIGHTS], to_normal[MAX_LIGHTS], to_reflected[MAX_LIGHTS];
 	unsigned i, c;
 
 	normalize3 (eye);
-	d = 2.0f * dot3 (normal, eye);
+	d = 2.0f * dot3 (v.normal, eye);
 	for (c = 0; c < 3; c++)
-		reflected[c] = eye[c] - d * normal[c];
+		reflected[c] = eye[c] - d * v.normal[c];
+	light_terms (set, v.pos, v.normal, reflected, color, to_normal, to_reflected);
 
-	for (i = 0; i < light_count; i++) {
-		const Light &l = lights[i];
-		float to_light[3], color[3] = { l.color[0], l.color[1], l.color[2] };
+	/* No specular colour (a model without one): its terms add zeros, the
+	 * sums never -0, so they are left out with their powf (a third of
+	 * the lighting's time; a NaN's cosine aside) */
+	const bool no_offset = v.offset[0] == 0.0f && v.offset[1] == 0.0f && v.offset[2] == 0.0f;
 
-		if (l.parallel) {
-			memcpy (to_light, l.direction, sizeof (to_light));
-		} else {
-			float dist;
+	for (i = 0; i < set.count; i++) {
+		const Light &l = set.lights[i];
 
-			for (c = 0; c < 3; c++)
-				to_light[c] = l.position[c] - v.pos[c];
-			dist = sqrtf (dot3 (to_light, to_light));
-			normalize3 (to_light);
-			if (l.dist_a != 1.0f || l.dist_b != 0.0f) {
-				float k = clamp01 (l.dist_b * (l.dist_mode ? dist : 1.0f / dist) + l.dist_a);
-
-				for (c = 0; c < 3; c++)
-					color[c] *= k;
-			}
-			if (l.angle_a != 1.0f || l.angle_b != 0.0f) {
-				float cosine = 1.0f - std::max (0.0f, dot3 (to_light, l.direction));
-				float k = clamp01 (cosine * l.angle_b + l.angle_a);
-
-				for (c = 0; c < 3; c++)
-					color[c] *= k;
-			}
-		}
 		if (l.diffuse) {
 			float factor = (l.routing & ROUTE_SUB) ? -BASE_FACTOR : BASE_FACTOR;
 
 			if (l.dmode == LMODE_SINGLE_SIDED)
-				factor *= std::max (dot3 (normal, to_light), 0.0f);
+				factor *= std::max (to_normal[i], 0.0f);
 			else if (l.dmode == LMODE_DOUBLE_SIDED)
-				factor *= fabsf (dot3 (normal, to_light));
+				factor *= fabsf (to_normal[i]);
 			if (l.routing & ROUTE_ALPHA) {
-				diffuse_alpha += color[0] * factor;
+				diffuse_alpha += color[0][i] * factor;
 			} else {
 				float *to = (l.routing & ROUTE_DIFF_TO_OFFSET) ? specular : diffuse;
 
 				for (c = 0; c < 3; c++)
-					to[c] += color[c] * factor * v.base[c];
+					to[c] += color[c][i] * factor * v.base[c];
 			}
 		}
-		if (l.specular) {
+		if (l.specular && !(no_offset && !(l.routing & ROUTE_ALPHA))) {
 			float factor = (l.routing & ROUTE_SUB) ? -BASE_FACTOR : BASE_FACTOR;
 
 			if (l.smode == LMODE_SINGLE_SIDED)
-				factor *= clamp01 (powf (std::max (dot3 (to_light, reflected), 0.0f), gloss));
+				factor *= clamp01 (power01 (std::max (to_reflected[i], 0.0f), set.gloss));
 			else if (l.smode == LMODE_DOUBLE_SIDED)
-				factor *= clamp01 (powf (fabsf (dot3 (to_light, reflected)), gloss));
+				factor *= clamp01 (power01 (fabsf (to_reflected[i]), set.gloss));
 			if (l.routing & ROUTE_ALPHA) {
-				specular_alpha += color[0] * factor;
+				specular_alpha += color[0][i] * factor;
 			} else {
 				float *to = (l.routing & ROUTE_SPEC_TO_OFFSET) ? specular : diffuse;
 
 				for (c = 0; c < 3; c++)
-					to[c] += color[c] * factor * v.offset[c];
+					to[c] += color[c][i] * factor * v.offset[c];
 			}
 		}
 	}
 	for (c = 0; c < 3; c++) {
-		diffuse[c] += ambient_base[c] * (ambient_material_base ? v.base[c] : 1.0f);
-		specular[c] += ambient_offset[c] * (ambient_material_offset ? v.offset[c] : 1.0f);
+		diffuse[c] += set.ambient_base[c] * (set.ambient_material_base ? v.base[c] : 1.0f);
+		specular[c] += set.ambient_offset[c] * (set.ambient_material_offset ? v.offset[c] : 1.0f);
 		v.base[c] = diffuse[c];
 		v.offset[c] = specular[c];
 	}
 	v.base[3] += diffuse_alpha;
 	v.offset[3] += specular_alpha;
 	/* What is over 1 in the base goes to the offset */
-	if (use_base_over)
+	if (set.use_base_over)
 		for (c = 0; c < 4; c++)
 			v.offset[c] += std::max (v.base[c] - 1.0f, 0.0f);
 	for (c = 0; c < 4; c++) {
 		v.base[c] = clamp01 (v.base[c]);
 		v.offset[c] = clamp01 (v.offset[c]);
 	}
+	if (v.add)
+		for (c = 0; c < 4; c++)
+			v.base[c] += v.offset[c];
+}
+
+uint32_t
+Elan::light_set ()
+{
+	if (sets.empty () || ls_kept != ls_changes) {
+		sets.push_back (ls);
+		ls_kept = ls_changes;
+	}
+	return (uint32_t) sets.size () - 1;
+}
+
+/* flush_lighting ()'s threads: the vertices in chunks, each thread taking the
+ * next as it is done, the caller too */
+struct Elan::Workers {
+	std::vector<std::thread> threads;
+	std::mutex lock;
+	std::condition_variable wake, done;
+	std::function<void (size_t, size_t)> work;
+	std::atomic<size_t> next { 0 };
+	size_t total = 0, chunk = 1;
+	unsigned running = 0;
+	uint64_t round = 0;
+	bool quit = false;
+
+	explicit Workers (unsigned n)
+	{
+		for (unsigned i = 0; i < n; i++)
+			threads.emplace_back ([this] { loop (); });
+	}
+
+	~Workers ()
+	{
+		{
+			std::lock_guard<std::mutex> hold (lock);
+			quit = true;
+		}
+		wake.notify_all ();
+		for (std::thread &t : threads)
+			t.join ();
+	}
+
+	void take ()
+	{
+		for (;;) {
+			size_t at = next.fetch_add (chunk);
+
+			if (at >= total)
+				return;
+			work (at, std::min (total, at + chunk));
+		}
+	}
+
+	void loop ()
+	{
+		uint64_t seen = 0;
+		std::unique_lock<std::mutex> hold (lock);
+
+		for (;;) {
+			wake.wait (hold, [&] { return quit || round != seen; });
+			if (quit)
+				return;
+			seen = round;
+			hold.unlock ();
+			take ();
+			hold.lock ();
+			if (--running == 0)
+				done.notify_one ();
+		}
+	}
+
+	void run (size_t n, size_t chunk_, std::function<void (size_t, size_t)> fn)
+	{
+		{
+			std::lock_guard<std::mutex> hold (lock);
+			work = std::move (fn);
+			total = n;
+			chunk = chunk_;
+			next = 0;
+			running = (unsigned) threads.size ();
+			round++;
+		}
+		wake.notify_all ();
+		take ();
+		std::unique_lock<std::mutex> hold (lock);
+		done.wait (hold, [&] { return running == 0; });
+	}
+};
+
+Elan::~Elan ()
+{
+}
+
+void
+Elan::flush_lighting ()
+{
+	/* Fewer on one thread: waking the others would cost more */
+	static const size_t SPREAD_LEAST = 2048, CHUNK = 256;
+
+	if (lit.empty () && patches.empty ())
+		return;
+	HL_PROFILE (ELAN);
+	if (lit.size () >= SPREAD_LEAST) {
+		if (!workers) {
+			/* The machine's thread lights too; the drawing thread and
+			 * the others' keep theirs */
+			unsigned cores = std::thread::hardware_concurrency ();
+
+			workers.reset (new Workers (cores > 3 ? std::min (cores - 3, 6u) : 0));
+		}
+		workers->run (lit.size (), CHUNK, [this] (size_t from, size_t to) {
+			for (size_t i = from; i < to; i++)
+				light (sets[lit[i].set], lit[i]);
+		});
+	} else
+		for (LitVertex &v : lit)
+			light (sets[v.set], v);
+
+	/* clip_point ()'s colours, from the lit ones */
+	for (ClipColor &k : clips) {
+		const float *base[2], *offset[2];
+		int ends[2] = { k.a, k.b };
+		unsigned c;
+
+		for (int e = 0; e < 2; e++) {
+			base[e] = ends[e] >= 0 ? lit[ends[e]].base : k.base[e];
+			offset[e] = ends[e] >= 0 ? lit[ends[e]].offset : k.offset[e];
+		}
+		for (c = 0; c < 4; c++) {
+			k.out_base[c] = base[0][c] + (base[1][c] - base[0][c]) * k.t;
+			k.out_offset[c] = offset[0][c] + (offset[1][c] - offset[0][c]) * k.t;
+		}
+	}
+	/* The scenes' vertices, each its own too */
+	auto colour = [this] (size_t from, size_t to) {
+		for (size_t i = from; i < to; i++) {
+			const Patch &p = patches[i];
+			Vertex &v = p.scene->vertices[p.at];
+			const float *base, *offset;
+
+			if (p.ref >= 0) {
+				base = lit[p.ref].base;
+				offset = lit[p.ref].offset;
+			} else {
+				base = clips[-2 - p.ref].out_base;
+				offset = clips[-2 - p.ref].out_offset;
+			}
+			v.base = pack (base);
+			v.offset = pack (offset);
+		}
+	};
+	if (workers && patches.size () >= SPREAD_LEAST)
+		workers->run (patches.size (), CHUNK * 4, colour);
+	else
+		colour (0, patches.size ());
+	drop_lighting ();
+}
+
+void
+Elan::drop_lighting ()
+{
+	sets.clear ();
+	lit.clear ();
+	clips.clear ();
+	patches.clear ();
+	scenes.clear ();
 }
 
 /*
@@ -602,7 +883,7 @@ Elan::project (Transformed &v) const
 
 /* Where the edge from a to b, a inside, crosses the near plane */
 void
-Elan::clip_point (const Transformed &a, float da, const Transformed &b, float db, Transformed &out) const
+Elan::clip_point (const Transformed &a, float da, const Transformed &b, float db, Transformed &out)
 {
 	float t = fabsf (da) / (fabsf (da) + fabsf (db));
 	unsigned c;
@@ -614,6 +895,20 @@ Elan::clip_point (const Transformed &a, float da, const Transformed &b, float db
 	for (c = 0; c < 4; c++) {
 		out.base[c] = a.base[c] + (b.base[c] - a.base[c]) * t;
 		out.offset[c] = a.offset[c] + (b.offset[c] - a.offset[c]) * t;
+	}
+	out.ref = out.fref = -1;
+	if (a.fref != -1 || b.fref != -1) {
+		/* Between colours to come: worked out with them */
+		ClipColor &k = clips.emplace_back ();
+
+		k.a = a.fref;
+		k.b = b.fref;
+		k.t = t;
+		memcpy (k.base[0], a.base, sizeof (k.base[0]));
+		memcpy (k.offset[0], a.offset, sizeof (k.offset[0]));
+		memcpy (k.base[1], b.base, sizeof (k.base[1]));
+		memcpy (k.offset[1], b.offset, sizeof (k.offset[1]));
+		out.ref = out.fref = -2 - (int) (clips.size () - 1);
 	}
 	project (out);
 }
@@ -642,13 +937,32 @@ Elan::triangle (const Transformed &a, const Transformed &b, const Transformed &c
 				if ((dist[i] < 0.0f) != (dist[j] < 0.0f))
 					clip_point (*in[i], dist[i], *in[j], dist[j], out[n++]);
 			}
-			holly->elan_triangle (out[0].screen, out[1].screen, out[2].screen);
+			emit (out[0], out[1], out[2]);
 			if (n == 4)
-				holly->elan_triangle (out[0].screen, out[2].screen, out[3].screen);
+				emit (out[0], out[2], out[3]);
 			return;
 		}
 	}
-	holly->elan_triangle (a.screen, b.screen, c.screen);
+	emit (a, b, c);
+}
+
+void
+Elan::emit (const Transformed &a, const Transformed &b, const Transformed &c)
+{
+	Holly *holly = board->holly;
+	int at = holly->elan_triangle (a.screen, b.screen, c.screen);
+
+	if (at < 0 || (a.ref == -1 && b.ref == -1 && c.ref == -1))
+		return;
+	/* Flat, the Holly's three vertices have the last one's colours */
+	int refs[3] = { list_gouraud ? a.ref : c.ref, list_gouraud ? b.ref : c.ref, c.ref };
+	Scene *scene = holly->elan_scene ().get ();
+
+	if (scenes.empty () || scenes.back ().get () != scene)
+		scenes.push_back (holly->elan_scene ());
+	for (int k = 0; k < 3; k++)
+		if (refs[k] != -1)
+			patches.push_back ({ scene, (uint32_t) (at + k), refs[k] });
 }
 
 /*
@@ -866,6 +1180,7 @@ Elan::polygon_list (const uint32_t *ich)
 		holly->elan_polygon (list < 0 ? (pcw >> 24) & 7 : (unsigned) list, isp, tsp, tcw, shadow);
 	}
 
+	list_gouraud = gouraud;
 	Transformed center = {}, p = {}, q = {}, v = {};
 	unsigned n = 0;
 	bool start = true, odd = false;
@@ -903,9 +1218,19 @@ Elan::polygon_list (const uint32_t *ich)
 
 		if (bump)
 			memset (v.offset, 0, sizeof (v.offset));
-		else if (!constant)
-			light_vertex (v, normal);
-		if (!textured)
+		v.ref = v.fref = -1;
+		if (!bump && !constant) {
+			/* Lit later (flush_lighting ()), its offset added then */
+			LitVertex &l = lit.emplace_back ();
+
+			memcpy (l.pos, v.pos, sizeof (l.pos));
+			memcpy (l.normal, normal, sizeof (l.normal));
+			memcpy (l.base, v.base, sizeof (l.base));
+			memcpy (l.offset, v.offset, sizeof (l.offset));
+			l.set = light_set ();
+			l.add = !textured;
+			v.ref = v.fref = (int) lit.size () - 1;
+		} else if (!textured)
 			for (c = 0; c < 4; c++)
 				v.base[c] += v.offset[c];
 		if (env0) {
@@ -935,6 +1260,7 @@ Elan::polygon_list (const uint32_t *ich)
 					if (!gouraud) {
 						last.screen.base = v.screen.base;
 						last.screen.offset = v.screen.offset;
+						last.ref = v.ref;
 					}
 					triangle (p, v, last, clip);
 				} else
@@ -1124,6 +1450,7 @@ Elan::load_state (hl::State *state)
 {
 	int ret = state->get ((void *) &s, sizeof (s));
 
+	drop_lighting ();
 	culling_reversed = open_volume = shadowed_volume = false;
 	model_tsp = 0;
 	update ();

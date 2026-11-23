@@ -26,6 +26,7 @@
 #include <cstring>
 
 #include "hl/config.h"
+#include "hl/profile.h"
 #include "hl/driveboard-z80.h"
 #include "hl/gamecontrols.h"
 #include "hl/core.h"
@@ -866,7 +867,12 @@ Board::run_lines (unsigned line, unsigned count)
 		}
 		if (card || sanwa || hopper)
 			((Sh4 *) sh)->scif_update (cycles_per_line);
-		sh->run (cycles_per_line);
+		/* HR_PROFILE: the master's alone (the others on their threads) */
+		if (!index) {
+			HL_PROFILE (SH4_MASTER);
+			sh->run (cycles_per_line);
+		} else
+			sh->run (cycles_per_line);
 		aica->exec (cycles_per_line);
 		if (mie)
 			mie->exec (mie_t_states);

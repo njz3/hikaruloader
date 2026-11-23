@@ -60,6 +60,7 @@ static const struct {
 	{ "MEMCTL",		Profile::MACHINE,	NULL },
 	{ "GPU: CP",		Profile::MACHINE,	NULL },
 	{ "GPU: events",	Profile::MACHINE,	NULL },
+	{ "Elan",		Profile::SH4_MASTER,	NULL },
 	{ "MIE, JVS",		Profile::MACHINE,	NULL },
 	{ "AICAs",		Profile::MACHINE,	NULL },
 	{ "ARM7s",		Profile::AICA,		"ARM cycle" },
