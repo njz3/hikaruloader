@@ -16,6 +16,13 @@ In preparation
   the development PC (Crazy Taxi 6%, Metal Slug 6 7%, Sports Shooting USA
   12%, F355 Challenge deluxe about 5% with the cabinets' 4 cores), the
   same frames to the bit.
+- NAOMI, NAOMI 2, Atomiswave, Hikaru, Gaelco: the SH-4's translated pieces
+  of code go straight on to the next one, without looking it up in a
+  table each time: 1 to 6% shorter frames again (Spikers Battle 6%, Crazy
+  Taxi and Soul Surfer 2.5%), the same frames to the bit.
+- NAOMI, Atomiswave: the SH-4 started at each line from the table it ends
+  its pieces of code with, and the polygons' colours converted four at a
+  time: about 2% shorter frames, the same frames and pictures.
 
 
 0.8.13 (2026-11-24)

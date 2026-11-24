@@ -21,6 +21,7 @@
  */
 
 #include <algorithm>
+#include <emmintrin.h>
 #include <cstring>
 #include <new>
 
@@ -185,16 +186,23 @@ to_float (uint32_t val)
 	return f;
 }
 
-static inline uint32_t
-to_byte (float f)
-{
-	return f <= 0.0f ? 0 : f >= 1.0f ? 255 : (uint32_t) (f * 255.0f + 0.5f);
-}
-
+/* Each channel as "f <= 0 ? 0 : f >= 1 ? 255 : (uint32_t) (f * 255 + 0.5)"
+ * did, the four at once: max with 0 first (a NaN to 0, as its truncation
+ * gave), min with 1, the same product and sum in single precision,
+ * truncated */
 static inline uint32_t
 argb_float (float a, float r, float g, float b)
 {
-	return (to_byte (a) << 24) | (to_byte (r) << 16) | (to_byte (g) << 8) | to_byte (b);
+	__m128 x = _mm_set_ps (a, r, g, b);
+	__m128i i;
+
+	x = _mm_max_ps (x, _mm_setzero_ps ());
+	x = _mm_min_ps (x, _mm_set1_ps (1.0f));
+	x = _mm_add_ps (_mm_mul_ps (x, _mm_set1_ps (255.0f)), _mm_set1_ps (0.5f));
+	i = _mm_cvttps_epi32 (x);
+	i = _mm_packs_epi32 (i, i);
+	i = _mm_packus_epi16 (i, i);
+	return (uint32_t) _mm_cvtsi128_si32 (i);
 }
 
 Holly::Holly (Board *board_, hl::Buffer *vram_) :
@@ -761,7 +769,8 @@ Holly::ta_triangle (Vertex a, Vertex b, Vertex c, const Vertex *second, int *fir
 	unsigned cull = (ta.isp >> 27) & 3;
 	Vertex a1 = {}, b1 = {}, c1 = {};
 
-	if (second) {
+	/* The second volume's, kept only with two */
+	if (second && ta.two_volume) {
 		a1 = second[0];
 		b1 = second[1];
 		c1 = second[2];

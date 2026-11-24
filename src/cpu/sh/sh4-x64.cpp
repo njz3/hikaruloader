@@ -43,7 +43,9 @@
  *		(a branch)	lea eax, [rsi + 2i]; cmp [rbx + PC], eax; jne out_i
  *		(not the last)	cmp byte [rbx + irq_ready], 0; jne out_i
  *	out_i:	PC set (the next one's, or a branch's target), r8d = the
- *		instructions run (i + 1), to the end:
+ *		instructions run (i + 1), to the probe, or, to a fixed
+ *		address, linked to its block (see "Links"); in essence, to
+ *		the end:
  *	end:	sub [rbx + remaining], r8d
  *		mov rcx, rbx; mov edx, esi; call sh4_chain; test rax, rax
  *		jz leave; mov esi, [rbx + PC]; jmp rax	; the next block's body
@@ -180,8 +182,107 @@ Sh4X64::clear ()
 	table = NULL;
 	num_clears++;
 	generation = ++generations;
+	linked.clear ();
+	cached.clear ();
+	dyn_tries.clear ();
 	start_arena ();
 	clear_near ();
+}
+
+/* Links
+ *
+ * A way out to a fixed address (a bt or bf taken, bra, bsr, the block's
+ * end, a loop's way back once the idle loops' looks let it go on) is
+ * written
+ *
+ *	lea eax, [rsi + to]; mov [rbx + PC], eax	(PC set)
+ *	mov r8d, count
+ *	call link_checks
+ *	jmp rel32			(to link; linked, to the body)
+ *
+ * link_checks (the stubs') takes the count off and makes the probe's
+ * checks but the near table's, the slice holding a block of MAX_OPS (else
+ * back through the probe's own checks, the way out's call dropped); then
+ * sets chain.stores and esi as the probe does, the last ones kept in r11
+ * and r10, and r9 the jump's rel32 field (its return address's). Unlinked,
+ * the jump goes to the link stub: the near table as the probe reads it;
+ * the block there, the rel32 pointed at its body (link ()) and on to it;
+ * else chain.stores and esi put back, sh4_chain () (the probe's miss).
+ * Linked, it goes to the body at once: no table read, no jump through a
+ * register (the probe's look took a sixth of Crazy Taxi's translations'
+ * samples; the frames 1 to 6% shorter). The near table's other conditions
+ * hold as long as the code epoch stays: unlink () at each new one
+ * (Sh4BlockCache's epoch_moved), the arena's clearing drops them all.
+ * Under the MMU and with the instruction cache modelled, the probe */
+void
+Sh4X64::unlink ()
+{
+	const uint32_t none = 1;
+
+	for (uint8_t *site : linked) {
+		const int32_t r = (int32_t) (stubs[0].link - (site + 4));
+
+		memcpy (site, &r, 4);
+	}
+	linked.clear ();
+	for (uint8_t *field : cached)
+		memcpy (field, &none, 4);
+	cached.clear ();
+}
+
+/* A way out to an address known as it runs (rts, jmp @Rn, braf, a
+ * handler's branch), past the loops' way back (end):
+ *
+ *	sub [rbx + remaining], r8d; call link_checks
+ *	cmp esi, imm32			(the last address, 1 for none)
+ *	jne other
+ *	jmp rel32			(its body)
+ * other: lea r9, [rip - ...]	(the imm32's address)
+ *	jmp rel32			(link_dyn, or look for good)
+ *
+ * link_dyn: the near table as the probe reads it; the block there, the
+ * address and its body kept in the way out (link_dyn ()). A way out that
+ * went to DYN_TRIES others (a function's return to its callers) goes to
+ * look from then on: the near table's look without a call */
+void *
+Sh4X64::link_dyn (Sh4X64 *jit, uint8_t *cached_at, void *body, uint32_t pc)
+{
+	uint8_t *jump = cached_at + DYN_BODY, *stub = cached_at + DYN_STUB;
+	const int64_t rel = (int64_t) ((uint8_t *) body - (jump + 4));
+	int32_t r = (int32_t) rel;
+	uint32_t was;
+
+	if (++jit->dyn_tries[cached_at] > DYN_TRIES) {
+		const int64_t to_look = (int64_t) (jit->stubs[0].look - (stub + 4));
+		int32_t l = (int32_t) to_look;
+
+		if (to_look == (int64_t) l)
+			memcpy (stub, &l, 4);
+		return body;
+	}
+	if (rel != (int64_t) r)
+		return body;
+	memcpy (&was, cached_at, 4);
+	memcpy (jump, &r, 4);
+	memcpy (cached_at, &pc, 4);
+	if (was == 1)
+		jit->cached.push_back (cached_at);
+	jit->num_links++;
+	return body;
+}
+
+void *
+Sh4X64::link (Sh4X64 *jit, uint8_t *site, void *body)
+{
+	const int64_t rel = (int64_t) ((uint8_t *) body - (site + 4));
+	int32_t r = (int32_t) rel;
+
+	if (rel == (int64_t) r) {
+		memcpy (site, &r, 4);
+		jit->linked.push_back (site);
+		jit->num_links++;
+	}
+	return body;
 }
 
 /* The ways out all translations share, under the MMU (gen checked) and
@@ -220,6 +321,12 @@ Sh4X64::emit_stubs (Sh4 *ctx)
 			return false;
 		Emitter e (buf, max);
 		Stubs &s = stubs[m];
+		/* HR_SAMPLE's kinds of code: the stubs' own */
+		hl::Profile::Marks stub_marks;
+		auto stub_mark = [&] (const char *what) {
+			if (hl::Profile::sampling)
+				stub_marks.push_back (std::make_pair ((uint32_t) e.length (), what));
+		};
 
 		/* The probe: the near table's entry for PC, its translation's
 		 * body gone on to when the run loop would do no more
@@ -229,10 +336,12 @@ Sh4X64::emit_stubs (Sh4 *ctx)
 		 * of it), the CPU running. Else sh4_chain () (the near table
 		 * filled there) */
 		s.probe = e.here ();
+		stub_mark ("stub: probe");
 		e.alu_mem_reg (Emitter::ALU_SUB, RBX, o.remaining, R8);
 		if (counting)
 			e.add64_mem_imm (RBX, o.chain_ends, 1);
 		s.checks = e.here ();
+		stub_mark ("stub: probe's look");
 		if (ctx->chain.enabled) {
 			e.load32 (RAX, RBX, o.pc);
 			e.mov32 (RCX, RAX);
@@ -272,12 +381,114 @@ Sh4X64::emit_stubs (Sh4 *ctx)
 				e.add64_mem_imm (RBX, o.chain_gone, 1);
 			e.mov32 (RSI, RAX);
 			e.load64 (RAX, RDX, 16);
+			stub_mark ("stub: probe's jump");
 			e.jmp_reg (RAX);
 		}
+		/* The links' checks and the link (see "Links") */
+		s.link_checks = s.link = NULL;
+		if (m == 0 && ctx->chain.enabled) {
+			Label fail, miss;
+
+			s.link_checks = e.here ();
+			stub_mark ("stub: link checks");
+			e.alu_mem_reg (Emitter::ALU_SUB, RBX, o.remaining, R8);
+			e.alu_mem_imm (Emitter::ALU_CMP, RBX, o.remaining, (int32_t) Sh4Block::MAX_OPS);
+			e.jcc (CC_LE, fail);
+			e.cmp8_mem_imm (RBX, o.irq_ready, 0);
+			e.jcc (CC_NE, fail);
+			e.cmp8_mem_imm (RBX, o.noting, 0);
+			e.jcc (CC_NE, fail);
+			e.cmp8_mem_imm (RBX, o.mmu_on, 0);
+			e.jcc (CC_NE, fail);
+			e.alu_mem_imm (Emitter::ALU_CMP, RBX, o.state, (int32_t) hl::CPU_STATE_RUN);
+			e.jcc (CC_NE, fail);
+			e.load64 (R11, RBX, o.chain_stores);
+			e.load64 (RCX, RBX, o.stores);
+			e.store64 (RBX, o.chain_stores, RCX);
+			if (counting)
+				e.add64_mem_imm (RBX, o.chain_gone, 1);
+			e.mov32 (R10, RSI);
+			e.load32 (RSI, RBX, o.pc);
+			/* The way out's jump (unlinked: to link, which wants
+			 * its rel32 field) */
+			e.load64 (R9, RSP, 0);
+			e.add64_imm (R9, 1);
+			e.ret ();
+			e.bind (fail);
+			e.add64_imm (RSP, 8);
+			e.jmp_abs (s.checks);
+
+			s.link = e.here ();
+			stub_mark ("stub: link");
+			e.mov32 (RAX, RSI);
+			e.mov32 (RCX, RAX);
+			e.shr32_imm (RCX, 1);
+			e.and32_imm (RCX, near_mask);
+			e.shl32_imm (RCX, 5);
+			e.mov_imm64 (RDX, (uint64_t) (uintptr_t) near_table.get ());
+			e.alu64_reg_reg (Emitter::ALU_ADD, RDX, RCX);
+			e.cmp32_mem (RDX, 0, RAX);
+			e.jcc (CC_NE, miss);
+			e.load32 (RCX, RDX, 4);
+			e.alu_reg_mem (Emitter::ALU_CMP, RCX, RBX, o.epoch);
+			e.jcc (CC_NE, miss);
+			e.load32 (RCX, RDX, 8);
+			e.cmp32_mem (RBX, o.remaining, RCX);
+			e.jcc (CC_LE, miss);
+			e.load64 (R8, RDX, 16);
+			e.mov (RDX, R9);
+			e.mov_imm64 (RCX, (uint64_t) (uintptr_t) this);
+			e.call ((const void *) &Sh4X64::link);
+			e.jmp_reg (RAX);
+			e.bind (miss);
+			e.store64 (RBX, o.chain_stores, R11);
+			e.mov32 (RSI, R10);
+			if (counting)
+				e.add64_mem_imm (RBX, o.chain_gone, -1);
+			e.jmp (chain);
+
+			/* link_dyn and look: the near table's entry for esi
+			 * (rdx), else back as link's miss */
+			auto near_entry = [&] (Label &away) {
+				e.mov32 (RAX, RSI);
+				e.mov32 (RCX, RAX);
+				e.shr32_imm (RCX, 1);
+				e.and32_imm (RCX, near_mask);
+				e.shl32_imm (RCX, 5);
+				e.mov_imm64 (RDX, (uint64_t) (uintptr_t) near_table.get ());
+				e.alu64_reg_reg (Emitter::ALU_ADD, RDX, RCX);
+				e.cmp32_mem (RDX, 0, RAX);
+				e.jcc (CC_NE, away);
+				e.load32 (RCX, RDX, 4);
+				e.alu_reg_mem (Emitter::ALU_CMP, RCX, RBX, o.epoch);
+				e.jcc (CC_NE, away);
+				e.load32 (RCX, RDX, 8);
+				e.cmp32_mem (RBX, o.remaining, RCX);
+				e.jcc (CC_LE, away);
+			};
+
+			s.link_dyn = e.here ();
+			stub_mark ("stub: link (address as run)");
+			near_entry (miss);
+			e.load64 (R8, RDX, 16);
+			e.mov (RDX, R9);
+			e.mov32 (R9, RSI);
+			e.mov_imm64 (RCX, (uint64_t) (uintptr_t) this);
+			e.call ((const void *) &Sh4X64::link_dyn);
+			e.jmp_reg (RAX);
+
+			s.look = e.here ();
+			stub_mark ("stub: look (address as run)");
+			near_entry (miss);
+			e.load64 (RAX, RDX, 16);
+			e.jmp_reg (RAX);
+		}
+
 		/* sh4_chain (): the next block's body, or back to the run loop
 		 * with the last block's count */
 		e.bind (chain);
 		s.chain = e.here ();
+		stub_mark ("stub: sh4_chain call");
 		e.mov (RCX, RBX);
 		e.mov32 (RDX, RSI);
 		e.call ((const void *) sh4_chain);
@@ -286,6 +497,7 @@ Sh4X64::emit_stubs (Sh4 *ctx)
 		e.load32 (RSI, RBX, o.pc);
 		e.jmp_reg (RAX);
 		e.bind (leave);
+		stub_mark ("stub: back to the run loop");
 		e.load32 (RAX, RBX, o.chain_n);
 		e.add64_imm (RSP, 40);
 		e.pop (R15);
@@ -300,6 +512,9 @@ Sh4X64::emit_stubs (Sh4 *ctx)
 		if (e.overflowed ())
 			return false;
 		arena.trim (buf + e.length ());
+		if (hl::Profile::sampling)
+			hl::Profile::code_written (buf, e.length (), ctx->config.master ? 'M' : 'S', 0, NULL, 0,
+			                           &stub_marks);
 	}
 	stubs_generation = generation;
 	return true;
@@ -309,7 +524,7 @@ void
 Sh4X64::clear_near ()
 {
 	for (unsigned i = 0; i < (1u << NEAR_BITS); i++)
-		near_table[i] = Near { 1, 0, 0, 0, NULL, 0 };
+		near_table[i] = Near { 1, 0, 0, 0, NULL, NULL };
 }
 
 void
@@ -326,6 +541,7 @@ Sh4X64::note (uint32_t pc, const Sh4Block *block, uint32_t epoch, uint32_t gen)
 	n.checked = block->checked;
 	n.count = (int32_t) block->ops.size ();
 	n.body = block->native_body;
+	n.native = (Sh4Native) block->native;
 }
 
 Sh4Offsets::Sh4Offsets (Sh4 *ctx)
@@ -2832,6 +3048,90 @@ Sh4X64::translate (Sh4 *ctx, Sh4Block *block)
 		return false;
 	};
 
+	/* A way out to a fixed address, PC set: linked to its block (see
+	 * "Links"), else the probe */
+	const bool linking = !mmu_mode && ctx->chain.enabled && !ctx->icache_on && stubs[0].link;
+	/* r8d the count (link_checks takes it off) */
+	auto link_site = [&] () {
+		e.call_near (stubs[0].link_checks);
+		/* jmp rel32 to link, that form whatever the distance (link
+		 * patches its field) */
+		e.byte (0xE9);
+		e.u32 ((uint32_t) (int32_t) (stubs[0].link - (e.here () + 4)));
+	};
+	auto link_exit = [&] (uint32_t count) {
+		e.mov_imm32 (R8, count);
+		if (!linking) {
+			e.jmp (probe);
+			return;
+		}
+		if (counting)
+			e.add64_mem_imm (RBX, o.chain_ends, 1);
+		link_site ();
+	};
+	/* A loop's way back to a fixed address, PC set: end's looks (below),
+	 * then linked where end goes to the probe's checks */
+	auto loop_exit = [&] (uint32_t count) {
+		e.mov_imm32 (R8, count);
+		if (!linking) {
+			e.jmp (end);
+			return;
+		}
+		Label &no_store = label (), &go = label (), &to_chain = label ();
+
+		if (counting)
+			e.add64_mem_imm (RBX, o.chain_ends, 1);
+		e.load32 (RAX, RBX, o.stores);
+		e.cmp32_mem (RBX, o.chain_stores, RAX);
+		e.jcc (CC_E, no_store);
+		e.mov_imm64 (RAX, (uint64_t) (uintptr_t) &block->simulated);
+		e.cmp8_mem_imm (RAX, 0, 0);
+		e.jcc (CC_NE, to_chain);
+		e.jmp (go);
+		e.bind (no_store);
+		e.mov_imm64 (RAX, (uint64_t) (uintptr_t) &block->quiet);
+		e.alu_mem_imm (Emitter::ALU_CMP, RAX, 0, 0);
+		e.jcc (CC_LE, to_chain);
+		e.add32_mem_imm (RAX, 0, -1);
+		e.bind (go);
+		link_site ();
+		/* To sh4_chain (), the count taken off as end does */
+		e.bind (to_chain);
+		e.alu_mem_reg (Emitter::ALU_SUB, RBX, o.remaining, R8);
+		e.jmp (chain);
+	};
+	/* A way out to an address known as it runs, PC set, r8d the count:
+	 * a loop's way back to end, else its last address kept (see
+	 * link_dyn ()) */
+	auto dyn_exit = [&] (int32_t last) {
+		if (!linking) {
+			measured (last);
+			return;
+		}
+		Label &other = label ();
+		uint8_t *cached_at, *jump, *stub;
+
+		e.load32 (RAX, RBX, o.pc);
+		e.lea32 (RCX, RSI, last);
+		e.alu32_reg_reg (Emitter::ALU_SUB, RCX, RAX);
+		e.cmp32_imm (RCX, Sh4::IdleLoop::MAX_SPAN);
+		e.jcc (CC_B, end);
+		if (counting)
+			e.add64_mem_imm (RBX, o.chain_ends, 1);
+		e.call_near (stubs[0].link_checks);
+		cached_at = e.cmp32_imm_site (RSI, 1);
+		e.jcc (CC_NE, other);
+		jump = e.jmp_site ();
+		e.bind (other);
+		e.lea_rip (R9, cached_at);
+		e.byte (0xE9);
+		stub = e.here ();
+		e.u32 ((uint32_t) (int32_t) (stubs[0].link_dyn - (stub + 4)));
+		if (!e.overflowed () && (jump - cached_at != DYN_BODY || stub - cached_at != DYN_STUB))
+			HL_ABORT ("sh4-x64: a way out's layout (%d, %d)", (int) (jump - cached_at),
+			          (int) (stub - cached_at));
+	};
+
 	mark (e, "exit: ways out");
 	for (i = 0; i < n; i++) {
 		const int32_t last = (int32_t) (2 * i);
@@ -2843,14 +3143,18 @@ Sh4X64::translate (Sh4 *ctx, Sh4Block *block)
 			e.bind (seq[i]);
 			e.lea32 (RAX, RSI, last + 2);
 			e.store32 (RBX, o.pc, RAX);
-			e.mov_imm32 (R8, (uint32_t) (i + 1));
-			e.jmp (probe);
+			if (i + 1 == n)
+				link_exit ((uint32_t) (i + 1));
+			else {
+				e.mov_imm32 (R8, (uint32_t) (i + 1));
+				e.jmp (probe);
+			}
 		}
 		if (used[i] && referenced (branched[i])) {
 			e.bind (branched[i]);
 			e.add32_mem_imm (RBX, o.pc, 2);
 			e.mov_imm32 (R8, (uint32_t) (i + 1));
-			measured (last);
+			dyn_exit (last);
 		}
 		if (used[i] && referenced (done[i])) {
 			e.bind (done[i]);
@@ -2864,19 +3168,25 @@ Sh4X64::translate (Sh4 *ctx, Sh4Block *block)
 				e.test32 (RAX, RAX);
 				e.jcc (CC_E, end);
 				e.jmp (probe);
-			} else {
+			} else if (way_back (to[i], last) &&
+			           !(block->delay_loop && i == (size_t) block->delay_len - 1)) {
+				loop_exit ((uint32_t) (i + 1));
+			} else if (way_back (to[i], last)) {
 				e.mov_imm32 (R8, (uint32_t) (i + 1));
-				e.jmp (way_back (to[i], last) &&
-				       !(block->delay_loop && i == (size_t) block->delay_len - 1) ? end : probe);
-			}
+				e.jmp (probe);
+			} else
+				link_exit ((uint32_t) (i + 1));
 		}
 		if (jumped_used[i]) {
 			e.bind (jumped[i]);
-			e.mov_imm32 (R8, (uint32_t) (i + 2));
-			if (fixed[i])
-				e.jmp (way_back (to[i], last + 2) ? end : probe);
-			else
-				measured (last + 2);
+			if (fixed[i] && !way_back (to[i], last + 2))
+				link_exit ((uint32_t) (i + 2));
+			else if (fixed[i])
+				loop_exit ((uint32_t) (i + 2));
+			else {
+				e.mov_imm32 (R8, (uint32_t) (i + 2));
+				dyn_exit (last + 2);
+			}
 		}
 	}
 
@@ -2892,32 +3202,34 @@ Sh4X64::translate (Sh4 *ctx, Sh4Block *block)
 	/* sh4_chain (): the next block's body, or back to the run loop with
 	 * the last block's count */
 	mark (e, "exit: idle loops' end");
-	e.bind (end);
-	e.alu_mem_reg (Emitter::ALU_SUB, RBX, o.remaining, R8);
-	if (counting)
-		e.add64_mem_imm (RBX, o.chain_ends, 1);
-	/* A loop that stored: no idle loop's look (idle_look () lets it go),
-	 * the probe (it sends a turn noted on to sh4_chain ()). Its stores'
-	 * low half: a block's never wraps */
-	if (ctx->chain.enabled) {
-		Label &no_store = label ();
+	if (referenced (end)) {
+		e.bind (end);
+		e.alu_mem_reg (Emitter::ALU_SUB, RBX, o.remaining, R8);
+		if (counting)
+			e.add64_mem_imm (RBX, o.chain_ends, 1);
+		/* A loop that stored: no idle loop's look (idle_look () lets it go),
+		 * the probe (it sends a turn noted on to sh4_chain ()). Its stores'
+		 * low half: a block's never wraps */
+		if (ctx->chain.enabled) {
+			Label &no_store = label ();
 
-		e.load32 (RAX, RBX, o.stores);
-		e.cmp32_mem (RBX, o.chain_stores, RAX);
-		e.jcc (CC_E, no_store);
-		/* But a loop whose turns the idle loops simulate */
-		e.mov_imm64 (RAX, (uint64_t) (uintptr_t) &block->simulated);
-		e.cmp8_mem_imm (RAX, 0, 0);
-		e.jcc (CC_NE, chain);
-		e.jmp (probe_checks);
-		e.bind (no_store);
-		/* A loop the idle loops let be: its turns counted down here,
-		 * no look (Sh4Block::quiet, idle_look ()) */
-		e.mov_imm64 (RAX, (uint64_t) (uintptr_t) &block->quiet);
-		e.alu_mem_imm (Emitter::ALU_CMP, RAX, 0, 0);
-		e.jcc (CC_LE, chain);
-		e.add32_mem_imm (RAX, 0, -1);
-		e.jmp (probe_checks);
+			e.load32 (RAX, RBX, o.stores);
+			e.cmp32_mem (RBX, o.chain_stores, RAX);
+			e.jcc (CC_E, no_store);
+			/* But a loop whose turns the idle loops simulate */
+			e.mov_imm64 (RAX, (uint64_t) (uintptr_t) &block->simulated);
+			e.cmp8_mem_imm (RAX, 0, 0);
+			e.jcc (CC_NE, chain);
+			e.jmp (probe_checks);
+			e.bind (no_store);
+			/* A loop the idle loops let be: its turns counted down here,
+			 * no look (Sh4Block::quiet, idle_look ()) */
+			e.mov_imm64 (RAX, (uint64_t) (uintptr_t) &block->quiet);
+			e.alu_mem_imm (Emitter::ALU_CMP, RAX, 0, 0);
+			e.jcc (CC_LE, chain);
+			e.add32_mem_imm (RAX, 0, -1);
+			e.jmp (probe_checks);
+		}
 	}
 	/* Fetching its lines; nothing of the guest's in the registers yet.
 	 * A line as sh4_icache_fill () fetches it, the cache on and the area
@@ -2963,15 +3275,17 @@ Sh4X64::translate (Sh4 *ctx, Sh4Block *block)
 		e.jmp (*f.back);
 	}
 	mark (e, "entry: icache fill call");
-	e.bind (icache_miss);
-	e.mov (RCX, RBX);
-	/* The lines at the block's own (physical) address, the area esi's */
-	e.mov32 (RDX, RSI);
-	e.alu32_imm (Emitter::ALU_AND, RDX, (int32_t) 0xE0000000);
-	e.alu32_imm (Emitter::ALU_OR, RDX, (int32_t) (block->pc & 0x1FFFFFFF));
-	e.mov_imm32 (R8, icache_last);
-	e.call ((const void *) sh4_icache_fill);
-	e.jmp (icache_done);
+	if (ctx->icache_on) {
+		e.bind (icache_miss);
+		e.mov (RCX, RBX);
+		/* The lines at the block's own (physical) address, the area esi's */
+		e.mov32 (RDX, RSI);
+		e.alu32_imm (Emitter::ALU_AND, RDX, (int32_t) 0xE0000000);
+		e.alu32_imm (Emitter::ALU_OR, RDX, (int32_t) (block->pc & 0x1FFFFFFF));
+		e.mov_imm32 (R8, icache_last);
+		e.call ((const void *) sh4_icache_fill);
+		e.jmp (icache_done);
+	}
 
 	/* The slow paths, out of the way */
 	mark (e, "slow paths");

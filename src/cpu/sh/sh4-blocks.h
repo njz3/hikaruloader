@@ -258,6 +258,8 @@ public:
 	static const unsigned STAMP_BITS = 8;
 	uint32_t		*stamps () const { return page_epochs.get (); }
 	void			 new_epoch ();
+	/* Told at each new epoch (the translations' links undone) */
+	std::function<void ()>	 epoch_moved;
 	/* len bytes from addr written by a device (a DMA): a new epoch when
 	 * they fall on code compared in this one, as the CPU's stores; a
 	 * watched page's told */

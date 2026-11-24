@@ -24,6 +24,7 @@
 #include <memory>
 #include <map>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "cpu/x64/x64-emitter.h"
@@ -175,6 +176,18 @@ public:
 		*count = n.count;
 		return n.body;
 	}
+	/* The same, without the MMU: the function, for the run loop (the
+	 * block table's look missed the host's caches at each line's first
+	 * block) */
+	Sh4Native	 near_native (uint32_t pc, uint32_t epoch, int *count) const
+	{
+		const Near &n = near_table[(pc >> 1) & near_mask];
+
+		if (n.pc != pc || n.checked != epoch || !n.body)
+			return NULL;
+		*count = n.count;
+		return n.native;
+	}
 	/* Forgets every translation (the arena full, a reset) */
 	void		 clear ();
 	unsigned	 translated () const { return num_translated; }
@@ -185,6 +198,18 @@ public:
 	void		 print_kinds (char cpu) const;
 	/* The times all were dropped, the arena full */
 	unsigned	 clears () const { return num_clears; }
+	/* The ways out linked to their next block's body (see "Links" in
+	 * sh4-x64.cpp): all put back to their stub, the code epoch moved (the
+	 * blocks to be compared again first) */
+	void		 unlink ();
+	/* The link stub's call: the way out whose jump's rel32 field is at
+	 * site goes to body from now on; body */
+	static void	*link (Sh4X64 *jit, uint8_t *site, void *body);
+	/* The same for a way out to an address known as it runs, its last
+	 * address's field at cached: pc and body kept there, until it went to
+	 * too many others (DYN_TRIES): then the plain look for good */
+	static void	*link_dyn (Sh4X64 *jit, uint8_t *cached, void *body, uint32_t pc);
+	uint64_t	 links_made () const { return num_links; }
 	/* The time taken translating, in seconds */
 	double		 translating_time () const { return translate_seconds; }
 
@@ -323,7 +348,23 @@ private:
 	 * count, PC set, esi the block's address), its checks (the count taken
 	 * off), sh4_chain (), and back to the run loop. A copy in each
 	 * translation made them some 150 bytes longer */
-	struct Stubs { const uint8_t *probe = NULL, *checks = NULL, *chain = NULL; };
+	struct Stubs {
+		const uint8_t *probe = NULL, *checks = NULL, *chain = NULL;
+		/* The linked ways out's checks (called), the link (none under
+		 * the MMU); for an address known as it runs, the link and the
+		 * plain look (no link) */
+		const uint8_t *link_checks = NULL, *link = NULL, *link_dyn = NULL, *look = NULL;
+	};
+	/* The rel32 fields of the jumps linked; the last addresses' fields
+	 * of the ways out to addresses known as they run, and the times
+	 * each went elsewhere */
+	std::vector<uint8_t *> linked, cached;
+	std::unordered_map<uint8_t *, unsigned> dyn_tries;
+	static const unsigned DYN_TRIES = 8;
+	/* Their layout from the cached field: the jump to the body, the jump
+	 * to the link stub (cmp esi, imm32; jne; jmp rel32; lea r9; jmp rel32) */
+	static const int32_t DYN_BODY = 11, DYN_STUB = 23;
+	uint64_t	 num_links = 0;
 	Stubs		 stubs[2];
 	unsigned	 stubs_generation = 0;
 	bool		 emit_stubs (Sh4 *ctx);
@@ -384,7 +425,8 @@ private:
 		int32_t		 count;		/* its instructions */
 		uint32_t	 gen;		/* the MMU's state's (Sh4::mmu_gen) */
 		void		*body;
-		uint64_t	 unused2;
+		/* The function (its prologue), for the run loop */
+		Sh4Native	 native;
 	};
 	static const unsigned NEAR_BITS = 16;
 	std::unique_ptr<Near[]> near_table { new Near[1u << NEAR_BITS] };

@@ -241,6 +241,16 @@ public:
 	void		 jmp_reg (Reg r);
 	/* To code at a fixed address: rel32 when in reach, else through rax */
 	void		 jmp_abs (const void *target);
+	/* A call to code at a fixed address, rel32 when in reach (else
+	 * through rax) */
+	void		 call_near (const void *target);
+	/* jmp rel32 to the next instruction: the rel32 field's address, for
+	 * the jump to be pointed elsewhere later (and back with 0) */
+	uint8_t		*jmp_site ();
+	/* lea dst, [rip + ...]: dst = target */
+	void		 lea_rip (Reg dst, const void *target);
+	/* cmp r32, imm32 (always 32 bits): the imm32 field's address */
+	uint8_t		*cmp32_imm_site (Reg r, uint32_t imm);
 	void		 bind (Label &l);
 
 	void		 byte (uint8_t b);

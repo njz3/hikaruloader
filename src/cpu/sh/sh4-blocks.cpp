@@ -409,6 +409,8 @@ Sh4BlockCache::own (uint32_t lo, uint32_t hi)
 void
 Sh4BlockCache::new_epoch ()
 {
+	if (epoch_moved)
+		epoch_moved ();
 	memset (icache.stale, 0, sizeof (icache.stale));
 	if (++epoch < ARMED)
 		return;

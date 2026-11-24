@@ -969,6 +969,54 @@ Emitter::jmp_abs (const void *target)
 }
 
 void
+Emitter::call_near (const void *target)
+{
+	const int64_t rel = (int64_t) ((const uint8_t *) target - (p + 5));
+
+	if (rel == (int64_t) (int32_t) rel) {
+		byte (0xE8);
+		u32 ((uint32_t) (int32_t) rel);
+	} else
+		call (target);
+}
+
+uint8_t *
+Emitter::jmp_site ()
+{
+	uint8_t *field;
+
+	byte (0xE9);
+	field = p;
+	u32 (0);
+	return field;
+}
+
+uint8_t *
+Emitter::cmp32_imm_site (Reg r, uint32_t imm)
+{
+	uint8_t *field;
+
+	/* 81 /7 id */
+	if (r & 8)
+		byte (0x41);
+	byte (0x81);
+	byte ((uint8_t) (0xF8 | (r & 7)));
+	field = p;
+	u32 (imm);
+	return field;
+}
+
+void
+Emitter::lea_rip (Reg dst, const void *target)
+{
+	/* REX.W 8D /r, mod 00 r/m 101: [rip + disp32] */
+	byte ((uint8_t) (0x48 | ((dst & 8) ? 4 : 0)));
+	byte (0x8D);
+	byte ((uint8_t) (((dst & 7) << 3) | 5));
+	u32 ((uint32_t) (int32_t) ((const uint8_t *) target - (p + 4)));
+}
+
+void
 Emitter::jmp (Label &l)
 {
 	/* E9 cd */

@@ -67,7 +67,26 @@ move it. `HR_SH4_IDLE_SIM=0` turns it off (the same machine either way,
 
 The translations share their probe, `sh4_chain ()`'s call and the way back
 to the run loop (`Sh4X64::emit_stubs ()`, written at each arena's start):
-each was some 150 bytes of each translation. The page tables the
+each was some 150 bytes of each translation. A way out to a fixed address
+(a branch taken, `bra`, `bsr`, the block's end, a loop's way back past the
+idle loops' looks) is linked to its next block once it went there: a call
+to the shared checks (the slice, an interrupt, the idle loops noting, the
+MMU, the CPU's state), then a direct jump to the block's body, patched
+(sh4-x64.cpp, "Links"); the probe read the near table (2 MB) and jumped
+through a register at each block's end, a sixth of Crazy Taxi's
+translations' samples, the frames 1 to 6% shorter once linked. A way out
+to an address known as it runs (`rts`, `jmp @Rn`, `braf`, a handler's
+branch) keeps the last address it went to and that block's body
+(`link_dyn ()`), until it went to 8 others (a function returning to its
+callers): then the near table's look without a call. The links are
+undone at each new code epoch (`Sh4BlockCache::epoch_moved`) and go with
+the arena; under the MMU and with the instruction cache modelled, the
+probe as before. The translations' ways back to the idle loops' looks and
+their instruction cache's fetches are written only where something goes
+to them: 1316 bytes a translation in Crazy Taxi (1334 before the links).
+The run loop, at each line's first block, looks at the near table first
+too (its entry keeps the translation's function): the block table's
+look, a 1 MB table of pages, missed the host's caches there. The page tables the
 translations read (`Mmap::wide_read_table ()`) hold each page's host
 address less its own, read through `Sh4::jit_tables`. A run of 32-bit
 accesses through one base register (pushes, pops, a vector's `fmov.s`) has

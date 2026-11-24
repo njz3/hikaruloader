@@ -4219,6 +4219,28 @@ sh4_run_blocks (Sh4 *ctx, bool skip_idle)
 			continue;
 		}
 
+		/* The near table's first, as sh4_chain () reads it (the block
+		 * table's look missed the host's caches at each line's first
+		 * block, a thirtieth of the master SH-4): the translation noted
+		 * there, its code compared in this epoch, as below */
+		if (!ctx->mmu_exact && ctx->use_jit && ctx->jit && !ctx->icache_on) {
+			int count = 0;
+			Sh4Native native = ctx->jit->near_native (PC, ctx->blocks.epoch, &count);
+
+			if (native && cpu->remaining > count) {
+				int n;
+
+				ctx->chain.stores = ctx->stores;
+				ctx->chain.before = cpu->remaining;
+				ctx->chain.links = 0;
+				ctx->mmu_gen_entry = ctx->mmu_gen;
+				n = native (ctx, PC);
+				if (skip_idle && n != 0)
+					idle_look (ctx, ctx->chain.pc0, n, ctx->chain.before, false);
+				continue;
+			}
+		}
+
 		block = ctx->blocks.get (ctx, PC);
 
 		/* Its x86-64 translation, when the slice has room for all of it
@@ -4634,6 +4656,7 @@ Sh4::set_option (const char *name, int value)
 
 Sh4::~Sh4 ()
 {
+	blocks.epoch_moved = nullptr;
 	if (stats) {
 		sh4_stats_print (this);
 		delete stats;
@@ -4661,6 +4684,9 @@ Sh4::~Sh4 ()
 	if (hl::Profile::enabled && blocks.icache.fetched)
 		HL_PRINT ("sh4 %c: %llu instruction cache lines fetched", config.master ? 'M' : 'S',
 		          (unsigned long long) blocks.icache.fetched);
+	if (hl::Profile::enabled && jit && jit->links_made ())
+		HL_PRINT ("sh4 %c: %llu ways out linked to their next block", config.master ? 'M' : 'S',
+		          (unsigned long long) jit->links_made ());
 	if (hl::Profile::enabled && chain.ends)
 		HL_PRINT ("sh4 %c: %llu translated blocks run, %llu of them gone on to the next (%.1f%%); "
 		          "sh4_chain () called %llu times, %llu gone on",
@@ -4809,6 +4835,12 @@ Sh4::Sh4 (hl::Machine *mach, hl::Mmap *mmap, bool master, bool le) :
 	idle.owner = this;
 	blocks.checking = hl_util_get_bool_option ("HR_SH4_EPOCH_CHECK", false);
 	icache_on = hl_util_get_bool_option ("HR_SH4_ICACHE", false);
+	/* The translations' links undone at each new code epoch (sh4-x64.cpp,
+	 * "Links") */
+	blocks.epoch_moved = [this] () {
+		if (jit)
+			jit->unlink ();
+	};
 	if (int from = hl_util_get_int_option ("HR_SH4_STATS", 0)) {
 		stats = new Sh4Stats;
 		stats->from = (uint64_t) from;
