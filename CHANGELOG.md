@@ -5,8 +5,8 @@ What each version brings, for those who play. How the versions are numbered
 and released: [DEVELOPMENT.md](DEVELOPMENT.md), "Versions and releases".
 
 
-Next version
-------------
+0.8.13 (2026-11-24)
+-------------------
 
 - NAOMI 2 (Club Kart, Initial D, Virtua Fighter 4...): the Elan's lighting
   done on several of the PC's cores, four lights at a time, and the
@@ -17,9 +17,10 @@ Next version
   frame under the 16.7 ms of 60 frames a second there when the PC runs at
   its speed.
 - NAOMI 2: the lighting done by the graphics card by default (*NAOMI 2
-  lighting* in the display settings, `ELAN_LIGHTING = GPU`; `CPU` for the
-  processor's cores), its shaders lighting the vertices as the processor
-  does, the processor free for the rest. Club Kart, Initial D3, Virtua Fighter 4,
+  geometry and lighting* in the display settings, formerly *NAOMI 2
+  lighting*, `ELAN_LIGHTING = GPU`; `CPU` for the processor's cores), its
+  shaders lighting the vertices as the processor does, the processor free
+  for the rest. Club Kart, Initial D3, Virtua Fighter 4,
   King of Route 66, Wild Riders and Soul Surfer the same to the pixel;
   Beach Spikers and Virtua Striker 3 a few pixels a step off (1/255). At
   Club Kart 2003's race start on the development PC, a quarter less of the
