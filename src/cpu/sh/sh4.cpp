@@ -2309,6 +2309,7 @@ typedef void (* itype) (Sh4 *ctx, uint16_t inst);
 		mask_, \
 		match_, \
 		sh4_interp_##name_, \
+		#name_, \
 	}
 
 #define IS_SH4
@@ -2419,51 +2420,205 @@ sh4_handler (uint16_t inst)
 	return insns[inst];
 }
 
+/* HR_SH4_STATS (see Sh4::stats) */
+struct Sh4Stats {
+	/* A slow access: its instruction's address (bit 31 a write), the last
+	 * address it went to, its size, the way it took (D: a RAM or ROM the
+	 * translation's own path missed; O: the operand cache's RAM; H: the hot
+	 * register; I: a device or the on-chip registers) */
+	struct Access {
+		uint64_t n = 0;
+		uint32_t addr = 0;
+		unsigned size = 0;
+		char	 way = '?';
+	};
+	std::unordered_map<uint32_t, Access> accesses;
+	/* By address (29 bits, the way's letter in the top byte) */
+	std::unordered_map<uint64_t, uint64_t> addrs;
+	/* Handlers called by the translations, instructions stepped by the
+	 * interpreter: by address and instruction */
+	std::unordered_map<uint64_t, uint64_t> handlers, steps;
+	/* HR_SH4_STATS=<frame>: counted from that frame (the boot's left
+	 * out), the counts cleared there in place (the translations hold the
+	 * handlers' counters) */
+	uint64_t from = 0;
+	bool	 started = false;
+
+	void	 clear ()
+	{
+		for (auto &e : accesses)
+			e.second.n = 0;
+		for (auto &e : addrs)
+			e.second = 0;
+		for (auto &e : handlers)
+			e.second = 0;
+		for (auto &e : steps)
+			e.second = 0;
+	}
+};
+
+static const char *
+sh4_insn_name (uint16_t inst)
+{
+	for (const auto &d : insns_desc_sh4)
+		if ((inst & d.mask) == d.match)
+			return d.name;
+	for (const auto &d : insns_desc_sh2)
+		if ((inst & d.mask) == d.match)
+			return d.name;
+	return "?";
+}
+
+uint64_t *
+sh4_stats_handler (Sh4 *ctx, uint32_t pc, uint16_t inst)
+{
+	return &ctx->stats->handlers[((uint64_t) pc << 16) | inst];
+}
+
+static void
+sh4_stats_access (Sh4 *ctx, uint32_t addr, unsigned size, bool write)
+{
+	Sh4Stats::Access &a = ctx->stats->accesses[(ctx->regs.pc & 0x7FFFFFFF) | (write ? 0x80000000 : 0)];
+	char way;
+
+	if (!write && (addr & ADDR_MASK) == ctx->hot_read_addr && addr < 0xE0000000 && !ctx->mmu_exact)
+		way = 'H';
+	else if (sh4_direct (ctx, addr, size, write))
+		way = 'D';
+	else if (sh4_oc_ram (ctx, addr, size))
+		way = 'O';
+	else
+		way = 'I';
+	a.n++;
+	a.addr = addr;
+	a.size = size;
+	a.way = way;
+	ctx->stats->addrs[((uint64_t) (uint8_t) way << 32) | (addr & (way == 'D' ? 0x1FFFF000 : ADDR_MASK))]++;
+}
+
+static void
+sh4_stats_print (Sh4 *ctx)
+{
+	Sh4Stats *s = ctx->stats;
+	const char who = ctx->config.master ? 'M' : 'S';
+	auto top = [] (const auto &m, size_t n) {
+		std::vector<std::pair<typename std::decay<decltype (m)>::type::key_type, uint64_t>> v;
+
+		for (const auto &e : m)
+			v.push_back (std::make_pair (e.first, (uint64_t) e.second));
+		std::sort (v.begin (), v.end (), [] (const auto &a, const auto &b) { return a.second > b.second; });
+		if (v.size () > n)
+			v.resize (n);
+		return v;
+	};
+	uint64_t total;
+
+	total = 0;
+	for (const auto &e : s->accesses)
+		total += e.second.n;
+	HL_PRINT ("sh4 %c stats: from frame %llu", who, (unsigned long long) s->from);
+	HL_PRINT ("sh4 %c stats: %llu slow accesses", who, (unsigned long long) total);
+	{
+		std::vector<std::pair<uint32_t, uint64_t>> v;
+
+		for (const auto &e : s->accesses)
+			v.push_back (std::make_pair (e.first, e.second.n));
+		std::sort (v.begin (), v.end (), [] (const auto &a, const auto &b) { return a.second > b.second; });
+		for (size_t i = 0; i < v.size () && i < 30; i++) {
+			const Sh4Stats::Access &a = s->accesses[v[i].first];
+
+			HL_PRINT ("sh4 %c stats:   %c%u @%08X %10llu  %c %08X", who, (v[i].first & 0x80000000) ? 'W' : 'R',
+			          8 * a.size, v[i].first & 0x7FFFFFFF, (unsigned long long) a.n, a.way, a.addr);
+		}
+	}
+	for (const auto &e : top (s->addrs, 20))
+		HL_PRINT ("sh4 %c stats:   way %c %08X %10llu", who, (char) (e.first >> 32),
+		          (uint32_t) e.first, (unsigned long long) e.second);
+	total = 0;
+	for (const auto &e : s->handlers)
+		total += e.second;
+	HL_PRINT ("sh4 %c stats: %llu handler calls", who, (unsigned long long) total);
+	{
+		std::unordered_map<std::string, uint64_t> by_name;
+
+		for (const auto &e : s->handlers)
+			by_name[sh4_insn_name ((uint16_t) e.first)] += e.second;
+		for (const auto &e : top (by_name, 20))
+			HL_PRINT ("sh4 %c stats:   %-12s %10llu", who, e.first.c_str (), (unsigned long long) e.second);
+	}
+	for (const auto &e : top (s->handlers, 30))
+		HL_PRINT ("sh4 %c stats:   @%08X %04X %-12s %10llu", who, (uint32_t) (e.first >> 16),
+		          (uint16_t) e.first, sh4_insn_name ((uint16_t) e.first), (unsigned long long) e.second);
+	total = 0;
+	for (const auto &e : s->steps)
+		total += e.second;
+	HL_PRINT ("sh4 %c stats: %llu instructions stepped", who, (unsigned long long) total);
+	for (const auto &e : top (s->steps, 30))
+		HL_PRINT ("sh4 %c stats:   @%08X %04X %-12s %10llu", who, (uint32_t) (e.first >> 16),
+		          (uint16_t) e.first, sh4_insn_name ((uint16_t) e.first), (unsigned long long) e.second);
+}
+
 uint32_t
 sh4_read32 (Sh4 *ctx, uint32_t addr)
 {
+	if (ctx->stats)
+		sh4_stats_access (ctx, addr, 4, false);
 	return R32 (ctx, addr);
 }
 
 void
 sh4_write32 (Sh4 *ctx, uint32_t addr, uint32_t val)
 {
+	if (ctx->stats)
+		sh4_stats_access (ctx, addr, 4, true);
 	W32 (ctx, addr, val);
 }
 
 uint32_t
 sh4_read8s (Sh4 *ctx, uint32_t addr)
 {
+	if (ctx->stats)
+		sh4_stats_access (ctx, addr, 1, false);
 	return (uint32_t) (int32_t) (int8_t) R8 (ctx, addr);
 }
 
 uint32_t
 sh4_read16s (Sh4 *ctx, uint32_t addr)
 {
+	if (ctx->stats)
+		sh4_stats_access (ctx, addr, 2, false);
 	return (uint32_t) (int32_t) (int16_t) R16 (ctx, addr);
 }
 
 uint64_t
 sh4_read64 (Sh4 *ctx, uint32_t addr)
 {
+	if (ctx->stats)
+		sh4_stats_access (ctx, addr, 8, false);
 	return R64 (ctx, addr);
 }
 
 void
 sh4_write8 (Sh4 *ctx, uint32_t addr, uint32_t val)
 {
+	if (ctx->stats)
+		sh4_stats_access (ctx, addr, 1, true);
 	W8 (ctx, addr, (uint8_t) val);
 }
 
 void
 sh4_write16 (Sh4 *ctx, uint32_t addr, uint32_t val)
 {
+	if (ctx->stats)
+		sh4_stats_access (ctx, addr, 2, true);
 	W16 (ctx, addr, (uint16_t) val);
 }
 
 void
 sh4_write64 (Sh4 *ctx, uint32_t addr, uint64_t val)
 {
+	if (ctx->stats)
+		sh4_stats_access (ctx, addr, 8, true);
 	W64 (ctx, addr, val);
 }
 
@@ -2478,6 +2633,8 @@ sh4_step (Sh4 *ctx, uint32_t pc)
 
 	inst = ((hl::Cpu *) ctx)->patch (pc & 0x1FFFFFFF, inst);
 
+	if (ctx->stats)
+		ctx->stats->steps[((uint64_t) pc << 16) | inst]++;
 	insns[inst] (ctx, inst);
 
 	ctx->remaining --;
@@ -4158,6 +4315,11 @@ Sh4::run (int cycles)
 {
 	hl::Cpu *cpu = this;
 	Sh4 *ctx = (Sh4 *) cpu;
+
+	if (stats && !stats->started && mach->frame >= stats->from) {
+		stats->clear ();
+		stats->started = true;
+	}
 	/* The translations' stores call no write hook */
 	bool debugging = cpu->profile || !cpu->breakpoints.empty () ||
 	                 !cpu->watchpoints.empty ();
@@ -4472,6 +4634,10 @@ Sh4::set_option (const char *name, int value)
 
 Sh4::~Sh4 ()
 {
+	if (stats) {
+		sh4_stats_print (this);
+		delete stats;
+	}
 	/* HR_PROFILE: what the idle loops took off */
 	if (hl::Profile::enabled && cycles_run)
 		HL_PRINT ("sh4 %c: %llu cycles, %llu run, %llu skipped by the idle loops (%.1f%%)",
@@ -4643,5 +4809,9 @@ Sh4::Sh4 (hl::Machine *mach, hl::Mmap *mmap, bool master, bool le) :
 	idle.owner = this;
 	blocks.checking = hl_util_get_bool_option ("HR_SH4_EPOCH_CHECK", false);
 	icache_on = hl_util_get_bool_option ("HR_SH4_ICACHE", false);
+	if (int from = hl_util_get_int_option ("HR_SH4_STATS", 0)) {
+		stats = new Sh4Stats;
+		stats->from = (uint64_t) from;
+	}
 	setup_insns_handlers ();
 }

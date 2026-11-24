@@ -64,6 +64,27 @@ Mmap::add (uint32_t lo, uint32_t hi, uint32_t mask, uint32_t flags,
 			if (e.flags & HL_REGION_W)
 				r.first_w = false;
 		}
+	/* The granules it is in: its own where they were empty and it
+	 * holds them whole; several regions where it does not (one already
+	 * holding a granule whole, found first, keeps it) */
+	if (granule_r.empty ()) {
+		granule_r.assign (NUM_GRANULES, GRANULE_NONE);
+		granule_w.assign (NUM_GRANULES, GRANULE_NONE);
+	}
+	if (lo < (NUM_GRANULES << GRANULE_BITS)) {
+		const uint32_t last = MIN2 (hi, (NUM_GRANULES << GRANULE_BITS) - 1) >> GRANULE_BITS;
+		const int32_t k = (int32_t) regions.size ();
+
+		for (uint32_t g = lo >> GRANULE_BITS; g <= last; g++) {
+			const uint32_t g_lo = g << GRANULE_BITS, g_hi = g_lo + ((1u << GRANULE_BITS) - 1);
+			const int32_t mine = lo <= g_lo && hi >= g_hi ? k : GRANULE_MIXED;
+
+			if ((flags & HL_REGION_R) && granule_r[g] == GRANULE_NONE)
+				granule_r[g] = mine;
+			if ((flags & HL_REGION_W) && granule_w[g] == GRANULE_NONE)
+				granule_w[g] = mine;
+		}
+	}
 	regions.push_back (r);
 	last_r = last_w = NULL;
 	if (use_pages)
@@ -372,6 +393,16 @@ Mmap::find (uint32_t addr, uint32_t flags)
 	 * words, searched each among some fifty) */
 	Region *last = flags == HL_REGION_W ? last_w : flags == HL_REGION_R ? last_r : NULL;
 
+	/* Its granule's region, or none, at once */
+	if ((flags == HL_REGION_W || flags == HL_REGION_R) && addr < (NUM_GRANULES << GRANULE_BITS) &&
+	    !granule_r.empty ()) {
+		const int32_t k = (flags == HL_REGION_W ? granule_w : granule_r)[addr >> GRANULE_BITS];
+
+		if (k >= 0)
+			return &regions[(size_t) k];
+		if (k == GRANULE_NONE)
+			return NULL;
+	}
 	if (last && addr >= last->lo && addr <= last->hi)
 		return last;
 	for (Region &region : regions)
@@ -515,6 +546,25 @@ Mmap::put_words (uint32_t addr, const uint32_t *words, unsigned n)
 
 	if (!guard_ranges.empty ())
 		guard_check (addr & 0x1FFFFFFF);
+	/* All in a RAM's page (a store queue's 32 bytes sent to RAM or to a
+	 * texture): copied at once, as the put ()s would one by one (a page
+	 * in the table is guarded nowhere) */
+	if (n) {
+		const uint32_t last = addr + 4 * (n - 1);
+
+		if (fast (fast_write, addr) && fast (fast_write, last)) {
+			memcpy (fast_base + addr, words, 4 * n);
+			return 0;
+		}
+		if (use_pages && last < (NUM_PAGES << PAGE_BITS) && (addr >> PAGE_BITS) == (last >> PAGE_BITS)) {
+			uint8_t *page = write_pages[addr >> PAGE_BITS];
+
+			if (page) {
+				memcpy (page + (addr & ((1u << PAGE_BITS) - 1)), words, 4 * n);
+				return 0;
+			}
+		}
+	}
 	/* All in a device's region, unlogged, that takes 4 bytes: its put ()s
 	 * at once; else one put () a word, as before */
 	region = (fast (fast_write, addr) || (use_pages && addr < (NUM_PAGES << PAGE_BITS) &&

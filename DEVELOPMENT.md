@@ -77,6 +77,26 @@ when the remainder allows it (`division_pairs ()`), else step by step;
 `ftrv`, `shad` and `shld` are written out. With HR_PROFILE, "bytes a
 translation" and, with HR_SAMPLE too, the bytes by kind of code.
 
+A jump's delay slot is written out with it when it holds an ALU
+instruction, a move to or from memory, the FPU's arithmetic or a `pref`;
+the FPU's tests (FPSCR.PR, SR.FD) are made before the jump, which calls
+its handler (the slot run by the interpreter) when they fail
+(`slot_guards`, `Cold::BRANCH`). Libraries' loops branch with an `fdiv`,
+an `fmul` or a `pref` in the slot: Crazy Taxi stepped 17 million
+instructions in the interpreter over 2400 frames, 0.2 million since. A run
+of stores into a store queue (`mov.l`, `fmov.s`: `access_group ()`) fills
+`Sh4::sq` at once; the store queue's
+words skip the slow path's write-backs; `ocbi`, `ocbp` and `ocbwb` (no
+cache modelled) are nothing; `muls.w`, `mulu.w`, `addc`, `subc`, the
+moves of MACL, MACH, FPUL and the other bank's registers (an interrupt's
+saves) to and from memory are written out. `HR_SH4_STATS` shows what is
+left.
+
+The memory map finds the region of an address in one look for the
+64 KB granules a single region holds (`Mmap::find`, `granule_r`,
+`granule_w`; the others searched as before), and a store queue sent to a
+RAM's or a texture's page is copied at once (`Mmap::put_words`).
+
 The NAOMI's drawing thread (THREADED_RENDERING) shows and swaps the frame it
 drew itself while one board is shown in the main window and the interface
 draws nothing over it (`Renderer::present_on_thread ()`); the window's
@@ -272,6 +292,14 @@ In the environment:
   at each entry all the same, and a rewrite the code epochs missed logged
   ("SH-4 block @... rewritten, the code epoch the same";
   `src/cpu/sh/sh4-blocks.h`): for a machine or a writer added.
+- `HR_SH4_STATS=<frame>`: from that frame on (1: from the boot), where
+  each SH-4 leaves its translations' own code, counted and printed on the
+  way out: the accesses that take the slow way (by instruction, with the
+  last address and the way taken: D a RAM or ROM the translation's path
+  missed, O the operand cache's RAM, H the hot register, I a device or the
+  on-chip registers; then by address), the handlers the translations call
+  (by instruction name, then by address) and the instructions the
+  interpreter steps. What to translate next.
 - `HR_SAMPLE=1` (Windows): a sampling profile of the machine's thread and
   of the drawing thread, a sample a millisecond (another thread reads where
   they are), their busiest functions by name written to the log on the way

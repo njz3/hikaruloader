@@ -338,6 +338,9 @@ const uint32_t	*sh4_ccr_at (Sh4 *ctx);
  * registers, store queues, the memory map, the stores counted, the write
  * hooks: the translations' way when they cannot go straight */
 uint32_t	 sh4_read32 (Sh4 *ctx, uint32_t addr);
+/* HR_SH4_STATS: the counter of the handler call a translation makes for
+ * instruction inst at pc */
+uint64_t	*sh4_stats_handler (Sh4 *ctx, uint32_t pc, uint16_t inst);
 void		 sh4_write32 (Sh4 *ctx, uint32_t addr, uint32_t val);
 /* The other sizes: 8 and 16 bits sign extended, as mov.b and mov.w load */
 uint32_t	 sh4_read8s (Sh4 *ctx, uint32_t addr);

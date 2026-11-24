@@ -273,6 +273,11 @@ public:
 	uint32_t hot_read_addr = ~0u;
 	uint32_t (*hot_read) (void *obj) = nullptr;
 	void	*hot_read_obj = nullptr;
+	/* HR_SH4_STATS=<frame>: where the program leaves the translations' own code
+	 * (their slow accesses, the instructions left to their handlers, those
+	 * the interpreter steps), counted by address, the busiest printed at
+	 * the end (Sh4Stats); NULL else */
+	struct Sh4Stats *stats = nullptr;
 	/* Under the MMU, the code in P1 and P2 run privileged by the blocks
 	 * and their translations as without it (see "MMU"); HR_SH4_MMU_JIT=0
 	 * leaves it all to the interpreter. The instruction a translation runs

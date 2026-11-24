@@ -65,6 +65,8 @@ typedef int (* Sh4Native) (Sh4 *ctx, uint32_t pc);
 /* Where the translation finds the SH-4's state, from ctx (rbx) */
 struct Sh4Offsets {
 	int32_t pc, pr, sr, gbr, macl, mach, remaining, irq_ready, stores, far_stores, r[16];
+	/* The other bank's R0-R7 (Rn_BANK) */
+	int32_t rbank;
 	/* A jump's target across its slot, the last block's count (chaining);
 	 * the code epoch (sh4-blocks.h); what the chaining's probe looks at */
 	int32_t target, chain_n, epoch, state, mmu_on, noting, chain_stores, chain_ends,
@@ -225,8 +227,12 @@ protected:
 	 * allocations a block, half of its translation's time */
 	struct Cold {
 		/* GROUP: the handlers of size ops from at / 2, an interrupt
-		 * looked for after each (access_group ()'s slow path) */
-		enum Kind { EXIT, READ, WRITE, HANDLER, GROUP } kind;
+		 * looked for after each (access_group ()'s slow path).
+		 * BRANCH: a jump's handler (it runs its delay slot), out by
+		 * the jump's way when it went, else to (a delay slot's FPU
+		 * work with FPSCR.PR or SR.FD set, translate ()'s
+		 * slot_guards) */
+		enum Kind { EXIT, READ, WRITE, HANDLER, GROUP, BRANCH } kind;
 		x64::Label	*from, *to;
 		Sh4RegCache::Spills spill;
 		int32_t		 at;
@@ -342,14 +348,22 @@ private:
 	/* The memory map of the block being translated (a PC-relative load
 	 * from RAM or ROM read at its host address) */
 	hl::Mmap	*translating = NULL;
+	/* Its processor and its address (HR_SH4_STATS' counters) */
+	Sh4		*translating_cpu = NULL;
+	uint32_t	 translating_pc = 0;
+	/* FPSCR.PR, SR.FD seen clear since the last handler (fpu_op ()):
+	 * the FPU's work written without its tests */
+	bool		 pr_ok = false, fd_ok = false;
 	const uint8_t	*literal (uint32_t addr, unsigned size) const;
 	bool		 fpu_move_op (x64::Emitter &e, const Sh4Offsets &o, uint16_t inst,
 			              int32_t at);
 	/* FPSCR.SZ for the FPU's moves written next: 0 or 1, that size
 	 * alone (the block's guard saw it); -1, tested as they run */
 	int		 move_sz = -1;
-	/* A delay slot's instruction, written out (slot_writable ()) */
+	/* A delay slot's instruction, written out (slot_writable ()); a jump
+	 * jump_op () writes out with its slot */
 	bool		 slot_writable (const Sh4Offsets &o, uint16_t inst);
+	bool		 jump_writable (const Sh4Offsets &o, const Sh4Block *block, size_t i);
 	void		 slot_op (x64::Emitter &e, const Sh4Offsets &o, uint16_t inst,
 			          int32_t at);
 	bool		 jump_op (x64::Emitter &e, const Sh4Offsets &o,

@@ -5,6 +5,19 @@ What each version brings, for those who play. How the versions are numbered
 and released: [DEVELOPMENT.md](DEVELOPMENT.md), "Versions and releases".
 
 
+In preparation
+--------------
+
+- NAOMI, NAOMI 2, Atomiswave: the SH-4's code goes less often through the
+  slow ways (a jump whose following instruction does a floating-point
+  operation or sends a store queue, some multiplications, shifts and
+  carries, the registers an interrupt saves, the cache's instructions), and
+  the memory map finds its devices at once: the frames 3 to 12% shorter on
+  the development PC (Crazy Taxi 6%, Metal Slug 6 7%, Sports Shooting USA
+  12%, F355 Challenge deluxe about 5% with the cabinets' 4 cores), the
+  same frames to the bit.
+
+
 0.8.13 (2026-11-24)
 -------------------
 

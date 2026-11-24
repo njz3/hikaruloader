@@ -185,6 +185,11 @@ private:
 	std::vector<Region> regions;
 	/* find ()'s last answers, read and write, when first there */
 	Region	*last_r = NULL, *last_w = NULL;
+	/* find ()'s answer for each granule, read and write: the region (its
+	 * index) found first at all of its addresses; none there; or several
+	 * (looked for) */
+	static const int32_t GRANULE_NONE = -2, GRANULE_MIXED = -1;
+	std::vector<int32_t> granule_r, granule_w;
 	bool	 use_pages = false;
 	std::vector<uint8_t *> read_pages, write_pages;
 	/* Each page's host address less its own (at its alias's address):

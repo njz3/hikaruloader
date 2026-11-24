@@ -34,7 +34,9 @@
  *	- the FPU's arithmetic in single precision (fpu_op ()), in SSE, its
  *	  handler below when FPSCR.PR is set;
  *	- a jump and its delay slot written out (jump_op (); bt/s and bf/s
- *	  taken), PC its target, then out (the count i + 2);
+ *	  taken), PC its target, then out (the count i + 2); a slot's FPU
+ *	  work tested before the jump (FPSCR.PR, SR.FD), the jump's handler
+ *	  then;
  *	- any other, its handler:
  *		lea eax, [rsi + 2i]; mov [rbx + PC], eax
  *		mov rcx, rbx; mov edx, inst; call handler
@@ -363,6 +365,7 @@ Sh4Offsets::Sh4Offsets (Sh4 *ctx)
 	far_stores = (int32_t) ((const uint8_t *) &ctx->far_stores - base);
 	for (unsigned i = 0; i < 16; i++)
 		r[i] = (int32_t) ((const uint8_t *) &ctx->regs.r[i] - base);
+	rbank = (int32_t) ((const uint8_t *) &ctx->regs.rbank[0] - base);
 	fr = (int32_t) ((const uint8_t *) &ctx->regs.f - base);
 	xf = (int32_t) ((const uint8_t *) &ctx->regs.x - base);
 	fpscr = (int32_t) ((const uint8_t *) &ctx->regs.fpscr - base);
@@ -1135,15 +1138,37 @@ Sh4X64::memory_op (Emitter &e, const Sh4Offsets &o, uint16_t inst, int32_t at, u
 	}
 	switch (inst & 0xF0FF) {
 	case 0x4022:				/* sts.l PR,@-Rn */
+	case 0x4012:				/* sts.l MACL,@-Rn */
+	case 0x4002:				/* sts.l MACH,@-Rn */
+	case 0x4052:				/* sts.l FPUL,@-Rn */
 		address (n, -4, false);
-		e.load32 (R10, RBX, o.pr);
+		e.load32 (R10, RBX, (inst & 0xF0FF) == 0x4022 ? o.pr : (inst & 0xF0FF) == 0x4012 ? o.macl :
+		                    (inst & 0xF0FF) == 0x4002 ? o.mach : o.fpul);
 		store (e, o, at, 4);
 		step (n, -4);
 		return true;
 	case 0x4026:				/* lds.l @Rn+,PR */
+	case 0x4016:				/* lds.l @Rn+,MACL */
+	case 0x4006:				/* lds.l @Rn+,MACH */
+	case 0x4056:				/* lds.l @Rn+,FPUL */
 		address (n, 0, false);
 		load (e, o, at, 4);
-		e.store32 (RBX, o.pr, RAX);
+		e.store32 (RBX, (inst & 0xF0FF) == 0x4026 ? o.pr : (inst & 0xF0FF) == 0x4016 ? o.macl :
+		                (inst & 0xF0FF) == 0x4006 ? o.mach : o.fpul, RAX);
+		step (n, 4);
+		return true;
+	}
+	switch (inst & 0xF08F) {
+	case 0x4083:				/* stc.l Rm_BANK,@-Rn */
+		address (n, -4, false);
+		e.load32 (R10, RBX, o.rbank + 4 * (int32_t) ((inst >> 4) & 7));
+		store (e, o, at, 4);
+		step (n, -4);
+		return true;
+	case 0x4087:				/* ldc.l @Rn+,Rm_BANK */
+		address (n, 0, false);
+		load (e, o, at, 4);
+		e.store32 (RBX, o.rbank + 4 * (int32_t) ((inst >> 4) & 7), RAX);
 		step (n, 4);
 		return true;
 	}
@@ -1388,6 +1413,56 @@ Sh4X64::native_op (Emitter &e, const Sh4Offsets &o, uint16_t inst)
 		e.imul32 (RAX, a);
 		e.store32 (RBX, o.macl, RAX);
 		return true;
+	case 0x200F:				/* muls.w Rm,Rn: MACL */
+	case 0x200E:				/* mulu.w Rm,Rn */
+		a = rc.read (e, m);
+		d = rc.read (e, n);
+		if (inst & 1) {
+			e.movsx16 (RAX, d);
+			e.movsx16 (RCX, a);
+		} else {
+			e.movzx16 (RAX, d);
+			e.movzx16 (RCX, a);
+		}
+		e.imul32 (RAX, RCX);
+		e.store32 (RBX, o.macl, RAX);
+		return true;
+	case 0x300E:				/* addc Rm,Rn: T the carry */
+	case 0x300A: {				/* subc Rm,Rn: T the borrow */
+		const Reg t = rc.read (e, Sh4RegCache::T);
+
+		e.mov32 (RAX, t);
+		a = rc.read (e, m);
+		d = rc.modify (e, n);
+		e.neg32 (RAX);				/* CF: T */
+		e.alu32_reg_reg ((inst & 4) ? Emitter::ALU_ADC : Emitter::ALU_SBB, d, a);
+		set_t (e, rc, CC_B);
+		return true;
+	}
+	case 0x400C:				/* shad Rm,Rn */
+	case 0x400D: {				/* shld Rm,Rn: as the handlers */
+		Label right, none, done;
+
+		e.mov32 (RCX, rc.read (e, m));
+		d = rc.modify (e, n);
+		e.test32 (RCX, RCX);
+		e.jcc (CC_S, right);
+		e.shift32_cl (4, d);			/* Rn << (Rm & 31) */
+		e.jmp (done);
+		e.bind (right);
+		e.and32_imm (RCX, 31);
+		e.jcc (CC_E, none);
+		e.neg32 (RCX);				/* 32 - (Rm & 31): (~Rm & 31) + 1 */
+		e.shift32_cl ((inst & 1) ? 5 : 7, d);
+		e.jmp (done);
+		e.bind (none);
+		if (inst & 1)
+			e.alu32_reg_reg (Emitter::ALU_XOR, d, d);	/* shld: 0 */
+		else
+			e.rot32 (Emitter::ROT_SAR, d, 31);	/* shad: the sign */
+		e.bind (done);
+		return true;
+	}
 	}
 	switch (inst & 0xF0FF) {
 	/* The control registers read and GBR written, as their handlers:
@@ -1414,30 +1489,6 @@ Sh4X64::native_op (Emitter &e, const Sh4Offsets &o, uint16_t inst)
 		e.shr32_imm (rc.modify (e, n), 1);
 		set_t (e, rc, CC_B);
 		return true;
-	case 0x400C:				/* shad Rm,Rn */
-	case 0x400D: {				/* shld Rm,Rn: as the handlers */
-		Label right, none, done;
-
-		e.mov32 (RCX, rc.read (e, m));
-		d = rc.modify (e, n);
-		e.test32 (RCX, RCX);
-		e.jcc (CC_S, right);
-		e.shift32_cl (4, d);			/* Rn << (Rm & 31) */
-		e.jmp (done);
-		e.bind (right);
-		e.and32_imm (RCX, 31);
-		e.jcc (CC_E, none);
-		e.neg32 (RCX);				/* 32 - (Rm & 31): (~Rm & 31) + 1 */
-		e.shift32_cl ((inst & 1) ? 5 : 7, d);
-		e.jmp (done);
-		e.bind (none);
-		if (inst & 1)
-			e.alu32_reg_reg (Emitter::ALU_XOR, d, d);	/* shld: 0 */
-		else
-			e.rot32 (Emitter::ROT_SAR, d, 31);	/* shad: the sign */
-		e.bind (done);
-		return true;
-	}
 	case 0x4008: e.shl32_imm (rc.modify (e, n), 2); return true;	/* shll2 */
 	case 0x4018: e.shl32_imm (rc.modify (e, n), 8); return true;	/* shll8 */
 	case 0x4028: e.shl32_imm (rc.modify (e, n), 16); return true;	/* shll16 */
@@ -1468,6 +1519,18 @@ Sh4X64::native_op (Emitter &e, const Sh4Offsets &o, uint16_t inst)
 		return true;
 	case 0x002A:				/* sts PR,Rn */
 		e.load32 (rc.write (e, n), RBX, o.pr);
+		return true;
+	case 0x0082: case 0x0092: case 0x00A2: case 0x00B2:	/* stc Rm_BANK,Rn */
+	case 0x00C2: case 0x00D2: case 0x00E2: case 0x00F2:
+		e.load32 (rc.write (e, n), RBX, o.rbank + 4 * (int32_t) ((inst >> 4) & 7));
+		return true;
+	case 0x408E: case 0x409E: case 0x40AE: case 0x40BE:	/* ldc Rn,Rm_BANK */
+	case 0x40CE: case 0x40DE: case 0x40EE: case 0x40FE:
+		e.store32 (RBX, o.rbank + 4 * (int32_t) ((inst >> 4) & 7), rc.read (e, n));
+		return true;
+	case 0x0093:				/* ocbi @Rn: nothing, as their handlers */
+	case 0x00A3:				/* ocbp @Rn */
+	case 0x00B3:				/* ocbwb @Rn */
 		return true;
 	case 0x402A:				/* lds Rn,PR */
 		e.store32 (RBX, o.pr, rc.read (e, n));
@@ -1870,6 +1933,35 @@ Sh4X64::access_group (Emitter &e, const Sh4Offsets &o, const Sh4Block *block, si
 	e.lea32 (RAX, RCX, lo);
 	e.test8_imm (RAX, 3);
 	e.jcc (CC_NE, slow);
+	if (store && sq_inline) {
+		/* Into a store queue (E0000000-E3FFFFFF, its 64 bytes again
+		 * and again): Sh4::sq's words, counted as sq_store () counts
+		 * them (no code there) */
+		Label &other = label ();
+
+		e.lea32 (RDX, RAX, 0x20000000);
+		e.cmp32_imm (RDX, 0x04000000 - 64);
+		e.jcc (CC_AE, other);
+		for (k = 0; k < count; k++) {
+			const int32_t at = acc[k].fpu ? o.fr + 4 * (int32_t) (acc[k].reg ^ 1) : o.r[acc[k].reg];
+			Reg v;
+
+			e.lea32 (RDX, RCX, acc[k].off);
+			e.and32_imm (RDX, 0x3F);
+			e.add64_imm (RDX, o.sq);
+			if (acc[k].fpu || !rc.peek (acc[k].reg, v)) {
+				e.load32 (RAX, RBX, at);
+				v = RAX;
+			}
+			e.store32_index (RBX, RDX, 1, v);
+		}
+		if (cur)
+			e.alu_mem_imm (Emitter::ALU_ADD, RBX, o.r[base], cur);
+		e.add64_mem_imm (RBX, o.stores, (int32_t) count);
+		e.add64_mem_imm (RBX, o.far_stores, (int32_t) count);
+		e.jmp (done);
+		e.bind (other);
+	}
 	e.lea32 (RDX, RCX, hi + 3);
 	e.alu32_reg_reg (Emitter::ALU_XOR, RDX, RAX);
 	e.test32_imm (RDX, ~((1u << hl::Mmap::TABLE_PAGE_BITS) - 1));
@@ -2116,8 +2208,9 @@ fpu_op (Emitter &e, const Sh4Offsets &o, Sh4RegCache &rc, uint16_t inst, Label &
 }
 
 /* What a delay slot may hold, written out: an ALU instruction, a move to
- * or from memory; none relative to PC (the interpreter's PC is the jump's
- * target in the slot), no jump. Tried on a scratch buffer */
+ * or from memory, the FPU's arithmetic (its tests before the jump), a
+ * pref; none relative to PC (the interpreter's PC is the jump's target in
+ * the slot), no jump. Tried on a scratch buffer */
 bool
 Sh4X64::slot_writable (const Sh4Offsets &o, uint16_t inst)
 {
@@ -2132,6 +2225,14 @@ Sh4X64::slot_writable (const Sh4Offsets &o, uint16_t inst)
 	if ((inst & 0xF000) == 0xD000 || (inst & 0xF000) == 0x9000 || sh4_may_branch (inst))
 		return false;
 	ok = native_op (e, o, inst) || memory_op (e, o, inst, 0, 0);
+	if (!ok) {
+		Label slow;
+		bool fallback = false, pr = false, fd = false;
+
+		ok = fpu_op (e, o, rc, inst, slow, fallback, pr, fd);
+	}
+	if (!ok)
+		ok = (inst & 0xF0FF) == 0x0083 && !mmu_mode;
 	cold.resize (was);
 	rc = kept;
 	store_counted = counted;
@@ -2141,11 +2242,67 @@ Sh4X64::slot_writable (const Sh4Offsets &o, uint16_t inst)
 void
 Sh4X64::slot_op (Emitter &e, const Sh4Offsets &o, uint16_t inst, int32_t at)
 {
-	if (!native_op (e, o, inst)) {
-		in_slot = true;
-		memory_op (e, o, inst, at, 0);
-		in_slot = false;
+	Label slow;
+	bool fallback = false;
+
+	if (native_op (e, o, inst))
+		return;
+	/* The FPU's arithmetic: FPSCR.PR, SR.FD tested before the jump
+	 * (slot_guards ()) */
+	if (fpu_op (e, o, rc, inst, slow, fallback, pr_ok, fd_ok)) {
+		if (fallback)
+			HL_ABORT ("sh4-x64: a delay slot's FPU work untested");
+		return;
 	}
+	if ((inst & 0xF0FF) == 0x0083) {
+		/* pref @Rn: at a store queue's address alone, its handler
+		 * (it reads Rn, changes none of the registers) */
+		Label &none = label ();
+		const Reg rn = rc.read (e, (inst >> 8) & 15);
+
+		e.mov32 (RAX, rn);
+		e.shr32_imm (RAX, 26);
+		e.cmp32_imm (RAX, 0x38);
+		e.jcc (CC_NE, none);
+		rc.store_dirty (e);
+		if (translating_cpu->stats) {
+			e.mov_imm64 (RAX, (uint64_t) (uintptr_t) sh4_stats_handler (translating_cpu,
+			                                                           translating_pc + (uint32_t) at, inst));
+			e.add64_mem_imm (RAX, 0, 1);
+		}
+		e.mov (RCX, RBX);
+		e.mov_imm32 (RDX, inst);
+		e.call ((const void *) sh4_handler (inst));
+		e.bind (none);
+		return;
+	}
+	in_slot = true;
+	memory_op (e, o, inst, at, 0);
+	in_slot = false;
+}
+
+/* The jumps jump_op () writes out, with their slot */
+bool
+Sh4X64::jump_writable (const Sh4Offsets &o, const Sh4Block *block, size_t i)
+{
+	const uint16_t inst = block->ops[i].inst;
+
+	if (i + 1 != block->ops.size () || !block->slot_kept ||
+	    !slot_writable (o, block->words[i + 1]))
+		return false;
+	switch (inst & 0xF000) {
+	case 0xA000:				/* bra */
+	case 0xB000:				/* bsr */
+		return true;
+	}
+	switch (inst & 0xF0FF) {
+	case 0x402B:				/* jmp @Rn */
+	case 0x400B:				/* jsr @Rn */
+	case 0x0003:				/* bsrf Rn */
+	case 0x0023:				/* braf Rn */
+		return true;
+	}
+	return inst == 0x000B;			/* rts */
 }
 
 /* The block's last instruction, an unconditional jump, and its delay slot
@@ -2163,26 +2320,8 @@ Sh4X64::jump_op (Emitter &e, const Sh4Offsets &o, const Sh4Block *block, size_t 
 	const int32_t simm12 = (int32_t) ((inst & 0xFFF) ^ 0x800) - 0x800;
 	bool fixed = false;
 
-	if (i + 1 != block->ops.size () || !block->slot_kept ||
-	    !slot_writable (o, block->words[i + 1]))
+	if (!jump_writable (o, block, i))
 		return false;
-	switch (inst & 0xF000) {
-	case 0xA000:				/* bra */
-	case 0xB000:				/* bsr */
-		break;
-	default:
-		switch (inst & 0xF0FF) {
-		case 0x402B:			/* jmp @Rn */
-		case 0x400B:			/* jsr @Rn */
-		case 0x0003:			/* bsrf Rn */
-		case 0x0023:			/* braf Rn */
-			break;
-		default:
-			if (inst != 0x000B)	/* rts */
-				return false;
-		}
-	}
-
 	switch (inst & 0xF000) {
 	case 0xB000:				/* bsr: PR, then as bra */
 		e.lea32 (RAX, RSI, at + 4);
@@ -2262,6 +2401,8 @@ Sh4X64::translate (Sh4 *ctx, Sh4Block *block)
 		return NULL;
 	Emitter e (buf, max);
 	translating = ctx->mmap;
+	translating_cpu = ctx;
+	translating_pc = block->pc;
 	stamps = ctx->blocks.stamps ();
 	cold.clear ();
 	labels_used = 0;
@@ -2288,7 +2429,7 @@ Sh4X64::translate (Sh4 *ctx, Sh4Block *block)
 	 * restores the FPU's banks in pairs) */
 	bool sz = ctx->regs.fpscr.bit.sz != 0, sz_seen = false;
 	/* FPSCR.PR, SR.FD seen clear since the last handler (fpu_op ()) */
-	bool pr_ok = false, fd_ok = false;
+	pr_ok = fd_ok = false;
 
 	/* A way out of the block, taken on c: the GPRs not in ctx written
 	 * there first (apart, after the block) */
@@ -2318,6 +2459,10 @@ Sh4X64::translate (Sh4 *ctx, Sh4Block *block)
 			rc.flush (e);
 			sz_seen = false;
 		}
+		if (ctx->stats) {
+			e.mov_imm64 (RAX, (uint64_t) (uintptr_t) sh4_stats_handler (ctx, block->pc + (uint32_t) at, op.inst));
+			e.add64_mem_imm (RAX, 0, 1);
+		}
 		e.lea32 (RAX, RSI, at);
 		e.store32 (RBX, o.pc, RAX);
 		call_index (e, o, at);
@@ -2344,6 +2489,42 @@ Sh4X64::translate (Sh4 *ctx, Sh4Block *block)
 			}
 			used[i] = true;
 		}
+	};
+
+	/* A delay slot's FPU work (slot_op ()) from jump i: FPSCR.PR, SR.FD
+	 * tested before the jump, else the jump's handler (it runs the slot)
+	 * and out; the slot then written without them */
+	auto slot_guards = [&] (size_t i, uint16_t slot) {
+		uint8_t scratch[2048];
+		Emitter s (scratch, sizeof (scratch));
+		const size_t was = cold.size ();
+		const Sh4RegCache kept = rc;
+		const bool counted = store_counted;
+		Label slow;
+		bool fallback = false, pr = pr_ok, fd = fd_ok;
+		const bool fpu = fpu_op (s, o, rc, slot, slow, fallback, pr, fd);
+
+		cold.resize (was);
+		rc = kept;
+		store_counted = counted;
+		if (!fpu || (pr == pr_ok && fd == fd_ok))
+			return;
+
+		Label &other = label ();
+
+		if (pr != pr_ok) {
+			e.test_mem_imm (RBX, o.fpscr, 0x00080000);
+			e.jcc (CC_NE, other);
+			pr_ok = true;
+		}
+		if (fd != fd_ok) {
+			e.test_mem_imm (RBX, o.sr, 0x00008000);
+			e.jcc (CC_NE, other);
+			fd_ok = true;
+		}
+		cold_path (Cold::BRANCH, other, seq[i], (int32_t) (2 * i), 0, block->ops[i].inst,
+		           block->ops[i].handler);
+		used[i] = true;
 	};
 
 	/* Prologue: as the unwind information says */
@@ -2546,6 +2727,7 @@ Sh4X64::translate (Sh4 *ctx, Sh4Block *block)
 			int32_t target = at + 4 + 2 * (int32_t) (int8_t) op.inst;
 			Sh4RegCache staying;
 
+			slot_guards (i, block->ops[i + 1].inst);
 			{
 				const Reg t = rc.read (e, Sh4RegCache::T);
 
@@ -2577,6 +2759,8 @@ Sh4X64::translate (Sh4 *ctx, Sh4Block *block)
 			bool fixed_to = false;
 			int32_t target = 0;
 
+			if (jump_writable (o, block, i))
+				slot_guards (i, block->words[i + 1]);
 			if (jump_op (e, o, block, i, jumped[i], fixed_to, target)) {
 				jumped_used[i] = true;
 				fixed[i] = fixed_to;
@@ -2598,7 +2782,15 @@ Sh4X64::translate (Sh4 *ctx, Sh4Block *block)
 			e.shr32_imm (RAX, 26);
 			e.cmp32_imm (RAX, 0x38);
 			e.jcc (CC_NE, none);
-			handler (i, true);
+			{
+				/* Neither FPSCR nor SR changed: the FPU's tests
+				 * kept */
+				const bool pr = pr_ok, fd = fd_ok;
+
+				handler (i, true);
+				pr_ok = pr;
+				fd_ok = fd;
+			}
 			e.bind (none);
 			continue;
 		}
@@ -2635,7 +2827,7 @@ Sh4X64::translate (Sh4 *ctx, Sh4Block *block)
 		if (l.num_few || !l.waiting.empty ())
 			return true;
 		for (const Cold &c : cold)
-			if (c.to == &l)
+			if (c.to == &l || (c.kind == Cold::BRANCH && &branched[c.at / 2] == &l))
 				return true;
 		return false;
 	};
@@ -2786,6 +2978,10 @@ Sh4X64::translate (Sh4 *ctx, Sh4Block *block)
 	main_bytes += e.length ();
 	for (const Cold &c : cold) {
 		e.bind (*c.from);
+		/* A store queue's word first: it calls nothing, the registers
+		 * kept where they are */
+		if (c.kind == Cold::WRITE && sq_inline)
+			sq_store (e, o, c.size, *c.to);
 		for (const auto &r : c.spill)
 			if (r.second == o.sr) {
 				e.alu_mem_imm (Emitter::ALU_AND, RBX, o.sr, ~1);
@@ -2797,11 +2993,13 @@ Sh4X64::translate (Sh4 *ctx, Sh4Block *block)
 			call_read (e, o, c.at, c.size, c.slot);
 			break;
 		case Cold::WRITE:
-			if (sq_inline)
-				sq_store (e, o, c.size, *c.to);
 			call_write (e, o, c.at, c.size, c.slot);
 			break;
 		case Cold::HANDLER:
+			if (ctx->stats) {
+				e.mov_imm64 (RAX, (uint64_t) (uintptr_t) sh4_stats_handler (ctx, block->pc + (uint32_t) c.at, c.inst));
+				e.add64_mem_imm (RAX, 0, 1);
+			}
 			e.lea32 (RAX, RSI, c.at);
 			e.store32 (RBX, o.pc, RAX);
 			call_index (e, o, c.at);
@@ -2809,11 +3007,31 @@ Sh4X64::translate (Sh4 *ctx, Sh4Block *block)
 			e.mov_imm32 (RDX, c.inst);
 			e.call ((const void *) c.fn);
 			break;
+		case Cold::BRANCH:
+			if (ctx->stats) {
+				e.mov_imm64 (RAX, (uint64_t) (uintptr_t) sh4_stats_handler (ctx, block->pc + (uint32_t) c.at, c.inst));
+				e.add64_mem_imm (RAX, 0, 1);
+			}
+			e.lea32 (RAX, RSI, c.at);
+			e.store32 (RBX, o.pc, RAX);
+			call_index (e, o, c.at);
+			e.mov (RCX, RBX);
+			e.mov_imm32 (RDX, c.inst);
+			e.call ((const void *) c.fn);
+			e.lea32 (RAX, RSI, c.at);
+			e.cmp32_mem (RBX, o.pc, RAX);
+			e.jcc (CC_NE, branched[c.at / 2]);
+			break;
 		case Cold::GROUP:
 			for (unsigned k = 0; k < c.size; k++) {
 				const size_t op = (size_t) (c.at / 2) + k;
 				const int32_t at = (int32_t) (2 * op);
 
+				if (ctx->stats) {
+					e.mov_imm64 (RAX, (uint64_t) (uintptr_t) sh4_stats_handler (ctx, block->pc + (uint32_t) at,
+					                                                           block->ops[op].inst));
+					e.add64_mem_imm (RAX, 0, 1);
+				}
 				e.lea32 (RAX, RSI, at);
 				e.store32 (RBX, o.pc, RAX);
 				call_index (e, o, at);

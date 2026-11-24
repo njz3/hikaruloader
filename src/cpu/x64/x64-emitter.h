@@ -122,8 +122,8 @@ public:
 	/* The arithmetic group, 32 bits: op r/m32, r32 (the opcodes below);
 	 * op r32, r/m32 (the opcode + 2); op r/m32, imm32 (81 /digit) */
 	enum Alu {
-		ALU_ADD = 0x01, ALU_OR = 0x09, ALU_AND = 0x21, ALU_SUB = 0x29,
-		ALU_XOR = 0x31, ALU_CMP = 0x39
+		ALU_ADD = 0x01, ALU_OR = 0x09, ALU_ADC = 0x11, ALU_SBB = 0x19,
+		ALU_AND = 0x21, ALU_SUB = 0x29, ALU_XOR = 0x31, ALU_CMP = 0x39
 	};
 	void		 alu_mem_reg (Alu op, Reg base, int32_t disp, Reg r);
 	void		 alu_reg_mem (Alu op, Reg r, Reg base, int32_t disp);

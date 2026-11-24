@@ -28,6 +28,7 @@ typedef struct {
 	uint16_t mask;
 	uint16_t match;
 	itype handler;
+	const char *name;
 } idesctype;
 
 static itype insns[65536];
