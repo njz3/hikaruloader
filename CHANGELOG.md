@@ -5,8 +5,8 @@ What each version brings, for those who play. How the versions are numbered
 and released: [DEVELOPMENT.md](DEVELOPMENT.md), "Versions and releases".
 
 
-In preparation
---------------
+0.8.14 (2026-11-25)
+-------------------
 
 - NAOMI, NAOMI 2, Atomiswave: the SH-4's code goes less often through the
   slow ways (a jump whose following instruction does a floating-point
