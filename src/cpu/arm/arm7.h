@@ -21,7 +21,10 @@
 
 #include "hl/core.h"
 
-/* An ARM7 (ARMv4, the ARM state alone: no Thumb), interpreted: data
+class Arm7Jit;
+
+/* An ARM7 (ARMv4, the ARM state alone: no Thumb), interpreted (or its RAM's
+ * code translated, Arm7::jit, arm7-x64.cpp): data
  * processing with the barrel shifter, the multiplies (long ones too), the
  * word, byte and halfword transfers, the block transfers, SWP, MRS and MSR,
  * the branches; the modes and their banked registers, the exceptions, the
@@ -67,6 +70,9 @@ public:
 	};
 
 	explicit Arm7 (Bus *bus);
+	~Arm7 ();
+	Arm7 (const Arm7 &) = delete;
+	Arm7 &operator= (const Arm7 &) = delete;
 
 	/* The bus' RAM from address 0, size bytes, read and written here
 	 * without the bus (little-endian, as the hosts are): faster. The bus
@@ -84,6 +90,10 @@ public:
 	 * same registers, flags and cycles as one instruction at a time. Off
 	 * by default */
 	bool	 fast_loops = false;
+	/* The RAM's code translated to x86-64 (arm7-x64.cpp) and run a block
+	 * at a time: the same registers, memory and cycles as step (). Off by
+	 * default */
+	bool	 jit = false;
 	/* One instruction, or the taking of an interrupt: its cycles */
 	int	 step ();
 
@@ -201,6 +211,12 @@ private:
 	void	 find_scan_loop (uint32_t head);
 	/* Whole turns, within budget cycles; their cycles */
 	int	 run_scan_loop (int budget);
+
+	/* jit: the translations, made at the first run () */
+	friend class Arm7Jit;
+	Arm7Jit	*translator = NULL;
+	/* The block at r15 run within budget: its cycles, 0 for none */
+	int	 run_translated (int budget);
 
 	Bus	*bus;
 	uint8_t	*ram;

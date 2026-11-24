@@ -1515,6 +1515,8 @@ hikaru_init (Hikaru *hikaru)
 	for (hl::Cpu *cpu : { hikaru->sh_m, hikaru->sh_s }) {
 		((Sh4 *) cpu)->blocks.own (0x0C000000, 0x0DFFFFFF);
 		((Sh4 *) cpu)->blocks.own (0x00000000, 0x001FFFFF);
+		if (mach->game && mach->game->sh4_icache)
+			((Sh4 *) cpu)->icache_on = true;
 	}
 	/* The framebuffer's pages the master writes (its 2D layers), told to
 	 * the renderer: its copy for the drawing thread made of those alone

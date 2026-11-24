@@ -94,15 +94,22 @@ def read(path):
 
 
 def compare(a, b):
-    """'' when the same, else the first frame and memories that differ: those
-    both programs name (a memory named in one only, a buffer named since, is
-    told by renamed ())"""
-    for (fa, ma), (fb, mb) in zip(a, b):
+    """'' when the same, else the first frame and memories that differ: the
+    frames both hashed (one may hash every n frames alone, HR_HASH_EVERY),
+    the memories both programs name (a memory named in one only, a buffer
+    named since, is told by renamed ())"""
+    in_b = dict(b)
+    for fa, ma in a:
+        mb = in_b.get(fa)
+        if mb is None:
+            continue
         names = sorted(k for k in set(ma) & set(mb) if ma[k] != mb[k])
         if names:
             return 'differ at frame %d: %s' % (fa, ', '.join(names))
-    if len(a) != len(b):
-        return 'one stopped at frame %d, the other at %d' % (len(a), len(b))
+    last_a, last_b = (a[-1][0] if a else 0), (b[-1][0] if b else 0)
+    step = max([1] + [y[0] - x[0] for s in (a, b) for x, y in zip(s, s[1:])])
+    if abs(last_a - last_b) >= step:
+        return 'one stopped at frame %d, the other at %d' % (last_a, last_b)
     return ''
 
 

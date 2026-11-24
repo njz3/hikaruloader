@@ -36,6 +36,7 @@
 #include "hl/config.h"
 #include "hl/core.h"
 #include "hl/machine.h"
+#include "hl/profile.h"
 #include "hl/window.h"
 
 #include "hl/bezel.h"
@@ -678,8 +679,8 @@ void main ()
  * order, but the GPU's square roots, divisions and powers are not the
  * processor's to the last bit: a colour may come a step (1/255) off.
  */
-static const char *light_cs_src = R"(#version 430
-layout (local_size_x = 64) in;
+/* The lights and their sets (binding 1), Elan::light ()'s light () */
+static const char *light_common_src = R"(
 struct Light {
 	vec4 direction;
 	vec4 position;
@@ -699,18 +700,7 @@ struct LightSet {
 	uint pad;
 	Light lights[16];
 };
-struct Lit {
-	float pos[3];
-	float normal[3];
-	float base[4];
-	float offset[4];
-	uint set;
-	uint add;
-};
 layout (std430, binding = 1) readonly buffer Sets { LightSet sets[]; };
-layout (std430, binding = 2) readonly buffer Lits { Lit lit[]; };
-layout (std430, binding = 3) writeonly buffer Colors { vec4 colors[]; };
-uniform uint u_count;
 
 float clamp01 (float f)
 {
@@ -722,18 +712,10 @@ float power01 (float x, float gloss)
 	return x <= 0.0 ? 0.0 : x >= 1.0 ? 1.0 : pow (x, gloss);
 }
 
-void main ()
+/* A vertex at pos (the view's), its normal, lit by set s: its colours as
+ * the screen takes them (add: the offset added to the base) */
+void light (uint s, vec3 pos, vec3 normal, inout vec4 base, inout vec4 offset, bool add)
 {
-	uint i = gl_GlobalInvocationID.x;
-
-	if (i >= u_count)
-		return;
-
-	uint s = lit[i].set;
-	vec3 pos = vec3 (lit[i].pos[0], lit[i].pos[1], lit[i].pos[2]);
-	vec3 normal = vec3 (lit[i].normal[0], lit[i].normal[1], lit[i].normal[2]);
-	vec4 base = vec4 (lit[i].base[0], lit[i].base[1], lit[i].base[2], lit[i].base[3]);
-	vec4 offset = vec4 (lit[i].offset[0], lit[i].offset[1], lit[i].offset[2], lit[i].offset[3]);
 	vec3 diffuse = vec3 (0.0), specular = vec3 (0.0);
 	float diffuse_alpha = 0.0, specular_alpha = 0.0;
 	vec3 eye = pos;
@@ -814,10 +796,310 @@ void main ()
 		offset += max (base - 1.0, 0.0);
 	base = clamp (base, 0.0, 1.0);
 	offset = clamp (offset, 0.0, 1.0);
-	if (lit[i].add != 0u)
+	if (add)
 		base += offset;
+}
+)";
+
+static const char *compute_head_src = "#version 430\nlayout (local_size_x = 64) in;\n";
+
+static const char *light_main_src = R"(
+struct Lit {
+	float pos[3];
+	float normal[3];
+	float base[4];
+	float offset[4];
+	uint set;
+	uint add;
+};
+layout (std430, binding = 2) readonly buffer Lits { Lit lit[]; };
+layout (std430, binding = 3) writeonly buffer Colors { vec4 colors[]; };
+uniform uint u_count;
+
+void main ()
+{
+	uint i = gl_GlobalInvocationID.x;
+
+	if (i >= u_count)
+		return;
+
+	vec3 pos = vec3 (lit[i].pos[0], lit[i].pos[1], lit[i].pos[2]);
+	vec3 normal = vec3 (lit[i].normal[0], lit[i].normal[1], lit[i].normal[2]);
+	vec4 base = vec4 (lit[i].base[0], lit[i].base[1], lit[i].base[2], lit[i].base[3]);
+	vec4 offset = vec4 (lit[i].offset[0], lit[i].offset[1], lit[i].offset[2], lit[i].offset[3]);
+
+	light (lit[i].set, pos, normal, base, offset, lit[i].add != 0u);
 	colors[2u * i] = base;
 	colors[2u * i + 1u] = offset;
+}
+)";
+
+/*
+ * The NAOMI 2's Vertices Transformed by the GPU (ELAN_LIGHTING GPU)
+ *
+ * A scene's Elan lists as they came (SceneElan, naomi-elan.cpp's
+ * gpu_list ()): elan_points_src puts each vertex in the view and on the
+ * screen and lights it, as Elan::polygon_list () does; elan_triangles_src
+ * cuts each triangle along the near plane (Elan::triangle ()), leaves out
+ * those the Holly would (behind the eye, culled: Holly::ta_triangle ()) and
+ * writes its six vertices in the vertex buffer (the cut ones', a second
+ * triangle or nothing). The same operations in the same order (precise:
+ * none fused), the GPU's divisions and square roots aside
+ */
+static const char *elan_common_src = R"(
+struct List {
+	vec4 m[3];
+	vec4 n[3];
+	vec4 proj;
+	vec4 env;	/* env_u, env_v, the near plane, CULL_VAL */
+	vec4 gmp_diffuse;
+	vec4 gmp_specular;
+	uint first, words, uv_at, rgb_at, flags, set, isp, vertex;
+};
+/* A vertex in the view, on the screen (x, y, 1/W), its colours as lit */
+struct Point {
+	vec4 pos;
+	vec4 screen;
+	vec4 uv;
+	vec4 base;
+	vec4 offset;
+};
+const uint UV = 1u, RGB = 2u, ENV_ANY = 4u, ENV0 = 8u, BUMP = 16u, CONSTANT = 32u, TEXTURED = 64u;
+const uint GMP_D0 = 128u, GMP_S0 = 256u, CLIP = 512u;
+layout (std430, binding = 3) readonly buffer ListOf { uint list_of[]; };
+layout (std430, binding = 4) readonly buffer Lists { List lists[]; };
+uniform uint u_count;
+
+/* fx x / z + tx, -fy y / z + ty, -1 / z */
+vec3 project (uint l, vec3 pos)
+{
+	precise float z = pos.z;
+	precise vec3 s;
+
+	s.x = lists[l].proj.x * pos.x / z + lists[l].proj.y;
+	s.y = -lists[l].proj.z * pos.y / z + lists[l].proj.w;
+	s.z = z != 0.0 ? -1.0 / z : 0.0;
+	return s;
+}
+)";
+
+static const char *elan_points_src = R"(
+layout (std430, binding = 2) readonly buffer Words { uint words[]; };
+layout (std430, binding = 5) writeonly buffer Points { Point points[]; };
+
+vec4 unpack_color (uint c)
+{
+	return vec4 (float ((c >> 16) & 255u), float ((c >> 8) & 255u), float (c & 255u), float (c >> 24)) / 255.0;
+}
+
+void main ()
+{
+	uint i = gl_GlobalInvocationID.x;
+
+	if (i >= u_count)
+		return;
+
+	uint l = list_of[i];
+	uint f = lists[l].flags;
+	uint at = lists[l].first + (i - lists[l].vertex) * lists[l].words;
+	uint header = words[at];
+	precise vec3 p = vec3 (uintBitsToFloat (words[at + 1u]), uintBitsToFloat (words[at + 2u]),
+	                       uintBitsToFloat (words[at + 3u]));
+	precise vec3 pos, in_n, normal;
+	int k;
+
+	/* Each row in its order: ((m0 x + m1 y) + m2 z) + m3 */
+	for (k = 0; k < 3; k++)
+		pos[k] = ((lists[l].m[k].x * p.x + lists[l].m[k].y * p.y) + lists[l].m[k].z * p.z) + lists[l].m[k].w;
+	in_n = vec3 (float (bitfieldExtract (int (header), 0, 8)), float (bitfieldExtract (int (header), 8, 8)),
+	             float (bitfieldExtract (int (header), 16, 8))) / 127.0;
+	for (k = 0; k < 3; k++)
+		normal[k] = (lists[l].n[k].x * in_n.x + lists[l].n[k].y * in_n.y) + lists[l].n[k].z * in_n.z;
+	{
+		precise float len = sqrt ((normal.x * normal.x + normal.y * normal.y) + normal.z * normal.z);
+
+		if (len > 0.0)
+			normal /= len;
+	}
+
+	vec2 uv = vec2 (0.0);
+
+	if ((f & ENV_ANY) != 0u)
+		uv = lists[l].env.xy;
+	else if ((f & UV) != 0u)
+		uv = vec2 (uintBitsToFloat (words[at + lists[l].uv_at]), uintBitsToFloat (words[at + lists[l].uv_at + 1u]));
+
+	vec4 base = (f & RGB) != 0u ? unpack_color (words[at + lists[l].rgb_at]) : vec4 (1.0);
+	vec4 offset = vec4 (0.0);
+
+	if ((f & GMP_D0) != 0u)
+		base = lists[l].gmp_diffuse;
+	if ((f & GMP_S0) != 0u)
+		offset = lists[l].gmp_specular;
+	if ((f & BUMP) != 0u)
+		offset = vec4 (0.0);
+	if ((f & (BUMP | CONSTANT)) == 0u)
+		light (lists[l].set, pos, normal, base, offset, (f & TEXTURED) == 0u);
+	else if ((f & TEXTURED) == 0u)
+		base += offset;
+	if ((f & ENV0) != 0u) {
+		uv.x = clamp01 (uv.x + normal.x * 0.5 + 0.5);
+		uv.y = clamp01 (uv.y + normal.y * 0.5 + 0.5);
+	}
+	points[i] = Point (vec4 (pos, 0.0), vec4 (project (l, pos), 0.0), vec4 (uv, 0.0, 0.0), base, offset);
+}
+)";
+
+static const char *elan_triangles_src = R"(
+struct Tri {
+	uint a, b, c, c_color, at, pad0, pad1, pad2;
+};
+layout (std430, binding = 5) readonly buffer Points { Point points[]; };
+/* The vertex buffer, 7 words a vertex (Vertex) */
+layout (std430, binding = 6) buffer Vertices { uint vwords[]; };
+layout (std430, binding = 7) readonly buffer Tris { Tri tris[]; };
+uniform uint u_base;
+
+/* Its place, colours to interpolate along a cut, colours to show */
+struct V {
+	vec3 pos, screen;
+	vec2 uv;
+	vec4 base, offset, show_base, show_offset;
+};
+
+uint to_byte (float f)
+{
+	return f <= 0.0 ? 0u : f >= 1.0 ? 255u : uint (f * 255.0 + 0.5);
+}
+
+uint pack_color (vec4 c)
+{
+	return (to_byte (c.a) << 24) | (to_byte (c.r) << 16) | (to_byte (c.g) << 8) | to_byte (c.b);
+}
+
+void put (uint at, vec3 s, vec2 uv, uint base, uint offset)
+{
+	uint w = (u_base + at) * 7u;
+
+	vwords[w] = floatBitsToUint (s.x);
+	vwords[w + 1u] = floatBitsToUint (s.y);
+	vwords[w + 2u] = floatBitsToUint (s.z);
+	vwords[w + 3u] = floatBitsToUint (uv.x);
+	vwords[w + 4u] = floatBitsToUint (uv.y);
+	vwords[w + 5u] = base;
+	vwords[w + 6u] = offset;
+}
+
+/* Three vertices that draw nothing */
+void nothing (uint at)
+{
+	for (uint k = 0u; k < 3u; k++)
+		put (at + k, vec3 (0.0), vec2 (0.0), 0u, 0u);
+}
+
+V load (uint k, uint shown)
+{
+	V v;
+
+	v.pos = points[k].pos.xyz;
+	v.screen = points[k].screen.xyz;
+	v.uv = points[k].uv.xy;
+	v.base = points[k].base;
+	v.offset = points[k].offset;
+	v.show_base = points[shown].base;
+	v.show_offset = points[shown].offset;
+	return v;
+}
+
+/* Elan::clip_point ()'s: where the edge from a (in front) to b crosses */
+V cut (uint l, V a, float da, V b, float db)
+{
+	V o;
+	precise float t = abs (da) / (abs (da) + abs (db));
+	precise vec3 pos = a.pos + (b.pos - a.pos) * t;
+
+	o.pos = pos;
+	o.uv = a.uv + (b.uv - a.uv) * t;
+	o.base = a.base + (b.base - a.base) * t;
+	o.offset = a.offset + (b.offset - a.offset) * t;
+	o.show_base = o.base;
+	o.show_offset = o.offset;
+	o.screen = project (l, pos);
+	return o;
+}
+
+/* Holly::ta_triangle ()'s: flat, the third's colours; behind the eye or
+ * culled, nothing */
+void emit (uint l, V a, V b, V c, uint at)
+{
+	uint isp = lists[l].isp, mode = (isp >> 27) & 3u;
+	bool flat_shaded = ((isp >> 23) & 1u) == 0u;
+
+	if (a.screen.z <= 0.0 || b.screen.z <= 0.0 || c.screen.z <= 0.0) {
+		nothing (at);
+		return;
+	}
+	if (mode != 0u) {
+		precise float area = (b.screen.x - a.screen.x) * (c.screen.y - a.screen.y) -
+		                     (c.screen.x - a.screen.x) * (b.screen.y - a.screen.y);
+
+		if (abs (area) < lists[l].env.w || (mode == 2u && area < 0.0) || (mode == 3u && area > 0.0)) {
+			nothing (at);
+			return;
+		}
+	}
+	uint cb = pack_color (c.show_base), co = pack_color (c.show_offset);
+
+	put (at, a.screen, a.uv, flat_shaded ? cb : pack_color (a.show_base), flat_shaded ? co : pack_color (a.show_offset));
+	put (at + 1u, b.screen, b.uv, flat_shaded ? cb : pack_color (b.show_base),
+	     flat_shaded ? co : pack_color (b.show_offset));
+	put (at + 2u, c.screen, c.uv, cb, co);
+}
+
+void main ()
+{
+	uint i = gl_GlobalInvocationID.x;
+
+	if (i >= u_count)
+		return;
+
+	Tri t = tris[i];
+	uint l = list_of[t.a];
+	V v[3] = V[3] (load (t.a, t.a), load (t.b, t.b), load (t.c, t.c_color));
+
+	if ((lists[l].flags & CLIP) != 0u) {
+		float d[3];
+		uint k;
+
+		for (k = 0u; k < 3u; k++)
+			d[k] = -v[k].pos.z - lists[l].env.z;
+		if (d[0] < 0.0 || d[1] < 0.0 || d[2] < 0.0) {
+			V o[4];
+			uint n = 0u;
+
+			if (d[0] < 0.0 && d[1] < 0.0 && d[2] < 0.0) {
+				nothing (t.at);
+				nothing (t.at + 3u);
+				return;
+			}
+			for (k = 0u; k < 3u; k++) {
+				uint j = (k + 1u) % 3u;
+
+				if (d[k] >= 0.0)
+					o[n++] = v[k];
+				if ((d[k] < 0.0) != (d[j] < 0.0))
+					o[n++] = cut (l, v[k], d[k], v[j], d[j]);
+			}
+			emit (l, o[0], o[1], o[2], t.at);
+			if (n == 4u)
+				emit (l, o[0], o[2], o[3], t.at + 3u);
+			else
+				nothing (t.at + 3u);
+			return;
+		}
+	}
+	emit (l, v[0], v[1], v[2], t.at);
+	nothing (t.at + 3u);
 }
 )";
 
@@ -1371,12 +1653,25 @@ BoardRenderer::setup ()
 	glVertexAttribIPointer (4, 1, GL_UNSIGNED_BYTE, 1, (void *) 0);
 	glVertexAttribI4ui (4, 0, 0, 0, 0);
 
-	/* ELAN_LIGHTING GPU's (light_scene ()) */
-	light_program = hl::gl::compile_compute (light_cs_src);
+	/* ELAN_LIGHTING GPU's (light_scene (), elan_scene ()) */
+	light_program = hl::gl::compile_compute ((std::string (compute_head_src) + light_common_src + light_main_src).c_str ());
 	color_program = hl::gl::compile_compute (color_cs_src);
+	elan_points_program = hl::gl::compile_compute ((std::string (compute_head_src) + light_common_src + elan_common_src +
+	                                                elan_points_src).c_str ());
+	elan_triangles_program = hl::gl::compile_compute ((std::string (compute_head_src) + elan_common_src +
+	                                                   elan_triangles_src).c_str ());
+	/* A program that did not compile asked nothing: GL's error would stay */
+	if (elan_points_program)
+		u_points_count = glGetUniformLocation (elan_points_program, "u_count");
+	if (elan_triangles_program) {
+		u_triangles_count = glGetUniformLocation (elan_triangles_program, "u_count");
+		u_triangles_base = glGetUniformLocation (elan_triangles_program, "u_base");
+	}
+	glGenBuffers (6, elan_buffers);
 	u_light_count = glGetUniformLocation (light_program, "u_count");
 	u_color_count = glGetUniformLocation (color_program, "u_count");
 	glGenBuffers (5, light_buffers);
+	gpu_geometry = light_program && color_program && elan_points_program && elan_triangles_program;
 	if (light_program && color_program)
 		gpu_lighting = true;
 	else {
@@ -1576,7 +1871,7 @@ BoardRenderer::draw_piece (const Program &p, const Batch &b, uint32_t tsp, uint3
 	if (p.u_tag >= 0) {
 		/* The place in the lists: the same for a polygon's two areas */
 		glUniform1ui (p.u_tag, ((tsp >> 29) & 7) | (((tsp >> 26) & 7) << 3) | (((tsp >> 25) & 1) << 6) |
-		              (((tsp >> 24) & 1) << 7) | ((b.first / 3) << 8));
+		              (((tsp >> 24) & 1) << 7) | ((first_of (b) / 3) << 8));
 	} else if (opaque)
 		glDisable (GL_BLEND);
 	else {
@@ -1621,27 +1916,27 @@ BoardRenderer::draw_batch (const Program &p, const Draw &d, const Batch &b, bool
 	if (opaque && volumes_ready && b.shadow) {
 		/* The two areas: outside, then inside the volumes */
 		glStencilFunc (GL_EQUAL, 0, 1);
-		draw_piece (p, b, b.tsp, b.tcw, b.first, false, opaque);
+		draw_piece (p, b, b.tsp, b.tcw, first_of (b), false, opaque);
 		glStencilFunc (GL_EQUAL, 1, 1);
 		if (b.two_volume)
 			draw_piece (p, b, b.tsp1, b.tcw1, vertices1_at + b.first1, false, opaque);
 		else
-			draw_piece (p, b, b.tsp, b.tcw, b.first, (draw->shad_scale & 0x100) != 0, opaque);
+			draw_piece (p, b, b.tsp, b.tcw, first_of (b), (draw->shad_scale & 0x100) != 0, opaque);
 	} else if (!opaque && p.u_tag >= 0 && collect_areas && b.shadow &&
 	           (b.two_volume || (draw->shad_scale & 0x100))) {
 		/* Both areas into the lists: the volumes will choose, layer by layer */
 		glUniform1ui (p.u_node_flags, NODE_VOLUMES);
-		draw_piece (p, b, b.tsp, b.tcw, b.first, false, opaque);
+		draw_piece (p, b, b.tsp, b.tcw, first_of (b), false, opaque);
 		glUniform1ui (p.u_node_flags, NODE_VOLUMES | NODE_AREA1);
 		if (b.two_volume)
 			draw_piece (p, b, b.tsp1, b.tcw1, vertices1_at + b.first1, false, opaque);
 		else
-			draw_piece (p, b, b.tsp, b.tcw, b.first, true, opaque);
+			draw_piece (p, b, b.tsp, b.tcw, first_of (b), true, opaque);
 		glUniform1ui (p.u_node_flags, 0);
 	} else {
 		if (p.u_tag < 0 && !depth_pass)
 			glStencilFunc (GL_ALWAYS, 0, 0);
-		draw_piece (p, b, b.tsp, b.tcw, b.first, false, opaque);
+		draw_piece (p, b, b.tsp, b.tcw, first_of (b), false, opaque);
 	}
 }
 
@@ -1791,6 +2086,45 @@ BoardRenderer::light_scene (const Scene &scene)
 	glBindBuffer (GL_SHADER_STORAGE_BUFFER, 0);
 }
 
+/* The scene's Elan lists (SceneElan): its vertices put in the view, on the
+ * screen and lit, then its triangles cut, culled and written in the vertex
+ * buffer from elan_at (elan_cs_src) */
+void
+BoardRenderer::elan_scene (const Scene &scene)
+{
+	static_assert (sizeof (GpuElanList) == 192 && sizeof (GpuElanTriangle) == 32, "the shaders' std430");
+	const SceneElan &g = scene.elan;
+
+	if (g.empty () || !elan_points_program || !elan_triangles_program)
+		return;
+
+	auto upload = [] (GLuint buffer, GLuint binding, size_t bytes, const void *data) {
+		glBindBuffer (GL_SHADER_STORAGE_BUFFER, buffer);
+		glBufferData (GL_SHADER_STORAGE_BUFFER, (GLsizeiptr) std::max<size_t> (bytes, 16), bytes ? data : NULL,
+		              GL_STREAM_DRAW);
+		glBindBufferBase (GL_SHADER_STORAGE_BUFFER, binding, buffer);
+	};
+	upload (elan_buffers[0], 1, g.sets.size () * sizeof (GpuLightSet), g.sets.data ());
+	upload (elan_buffers[1], 2, g.words.size () * 4, g.words.data ());
+	upload (elan_buffers[2], 3, g.list_of.size () * 4, g.list_of.data ());
+	upload (elan_buffers[3], 4, g.lists.size () * sizeof (GpuElanList), g.lists.data ());
+	upload (elan_buffers[4], 5, g.list_of.size () * 80, NULL);
+	upload (elan_buffers[5], 7, g.triangles.size () * sizeof (GpuElanTriangle), g.triangles.data ());
+	glBindBufferBase (GL_SHADER_STORAGE_BUFFER, 6, vbo);
+	glUseProgram (elan_points_program);
+	glUniform1ui (u_points_count, (GLuint) g.list_of.size ());
+	glDispatchCompute ((GLuint) ((g.list_of.size () + 63) / 64), 1, 1);
+	glMemoryBarrier (GL_SHADER_STORAGE_BARRIER_BIT);
+	glUseProgram (elan_triangles_program);
+	glUniform1ui (u_triangles_count, (GLuint) g.triangles.size ());
+	glUniform1ui (u_triangles_base, elan_at);
+	glDispatchCompute ((GLuint) ((g.triangles.size () + 63) / 64), 1, 1);
+	glMemoryBarrier (GL_VERTEX_ATTRIB_ARRAY_BARRIER_BIT);
+	for (GLuint binding = 1; binding <= 7; binding++)
+		glBindBufferBase (GL_SHADER_STORAGE_BUFFER, binding, 0);
+	glBindBuffer (GL_SHADER_STORAGE_BUFFER, 0);
+}
+
 /* The background polygon: the plane of its three vertices, the depth and the
  * coordinates and colours by 1/W, at the corners of the picture. When its
  * three vertices do not make a plane, its first vertex's values everywhere */
@@ -1926,7 +2260,7 @@ BoardRenderer::draw_scene (const Draw &d, Target &t, bool to_texture)
 	background.first = (uint32_t) (scene.vertices.size () + scene.vertices1.size ());
 	background.count = 6;
 
-	if (scene.vertices.empty () && !((d.background_isp >> 25) & 1))
+	if (scene.vertices.empty () && !scene.elan.vertices && !((d.background_isp >> 25) & 1))
 		return;
 
 	bool per_pixel =!to_texture && !d.presort && hl::Config::get ()->sort_translucent_pixels &&
@@ -1936,8 +2270,10 @@ BoardRenderer::draw_scene (const Draw &d, Target &t, bool to_texture)
 	glBindVertexArray (vao);
 	glBindBuffer (GL_ARRAY_BUFFER, vbo);
 	vertices1_at = (uint32_t) scene.vertices.size ();
-	glBufferData (GL_ARRAY_BUFFER, (scene.vertices.size () + scene.vertices1.size () + 6) * sizeof (Vertex), NULL,
-	              GL_STREAM_DRAW);
+	/* The graphics card's Elan vertices after the background's */
+	elan_at = background.first + 6;
+	glBufferData (GL_ARRAY_BUFFER, (scene.vertices.size () + scene.vertices1.size () + 6 + scene.elan.vertices) *
+	              sizeof (Vertex), NULL, GL_STREAM_DRAW);
 	glBufferSubData (GL_ARRAY_BUFFER, 0, scene.vertices.size () * sizeof (Vertex), scene.vertices.data ());
 	glBufferSubData (GL_ARRAY_BUFFER, scene.vertices.size () * sizeof (Vertex),
 	                 scene.vertices1.size () * sizeof (Vertex), scene.vertices1.data ());
@@ -1947,9 +2283,14 @@ BoardRenderer::draw_scene (const Draw &d, Target &t, bool to_texture)
 		background_vertices (d, quad);
 		glBufferSubData (GL_ARRAY_BUFFER, background.first * sizeof (Vertex), sizeof (quad), quad);
 	}
-	/* The NAOMI 2's vertices lit there (ELAN_LIGHTING GPU) */
+	/* The NAOMI 2's vertices lit there (ELAN_LIGHTING GPU), transformed
+	 * there too */
 	if (!scene.lighting.empty ()) {
 		light_scene (scene);
+		glUseProgram (program.id);
+	}
+	if (!scene.elan.empty ()) {
+		elan_scene (scene);
 		glUseProgram (program.id);
 	}
 	/* The view turned (MULTI_SCREEN_VIEW): each triangle's vertices marked
@@ -1978,14 +2319,15 @@ BoardRenderer::draw_scene (const Draw &d, Target &t, bool to_texture)
 			}
 		};
 
-		flags.assign (background.first + 6, strip_pass ? 3 : 1);
+		flags.assign (background.first + 6 + scene.elan.vertices, strip_pass ? 3 : 1);
 		mark (scene.vertices, 0);
 		mark (scene.vertices1, vertices1_at);
 		/* The insets' 3D as the 2D, left out of the strips as the HUD */
 		for (const std::vector<Batch> &list : scene.batches)
 			for (const Batch &b : list)
 				if (inset (b, d)) {
-					std::fill (flags.begin () + b.first, flags.begin () + b.first + b.count, strip_pass ? 5 : 1);
+					std::fill (flags.begin () + first_of (b), flags.begin () + first_of (b) + b.count,
+					           strip_pass ? 5 : 1);
 					if (b.two_volume)
 						std::fill (flags.begin () + vertices1_at + b.first1,
 						           flags.begin () + vertices1_at + b.first1 + b.count, strip_pass ? 5 : 1);
@@ -2102,61 +2444,80 @@ BoardRenderer::write_back (const Draw &d, Target &t)
 	glReadPixels (0, 0, t.w, t.h, GL_RGBA, GL_UNSIGNED_BYTE, rgba.data ());
 	if (!stride)
 		stride = t.w * 2;
+	/* Each line straight into the VRAM, the format's loop chosen once; the
+	 * pixels while one ends 4 bytes or more before the VRAM's end, then
+	 * none (a put () each before: a fifth of the frames drawn to textures'
+	 * time in Virtua Tennis) */
+	const unsigned bytes = pack < 4 ? 2 : pack == 4 ? 3 : 4;
+	(void) dithered;
 	for (y = 0; y < t.h; y++) {
 		const uint8_t *p = &rgba[(t.h - 1 - y) * t.w * 4];
-		uint32_t at = base + y * stride;
+		const uint32_t at = base + y * stride;
+		const uint8_t *levels = &dither_order[(y & 3) * 4];
+		unsigned n = 0;
 
-		for (x = 0; x < t.w; x++, p += 4) {
-			uint32_t r = p[0], g = p[1], b = p[2], a = p[3];
+		if ((uint64_t) at + 4 <= vram->size ())
+			n = (unsigned) std::min<uint64_t> (t.w, (vram->size () - 4 - (uint64_t) at) / bytes + 1);
+		uint8_t *to = (uint8_t *) vram->ptr (at);
 
-			if (at + 4 > vram->size ())
-				return;
-			switch (pack) {
-			case 0:	/* K, the top of fb_kval */
-				r = dithered (r, 3, x, y);
-				g = dithered (g, 3, x, y);
-				b = dithered (b, 3, x, y);
-				vram->put (2, at, (kval >> 7) << 15 | (r >> 3) << 10 | (g >> 3) << 5 | (b >> 3));
-				at += 2;
-				break;
-			case 1:
-				r = dithered (r, 3, x, y);
-				g = dithered (g, 2, x, y);
-				b = dithered (b, 3, x, y);
-				vram->put (2, at, (r >> 3) << 11 | (g >> 2) << 5 | (b >> 3));
-				at += 2;
-				break;
-			case 2:
-				r = dithered (r, 4, x, y);
-				g = dithered (g, 4, x, y);
-				b = dithered (b, 4, x, y);
-				a = dithered (a, 4, x, y);
-				vram->put (2, at, (a >> 4) << 12 | (r >> 4) << 8 | (g >> 4) << 4 | (b >> 4));
-				at += 2;
-				break;
-			case 3:	/* A, the comparison with fb_alpha_threshold */
-				r = dithered (r, 3, x, y);
-				g = dithered (g, 3, x, y);
-				b = dithered (b, 3, x, y);
-				vram->put (2, at, (a >= alpha_threshold ? 1u : 0u) << 15 | (r >> 3) << 10 | (g >> 3) << 5 | (b >> 3));
-				at += 2;
-				break;
-			case 4:
-				vram->put (1, at, b);
-				vram->put (1, at + 1, g);
-				vram->put (1, at + 2, r);
-				at += 3;
-				break;
-			case 5:	/* K, fb_kval */
-				vram->put (4, at, kval << 24 | r << 16 | g << 8 | b);
-				at += 4;
-				break;
-			default:
-				vram->put (4, at, a << 24 | r << 16 | g << 8 | b);
-				at += 4;
-				break;
+		if (!to)
+			return;
+		/* c plus the dither's level for x at bits bits */
+		auto dith = [&] (uint32_t c, unsigned bits, unsigned px) {
+			return dither ? std::min (255u, c + ((uint32_t) levels[px & 3] >> (4 - bits))) : c;
+		};
+		switch (pack) {
+		case 0:	/* K, the top of fb_kval */
+			for (x = 0; x < n; x++, p += 4) {
+				const uint16_t v = (uint16_t) ((kval >> 7) << 15 | (dith (p[0], 3, x) >> 3) << 10 |
+				                               (dith (p[1], 3, x) >> 3) << 5 | (dith (p[2], 3, x) >> 3));
+				memcpy (to + 2 * x, &v, 2);
 			}
+			break;
+		case 1:
+			for (x = 0; x < n; x++, p += 4) {
+				const uint16_t v = (uint16_t) ((dith (p[0], 3, x) >> 3) << 11 | (dith (p[1], 2, x) >> 2) << 5 |
+				                               (dith (p[2], 3, x) >> 3));
+				memcpy (to + 2 * x, &v, 2);
+			}
+			break;
+		case 2:
+			for (x = 0; x < n; x++, p += 4) {
+				const uint16_t v = (uint16_t) ((dith (p[3], 4, x) >> 4) << 12 | (dith (p[0], 4, x) >> 4) << 8 |
+				                               (dith (p[1], 4, x) >> 4) << 4 | (dith (p[2], 4, x) >> 4));
+				memcpy (to + 2 * x, &v, 2);
+			}
+			break;
+		case 3:	/* A, the comparison with fb_alpha_threshold */
+			for (x = 0; x < n; x++, p += 4) {
+				const uint16_t v = (uint16_t) ((p[3] >= alpha_threshold ? 1u : 0u) << 15 |
+				                               (dith (p[0], 3, x) >> 3) << 10 | (dith (p[1], 3, x) >> 3) << 5 |
+				                               (dith (p[2], 3, x) >> 3));
+				memcpy (to + 2 * x, &v, 2);
+			}
+			break;
+		case 4:
+			for (x = 0; x < n; x++, p += 4) {
+				to[3 * x] = p[2];
+				to[3 * x + 1] = p[1];
+				to[3 * x + 2] = p[0];
+			}
+			break;
+		case 5:	/* K, fb_kval */
+			for (x = 0; x < n; x++, p += 4) {
+				const uint32_t v = kval << 24 | (uint32_t) p[0] << 16 | (uint32_t) p[1] << 8 | p[2];
+				memcpy (to + 4 * x, &v, 4);
+			}
+			break;
+		default:
+			for (x = 0; x < n; x++, p += 4) {
+				const uint32_t v = (uint32_t) p[3] << 24 | (uint32_t) p[0] << 16 | (uint32_t) p[1] << 8 | p[2];
+				memcpy (to + 4 * x, &v, 4);
+			}
+			break;
 		}
+		if (n < t.w)
+			return;
 	}
 }
 
@@ -2211,19 +2572,42 @@ BoardRenderer::read_vram (Holly *holly, Frame &f)
 	unsigned line = (size & 0x3FF) + 1, lines = ((size >> 10) & 0x3FF) + 1, modulus = (size >> 20) & 0x3FF;
 	unsigned w = line * 4 / bytes, x, y;
 	uint32_t at = holly->fb_r_sof1 () & 0x00FFFFFC;
-	std::vector<uint32_t> &rgba = f.vram_rgba;
 	const uint8_t *base = (const uint8_t *) holly->vram->ptr (0);
-	uint8_t row[4096 + 4];
 
 	f.vram = false;
 	if (!(ctrl & 1) || w > 1024 || lines > 1024 || !base || holly->vram->size () < 0x01000000)
 		return false;
-	rgba.resize (w * lines);
+	/* The lines' 32-bit words, each whole at its place in the interleaved
+	 * banks (Holly::map32); their colours where they are drawn */
+	f.vram_raw.resize ((size_t) line * 4 * lines + 4);
 	for (y = 0; y < lines; y++) {
-		/* The line's 32-bit words, each whole at its place in the
-		 * interleaved banks (Holly::map32) */
+		uint8_t *row = &f.vram_raw[(size_t) y * line * 4];
+
 		for (x = 0; x < line; x++)
 			memcpy (&row[x * 4], base + Holly::map32 ((at + x * 4) & 0x00FFFFFC), 4);
+		at += line * 4 + (modulus ? (modulus - 1) * 4 : 0);
+	}
+	f.vram = true;
+	f.vram_w = w;
+	f.vram_h = lines;
+	f.vram_line = line;
+	f.vram_bytes = bytes;
+	f.vram_depth = depth;
+	return true;
+}
+
+bool
+BoardRenderer::show_vram (const Frame &f)
+{
+	const unsigned w = f.vram_w, lines = f.vram_h, bytes = f.vram_bytes, depth = f.vram_depth;
+	unsigned x, y;
+
+	if (!f.vram)
+		return false;
+	vram_rgba.resize ((size_t) w * lines);
+	for (y = 0; y < lines; y++) {
+		const uint8_t *row = &f.vram_raw[(size_t) y * f.vram_line * 4];
+
 		for (x = 0; x < w; x++) {
 			const uint8_t *q = &row[x * bytes];
 			uint32_t c, p;
@@ -2236,23 +2620,11 @@ BoardRenderer::read_vram (Holly *holly, Frame &f)
 			case 1: p = rgba_16 (1, (uint16_t) c); break;
 			default: p = ((c >> 16) & 255) | (c & 0xFF00) | ((c & 255) << 16) | 0xFF000000u; break;
 			}
-			rgba[y * w + x] = p;
+			vram_rgba[(size_t) y * w + x] = p;
 		}
-		at += line * 4 + (modulus ? (modulus - 1) * 4 : 0);
 	}
-	f.vram = true;
-	f.vram_w = w;
-	f.vram_h = lines;
-	return true;
-}
-
-bool
-BoardRenderer::show_vram (const Frame &f)
-{
-	if (!f.vram)
-		return false;
 	glBindTexture (GL_TEXTURE_2D, vram_tex);
-	glTexImage2D (GL_TEXTURE_2D, 0, GL_RGBA8, f.vram_w, f.vram_h, 0, GL_RGBA, GL_UNSIGNED_BYTE, f.vram_rgba.data ());
+	glTexImage2D (GL_TEXTURE_2D, 0, GL_RGBA8, f.vram_w, f.vram_h, 0, GL_RGBA, GL_UNSIGNED_BYTE, vram_rgba.data ());
 	glBindTexture (GL_TEXTURE_2D, 0);
 	return true;
 }
@@ -2334,6 +2706,8 @@ BoardRenderer::draw_frame_now (Frame &f)
 		} else
 			for_screen = &d;
 	}
+	if (textures_done)
+		textures_done ();
 	bool strips = false;
 
 	if (for_screen) {
@@ -2586,7 +2960,16 @@ Renderer::Renderer (Naomi *naomi_) :
 	quiet.assign (naomi->boards.size (), 1000);
 	if (hl::Config::get ()->threaded_rendering)
 		start_thread ();
+	rtt_ranges.resize (naomi->boards.size ());
+	for (unsigned b = 0; b < naomi->boards.size (); b++) {
+		naomi->boards[b]->holly->vram_sync = [this, b] (uint32_t offs, uint32_t bytes) { rtt_wait (b, offs, bytes); };
+		naomi->boards[b]->holly->vram_later = [this, b] (const std::shared_ptr<TextureData> &data, uint32_t addr,
+		                                                 uint32_t bytes) {
+			return rtt_texture_later (b, data, addr, bytes);
+		};
+	}
 }
+
 
 static std::string
 display_names ()
@@ -2643,8 +3026,44 @@ Renderer::apply_multi_screen ()
 	update_titles ();
 }
 
+/* HR_PROFILE: the frames that drew into a texture (the machine waits for
+ * them), of all; the GPU's time drawing them (a timer query a frame, read
+ * 4 frames later) */
+static uint64_t frames_to_texture, frames_handed, frames_to_texture_waited;
+static GLuint gpu_queries[4];
+static unsigned gpu_query_n;
+static double gpu_ms_sum;
+static uint64_t gpu_ms_count;
+/* And the drawing thread's time on a job */
+static double job_ms_sum, job_ms_max;
+static uint64_t job_count;
+/* The machine's waits at the hand-over: all, those over 4 ms */
+static double wait_ms_sum, wait_long_ms;
+static uint64_t wait_long;
+
+
 Renderer::~Renderer ()
 {
+	for (hl::Mmap *map : rtt_guarded)
+		map->unguard ();
+	for (auto &b : naomi->boards) {
+		b->holly->vram_sync = nullptr;
+		b->holly->vram_later = nullptr;
+	}
+	if (hl::Profile::enabled && frames_handed)
+		HL_PRINT ("naomi: %llu frames of %llu drawn into a texture (%llu of them waited for)",
+		          (unsigned long long) frames_to_texture, (unsigned long long) frames_handed,
+		          (unsigned long long) frames_to_texture_waited);
+	if (hl::Profile::enabled && gpu_ms_count)
+		HL_PRINT ("naomi: the GPU drawing a frame %.2f ms (over %llu)", gpu_ms_sum / (double) gpu_ms_count,
+		          (unsigned long long) gpu_ms_count);
+	if (hl::Profile::enabled && frames_handed)
+		HL_PRINT ("naomi: the machine waited for the drawing thread %.2f ms a frame, %llu waits over 4 ms (%.0f ms in all)",
+		          wait_ms_sum / (double) frames_handed, (unsigned long long) wait_long, wait_long_ms);
+
+	if (hl::Profile::enabled && job_count)
+		HL_PRINT ("naomi: the drawing thread's job %.2f ms on average, %.2f at most (%llu)",
+		          job_ms_sum / (double) job_count, job_ms_max, (unsigned long long) job_count);
 	stop_thread ();
 	blitter.reset ();
 	outputs.clear ();
@@ -4391,8 +4810,10 @@ struct Renderer::Thread {
 	std::thread		 thread;
 	std::mutex		 lock;
 	std::condition_variable	 wake, idle;
-	/* busy: not waiting for a job (starting, drawing) */
-	bool			 busy = true, job = false, quit = false, ready = false;
+	/* busy: not waiting for a job (starting, drawing); textures: the
+	 * job's scenes drawn to textures back in the VRAM (all the machine
+	 * waits for when it shows nothing itself) */
+	bool			 busy = true, job = false, quit = false, ready = false, textures = false;
 	/* An HL_ABORT there, thrown again by the machine's frame */
 	std::string		 error;
 	SDL_GLContext		 context = NULL;
@@ -4428,18 +4849,32 @@ struct Renderer::Thread {
 	std::vector<BoardRenderer::Frame> job_frames;
 	unsigned		 job_set = 0;
 	GLuint			 read_fb = 0;
+	/* Bound to the window (Window::make_current_on_window ()): the job's
+	 * set shown and swapped by the thread itself (present), the window's
+	 * one board while the interface draws nothing over it; the machine's
+	 * thread was 0.9 ms of Crazy Taxi's frame in the driver's present.
+	 * Its own presentation (its context's objects); the last job shown so
+	 * (flush () shows it again in the window's context) */
+	bool			 on_window = false, present = false, thread_shown = false;
+	/* The thread's last swap done by the GPU: the window's buffers flipped
+	 * before flush () draws into the back one again (else the capture
+	 * may read it after the flip, the frame before) */
+	GLsync			 swapped = 0;
+	Output			 out;
 	/* The set of the next frame, of the last one; the frames handed over,
 	 * the last one shown */
 	unsigned		 next = 0, last = 0;
 	uint64_t		 jobs = 0, shown_job = 0;
 };
 
-/* A sync of the other context's: its work done on the GPU, then deleted */
+/* A sync of the other context's: this context's next commands wait on the
+ * GPU for its work, not the CPU (each wait in glClientWaitSync () held the
+ * machine's thread: a seventh of Virtua Tennis's frame); then deleted. The
+ * other context flushed it (glFlush () after its fence) */
 static void
-client_wait (GLsync sync)
+gpu_wait (GLsync sync)
 {
-	while (glClientWaitSync (sync, GL_SYNC_FLUSH_COMMANDS_BIT, 100000000) == GL_TIMEOUT_EXPIRED)
-		;
+	glWaitSync (sync, 0, GL_TIMEOUT_IGNORED);
 	glDeleteSync (sync);
 }
 
@@ -4514,7 +4949,9 @@ Renderer::thread_main (Renderer *owner)
 	Thread *t = owner->thread;
 
 	HL_PRINT ("naomi: the drawing thread is thread %lu", hl::Log::thread_id ());
-	if (hl::Window::make_current (t->context))
+	hl::Profile::sample_this_thread ();
+	t->on_window = hl::Window::make_current_on_window (t->context);
+	if (t->on_window || hl::Window::make_current (t->context))
 		t->ready = true;
 	else
 		t->error = "no GL context";
@@ -4530,14 +4967,27 @@ Renderer::thread_main (Renderer *owner)
 			t->job = false;
 		}
 		try {
-			if (t->ready)
+			if (t->ready) {
+				auto t0 = std::chrono::steady_clock::now ();
+
 				owner->draw_job ();
+				if (t->present)
+					owner->present_on_thread (t->job_set);
+				if (hl::Profile::enabled) {
+					double ms = std::chrono::duration<double, std::milli> (std::chrono::steady_clock::now () - t0).count ();
+
+					job_ms_sum += ms;
+					job_ms_max = std::max (job_ms_max, ms);
+					job_count++;
+				}
+			}
 		} catch (const hl::Abort &e) {
 			t->error = e.what ();
 		}
 	}
 
 	/* Its GL objects, in its context */
+	t->out.presentation.reset ();
 	for (auto &d : owner->drawers)
 		d.reset ();
 	for (auto &s : t->sets) {
@@ -4562,6 +5012,8 @@ Renderer::thread_main (Renderer *owner)
 	}
 	if (t->read_fb)
 		glDeleteFramebuffers (1, &t->read_fb);
+	if (t->swapped)
+		glDeleteSync (t->swapped);
 	glFinish ();
 	hl::Window::make_current (NULL);
 }
@@ -4574,10 +5026,27 @@ Renderer::draw_job ()
 	Thread *t = thread;
 	auto &s = t->sets[t->job_set];
 	size_t i;
+	GLuint query = 0;
+
+	if (hl::Profile::enabled) {
+		unsigned k = gpu_query_n++ & 3;
+
+		if (!gpu_queries[0])
+			glGenQueries (4, gpu_queries);
+		else if (gpu_query_n > 4) {
+			GLuint64 ns = 0;
+
+			glGetQueryObjectui64v (gpu_queries[k], GL_QUERY_RESULT, &ns);
+			gpu_ms_sum += (double) ns / 1e6;
+			gpu_ms_count++;
+		}
+		query = gpu_queries[k];
+		glBeginQuery (GL_TIME_ELAPSED, query);
+	}
 
 	/* The window done showing what the set held */
 	if (s.shown_sync) {
-		client_wait (s.shown_sync);
+		gpu_wait (s.shown_sync);
 		s.shown_sync = 0;
 	}
 	s.shown = t->job_shown;
@@ -4586,7 +5055,24 @@ Renderer::draw_job ()
 		s.views.push_back (f.view);
 	s.outs.resize (s.shown.size ());
 	for (i = 0; i < s.shown.size () && i < t->job_frames.size (); i++) {
-		Picture p = drawer (s.shown[i])->draw_frame (t->job_frames[i]);
+		BoardRenderer *br = drawer (s.shown[i]);
+
+		/* The last board's textures back: the machine may go on */
+		if (i + 1 == s.shown.size ())
+			br->textures_done = [this, t] () {
+				std::lock_guard<std::mutex> lock (t->lock);
+				fill_later ();
+				t->textures = true;
+				t->idle.notify_all ();
+			};
+		Picture p = br->draw_frame (t->job_frames[i]);
+
+		br->textures_done = nullptr;
+
+		if (query && i + 1 == t->job_frames.size ()) {
+			glEndQuery (GL_TIME_ELAPSED);
+			query = 0;
+		}
 		auto &o = s.outs[i];
 		GLint w = 0, h = 0;
 
@@ -4684,6 +5170,33 @@ Renderer::draw_job ()
 	glFlush ();
 }
 
+/* On the thread: the set just drawn (one board), to the window and swapped,
+ * as show () does for the main window */
+void
+Renderer::present_on_thread (unsigned set)
+{
+	Thread *t = thread;
+	auto &s = t->sets[set];
+
+	if (s.outs.empty () || s.shown.empty ())
+		return;
+	const auto &o = s.outs[0];
+	Picture p;
+
+	p.texture = o.valid ? o.texture : 0;
+	p.flip = o.flip;
+	p.x0 = o.x0;
+	p.x1 = o.x1;
+	if (!t->out.presentation)
+		t->out.presentation.reset (new hl::Presentation ());
+	show (t->out, p, drawer (s.shown[0]), width, height);
+	hl::Window::swap_from_thread ();
+	if (t->swapped)
+		glDeleteSync (t->swapped);
+	t->swapped = glFenceSync (GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+	glFlush ();
+}
+
 /* In the window's context: a set's pictures where MULTI_SCREEN wants them */
 void
 Renderer::present (unsigned set)
@@ -4692,7 +5205,7 @@ Renderer::present (unsigned set)
 	std::vector<Picture> pictures;
 
 	if (s.drawn) {
-		client_wait (s.drawn);
+		gpu_wait (s.drawn);
 		s.drawn = 0;
 	}
 	for (const auto &o : s.outs) {
@@ -4716,9 +5229,126 @@ Renderer::present (unsigned set)
 	present_pictures (s.shown, pictures, blitter.get (), s.views);
 	/* Shown twice (flush ()): the first one's sync, done with */
 	if (s.shown_sync)
-		client_wait (s.shown_sync);
+		gpu_wait (s.shown_sync);
 	s.shown_sync = glFenceSync (GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
 	glFlush ();
+}
+
+/* The VRAM written back by the frames drawn to textures of the boards
+ * shown (rtt_ranges, as write_back () writes them) guarded on their SH-4s'
+ * 64-bit paths (0400 0000, 0600 0000; the 32-bit ones and Holly wait in
+ * Holly::vram_sync): false where they cannot be (fastmem), the machine to
+ * wait now */
+bool
+Renderer::rtt_defer (const std::vector<unsigned> &shown)
+{
+	for (unsigned b : shown)
+		for (const auto &r : rtt_ranges[b]) {
+			hl::Mmap *map = naomi->boards[b]->mmap;
+			bool ok = map->guard (0x04000000 + r.first, 0x04000000 + r.second, [this] () { rtt_wait (); }) &&
+			          map->guard (0x06000000 + r.first, 0x06000000 + r.second, [this] () { rtt_wait (); });
+
+			if (std::find (rtt_guarded.begin (), rtt_guarded.end (), map) == rtt_guarded.end ())
+				rtt_guarded.push_back (map);
+			if (!ok) {
+				rtt_pending = true;
+				rtt_wait ();
+				return true;
+			}
+		}
+	rtt_pending = !rtt_guarded.empty ();
+	for (auto &b : naomi->boards)
+		b->holly->vram_behind = rtt_pending;
+	return true;
+}
+
+void
+Renderer::rtt_wait (unsigned board, uint32_t offs, uint32_t bytes)
+{
+	if (!rtt_pending)
+		return;
+	if (offs == ~0u) {
+		rtt_wait ();
+		return;
+	}
+	/* The 32-bit path's pair of words: 12 bytes of the VRAM at most */
+	for (const auto &r : rtt_ranges[board])
+		if (offs <= r.second && offs + std::max (bytes, 12u) > r.first) {
+			rtt_wait ();
+			return;
+		}
+}
+
+/* A texture within the pixels of board's frame drawn to textures, on the
+ * drawing thread still: taken from the VRAM by it, after them */
+bool
+Renderer::rtt_texture_later (unsigned board, const std::shared_ptr<TextureData> &data, uint32_t addr,
+                             uint32_t bytes)
+{
+	Thread *t = thread;
+	bool inside = false;
+
+	if (!rtt_pending || !bytes)
+		return false;
+	for (const auto &r : rtt_ranges[board])
+		inside |= addr >= r.first && addr + bytes - 1 <= r.second;
+	if (!inside)
+		return false;
+	std::lock_guard<std::mutex> lock (t->lock);
+
+	if (!t->busy || t->textures)
+		return false;
+	rtt_later.push_back ({ board, addr, bytes, data });
+	return true;
+}
+
+/* The textures left for later, from the VRAM (the drawing thread's pixels
+ * back): under the thread's lock */
+void
+Renderer::fill_later ()
+{
+	for (Later &l : rtt_later) {
+		const uint8_t *p = (const uint8_t *) naomi->boards[l.board]->holly->vram->ptr (l.addr);
+
+		if (!p)
+			continue;
+		l.data->bytes.assign (p, p + l.bytes);
+		l.data->hash = texture_hash (p, l.bytes, l.data->stride);
+	}
+	rtt_later.clear ();
+}
+
+/* The pictures drawn to textures back in the VRAM: waited for, the VRAM
+ * left to the page tables again */
+void
+Renderer::rtt_wait ()
+{
+	Thread *t = thread;
+
+	if (!rtt_pending)
+		return;
+	rtt_pending = false;
+	for (auto &b : naomi->boards)
+		b->holly->vram_behind = false;
+	{
+		std::unique_lock<std::mutex> lock (t->lock);
+		HL_PROFILE (RENDER_WAIT);
+
+		if (t->busy && !t->textures)
+			frames_to_texture_waited++;
+		t->idle.wait (lock, [t] { return !t->busy || t->textures; });
+		/* A job ended without its textures' call */
+		fill_later ();
+	}
+	for (hl::Mmap *map : rtt_guarded)
+		map->unguard ();
+	rtt_guarded.clear ();
+	if (!t->error.empty ()) {
+		std::string error = t->error;
+
+		t->error.clear ();
+		throw hl::Abort (error);
+	}
 }
 
 void
@@ -4730,11 +5360,31 @@ Renderer::threaded_end_frame (const std::vector<unsigned> &shown)
 	uint64_t before;
 	unsigned set, prev;
 
+	/* The frames before back in the VRAM, which take () reads */
+	rtt_wait ();
 	/* For want of memory, this frame left out: the last one stays */
 	try {
+		HL_PROFILE (RENDER_COPY);
+
 		for (unsigned b : shown) {
 			frames.push_back (BoardRenderer::take (naomi->boards[b]->holly, quiet[b]));
 			at_once |= frames.back ().to_texture;
+			/* What write_back () writes, as draw_frame_now () sizes it */
+			rtt_ranges[b].clear ();
+			for (const Draw &d : frames.back ().draws) {
+				if (!d.to_texture)
+					continue;
+				const uint32_t w = std::max (1u, std::min ((uint32_t) ((d.fb_x_clip >> 16) & 0x7FF) + 1, 1024u));
+				const uint32_t hgt = std::max (1u, std::min ((uint32_t) ((d.fb_y_clip >> 16) & 0x3FF) + 1, 1024u));
+				const uint32_t pack = d.fb_w_ctrl & 7, bytes = pack < 4 ? 2 : pack == 4 ? 3 : 4;
+				uint32_t stride = (d.fb_w_linestride & 0x1FF) * 8;
+				const uint32_t base = d.fb_w_sof1 & 0x00FFFFFF;
+
+				if (!stride)
+					stride = w * 2;
+				rtt_ranges[b].push_back (std::make_pair (base, std::min<uint32_t> (0x00FFFFFF,
+				                                         base + (hgt - 1) * stride + w * bytes + 3)));
+			}
 		}
 		std::vector<BoardRenderer::View> v = views (shown, frames);
 
@@ -4748,7 +5398,21 @@ Renderer::threaded_end_frame (const std::vector<unsigned> &shown)
 	}
 	/* The frame before drawn: this one to the thread, that one to the
 	 * window */
-	wait_thread (true);
+	{
+		HL_PROFILE (RENDER_WAIT);
+		auto w0 = std::chrono::steady_clock::now ();
+
+		wait_thread (true);
+		if (hl::Profile::enabled) {
+			double ms = std::chrono::duration<double, std::milli> (std::chrono::steady_clock::now () - w0).count ();
+
+			wait_ms_sum += ms;
+			if (ms > 4.0) {
+				wait_long++;
+				wait_long_ms += ms;
+			}
+		}
+	}
 	set = t->next;
 	prev = t->last;
 	before = t->jobs;
@@ -4758,17 +5422,41 @@ Renderer::threaded_end_frame (const std::vector<unsigned> &shown)
 	t->last = set;
 	t->next ^= 1;
 	t->jobs++;
+	/* Shown by the thread itself: one board in the main window, nothing
+	 * of the interface over it */
+	t->present = t->on_window && shown.size () == 1 && outputs.size () == 1 &&
+	             !hl::Window::overlay_wanted ();
 	{
 		std::lock_guard<std::mutex> lock (t->lock);
 		t->busy = true;
 		t->job = true;
+		t->textures = false;
 	}
 	t->wake.notify_one ();
-	if (at_once) {
-		wait_thread (true);
+	frames_handed++;
+	if (t->present) {
+		if (at_once) {
+			/* Its scenes drawn to textures back in the VRAM, which the
+			 * game reads next: waited for there (rtt_defer ()); the
+			 * screen's drawn and shown meanwhile */
+			frames_to_texture++;
+			rtt_defer (shown);
+		}
+		hl::Window::set_presented ();
+		t->shown_job = t->jobs;
+		t->thread_shown = true;
+	} else if (at_once) {
+		frames_to_texture++;
+		{
+			HL_PROFILE (RENDER_WAIT);
+			wait_thread (true);
+		}
+		HL_PROFILE (RENDER_SHOW);
 		present (set);
 		t->shown_job = t->jobs;
+		t->thread_shown = false;
 	} else if (before) {
+		HL_PROFILE (RENDER_SHOW);
 		present (prev);
 		t->shown_job = before;
 	} else {
@@ -4788,6 +5476,18 @@ Renderer::flush (void *data)
 	Thread *t = r->thread;
 
 	r->wait_thread (false);
+	/* Shown by the thread: in the window's context again, for the
+	 * capture */
+	if (t->jobs && t->thread_shown) {
+		if (t->swapped) {
+			glClientWaitSync (t->swapped, 0, 1000000000ull);
+			glDeleteSync (t->swapped);
+			t->swapped = 0;
+		}
+		r->present (t->last);
+		t->thread_shown = false;
+		return true;
+	}
 	if (!t->jobs || t->shown_job == t->jobs)
 		return false;
 	r->present (t->last);

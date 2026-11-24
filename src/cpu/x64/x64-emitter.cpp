@@ -204,6 +204,16 @@ Emitter::store32_imm (Reg base, int32_t disp, uint32_t imm)
 }
 
 void
+Emitter::store8_imm (Reg base, int32_t disp, uint8_t imm)
+{
+	/* C6 /0 ib: mov r/m8, imm8 */
+	rex (false, 0, base);
+	byte (0xC6);
+	mem (0, base, disp);
+	byte (imm);
+}
+
+void
 Emitter::add32_mem_imm (Reg base, int32_t disp, int32_t imm)
 {
 	/* 81 /0 id: add r/m32, imm32 */
@@ -501,6 +511,63 @@ Emitter::imul32 (Reg dst, Reg src)
 }
 
 void
+Emitter::imul64 (Reg dst, Reg src)
+{
+	/* REX.W 0F AF /r */
+	rex (true, dst, src);
+	byte (0x0F);
+	byte (0xAF);
+	byte ((uint8_t) (0xC0 | ((dst & 7) << 3) | (src & 7)));
+}
+
+void
+Emitter::movsxd (Reg dst, Reg src)
+{
+	/* REX.W 63 /r */
+	rex (true, dst, src);
+	byte (0x63);
+	byte ((uint8_t) (0xC0 | ((dst & 7) << 3) | (src & 7)));
+}
+
+void
+Emitter::shl64_imm (Reg r, uint8_t count)
+{
+	/* REX.W C1 /4 ib */
+	rex (true, 0, r);
+	byte (0xC1);
+	byte ((uint8_t) (0xC0 | (4 << 3) | (r & 7)));
+	byte (count);
+}
+
+void
+Emitter::div32 (Reg r)
+{
+	/* F7 /6 */
+	rex (false, 0, r);
+	byte (0xF7);
+	byte ((uint8_t) (0xC0 | (6 << 3) | (r & 7)));
+}
+
+void
+Emitter::div64 (Reg r)
+{
+	/* REX.W F7 /6 */
+	rex (true, 0, r);
+	byte (0xF7);
+	byte ((uint8_t) (0xC0 | (6 << 3) | (r & 7)));
+}
+
+void
+Emitter::sar64_imm (Reg r, uint8_t count)
+{
+	/* REX.W C1 /7 ib */
+	rex (true, 0, r);
+	byte (0xC1);
+	byte ((uint8_t) (0xC0 | (7 << 3) | (r & 7)));
+	byte (count);
+}
+
+void
 Emitter::rot32 (Rot op, Reg r, uint8_t count)
 {
 	/* D1 /digit, C1 /digit ib, register form */
@@ -509,6 +576,15 @@ Emitter::rot32 (Rot op, Reg r, uint8_t count)
 	byte ((uint8_t) (0xC0 | ((unsigned) op << 3) | (r & 7)));
 	if (count != 1)
 		byte (count);
+}
+
+void
+Emitter::shift32_cl (unsigned op, Reg r)
+{
+	/* D3 /digit */
+	rex (false, 0, r);
+	byte (0xD3);
+	byte ((uint8_t) (0xC0 | (op << 3) | (r & 7)));
 }
 
 void
@@ -529,6 +605,17 @@ Emitter::cmp32_imm (Reg r, uint32_t imm)
 	byte (0x81);
 	byte ((uint8_t) (0xF8 | (r & 7)));
 	u32 (imm);
+}
+
+void
+Emitter::test8_imm (Reg r, uint8_t imm)
+{
+	/* F6 /0 ib; a REX for spl..dil and r8b..r15b */
+	if (r >= 4)
+		byte ((uint8_t) (0x40 | (r >= 8 ? 1 : 0)));
+	byte (0xF6);
+	byte ((uint8_t) (0xC0 | (r & 7)));
+	byte (imm);
 }
 
 void
@@ -785,6 +872,39 @@ Emitter::sse_reg (Sse op, unsigned x, unsigned y)
 }
 
 void
+Emitter::movups_load (unsigned x, Reg base, int32_t disp)
+{
+	sse_any_mem (0, 0x10, x, base, disp);
+}
+
+void
+Emitter::movups_store (Reg base, int32_t disp, unsigned x)
+{
+	sse_any_mem (0, 0x11, x, base, disp);
+}
+
+void
+Emitter::ps_reg (Sse op, unsigned x, unsigned y)
+{
+	/* 0F op /r, register form */
+	rex (false, x, y);
+	byte (0x0F);
+	byte ((uint8_t) op);
+	byte ((uint8_t) (0xC0 | ((x & 7) << 3) | (y & 7)));
+}
+
+void
+Emitter::shufps (unsigned x, unsigned y, uint8_t imm)
+{
+	/* 0F C6 /r ib */
+	rex (false, x, y);
+	byte (0x0F);
+	byte (0xC6);
+	byte ((uint8_t) (0xC0 | ((x & 7) << 3) | (y & 7)));
+	byte (imm);
+}
+
+void
 Emitter::ucomiss_mem (unsigned x, Reg base, int32_t disp)
 {
 	sse_any_mem (0, 0x2E, x, base, disp);
@@ -832,6 +952,20 @@ Emitter::jcc (Cond c, Label &l)
 	byte (0x0F);
 	byte ((uint8_t) (0x80 | c));
 	rel32_to (l);
+}
+
+void
+Emitter::jmp_abs (const void *target)
+{
+	const int64_t rel = (int64_t) ((const uint8_t *) target - (p + 5));
+
+	if (rel == (int64_t) (int32_t) rel) {
+		byte (0xE9);
+		u32 ((uint32_t) (int32_t) rel);
+	} else {
+		mov_imm64 (RAX, (uint64_t) (uintptr_t) target);
+		jmp_reg (RAX);
+	}
 }
 
 void

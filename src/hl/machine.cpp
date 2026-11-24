@@ -174,6 +174,8 @@ Machine::write_hashes (FILE *fp, bool blocks)
 {
 	std::vector<Hashed> mems;
 
+	if (renderer)
+		renderer->sync ();
 	hashed_memories (mems);
 	fprintf (fp, "F %llu", (unsigned long long) frame);
 	for (const Hashed &m : mems)
@@ -220,6 +222,8 @@ Machine::load_save_state (const char *path, State::Mode mode)
 	int ret = 0;
 
 	op = (mode == State::LOAD) ? "load" : "save";
+	if (renderer)
+		renderer->sync ();
 
 	{
 		State state (path, mode);

@@ -376,12 +376,36 @@ Holly::ch2_dma ()
 	uint32_t src = sh->ddt_source (2) & 0x1FFFFFFF;
 	uint32_t dst = (sb[SB_C2DSTAT] & 0x03FFFFE0) | 0x10000000;
 	uint32_t len = sb[SB_C2DLEN] ? sb[SB_C2DLEN] : 0x1000000, i;
+	/* To the TA's FIFO from a RAM: its words read in place, 32 bytes at a
+	 * time where they fall on a packet (area4_words ()); else a word at a
+	 * time through the map */
+	const bool fifo = !(src & 3) && (dst & 0x01FFFFFF) + len <= 0x00800000;
 
-	for (i = 0; i + 4 <= len; i += 4) {
+	for (i = 0; i + 4 <= len; ) {
+		const uint8_t *from = fifo ? board->mmap->direct (src + i, false) : NULL;
+
+		if (from) {
+			const uint32_t end = std::min (len & ~3u, i + (4096 - ((src + i) & 4095)));
+
+			for (; i + 32 <= end; i += 32, from += 32) {
+				uint32_t words[8];
+
+				memcpy (words, from, 32);
+				area4_words (dst + i, words, 8);
+			}
+			for (; i < end; i += 4, from += 4) {
+				uint32_t val;
+
+				memcpy (&val, from, 4);
+				area4_put (4, dst + i, val);
+			}
+			continue;
+		}
 		uint32_t val = 0;
 
 		board->mmap->get (4, src + i, &val);
 		area4_put (4, dst + i, val);
+		i += 4;
 	}
 	sh->ddt_done (2, src + len);
 	if (dst & 0x01000000)
@@ -450,7 +474,10 @@ Holly::g1_dma ()
 			board->cart->dma (to, len);
 		if (!in_ram)
 			bus_write (star & 0x1FFFFFFF, to, len);
-		((Sh4 *) board->sh)->blocks.new_epoch ();
+		/* Code compared in this epoch written over: another (each DMA
+		 * started one, 4 a frame of Virtua Fighter 4 Evolution's, its
+		 * blocks all compared again) */
+		((Sh4 *) board->sh)->blocks.written_range (star & 0x1FFFFFFF, len);
 	} else if (board->has_comm && in_ram) {
 		/* From the RAM to the communication board's */
 		board->comm.dma_from_ram ((const uint8_t *) board->ram->ptr (offs), len);
@@ -685,20 +712,21 @@ Holly::ta_reset_list ()
 }
 
 Batch &
-Holly::ta_batch ()
+Holly::ta_batch (bool elan)
 {
 	static const unsigned from[5] = { LIST_OPAQUE, LIST_OPAQUE, LIST_TRANSLUCENT, LIST_TRANSLUCENT, LIST_PUNCH };
 	std::vector<Batch> &list = building->batches[from[ta.list & 7]];
 	bool clip = (ta.clip_mode & 3) == 2, clip_out = (ta.clip_mode & 3) == 3;
 
-	if (list.empty () || ta.new_batch) {
+	if (list.empty () || ta.new_batch || list.back ().elan != elan) {
 		Batch b = {};
 
 		ta.new_batch = 0;
 		b.isp = ta.isp;
 		b.tsp = ta.tsp;
 		b.tcw = ta.tcw;
-		b.first = (uint32_t) building->vertices.size ();
+		b.elan = elan;
+		b.first = elan ? building->elan.vertices : (uint32_t) building->vertices.size ();
 		b.clip_on = clip;
 		b.clip_out = clip_out;
 		b.x0 = ta.clip[0];
@@ -715,7 +743,7 @@ Holly::ta_batch ()
 			Batch &last = list.back ();
 			if (last.isp == b.isp && last.tsp == b.tsp && last.tcw == b.tcw && last.clip_on == clip &&
 			    last.clip_out == clip_out && last.x0 == b.x0 && last.y0 == b.y0 && last.x1 == b.x1 && last.y1 == b.y1 &&
-			    last.shadow == b.shadow && last.first + last.count == b.first &&
+			    last.shadow == b.shadow && last.elan == b.elan && last.first + last.count == b.first &&
 			    last.two_volume == b.two_volume &&
 			    (!b.two_volume || (last.tsp1 == b.tsp1 && last.tcw1 == b.tcw1 &&
 			                       last.first1 + last.count == b.first1)))
@@ -1216,6 +1244,28 @@ Holly::elan_polygon (unsigned list, uint32_t isp, uint32_t tsp, uint32_t tcw, bo
 	ta.new_batch = 1;
 }
 
+uint32_t
+Holly::elan_cull () const
+{
+	return pvr[PVR_CULL_VAL];
+}
+
+int
+Holly::elan_slots (unsigned n)
+{
+	try {
+		Batch &batch = ta_batch (true);
+		int first = (int) building->elan.vertices;
+
+		building->elan.vertices += n;
+		batch.count += n;
+		return first;
+	} catch (const std::bad_alloc &) {
+		no_memory ("a triangle");
+		return -1;
+	}
+}
+
 int
 Holly::elan_triangle (const Vertex &a, const Vertex &b, const Vertex &c)
 {
@@ -1297,6 +1347,8 @@ Holly::fifo_word (uint32_t word)
 void
 Holly::yuv_block ()
 {
+	if (vram_sync)
+		vram_sync (~0u, 0);
 	uint32_t ctrl = pvr[PVR_YUV_CTRL];
 	uint32_t width = ((ctrl & 0x3F) + 1) * 16, height = (((ctrl >> 8) & 0x3F) + 1) * 16;
 	uint32_t base = pvr[PVR_YUV_BASE] & VRAM_MASK;
@@ -1343,6 +1395,18 @@ Holly::yuv_data (const uint32_t *w, unsigned words)
 }
 
 void
+Holly::area4_words (uint32_t addr, const uint32_t *words, unsigned n)
+{
+	if (n == 8 && ta.fifo_words == 0 && (addr & 0x01FFFFFF) + 32 <= 0x00800000) {
+		memcpy (ta.fifo, words, 32);
+		ta_packet_guarded (ta.fifo);
+		return;
+	}
+	for (unsigned i = 0; i < n; i++)
+		area4_put (4, addr + i * 4, words[i]);
+}
+
+void
 Holly::area4_put (unsigned size, uint32_t addr, uint64_t val)
 {
 	uint32_t offs = addr & 0x01FFFFFF;
@@ -1358,6 +1422,8 @@ Holly::area4_put (unsigned size, uint32_t addr, uint64_t val)
 		bool map = (addr & 0x02000000) ? (sb[SB_LMMODE1] & 1) : (sb[SB_LMMODE0] & 1);
 		uint32_t target = offs & VRAM_MASK;
 
+		if (vram_sync)
+			vram_sync (map ? map32 (target & ~3u) : target, size);
 		if (map) {
 			vram->put (size > 4 ? 4 : size, map32 (target), words[0]);
 			if (size == 8)
@@ -1424,7 +1490,11 @@ Holly::start_render ()
 	/* Sorted by the chip, unless told the lists are */
 	d.presort = pvr[PVR_FEED_CFG] & 1;
 	if (pvr[PVR_PARAM_CFG] & (1 << 21)) {
-		uint32_t control = (uint32_t) vram->get (4, map32 (pvr[PVR_REGION_BASE] & VRAM_MASK & ~3u));
+		const uint32_t region = map32 (pvr[PVR_REGION_BASE] & VRAM_MASK & ~3u);
+
+		if (vram_behind)
+			vram_sync (region, 4);
+		uint32_t control = (uint32_t) vram->get (4, region);
 
 		d.presort = (control >> 29) & 1;
 	}
@@ -1435,7 +1505,13 @@ Holly::start_render ()
 		uint32_t at = base + ((tag >> 3) & 0x1FFFFF) * 4;
 		uint32_t skip = (tag >> 24) & 7;
 		bool shadow = (tag >> 27) & 1 && (pvr[PVR_SHAD_SCALE] & 0x100);
-		auto word = [&] (uint32_t a) { return (uint32_t) vram->get (4, map32 (a & VRAM_MASK & ~3u)); };
+		auto word = [&] (uint32_t a) {
+			const uint32_t m = map32 (a & VRAM_MASK & ~3u);
+
+			if (vram_behind)
+				vram_sync (m, 4);
+			return (uint32_t) vram->get (4, m);
+		};
 
 		d.background_isp = word (at);
 		d.background_tsp = word (at + 4);
@@ -1478,7 +1554,9 @@ Holly::start_render ()
 		if (screen) {
 			if (!(rendered[0].valid && rendered[0].at == at))
 				rendered[1] = rendered[0];
-			rendered[0] = { at, fb_hash (at), true };
+			if (!vram_watched && vram_behind)
+				vram_sync (~0u, 0);
+			rendered[0] = { at, vram_watched ? 0 : fb_hash (at), vram_gen_now, true };
 		}
 	} catch (const std::bad_alloc &) {
 		no_memory ("a picture");
@@ -1512,14 +1590,71 @@ Holly::fb_hash (uint32_t at) const
 }
 
 bool
-Holly::shows_rendered () const
+Holly::shows_rendered ()
 {
 	uint32_t at = fb_r_sof1 () & 0x00FFFFFC;
 
+	vram_track ();
 	for (const Rendered &r : rendered)
 		if (r.valid && r.at == at)
-			return fb_hash (at) == r.hash;
+			return vram_watched ? fb_since (at) <= r.gen : fb_hash (at) == r.hash;
 	return false;
+}
+
+/* The VRAM's written pages, each given the next generation: what changed
+ * since a texture or a framebuffer was found the same, without reading it */
+void
+Holly::vram_track ()
+{
+	if (!vram_watched)
+		return;
+	if (!vram->written (vram_written)) {
+		vram_watched = false;
+		return;
+	}
+	if (vram_gen.empty ())
+		vram_gen.assign (vram->size () / hl::Buffer::WATCH_PAGE, 0);
+	vram_gen_now++;
+	for (uint32_t p : vram_written)
+		if (p < vram_gen.size ())
+			vram_gen[p] = vram_gen_now;
+}
+
+uint32_t
+Holly::vram_since (uint32_t offs, uint32_t bytes) const
+{
+	uint32_t g = 0, p, last;
+
+	if (!bytes || vram_gen.empty ())
+		return vram_gen_now;
+	last = (offs + bytes - 1) / hl::Buffer::WATCH_PAGE;
+	for (p = offs / hl::Buffer::WATCH_PAGE; p <= last && p < vram_gen.size (); p++)
+		g = std::max (g, vram_gen[p]);
+	return g;
+}
+
+/* The framebuffer's span of 32-bit addresses (FB_R_SIZE's lines, their
+ * modulus with them) through map32 (): a bank's words every other one, its
+ * pages in a row; across the 4 MB banks' boundary, both pieces */
+uint32_t
+Holly::fb_since (uint32_t at) const
+{
+	uint32_t size = fb_r_size ();
+	unsigned line = (size & 0x3FF) + 1, lines = ((size >> 10) & 0x3FF) + 1, modulus = (size >> 20) & 0x3FF;
+	uint32_t bytes = lines * (line * 4 + (modulus ? (modulus - 1) * 4 : 0));
+	uint32_t lo = at & 0x00FFFFFC, hi = std::min (lo + bytes, 0x01000000u) - 4, g = 0;
+
+	while (lo <= hi) {
+		/* To the end of this bank's 4 MB, or of the span */
+		uint32_t end = std::min (hi, (lo | 0x003FFFFF) & ~3u);
+		uint32_t a = map32 (lo) & ~(hl::Buffer::WATCH_PAGE - 1), b = map32 (end);
+
+		g = std::max (g, vram_since (a, b - a + 4));
+		if (end == hi)
+			break;
+		lo = end + 4;
+	}
+	return g;
 }
 
 /* The textures of a drawing as they are now (renders end before the games go
@@ -1528,7 +1663,7 @@ Holly::shows_rendered () const
  * 32-byte stripes, four lanes that run side by side (a word at a time, each
  * multiply awaiting the last, took a twentieth of Club Kart's frame), what is
  * left after */
-static uint64_t
+uint64_t
 texture_hash (const uint8_t *p, size_t bytes, uint64_t seed)
 {
 	const uint64_t P1 = 0x9E3779B185EBCA87ull, P2 = 0xC2B2AE3D27D4EB4Full, P3 = 0x165667B19E3779F9ull;
@@ -1573,6 +1708,44 @@ void
 Holly::keep_textures (Draw &d)
 {
 	uint32_t stride = (d.text_control & 31) * 32;
+	unsigned l;
+
+	/* Pixels drawn to textures still on their way to those read: their
+	 * bytes left to the drawing thread (vram_later), else waited for,
+	 * before the pages written are looked at. Not kept: the next ones
+	 * hashed again from the VRAM */
+	if (vram_behind) {
+		auto wait_for = [&] (uint32_t tcw, uint32_t tsp) {
+			uint64_t key = texture_key (tcw, tsp);
+			uint32_t bytes = texture_size (tcw, tsp, d.text_control);
+			uint32_t addr = (tcw & 0x1FFFFF) << 3;
+
+			if (!vram_behind || d.textures.count (key) || addr + bytes > vram->size ())
+				return;
+			if (vram_later) {
+				std::shared_ptr<TextureData> later = std::make_shared<TextureData> ();
+
+				later->stride = stride;
+				if (vram_later (later, addr, bytes)) {
+					d.textures[key] = later;
+					kept_textures.erase (key);
+					return;
+				}
+			}
+			vram_sync (addr, bytes);
+		};
+
+		for (l = 0; l < NUM_LISTS && vram_behind; l++)
+			for (const Batch &b : d.scene->batches[l])
+				if ((b.isp >> 25) & 1) {
+					wait_for (b.tcw, b.tsp);
+					if (b.two_volume)
+						wait_for (b.tcw1, b.tsp1);
+				}
+		if ((d.background_isp >> 25) & 1)
+			wait_for (d.background_tcw, d.background_tsp);
+	}
+	vram_track ();
 	auto take = [&] (uint32_t tcw, uint32_t tsp) {
 		uint64_t key = texture_key (tcw, tsp);
 
@@ -1584,20 +1757,28 @@ Holly::keep_textures (Draw &d)
 		if (addr + bytes > vram->size ())
 			return;
 		const uint8_t *p = (const uint8_t *) vram->ptr (addr);
-		uint64_t hash = texture_hash (p, bytes, stride);
-
 		std::shared_ptr<const TextureData> &kept = kept_textures[key];
 
-		if (!kept || kept->hash != hash) {
+		/* None of its pages written since it was found the same */
+		if (vram_watched && kept && kept->stride == stride && kept->bytes.size () == bytes &&
+		    vram_since (addr, bytes) <= kept->gen) {
+			d.textures[key] = kept;
+			return;
+		}
+
+		uint64_t hash = texture_hash (p, bytes, stride);
+
+		if (!kept || kept->hash != hash || kept->stride != stride) {
 			std::shared_ptr<TextureData> copy = std::make_shared<TextureData> ();
 
 			copy->bytes.assign (p, p + bytes);
 			copy->hash = hash;
+			copy->stride = stride;
 			kept = copy;
 		}
+		kept->gen = vram_gen_now;
 		d.textures[key] = kept;
 	};
-	unsigned l;
 
 	for (l = 0; l < NUM_LISTS; l++)
 		for (const Batch &b : d.scene->batches[l])

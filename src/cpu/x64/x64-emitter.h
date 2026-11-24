@@ -106,6 +106,7 @@ public:
 	void		 load32 (Reg dst, Reg base, int32_t disp);
 	void		 store32 (Reg base, int32_t disp, Reg src);
 	void		 store32_imm (Reg base, int32_t disp, uint32_t imm);
+	void		 store8_imm (Reg base, int32_t disp, uint8_t imm);
 	/* [base + disp] += imm, 32 bits */
 	void		 add32_mem_imm (Reg base, int32_t disp, int32_t imm);
 	/* Compares [base + disp] with a register or an immediate */
@@ -161,8 +162,19 @@ public:
 	void		 movsx8 (Reg dst, Reg src);
 	void		 movsx16 (Reg dst, Reg src);
 	void		 imul32 (Reg dst, Reg src);
+	/* 64 bits: imul, a sign-extended 32-bit register, sar by a count */
+	void		 imul64 (Reg dst, Reg src);
+	void		 movsxd (Reg dst, Reg src);
+	void		 sar64_imm (Reg r, uint8_t count);
+	void		 shl64_imm (Reg r, uint8_t count);
+	/* rdx:rax / r: rax the quotient, rdx the remainder */
+	void		 div64 (Reg r);
+	/* edx:eax / r32 */
+	void		 div32 (Reg r);
 	void		 cmp32_imm (Reg r, uint32_t imm);
 	void		 test32_imm (Reg r, uint32_t imm);
+	/* test r's low byte, imm8 (3 bytes for cl) */
+	void		 test8_imm (Reg r, uint8_t imm);
 	/* 64-bit test r, r; [base + disp] += imm */
 	void		 test64 (Reg a, Reg b);
 	void		 add64_mem_imm (Reg base, int32_t disp, int32_t imm);
@@ -195,6 +207,8 @@ public:
 	enum Rot { ROT_ROL = 0, ROT_ROR = 1, ROT_RCL = 2, ROT_RCR = 3, ROT_SAR = 7 };
 	void		 rot_mem (Rot op, Reg base, int32_t disp, uint8_t count);
 	void		 rot32 (Rot op, Reg r, uint8_t count);
+	/* shl (4), shr (5), sar (7) r by cl */
+	void		 shift32_cl (unsigned op, Reg r);
 	/* imul r32, [base + disp] */
 	void		 imul32_mem (Reg r, Reg base, int32_t disp);
 
@@ -210,6 +224,12 @@ public:
 	void		 movss_store (Reg base, int32_t disp, unsigned x);
 	void		 sse_mem (Sse op, unsigned x, Reg base, int32_t disp);
 	void		 sse_reg (Sse op, unsigned x, unsigned y);
+	/* Packed singles: movups load and store, the ops on four lanes (no
+	 * prefix), shufps */
+	void		 movups_load (unsigned x, Reg base, int32_t disp);
+	void		 movups_store (Reg base, int32_t disp, unsigned x);
+	void		 ps_reg (Sse op, unsigned x, unsigned y);
+	void		 shufps (unsigned x, unsigned y, uint8_t imm);
 	void		 ucomiss_mem (unsigned x, Reg base, int32_t disp);
 	void		 cvtsi2ss_mem (unsigned x, Reg base, int32_t disp);
 	void		 cvttss2si_mem (Reg r, Reg base, int32_t disp);
@@ -219,6 +239,8 @@ public:
 	void		 jcc (Cond c, Label &l);
 	void		 jmp (Label &l);
 	void		 jmp_reg (Reg r);
+	/* To code at a fixed address: rel32 when in reach, else through rax */
+	void		 jmp_abs (const void *target);
 	void		 bind (Label &l);
 
 	void		 byte (uint8_t b);

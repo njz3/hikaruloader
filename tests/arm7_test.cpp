@@ -18,7 +18,8 @@
 
 /* The ARM7 core's tests: small programs whose results are known, one or
  * more per group of instructions. Run by ctest, or alone: arm7test.
- * arm7test --bench measures the interpreter's speed instead. */
+ * arm7test --bench measures the interpreter's speed instead (--bench --jit:
+ * the translations'). */
 
 #include <chrono>
 #include <initializer_list>
@@ -200,12 +201,227 @@ test_scan_loop (unsigned slot, int budget)
 	CHECK (name, fast.regs.r[15], slot < 64 ? 0x128u : 0x124u);
 }
 
+/* The translations (Arm7::jit) against step (): random programs of the
+ * kinds the sound drivers run, on two CPUs run the same budgets at a time
+ * (1 to 100 cycles), an FIQ now and then, an instruction rewritten between
+ * two runs now and then (as the SH-4 loads code): the same registers,
+ * cycles and memory after each run (). The RAM below 8000 (set_ram ()), the
+ * bus above */
+static uint32_t rng_state;
+
+static uint32_t
+rnd (void)
+{
+	rng_state = rng_state * 1103515245u + 12345u;
+	return rng_state >> 8;
+}
+
+static uint32_t rnd32 (void) { return (rnd () << 16) ^ rnd (); }
+
+/* An instruction for index i of n (the loop's tail at n): r0-r8 data, r9 a
+ * small offset, r10 the loop's count, r11 a base in the RAM, r12 on the
+ * bus, r13 the stack; those three written back alone */
+static uint32_t
+random_inst (unsigned i, unsigned n)
+{
+	const uint32_t cond = (rnd () % 10 < 7) ? 0xE0000000 : ((rnd () % 15) << 28);
+	const unsigned k = rnd () % 100;
+
+	if (k < 40) {
+		unsigned op = rnd () % 16, rd = rnd () % 9, rn = rnd () % 16;
+		bool s = (op >= TST && op <= CMN) || rnd () % 2;
+		uint32_t op2;
+
+		switch (rnd () % 4) {
+		case 0: op2 = imm (rnd () % 16, rnd () % 256); break;
+		case 1: op2 = shr (rnd () % 16, rnd () % 4, rnd () % 13); break;
+		default: op2 = shi (rnd () % 16, rnd () % 4, rnd () % 32); break;
+		}
+		return (dp (op, s, rd, rn, op2) & 0x0FFFFFFF) | cond;
+	}
+	if (k < 58) {
+		bool load = rnd () % 2, byte = rnd () % 3 == 0, pre = rnd () % 4 != 0;
+		bool wback = rnd () % 4 == 0, up = rnd () % 2;
+		unsigned rn = 11 + rnd () % 3, rd = load ? rnd () % 9 : rnd () % 16;
+		uint32_t w = cond | 0x04000000 | (pre ? 1u << 24 : 0) | (up ? 1u << 23 : 0) |
+		             (byte ? 1u << 22 : 0) | (wback ? 1u << 21 : 0) | (load ? 1u << 20 : 0) |
+		             (rn << 16) | (rd << 12);
+
+		if (rnd () % 4 == 0)	/* r9, LSL/LSR #0-2, not written back */
+			return (w & ~(1u << 21)) | (1u << 24) | (1u << 25) | ((rnd () % 3) << 7) |
+			       ((rnd () % 2) << 5) | 9;
+		return w | (rnd () % 0x40);
+	}
+	if (k < 68) {
+		bool load = rnd () % 3 != 0, pre = rnd () % 4 != 0, wback = rnd () % 4 == 0;
+		bool up = rnd () % 2, reg = rnd () % 4 == 0;
+		unsigned rn = 11 + rnd () % 3, rd = load ? rnd () % 9 : rnd () % 16;
+		unsigned sh = load ? 1 + rnd () % 3 : 1, off = rnd () % 0x40;
+		uint32_t w = cond | (pre ? 1u << 24 : 0) | (up ? 1u << 23 : 0) | (wback ? 1u << 21 : 0) |
+		             (load ? 1u << 20 : 0) | (rn << 16) | (rd << 12) | 0x90 | (sh << 5);
+
+		if (reg)	/* r9, not written back */
+			return (w & ~(1u << 21)) | (1u << 24) | 9;
+		return w | (1u << 22) | ((off & 0xF0) << 4) | (off & 15);
+	}
+	if (k < 75) {
+		bool a = rnd () % 2, s = rnd () % 2;
+		return cond | (a ? 1u << 21 : 0) | (s ? 1u << 20 : 0) | ((rnd () % 9) << 16) |
+		       ((rnd () % 16) << 12) | ((rnd () % 16) << 8) | 0x90 | (rnd () % 16);
+	}
+	if (k < 78) {
+		unsigned lo = rnd () % 9, hi = (lo + 1 + rnd () % 8) % 9;
+		return cond | 0x00800090 | ((rnd () % 4) << 21) | ((rnd () % 2) << 20) | (hi << 16) |
+		       (lo << 12) | ((rnd () % 16) << 8) | (rnd () % 16);
+	}
+	if (k < 83) {
+		/* STMDB r13!, LDMIA r13!; an LDM from r11 */
+		uint32_t list = (rnd () & 0x1FF) | 1;
+		switch (rnd () % 3) {
+		case 0: return cond | (ldstm (false, 2, false, true, 13, list) & 0x0FFFFFFF);
+		case 1: return cond | (ldstm (true, 1, false, true, 13, list) & 0x0FFFFFFF);
+		default: return cond | (ldstm (true, rnd () % 4, false, false, 11, list) & 0x0FFFFFFF);
+		}
+	}
+	if (k < 86)
+		return (mrs (rnd () % 9, rnd () % 2) & 0x0FFFFFFF) | cond;
+	if (k < 88)
+		return cond | 0x0328F000 | ((rnd () % 16) << 8) | (rnd () % 256);	/* MSR CPSR_f, # */
+	if (k < 89)
+		return cond | 0x01000090 | ((rnd () % 2) << 22) | (11u << 16) | ((rnd () % 9) << 12) |
+		       (rnd () % 16);						/* SWP r11 */
+	if (k < 90)
+		return cond | 0x0F000000;					/* SWI */
+	{
+		/* Forward, within the program or to its tail */
+		unsigned to = i + 1 + rnd () % 4;
+		if (to > n)
+			to = n;
+		return (cond == 0xE0000000 ? 0x10000000 : cond) | 0x0A000000 |
+		       ((uint32_t) ((int32_t) (to - i) - 2) & 0xFFFFFF);
+	}
+}
+
+static void
+test_jit_random (unsigned seed)
+{
+	static TestBus bus[2];
+	Arm7 slow (&bus[0]), fast (&bus[1]);
+	Arm7 *cpus[2] = { &slow, &fast };
+	uint32_t code[200], regs[16], cpsr;
+	unsigned i, calls, n;
+	uint64_t total = 0;
+	char name[96];
+	int same = 1;
+
+	rng_state = seed;
+	n = 20 + rnd () % 150;
+	for (i = 0; i < n; i++)
+		code[i] = random_inst (i, n);
+	for (i = 0; i < 9; i++)
+		regs[i] = rnd32 ();
+	regs[9] = rnd () % 256;
+	regs[10] = 1 + rnd () % 40;
+	regs[11] = 0x6000 + rnd () % 0x400;
+	regs[12] = 0x9000 + rnd () % 0x400;
+	regs[13] = 0x7000;
+	regs[14] = rnd32 ();
+	regs[15] = 0x100;
+	cpsr = Arm7::MODE_SYS | (rnd32 () & 0xF0000000);
+	for (int c = 0; c < 2; c++) {
+		Arm7 &cpu = *cpus[c];
+
+		memset (bus[c].mem, 0, sizeof (bus[c].mem));
+		bus[c].write32 (0x08, MOVS_PC_LR);				/* SWI */
+		bus[c].write32 (0x1C, dp (ADD, false, 8, 8, imm (0, 1)));	/* FIQ */
+		bus[c].write32 (0x20, SUBS_PC_LR_4);
+		for (i = 0; i < n; i++)
+			bus[c].write32 (0x100 + 4 * i, code[i]);
+		bus[c].write32 (0x100 + 4 * n, dp (SUB, true, 10, 10, imm (0, 1)));
+		bus[c].write32 (0x104 + 4 * n, 0x1A000000 | (((uint32_t) -(int32_t) (n + 3)) & 0xFFFFFF));
+		bus[c].write32 (0x108 + 4 * n, B_SELF);
+		for (i = 0x6000; i < 0x7400; i++)
+			bus[c].mem[i] = (uint8_t) (i * 7);
+		cpu.set_ram (bus[c].mem, 0x8000);
+		cpu.reset ();
+		memcpy (cpu.regs.r, regs, sizeof (regs));
+		cpu.regs.cpsr = cpsr;
+		cpu.fast_loops = true;
+	}
+	fast.jit = true;
+	for (calls = 0; calls < 600 && total < 40000 && same; calls++) {
+		const int budget = 1 + (int) (rnd () % 100);
+		const bool fiq = rnd () % 40 == 0;
+		int done[2];
+
+		if (rnd () % 30 == 0) {
+			/* Code rewritten between two runs */
+			const unsigned at = rnd () % n;
+			const uint32_t w = random_inst (at, n);
+
+			bus[0].write32 (0x100 + 4 * at, w);
+			bus[1].write32 (0x100 + 4 * at, w);
+		}
+		for (int c = 0; c < 2; c++) {
+			cpus[c]->set_fiq (fiq);
+			done[c] = cpus[c]->run (budget);
+			cpus[c]->set_fiq (false);
+		}
+		total += (uint64_t) done[0];
+		if (done[0] != done[1] || memcmp (&slow.regs, &fast.regs, sizeof (slow.regs)) ||
+		    memcmp (bus[0].mem, bus[1].mem, sizeof (bus[0].mem))) {
+			same = 0;
+			fprintf (stderr, "jit seed %u, run %u: %d/%d cycles, pc %08X/%08X, cpsr %08X/%08X\n",
+			         seed, calls, done[0], done[1], slow.regs.r[15], fast.regs.r[15],
+			         slow.regs.cpsr, fast.regs.cpsr);
+			for (i = 0; i < 16; i++)
+				if (slow.regs.r[i] != fast.regs.r[i])
+					fprintf (stderr, "  r%u %08X/%08X\n", i, slow.regs.r[i], fast.regs.r[i]);
+			for (i = 0; i < sizeof (bus[0].mem); i++)
+				if (bus[0].mem[i] != bus[1].mem[i]) {
+					fprintf (stderr, "  mem %04X %02X/%02X\n", i, bus[0].mem[i], bus[1].mem[i]);
+					break;
+				}
+		}
+	}
+	snprintf (name, sizeof (name), "jit against step (), seed %u", seed);
+	CHECK (name, same, 1);
+}
+
+/* A store into the block's own next instruction: run as written */
+static void
+test_jit_self_modifying (void)
+{
+	static TestBus bus[2];
+	Arm7 slow (&bus[0]), fast (&bus[1]);
+
+	for (int c = 0; c < 2; c++) {
+		Arm7 &cpu = c ? fast : slow;
+
+		load (cpu, bus[c], {
+			dp (MOV, false, 0, 0, imm (0, 5)),	/* 100 */
+			0xE59F1008,				/* 104: LDR r1, [pc, #8] (114) */
+			0xE58F1000,				/* 108: STR r1, [pc, #0] (110) */
+			dp (ADD, false, 0, 0, imm (0, 1)),	/* 10C */
+			dp (ADD, false, 0, 0, imm (0, 2)),	/* 110: becomes 114's */
+			dp (ADD, false, 0, 0, imm (0, 0x10)),	/* 114 */
+		});
+		cpu.set_ram (bus[c].mem, 0x8000);
+	}
+	fast.jit = true;
+	slow.run (60);
+	fast.run (60);
+	CHECK ("self-modifying, step ()", slow.regs.r[0], 0x26);
+	CHECK ("self-modifying, jit", fast.regs.r[0], 0x26);
+	CHECK ("self-modifying, cycles", fast.regs.cycles, slow.regs.cycles);
+}
+
 /* --bench: the interpreter's speed on a loop of a sound driver's kind (a
  * load, a store, ALU operations, a shift, a condition, a branch: 9
  * instructions, 14 cycles), run as an AICA runs it: 64 cycles a sample,
  * 44100 samples a second, the RAM through set_ram () */
 static int
-bench (void)
+bench (bool jit)
 {
 	static const uint32_t loop[] = {
 		0xE3A02A01,	/* 100: MOV r2, #0x1000 */
@@ -219,13 +435,14 @@ bench (void)
 		0xE1A05125,	/*      MOV r5, r5, LSR #2 */
 		0xEAFFFFF6	/*      B 104 */
 	};
-	const long seconds = 20;
+	const long seconds = 3;
 	TestBus bus;
 	Arm7 cpu (&bus);
 	unsigned i;
 	int owed = 0;
 
 	cpu.set_ram (bus.mem, sizeof (bus.mem));
+	cpu.jit = jit;
 	for (i = 0; i < NUMELEM (loop); i++)
 		bus.write32 (0x100 + 4 * i, loop[i]);
 	cpu.reset ();
@@ -254,7 +471,7 @@ main (int argc, char **argv)
 	Arm7 cpu (&bus);
 
 	if (argc > 1 && !strcmp (argv[1], "--bench"))
-		return bench ();
+		return bench (argc > 2 && !strcmp (argv[2], "--jit"));
 
 	/* ADD, SUB and their flags */
 	run (cpu, bus, {
@@ -598,6 +815,11 @@ main (int argc, char **argv)
 		cpu.step ();
 	CHECK ("ldm ^ pc", cpu.regs.r[7], 7);
 	CHECK ("ldm ^ restores user", cpu.regs.cpsr & 0x1F, Arm7::MODE_USR);
+
+	/* The translations: as step () */
+	test_jit_self_modifying ();
+	for (unsigned seed = 1; seed <= 3000; seed++)
+		test_jit_random (seed);
 
 	/* The scan loops, run fast: as slow, whatever the budget cuts */
 	for (int budget : { 1, 7, 11, 12, 19, 64, 100 })

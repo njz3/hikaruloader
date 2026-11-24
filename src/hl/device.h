@@ -62,6 +62,16 @@ public:
 	/* Register access, through the memory maps; -1 when unhandled */
 	virtual int	get (unsigned size, uint32_t addr, void *val);
 	virtual int	put (unsigned size, uint32_t addr, uint64_t val);
+	/* n words of 4 bytes put from addr on, one after the other (a store
+	 * queue's burst, Mmap::put_words ()): as many put ()s by default */
+	virtual int	put_words (uint32_t addr, const uint32_t *words, unsigned n)
+	{
+		int ret = 0;
+
+		for (unsigned i = 0; i < n; i++)
+			ret |= put (4, addr + i * 4, words[i]);
+		return ret;
+	}
 	virtual int	save_state (State *state) { (void) state; return 0; }
 	virtual int	load_state (State *state) { (void) state; return 0; }
 

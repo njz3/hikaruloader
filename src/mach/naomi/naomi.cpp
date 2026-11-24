@@ -23,6 +23,7 @@
  */
 
 #include <algorithm>
+#include <chrono>
 #include <cstring>
 
 #include "hl/config.h"
@@ -84,15 +85,22 @@ public:
 		holly->area4_put (size, addr, val);
 		return 0;
 	}
+	int put_words (uint32_t addr, const uint32_t *words, unsigned n) override
+	{
+		holly->area4_words (addr, words, n);
+		return 0;
+	}
 private:
 	Holly *holly;
 };
 
 class Vram32 : public hl::Device {
 public:
-	Vram32 (hl::Machine *mach, hl::Buffer *vram) : hl::Device (mach), vram (vram) {}
+	Vram32 (hl::Machine *mach, hl::Buffer *vram, Holly *holly) : hl::Device (mach), vram (vram), holly (holly) {}
 	int get (unsigned size, uint32_t addr, void *val) override
 	{
+		if (holly->vram_sync)
+			holly->vram_sync (Holly::map32 (addr & 0x00FFFFFC), 8);
 		if (size == 8) {
 			uint64_t v = vram->get (4, Holly::map32 (addr & 0x00FFFFFC)) |
 			             (uint64_t) vram->get (4, Holly::map32 ((addr + 4) & 0x00FFFFFC)) << 32;
@@ -103,6 +111,8 @@ public:
 	}
 	int put (unsigned size, uint32_t addr, uint64_t val) override
 	{
+		if (holly->vram_sync)
+			holly->vram_sync (Holly::map32 (addr & 0x00FFFFFC), 8);
 		if (size == 8) {
 			vram->put (4, Holly::map32 (addr & 0x00FFFFFC), (uint32_t) val);
 			vram->put (4, Holly::map32 ((addr + 4) & 0x00FFFFFC), (uint32_t) (val >> 32));
@@ -112,6 +122,7 @@ public:
 	}
 private:
 	hl::Buffer *vram;
+	Holly	*holly;
 };
 
 /* What nothing answers there: reads 0 or the floating bus, writes lost */
@@ -240,9 +251,9 @@ Board::~Board ()
 }
 
 void
-Board::add_buffer (hl::Buffer *&buf, unsigned size, bool battery, const char *name)
+Board::add_buffer (hl::Buffer *&buf, unsigned size, bool battery, const char *name, bool watched)
 {
-	buf = hl::Buffer::create (size, 0, hl::Buffer::LE32);
+	buf = watched ? hl::Buffer::create_watched (size, hl::Buffer::LE32) : hl::Buffer::create (size, 0, hl::Buffer::LE32);
 	if (buf)
 		machine->register_buffer (buf, battery, (name + (index ? std::to_string (index) : std::string ())).c_str ());
 }
@@ -259,7 +270,7 @@ Board::setup_mmap ()
 {
 	hl::Mmap *map = new hl::Mmap (machine);
 	Area4 *area4 = new Area4 (machine, holly);
-	Vram32 *vram32 = new Vram32 (machine, vram);
+	Vram32 *vram32 = new Vram32 (machine, vram, holly);
 	Nothing *zero = new Nothing (machine, 0);
 	AicaBus *aica_bus = new AicaBus (machine, aica);
 	hl::Device *g2 = link ? (hl::Device *) link : new Nothing (machine, 0xFFFFFFFF);
@@ -347,7 +358,9 @@ Board::init ()
 	add_buffer (bios, 2 * MB, true, "bios");
 	add_buffer (sram, is_atomiswave ? 128 * KB : 32 * KB, true, "sram");
 	add_buffer (ram, is_atomiswave ? 16 * MB : 32 * MB, false, "ram");
-	add_buffer (vram, 16 * MB, false, "vram");
+	/* Its written pages kept: the textures and the framebuffers checked by
+	 * them (Holly::vram_track ()) */
+	add_buffer (vram, 16 * MB, false, "vram", true);
 	add_buffer (aica_ram, 8 * MB, false, "aica_ram");
 	if (!bios || !sram || !ram || !vram || !aica_ram)
 		return false;
@@ -556,9 +569,18 @@ Board::init ()
 	cpu->user = this;
 	cpu->sq_buffered = true;
 	cpu->rfcr_counts = true;
-	cpu->mmu_trusted = false;
+	/* Under the MMU (MMUCR.AT), the Atomiswave's programs map the store
+	 * queues' area alone (E0000000 up to the RAM and the TA): the MMU left
+	 * out while every other page is its own address (sh4_mmu_update ()),
+	 * its lookups, checks and slow paths with it. A program that maps
+	 * otherwise has it exact again */
+	cpu->mmu_trusted = true;
 	cpu->blocks.own (0x0C000000, 0x0DFFFFFF);
 	cpu->blocks.own (0x00000000, 0x001FFFFF);
+	if (game->sh4_icache)
+		cpu->icache_on = true;
+	if (link)
+		link->hot_read (cpu);
 	sh4_set_porta_handlers (cpu, porta_get, porta_put);
 
 	/* The Lua shell's names */
@@ -874,8 +896,13 @@ Board::run_lines (unsigned line, unsigned count)
 		} else
 			sh->run (cycles_per_line);
 		aica->exec (cycles_per_line);
-		if (mie)
-			mie->exec (mie_t_states);
+		if (mie) {
+			if (!index) {
+				HL_PROFILE (MIE);
+				mie->exec (mie_t_states);
+			} else
+				mie->exec (mie_t_states);
+		}
 		holly->line (n);
 		/* The sockets of a Net DIMM, every few lines */
 		if (gd && !(n & 15))
@@ -1192,7 +1219,23 @@ Naomi::Naomi (hl::Game *game) :
 Naomi::~Naomi ()
 {
 	stop_threads ();
+	if (board_times && timed_frames) {
+		const double ms = 1e-6 / (double) timed_frames;
+
+		for (size_t b = 0; b < board_busy.size (); b++)
+			HL_PRINT ("naomi: board %u ran its slices %.3f ms a frame", (unsigned) b + 1, board_busy[b] * ms);
+		HL_PRINT ("naomi: the master waited for the others %.3f ms a frame (%llu frames)", master_wait * ms,
+		          (unsigned long long) timed_frames);
+		HL_PRINT ("naomi: each slice's slowest board, summed: %.3f ms a frame; the master between slices %.3f ms",
+		          slowest_sum * ms, between * ms);
+		HL_PRINT ("naomi: the machine's frame %.3f ms, its end (the boards' frames' ends, the screens) %.3f ms",
+		          frame_all * ms, frame_end * ms);
+	}
 	save_nvram ();
+	/* HR_ARM_PROFILE's, while the sound RAMs are there */
+	for (auto &b : boards)
+		if (b->aica)
+			((hikaru::Aica *) b->aica)->report_arm_profile ();
 }
 
 void
@@ -1272,10 +1315,26 @@ spin_pause ()
 	_mm_pause ();
 }
 
+/* HR_BOARD_TIMES's clock, in nanoseconds */
+static inline uint64_t
+board_ticks ()
+{
+	return (uint64_t) std::chrono::duration_cast<std::chrono::nanoseconds> (
+		std::chrono::steady_clock::now ().time_since_epoch ()).count ();
+}
+
 void
 Naomi::run_slice (Board *board)
 {
+	if (!board_times) {
+		board->run_lines (slice_line, slice_count);
+		return;
+	}
+	const uint64_t t0 = board_ticks ();
+
 	board->run_lines (slice_line, slice_count);
+	board_slice[board->index] = board_ticks () - t0;
+	board_busy[board->index] += board_slice[board->index];
 }
 
 void
@@ -1311,6 +1370,9 @@ Naomi::start_threads ()
 {
 	unsigned i;
 
+	board_times = hl_util_get_bool_option ("HR_BOARD_TIMES", false);
+	board_busy.assign (boards.size (), 0);
+	board_slice.assign (boards.size (), 0);
 	for (i = 1; i < boards.size (); i++)
 		threads.emplace_back (&Naomi::worker, this, i);
 }
@@ -1455,10 +1517,14 @@ Naomi::choose_screen ()
 int
 Naomi::run_frame ()
 {
+	const uint64_t f0 = board_times ? board_ticks () : 0;
 	unsigned lines = master ()->begin_frame (), line, i;
 
 	for (i = 1; i < boards.size (); i++)
 		boards[i]->begin_frame ();
+
+
+	uint64_t w0_between = 0;
 
 	for (line = 0; line < lines; line += SLICE_LINES) {
 		slice_line = line;
@@ -1475,17 +1541,32 @@ Naomi::run_frame ()
 			}
 			run_slice (master ());
 			/* A PC with few cores: the others need this one */
-			while (running)
-				if (++spins < MASTER_SPINS)
-					spin_pause ();
-				else
-					std::this_thread::yield ();
+			{
+				const uint64_t w0 = board_times ? board_ticks () : 0;
+
+				while (running)
+					if (++spins < MASTER_SPINS)
+						spin_pause ();
+					else
+						std::this_thread::yield ();
+				if (board_times) {
+					uint64_t slowest = 0;
+
+					master_wait += board_ticks () - w0;
+					for (uint64_t t : board_slice)
+						slowest = std::max (slowest, t);
+					slowest_sum += slowest;
+					w0_between = board_ticks ();
+				}
+			}
 			for (auto &b : boards)
 				if (b->link)
 					b->link->publish ();
 			for (auto &b : boards)
 				if (b->link)
 					b->link->sync ();
+			if (board_times)
+				between += board_ticks () - w0_between;
 		} else
 			run_slice (master ());
 		/* All stopped: the rings' work of the boards past their blank */
@@ -1497,6 +1578,10 @@ Naomi::run_frame ()
 			}
 		}
 	}
+	const uint64_t e0 = board_times ? board_ticks () : 0;
+
+	if (board_times)
+		timed_frames++;
 	choose_screen ();
 	mix.clear ();
 	for (auto &b : boards)
@@ -1510,6 +1595,12 @@ Naomi::run_frame ()
 	if (reset_due) {
 		reset_due = false;
 		reset (hl::RESET_HARD);
+	}
+	if (board_times) {
+		const uint64_t now = board_ticks ();
+
+		frame_all += now - f0;
+		frame_end += now - e0;
 	}
 	return 0;
 }

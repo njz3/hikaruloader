@@ -389,13 +389,14 @@ void drawDisplayTab()
                                  "graphics card."));
     ImGui::PopTextWrapPos();
 
-    // ELAN_LIGHTING: read at each scene (naomi::Elan::flush_lighting)
+    // ELAN_LIGHTING: read at each list (naomi::Elan::polygon_list) and scene
+    // (naomi::Elan::flush_lighting); formerly "NAOMI 2 lighting"
     const char *lightingLabels[] = {tr("Processor (CPU)"), tr("Graphics card (GPU)")};
-    ImGui::Combo(tr("NAOMI 2 lighting"), &cfg->elan_lighting, lightingLabels, IM_ARRAYSIZE(lightingLabels));
+    ImGui::Combo(tr("NAOMI 2 geometry and lighting"), &cfg->elan_lighting, lightingLabels, IM_ARRAYSIZE(lightingLabels));
     ImGui::PushTextWrapPos(0.0f);
-    ImGui::TextDisabled("%s", tr("The NAOMI 2's lights (Club Kart, Initial D, Virtua Fighter 4...): on the processor's cores, as the "
-                                 "board lights, or by the graphics card's shaders, the processor free for the rest (OpenGL 4.3; a "
-                                 "colour a step off here and there)."));
+    ImGui::TextDisabled("%s", tr("The NAOMI 2's vertices (Club Kart, Initial D, Virtua Fighter 4...): put in the view, on the "
+                                 "screen and lit on the processor's cores, as the board does, or by the graphics card's shaders, "
+                                 "the processor free for the rest (OpenGL 4.3; a pixel or a colour a step off here and there)."));
     ImGui::PopTextWrapPos();
 
     ImGui::Checkbox(tr("Widescreen 3D (16:9)"), &cfg->widescreen);
@@ -650,6 +651,13 @@ void drawEmulationTab(bool inGame)
     ImGui::TextDisabled("%s", tr("The JVS I/O board's processor runs its program, as on the cabinet, instead of its simulation: "
                                  "315-6215 (MAME's jvs13551 set), epr-21868 for NASCAR Arcade (the 18wheelr set); without the "
                                  "file, the simulation. Test and Service then go through that board, as a cabinet's."));
+    ImGui::PopTextWrapPos();
+    ImGui::Checkbox(tr("NAOMI's MIE running its program"), &cfg->mie_program);
+    restartNote(inGame);
+    ImGui::PushTextWrapPos(0.0f);
+    ImGui::TextDisabled("%s", tr("The NAOMI's MIE (between the Maple bus and the JVS) runs its ROM and the program the game "
+                                 "sends on its Z80, as on the board, instead of its simulation: slower, with the board's "
+                                 "timings."));
     ImGui::PopTextWrapPos();
     ImGui::Checkbox(tr("Security chips"), &cfg->security_chips);
     restartNote(inGame);

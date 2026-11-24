@@ -595,12 +595,12 @@ msgid "Graphics card (GPU)"
 msgstr "Carte graphique (GPU)"
 
 #: src/ui/ui_common.cpp
-msgid "NAOMI 2 lighting"
-msgstr "Éclairage NAOMI 2"
+msgid "NAOMI 2 geometry and lighting"
+msgstr "Géométrie et éclairage NAOMI 2"
 
 #: src/ui/ui_common.cpp
-msgid "The NAOMI 2's lights (Club Kart, Initial D, Virtua Fighter 4...): on the processor's cores, as the board lights, or by the graphics card's shaders, the processor free for the rest (OpenGL 4.3; a colour a step off here and there)."
-msgstr "Les lumières du NAOMI 2 (Club Kart, Initial D, Virtua Fighter 4...) : sur les cœurs du processeur, comme la carte les calcule, ou par les shaders de la carte graphique, le processeur libre pour le reste (OpenGL 4.3 ; une couleur d'un cran à côté çà et là)."
+msgid "The NAOMI 2's vertices (Club Kart, Initial D, Virtua Fighter 4...): put in the view, on the screen and lit on the processor's cores, as the board does, or by the graphics card's shaders, the processor free for the rest (OpenGL 4.3; a pixel or a colour a step off here and there)."
+msgstr "Les sommets du NAOMI 2 (Club Kart, Initial D, Virtua Fighter 4...) : placés dans la vue, sur l'écran et éclairés sur les cœurs du processeur, comme la carte le fait, ou par les shaders de la carte graphique, le processeur libre pour le reste (OpenGL 4.3 ; un pixel ou une couleur d'un cran à côté çà et là)."
 
 #: src/ui/ui_common.cpp
 msgid "Widescreen 3D (16:9)"
@@ -877,6 +877,14 @@ msgstr "Carte d'entrées-sorties exécutant son propre programme"
 #: src/ui/ui_common.cpp
 msgid "The JVS I/O board's processor runs its program, as on the cabinet, instead of its simulation: 315-6215 (MAME's jvs13551 set), epr-21868 for NASCAR Arcade (the 18wheelr set); without the file, the simulation. Test and Service then go through that board, as a cabinet's."
 msgstr "Le processeur de la carte d'entrées-sorties JVS exécute son programme, comme sur la borne, au lieu de sa simulation : 315-6215 (le set jvs13551 de MAME), epr-21868 pour NASCAR Arcade (le set 18wheelr) ; sans le fichier, la simulation. Test et Service passent alors par cette carte, comme sur une borne."
+
+#: src/ui/ui_common.cpp
+msgid "NAOMI's MIE running its program"
+msgstr "MIE du NAOMI exécutant son programme"
+
+#: src/ui/ui_common.cpp
+msgid "The NAOMI's MIE (between the Maple bus and the JVS) runs its ROM and the program the game sends on its Z80, as on the board, instead of its simulation: slower, with the board's timings."
+msgstr "La MIE du NAOMI (entre le bus Maple et le JVS) exécute sa ROM et le programme que le jeu lui envoie sur son Z80, comme sur la carte, au lieu de sa simulation : plus lent, avec les délais de la carte."
 
 #: src/ui/ui_common.cpp
 msgid "Security chips"

@@ -37,6 +37,7 @@
  * instructions, the FPU disabled, the address errors without the MMU */
 /* TODO: handle FP exceptions */
 
+#include <algorithm>
 #include <xmmintrin.h>
 
 #include "hl/core.h"
@@ -178,6 +179,8 @@ set_sr (Sh4 *ctx, uint32_t data)
 	sh4_sr_t old = SR;
 
 	SR.full = data & 0x700083F3;
+	if (old.bit.md != SR.bit.md)
+		ctx->mmu_gen++;
 
 	/* Swap R banks if required */
 	if (get_r_bank_num (old) != get_r_bank_num (SR))
@@ -1191,6 +1194,9 @@ sh4_ireg_put (Sh4 *ctx, unsigned size, uint32_t addr, uint64_t val)
 	case CCN_INTEVT:
 		break;
 	case CCN_PTEH:
+		/* Its ASID: the fetches' translations */
+		ctx->mmu_gen++;
+		break;
 	case CCN_PTEL:
 	case CCN_TTB:
 	case CCN_TEA:
@@ -1404,10 +1410,15 @@ sh4_ireg_put (Sh4 *ctx, unsigned size, uint32_t addr, uint64_t val)
  * address array's associative writes too. The DMAC and the debugger see
  * physical addresses.
  *
- * While AT is set the CPU runs in the interpreter alone: no decoded blocks,
- * no translations to x86-64 (sh4_run_blocks ()). The caches are not
- * emulated, nor the TLB multiple hits (the first entry wins). Smashing
- * Drive's.
+ * While AT is set, the code in P1 and P2 (untranslated) runs privileged
+ * (SR.MD) from decoded blocks and their translations to x86-64, as without
+ * it (sh4_run_blocks ()): their loads and stores straight to P1 and P2
+ * alone, privileged, any other through the interpreter's access and the
+ * TLB; an exception thrown there unwinds the translation (its unwind
+ * information), the instructions it ran counted (jit_index), as run ()
+ * counts them. Any other code, the interpreter's, an instruction at a time.
+ * The caches are not emulated, nor the TLB multiple hits (the first entry
+ * wins). Smashing Drive's.
  */
 
 /* An exception taken: the instruction it came from unwound */
@@ -1580,6 +1591,8 @@ sh4_translate_fetch (Sh4 *ctx, uint32_t vaddr)
 			k = ctx->mmu.itlb_next;
 			ctx->mmu.itlb_next = (k + 1) & 3;
 			ctx->mmu.itlb[k] = ctx->mmu.utlb[i];
+			/* The fetches' translations changed */
+			ctx->mmu_gen++;
 			/* The ITLB keeps PR's user bit alone */
 			ctx->mmu.itlb[k].pr &= 2;
 		}
@@ -1602,6 +1615,7 @@ sh4_mmu_update (Sh4 *ctx)
 	bool exact = ctx->mmu.on;
 	unsigned i;
 
+	ctx->mmu_gen++;
 	if (exact && ctx->mmu_trusted) {
 		exact = false;
 		for (i = 0; i < 64 && !exact; i++) {
@@ -1828,8 +1842,9 @@ Sh4::sq_flush (uint32_t addr)
 	uint32_t target = get_sq_addr (ctx, addr);
 	unsigned q = (addr >> 5) & 1, i;
 
-	for (i = 0; i < 8; i++)
-		((hl::Cpu *) ctx)->write (4, (target + i * 4) & 0x1FFFFFFF, ctx->sq[q][i]);
+	/* Within 32 bytes, aligned: no 29-bit wrap among them */
+	((hl::Cpu *) ctx)->mmap->put_words (target & 0x1FFFFFFF, ctx->sq[q], 8);
+	(void) i;
 }
 
 uint32_t
@@ -1882,6 +1897,7 @@ sh4_icache_fill (Sh4 *ctx, uint32_t pc, uint32_t last)
 
 		if (ic.tags[i] == Sh4ICache::tag (a))
 			continue;
+		ic.fetched++;
 		ic.tags[i] = Sh4ICache::tag (a);
 		ic.held[i] = false;
 		if (cached && ((a >= code->lo && a + 31 <= code->hi) || ctx->mmap->window (a, code)) &&
@@ -1889,8 +1905,21 @@ sh4_icache_fill (Sh4 *ctx, uint32_t pc, uint32_t last)
 			memcpy (ic.data[i], code->base + (a & code->mask), sizeof (ic.data[i]));
 			ic.held[i] = true;
 		}
-		ctx->blocks.line_replaced ();
+		ctx->blocks.line_replaced (i);
 	}
+}
+
+void
+sh4_icache_replaced (Sh4 *ctx, unsigned index)
+{
+	ctx->blocks.line_replaced (index);
+}
+
+/* CCR, as the translations' fetches read it */
+const uint32_t *
+sh4_ccr_at (Sh4 *ctx)
+{
+	return (const uint32_t *) ctx->iregs->ptr (SHRINK (CCN_CCR));
 }
 
 static int
@@ -1904,11 +1933,12 @@ sh4_fetch (Sh4 *ctx, uint32_t addr, uint16_t *inst)
 		addr = sh4_translate_fetch (ctx, addr);
 	a = addr & ADDR_MASK;
 
-	if (!ctx->blocks.icache.present (a))
-		sh4_icache_fill (ctx, addr, addr);
-	{
-		const uint16_t *line = ctx->blocks.icache.line (a);
+	if (ctx->icache_on) {
+		const uint16_t *line;
 
+		if (!ctx->blocks.icache.present (a))
+			sh4_icache_fill (ctx, addr, addr);
+		line = ctx->blocks.icache.line (a);
 		if (line) {
 			*inst = line[(a >> 1) & (Sh4ICache::LINE_WORDS - 1)];
 			return 0;
@@ -2043,6 +2073,13 @@ template <typename Word> static inline Word
 sh4_read (Sh4 *ctx, uint32_t addr)
 {
 	Word tmp;
+
+	/* A device's register read again and again: at once, first (the
+	 * direct ways would only fail; the watchpoints watch writes) */
+	if (sizeof (Word) <= 4 && (addr & ADDR_MASK) == ctx->hot_read_addr && addr < 0xE0000000 &&
+	    !ctx->mmu_exact)
+		return (Word) ctx->hot_read (ctx->hot_read_obj);
+
 	uint8_t *p = sh4_direct (ctx, addr, sizeof (Word), false);
 
 	if (!p)
@@ -2548,6 +2585,7 @@ Sh4::IdleLoop::back_edge (Sh4 *ctx, uint32_t tail_, uint32_t head_)
 	bool same_regs, alike, known_turn, stored, stack_new;
 	Known &known_one = known_of (tail_, head_);
 
+
 	/* A loop found busy is let be, looked at again every so often (the
 	 * slave's writes once, its port bit, in millions of iterations, and
 	 * stays); the one noted, around it, given up */
@@ -2558,12 +2596,24 @@ Sh4::IdleLoop::back_edge (Sh4 *ctx, uint32_t tail_, uint32_t head_)
 		return;
 	}
 
+	/* One run forward before that stores nothing, not noted now (a new
+	 * slice): its turn kept simulated at once (run_forward_simulated ()),
+	 * not noted again first (Crazy Taxi's master waits so calling a hook,
+	 * a turn noted at each of some 450 slices a frame, a tenth of its
+	 * time); else as before */
+	if ((!tracking || tail_ != tail || head_ != head) && known_one.tail == tail_ && known_one.head == head_ &&
+	    !known_one.simulated &&
+	    known_one.length && !known_one.dead && enabled_sim) {
+		if (run_forward_simulated (ctx, known_one.path, known_one.length) > 0)
+			return;
+	}
 	if (tail_ != tail || head_ != head) {
 		/* Started again and again, never a turn closed (another loop's
 		 * way back each time between: two loops one within the other,
 		 * which started each other again, never let be; SWRACER's
 		 * master noted 3600 blocks a frame so): let be as busy */
 		if (known_one.tail != tail_ || known_one.head != head_) {
+			forget (known_one);
 			known_one = Known ();
 			known_one.tail = tail_;
 			known_one.head = head_;
@@ -2578,10 +2628,26 @@ Sh4::IdleLoop::back_edge (Sh4 *ctx, uint32_t tail_, uint32_t head_)
 	}
 	known_one.opened = 0;
 	stored = ctx->stores != stores;
+	/* One whose turns are simulated: from its turn kept, else a turn
+	 * noted again from here (the path may have changed) */
+	if (!tracking && known_one.tail == tail_ && known_one.head == head_ && known_one.simulated) {
+		int ran = known_one.length && enabled_sim ?
+		          run_forward_simulated (ctx, known_one.path, known_one.length) : -1;
+
+		if (ran >= 0) {
+			if (ran > 0)
+				known_one.sim_fails = 0;
+			return;
+		}
+		start (ctx, tail_, head_);
+		return;
+	}
 	if (!tracking || ctx->far_stores != far_stores ||
 	    (stored && stack_held && ctx->regs.r[15] == stack_sp && !stack_kept (ctx))) {
 		/* It writes (but to the dead stack), or is too long: not an
-		 * idle loop */
+		 * idle loop, but one whose turns may be simulated */
+		if (tracking && simulate (ctx, known_one, tail_, head_))
+			return;
 		let_be (tail_, head_);
 		return;
 	}
@@ -2624,6 +2690,7 @@ Sh4::IdleLoop::back_edge (Sh4 *ctx, uint32_t tail_, uint32_t head_)
 		/* Run forward: its turn kept */
 		if (ran > 0) {
 			if (known_one.tail != tail_ || known_one.head != head_) {
+				forget (known_one);
 				known_one.tail = tail_;
 				known_one.head = head_;
 				known_one.dead = 0;
@@ -2667,12 +2734,86 @@ Sh4::IdleLoop::restart (Sh4 *ctx, uint32_t tail_, uint32_t head_)
 		start (ctx, tail_, head_);
 }
 
+/* The turn just noted stored: its next ones simulated (run_forward_simulated
+ * ()), true when the loop is kept on (the next turn noted); a loop whose
+ * turns were simulated before is let be after four failures in a row */
+bool
+Sh4::IdleLoop::simulate (Sh4 *ctx, Known &k, uint32_t t, uint32_t h)
+{
+	const bool ours = k.tail == t && k.head == h;
+	int ran = enabled_sim ? run_forward_simulated (ctx, path, length) : -1;
+
+	if (ran < 0) {
+		if (ours && k.simulated && ++k.sim_fails < 4) {
+			tracking = false;
+			return true;
+		}
+		if (ours)
+			forget (k);
+		return false;
+	}
+	if (!ours) {
+		forget (k);
+		k = Known ();
+		k.tail = t;
+		k.head = h;
+	}
+	k.simulated = true;
+	k.dead = 0;
+	k.busy = 0;
+	if (ran > 0)
+		k.sim_fails = 0;
+	/* Its turn kept: simulated again from it at once (back_edge ()) */
+	k.length = length;
+	memcpy (k.path, path, length * sizeof (path[0]));
+	/* The next turn noted from here */
+	regs = ctx->regs;
+	length = 0;
+	last_length = 0;
+	seen = 0;
+	misses = 0;
+	stores = ctx->stores;
+	far_stores = ctx->far_stores;
+	stack_held = false;
+	return true;
+}
+
+void
+Sh4::IdleLoop::forget (Known &k)
+{
+	if (k.simulated && k.sim_pc0 != ~0u && owner) {
+		Sh4Block *block = owner->blocks.peek (k.sim_pc0);
+
+		if (block)
+			block->simulated = 0;
+	}
+	k.simulated = false;
+	k.sim_pc0 = ~0u;
+}
+
+void
+Sh4::IdleLoop::tell_block (uint32_t pc0, uint32_t tail_, uint32_t head_)
+{
+	Known &k = known_of (tail_, head_);
+	Sh4Block *block = owner->blocks.peek (pc0);
+
+	sim_new = false;
+	/* Another block may close it too (one entered within it, after an
+	 * interrupt's return): both told, the last one kept for forget () */
+	if (block && !block->simulated) {
+		block->simulated = 1;
+		sim_blocks++;
+	}
+	k.sim_pc0 = pc0;
+}
+
 void
 Sh4::IdleLoop::let_be (uint32_t t, uint32_t h)
 {
 	Known &k = known_of (t, h);
 
 	if (k.tail != t || k.head != h) {
+		forget (k);
 		k.tail = t;
 		k.head = h;
 		k.busy = 0;
@@ -2817,6 +2958,815 @@ Sh4::IdleLoop::run_forward (Sh4 *ctx, const Known *known_turn, Plan *plan)
 	return 1;
 }
 
+/* Idle Loops Simulated
+ *
+ * A loop whose turn stores away from the dead stack: a count in memory, the
+ * library's wait for so many frames ("(*n)--" a turn, a hook called at
+ * each, until a flag an interrupt sets changes or the count runs out;
+ * Slashout, Dead or Alive 2, Cannon Spike and others, a tenth of their
+ * SH-4). Its next two turns are simulated from where it stands, on a copy
+ * of the registers, its stores kept aside, each instruction of its path as
+ * its handler runs it (a few dozen kinds; any other, nothing done). Alike
+ * when both take the same path, read and write the same addresses, move
+ * each GPR and each word written by the same amount, keep PR, GBR and T,
+ * and give the same inputs to what is not a sum (logic, shifts,
+ * extensions: a moving value wraps there). Each comparison's operands then
+ * move by the same amount a turn: the turn where its outcome changes is
+ * known (one moving by one against a fixed one, equal or not, or against
+ * zero); any other comparison of moving values, nothing done. The turns up
+ * to the third before the first change, the slice's but the last, are
+ * taken at once: the GPRs and the words moved as running them would leave
+ * them. A word on code compared in this epoch or on a watched page, an
+ * access to a device, the MMU on: nothing done. Its translations then end
+ * their turn at sh4_chain () (Sh4Block::simulated), which looks at the
+ * loop as at one that stores nothing. */
+
+namespace {
+
+struct IdleSimState {
+	uint32_t r[16];
+	uint32_t pr, gbr;
+	bool	 t;
+};
+
+struct IdleSimAccess {
+	uint32_t addr, size, value;
+};
+
+struct IdleSimTurn {
+	static const unsigned MAX = 64;
+	IdleSimAccess loads[MAX], stores[MAX];
+	unsigned nloads = 0, nstores = 0;
+	/* Each comparison: its kind, its operands */
+	enum { CMP_EQ, CMP_PL, CMP_PZ, CMP_FIXED, CMP_HS, CMP_HI, CMP_GE, CMP_GT };
+	struct Cmp { unsigned kind; uint32_t a, b; } cmps[MAX];
+	unsigned ncmps = 0;
+	/* The inputs of what is not a sum */
+	uint32_t inputs[MAX];
+	unsigned ninputs = 0;
+	bool	 full = false;
+	/* Under the MMU, the UTLB's lookups (URC counts each) */
+	unsigned lookups = 0;
+
+	void	 cmp (unsigned kind, uint32_t a, uint32_t b)
+	{
+		if (ncmps < MAX)
+			cmps[ncmps++] = Cmp { kind, a, b };
+		else
+			full = true;
+	}
+	void	 input (uint32_t v)
+	{
+		if (ninputs < MAX)
+			inputs[ninputs++] = v;
+		else
+			full = true;
+	}
+};
+
+struct IdleSimOverlay {
+	static const unsigned MAX = 128;
+	IdleSimAccess w[MAX];
+	unsigned n = 0;
+	/* Under the MMU: PTEH's ASID, MMUCR.SV's; the 1 KB pages translated,
+	 * each with its physical page and whether a read or a write would
+	 * fault */
+	uint8_t	 asid = 0;
+	bool	 any_asid = false;
+	struct Page { uint32_t vpage, ppage; bool read, write; } pages[8];
+	unsigned npages = 0;
+	/* The last 4 KB page read in place, and where */
+	uint32_t data_page = ~0u;
+	const uint8_t *data_at = NULL;
+};
+
+/* A data access's physical address under the MMU, as sh4_translate_data ()
+ * finds it, without its side effects (the lookup counted for URC); false
+ * where it would fault, or two UTLB entries match */
+static bool
+idle_sim_data (Sh4 *ctx, IdleSimOverlay &ov, IdleSimTurn &turn, uint32_t vaddr, bool write, uint32_t *paddr)
+{
+	const uint32_t vpage = vaddr & ~0x3FFu;
+	unsigned i, hits = 0;
+	const Sh4::Tlb *found = NULL;
+
+	if (!ctx->mmu_exact) {
+		*paddr = vaddr;
+		return true;
+	}
+	if (!tlb_translated (vaddr)) {
+		*paddr = vaddr;
+		return SR.bit.md;
+	}
+	turn.lookups++;
+	for (i = 0; i < ov.npages; i++)
+		if (ov.pages[i].vpage == vpage) {
+			if (!(write ? ov.pages[i].write : ov.pages[i].read))
+				return false;
+			*paddr = ov.pages[i].ppage | (vaddr & 0x3FF);
+			return true;
+		}
+	for (i = 0; i < 64; i++)
+		if (tlb_match (ctx->mmu.utlb[i], vaddr, ov.asid, ov.any_asid)) {
+			found = &ctx->mmu.utlb[i];
+			hits++;
+		}
+	if (hits != 1 || ov.npages == NUMELEM (ov.pages))
+		return false;
+	IdleSimOverlay::Page &p = ov.pages[ov.npages++];
+	p.vpage = vpage;
+	p.ppage = ((found->ppn & ~found->mask) | (vaddr & found->mask)) & ~0x3FFu;
+	p.read = SR.bit.md || found->pr >= 2;
+	p.write = p.read && (found->pr & 1) && found->d;
+	if (!(write ? p.write : p.read))
+		return false;
+	*paddr = p.ppage | (vaddr & 0x3FF);
+	return true;
+}
+
+/* A fetch's physical address: the ITLB holding it (a miss would refill it:
+ * not simulated) */
+static bool
+idle_sim_fetch (Sh4 *ctx, const IdleSimOverlay &ov, uint32_t vaddr, uint32_t *paddr)
+{
+	unsigned k, hits = 0;
+	const Sh4::Tlb *found = NULL;
+
+	if (!ctx->mmu_exact) {
+		*paddr = vaddr;
+		return true;
+	}
+	if (!tlb_translated (vaddr)) {
+		*paddr = vaddr;
+		return SR.bit.md;
+	}
+	for (k = 0; k < 4; k++)
+		if (tlb_match (ctx->mmu.itlb[k], vaddr, ov.asid, ov.any_asid)) {
+			found = &ctx->mmu.itlb[k];
+			hits++;
+		}
+	if (hits != 1 || (!SR.bit.md && !(found->pr & 2)))
+		return false;
+	*paddr = (found->ppn & ~found->mask) | (vaddr & found->mask);
+	return true;
+}
+
+/* URC after n lookups more: up by one each, back to 0 at 64 or at URB */
+static unsigned
+idle_sim_urc (unsigned urc, unsigned urb, uint64_t n)
+{
+	if (!urb)
+		return (unsigned) ((urc + n) & 63);
+	if (urc < urb)
+		return (unsigned) ((urc + n) % urb);
+	if (n < 64 - urc)
+		return (unsigned) (urc + n);
+	return (unsigned) ((n - (64 - urc)) % urb);
+}
+
+static inline uint32_t
+idle_sim_mask (unsigned size)
+{
+	return size == 4 ? 0xFFFFFFFFu : size == 2 ? 0xFFFFu : 0xFFu;
+}
+
+static inline uint32_t
+idle_sext (uint32_t v, unsigned size)
+{
+	return size == 1 ? (uint32_t) (int32_t) (int8_t) v :
+	       size == 2 ? (uint32_t) (int32_t) (int16_t) v : v;
+}
+
+/* A load: the turns' stores first (the same address and size; one
+ * overlapping otherwise, nothing done), then RAM or ROM in place */
+static bool
+idle_sim_read (Sh4 *ctx, IdleSimOverlay &ov, IdleSimTurn &turn, uint32_t addr, unsigned size, uint32_t *val)
+{
+	unsigned i;
+
+	uint32_t vaddr = addr;
+
+	if (addr >= 0xE0000000 || (addr & (size - 1)) || turn.nloads == IdleSimTurn::MAX ||
+	    !idle_sim_data (ctx, ov, turn, vaddr, false, &addr))
+		return false;
+	for (i = ov.n; i-- > 0;) {
+		const IdleSimAccess &w = ov.w[i];
+
+		if (w.addr == addr && w.size == size) {
+			*val = w.value;
+			goto read;
+		}
+		if (w.addr < addr + size && addr < w.addr + w.size)
+			return false;
+	}
+	{
+		const uint32_t page = addr & ADDR_MASK & ~0xFFFu;
+		const uint8_t *p;
+
+		if (page != ov.data_page) {
+			ov.data_at = ((hl::Cpu *) ctx)->mmap->direct (page, false);
+			ov.data_page = page;
+		}
+		if (!ov.data_at)
+			return false;
+		p = ov.data_at + (addr & 0xFFF);
+		*val = size == 4 ? *(const uint32_t *) p : size == 2 ? *(const uint16_t *) p : *p;
+	}
+read:
+	turn.loads[turn.nloads++] = IdleSimAccess { vaddr, size, *val };
+	/* A byte or a word sign extended: the same each turn */
+	if (size < 4)
+		turn.input (*val);
+	return true;
+}
+
+static bool
+idle_sim_write (Sh4 *ctx, IdleSimOverlay &ov, IdleSimTurn &turn, uint32_t addr, unsigned size, uint32_t val)
+{
+	unsigned i;
+
+	if (addr >= 0xE0000000 || (addr & (size - 1)) || turn.nstores == IdleSimTurn::MAX ||
+	    !idle_sim_data (ctx, ov, turn, addr, true, &addr))
+		return false;
+	val &= idle_sim_mask (size);
+	for (i = 0; i < ov.n; i++) {
+		if (ov.w[i].addr == addr && ov.w[i].size == size) {
+			ov.w[i].value = val;
+			break;
+		}
+		if (ov.w[i].addr < addr + size && addr < ov.w[i].addr + ov.w[i].size)
+			return false;
+	}
+	if (i == ov.n) {
+		if (ov.n == IdleSimOverlay::MAX)
+			return false;
+		ov.w[ov.n++] = IdleSimAccess { addr, size, val };
+	}
+	turn.stores[turn.nstores++] = IdleSimAccess { addr, size, val };
+	return true;
+}
+
+/* One turn along path[0..len), from s: false when an instruction cannot be
+ * simulated or the turn leaves the path */
+static bool
+idle_sim_turn (Sh4 *ctx, IdleSimState &s, IdleSimOverlay &ov, IdleSimTurn &turn,
+               const uint32_t *path, unsigned len)
+{
+	uint32_t pc = path[0], branch_to = 0;
+	bool delayed = false;
+	unsigned i;
+	/* The code's 1 KB page last read (the MMU's smallest) */
+	uint32_t page = ~0u, page_phys = 0;
+	const uint8_t *page_at = NULL;
+
+	for (i = 0; i < len; i++) {
+		uint16_t op;
+		uint32_t v = 0, target = 0;
+		bool branch = false, slot_follows = false;
+
+		if (pc != path[i])
+			return false;
+		if ((pc & ~0x3FFu) != page) {
+			uint32_t phys;
+
+			page = pc & ~0x3FFu;
+			if (!idle_sim_fetch (ctx, ov, page, &phys))
+				return false;
+			page_phys = phys & ADDR_MASK;
+			page_at = ((hl::Cpu *) ctx)->mmap->direct (page_phys, false);
+			if (!page_at)
+				return false;
+		}
+		memcpy (&op, page_at + (pc & 0x3FF), 2);
+		op = (uint16_t) ((hl::Cpu *) ctx)->patch (page_phys | (pc & 0x3FF), op);
+		const unsigned rn = (op >> 8) & 15, rm = (op >> 4) & 15;
+		const int32_t simm = (int8_t) op;
+		const uint32_t uimm = op & 0xFF;
+
+		switch (op & 0xF000) {
+		case 0xE000:	/* mov #imm,Rn */
+			s.r[rn] = (uint32_t) simm;
+			goto done;
+		case 0x7000:	/* add #imm,Rn */
+			s.r[rn] += (uint32_t) simm;
+			goto done;
+		case 0x5000:	/* mov.l @(disp,Rm),Rn */
+			if (!idle_sim_read (ctx, ov, turn, s.r[rm] + (op & 15) * 4, 4, &v))
+				return false;
+			s.r[rn] = v;
+			goto done;
+		case 0x1000:	/* mov.l Rm,@(disp,Rn) */
+			if (!idle_sim_write (ctx, ov, turn, s.r[rn] + (op & 15) * 4, 4, s.r[rm]))
+				return false;
+			goto done;
+		case 0x9000:	/* mov.w @(disp,PC),Rn */
+			if (!idle_sim_read (ctx, ov, turn, pc + 4 + uimm * 2, 2, &v))
+				return false;
+			s.r[rn] = idle_sext (v, 2);
+			goto done;
+		case 0xD000:	/* mov.l @(disp,PC),Rn */
+			if (!idle_sim_read (ctx, ov, turn, ((pc + 4) & ~3u) + uimm * 4, 4, &v))
+				return false;
+			s.r[rn] = v;
+			goto done;
+		case 0xA000:	/* bra */
+		case 0xB000:	/* bsr */
+			if (delayed)
+				return false;
+			target = pc + 4 + (uint32_t) (((int32_t) ((uint32_t) op << 20)) >> 19);
+			if ((op & 0xF000) == 0xB000)
+				s.pr = pc + 4;
+			branch = slot_follows = true;
+			goto done;
+		}
+		switch (op & 0xF00F) {
+		case 0x6003:	/* mov Rm,Rn */
+			s.r[rn] = s.r[rm];
+			goto done;
+		case 0x6000: case 0x6001: case 0x6002:	/* mov.x @Rm,Rn */
+		case 0x6004: case 0x6005: case 0x6006: {	/* mov.x @Rm+,Rn */
+			const unsigned size = 1u << (op & 3);
+
+			if (!idle_sim_read (ctx, ov, turn, s.r[rm], size, &v))
+				return false;
+			if ((op & 4) && rn != rm)
+				s.r[rm] += size;
+			s.r[rn] = idle_sext (v, size);
+			goto done;
+		}
+		case 0x2000: case 0x2001: case 0x2002: {	/* mov.x Rm,@Rn */
+			const unsigned size = 1u << (op & 3);
+
+			if (!idle_sim_write (ctx, ov, turn, s.r[rn], size, s.r[rm]))
+				return false;
+			goto done;
+		}
+		case 0x2004: case 0x2005: case 0x2006: {	/* mov.x Rm,@-Rn */
+			const unsigned size = 1u << (op & 3);
+
+			if (!idle_sim_write (ctx, ov, turn, s.r[rn] - size, size, s.r[rm]))
+				return false;
+			s.r[rn] -= size;
+			goto done;
+		}
+		case 0x000C: case 0x000D: case 0x000E: {	/* mov.x @(R0,Rm),Rn */
+			const unsigned size = 1u << (op & 3);
+
+			if (!idle_sim_read (ctx, ov, turn, s.r[0] + s.r[rm], size, &v))
+				return false;
+			s.r[rn] = idle_sext (v, size);
+			goto done;
+		}
+		case 0x0004: case 0x0005: case 0x0006: {	/* mov.x Rm,@(R0,Rn) */
+			const unsigned size = 1u << (op & 3);
+
+			if (!idle_sim_write (ctx, ov, turn, s.r[0] + s.r[rn], size, s.r[rm]))
+				return false;
+			goto done;
+		}
+		case 0x300C:	s.r[rn] += s.r[rm]; goto done;		/* add */
+		case 0x3008:	s.r[rn] -= s.r[rm]; goto done;		/* sub */
+		case 0x600B:	s.r[rn] = 0u - s.r[rm]; goto done;	/* neg */
+		case 0x2009:	/* and */
+			turn.input (s.r[rn]);
+			turn.input (s.r[rm]);
+			s.r[rn] &= s.r[rm];
+			goto done;
+		case 0x200B:	/* or */
+			turn.input (s.r[rn]);
+			turn.input (s.r[rm]);
+			s.r[rn] |= s.r[rm];
+			goto done;
+		case 0x200A:	/* xor */
+			turn.input (s.r[rn]);
+			turn.input (s.r[rm]);
+			s.r[rn] ^= s.r[rm];
+			goto done;
+		case 0x6007:	/* not */
+			s.r[rn] = ~s.r[rm];
+			goto done;
+		case 0x600C: case 0x600D: case 0x600E: case 0x600F:	/* extu, exts */
+			turn.input (s.r[rm]);
+			s.r[rn] = (op & 2) ? idle_sext (s.r[rm], (op & 1) ? 2 : 1) :
+			                     s.r[rm] & ((op & 1) ? 0xFFFFu : 0xFFu);
+			goto done;
+		case 0x2008:	/* tst Rm,Rn */
+			s.t = (s.r[rn] & s.r[rm]) == 0;
+			if (rn == rm)
+				turn.cmp (IdleSimTurn::CMP_EQ, s.r[rn], 0);
+			else
+				turn.cmp (IdleSimTurn::CMP_FIXED, s.r[rn], s.r[rm]);
+			goto done;
+		case 0x3000:	/* cmp/eq */
+			s.t = s.r[rn] == s.r[rm];
+			turn.cmp (IdleSimTurn::CMP_EQ, s.r[rn], s.r[rm]);
+			goto done;
+		case 0x3002:	/* cmp/hs */
+			s.t = s.r[rn] >= s.r[rm];
+			turn.cmp (IdleSimTurn::CMP_HS, s.r[rn], s.r[rm]);
+			goto done;
+		case 0x3003:	/* cmp/ge */
+			s.t = (int32_t) s.r[rn] >= (int32_t) s.r[rm];
+			turn.cmp (IdleSimTurn::CMP_GE, s.r[rn], s.r[rm]);
+			goto done;
+		case 0x3006:	/* cmp/hi */
+			s.t = s.r[rn] > s.r[rm];
+			turn.cmp (IdleSimTurn::CMP_HI, s.r[rn], s.r[rm]);
+			goto done;
+		case 0x3007:	/* cmp/gt */
+			s.t = (int32_t) s.r[rn] > (int32_t) s.r[rm];
+			turn.cmp (IdleSimTurn::CMP_GT, s.r[rn], s.r[rm]);
+			goto done;
+		case 0x400C:	/* shad Rm,Rn */
+		case 0x400D: {	/* shld Rm,Rn */
+			const uint32_t a = s.r[rn], b = s.r[rm];
+
+			turn.input (a);
+			turn.input (b);
+			if (!(b >> 31))
+				s.r[rn] = a << (b & 31);
+			else if (!(b & 31))
+				s.r[rn] = (op & 1) ? 0 : ((a >> 31) ? 0xFFFFFFFFu : 0);
+			else
+				s.r[rn] = (op & 1) ? a >> ((~b & 31) + 1) :
+				          (uint32_t) ((int32_t) a >> ((~b & 31) + 1));
+			goto done;
+		}
+		}
+		switch (op & 0xFF00) {
+		case 0x8900: case 0x8B00:	/* bt, bf */
+			if (delayed)
+				return false;
+			if (((op & 0x0200) == 0) == s.t) {
+				target = pc + 4 + (uint32_t) (simm * 2);
+				branch = true;
+			}
+			goto done;
+		case 0x8D00: case 0x8F00:	/* bt/s, bf/s */
+			if (delayed)
+				return false;
+			if (((op & 0x0200) == 0) == s.t) {
+				target = pc + 4 + (uint32_t) (simm * 2);
+				branch = slot_follows = true;
+			}
+			goto done;
+		case 0x8800:	/* cmp/eq #imm,R0 */
+			s.t = s.r[0] == (uint32_t) simm;
+			turn.cmp (IdleSimTurn::CMP_EQ, s.r[0], (uint32_t) simm);
+			goto done;
+		case 0xC800:	/* tst #imm,R0 */
+			s.t = (s.r[0] & uimm) == 0;
+			turn.cmp (IdleSimTurn::CMP_FIXED, s.r[0], 0);
+			goto done;
+		case 0xC900:	/* and #imm,R0 */
+			turn.input (s.r[0]);
+			s.r[0] &= uimm;
+			goto done;
+		case 0xCA00:	/* xor #imm,R0 */
+			turn.input (s.r[0]);
+			s.r[0] ^= uimm;
+			goto done;
+		case 0xCB00:	/* or #imm,R0 */
+			turn.input (s.r[0]);
+			s.r[0] |= uimm;
+			goto done;
+		case 0xC700:	/* mova */
+			s.r[0] = ((pc + 4) & ~3u) + uimm * 4;
+			goto done;
+		case 0x8400: case 0x8500: {	/* mov.x @(disp,Rm),R0 */
+			const unsigned size = (op & 0x0100) ? 2 : 1;
+
+			if (!idle_sim_read (ctx, ov, turn, s.r[rm] + (op & 15) * size, size, &v))
+				return false;
+			s.r[0] = idle_sext (v, size);
+			goto done;
+		}
+		case 0x8000: case 0x8100: {	/* mov.x R0,@(disp,Rn) */
+			const unsigned size = (op & 0x0100) ? 2 : 1;
+
+			if (!idle_sim_write (ctx, ov, turn, s.r[rm] + (op & 15) * size, size, s.r[0]))
+				return false;
+			goto done;
+		}
+		case 0xC400: case 0xC500: case 0xC600: {	/* mov.x @(disp,GBR),R0 */
+			const unsigned size = 1u << ((op >> 8) & 3);
+
+			if (!idle_sim_read (ctx, ov, turn, s.gbr + uimm * size, size, &v))
+				return false;
+			s.r[0] = idle_sext (v, size);
+			goto done;
+		}
+		case 0xC000: case 0xC100: case 0xC200: {	/* mov.x R0,@(disp,GBR) */
+			const unsigned size = 1u << ((op >> 8) & 3);
+
+			if (!idle_sim_write (ctx, ov, turn, s.gbr + uimm * size, size, s.r[0]))
+				return false;
+			goto done;
+		}
+		}
+		switch (op & 0xF0FF) {
+		case 0x4010:	/* dt */
+			s.r[rn]--;
+			s.t = s.r[rn] == 0;
+			turn.cmp (IdleSimTurn::CMP_EQ, s.r[rn], 0);
+			goto done;
+		case 0x4015:	/* cmp/pl */
+			s.t = (int32_t) s.r[rn] > 0;
+			turn.cmp (IdleSimTurn::CMP_PL, s.r[rn], 0);
+			goto done;
+		case 0x4011:	/* cmp/pz */
+			s.t = (int32_t) s.r[rn] >= 0;
+			turn.cmp (IdleSimTurn::CMP_PZ, s.r[rn], 0);
+			goto done;
+		case 0x4000: case 0x4020:	/* shll, shal */
+			turn.cmp (IdleSimTurn::CMP_FIXED, s.r[rn], 0);
+			s.t = s.r[rn] >> 31;
+			s.r[rn] <<= 1;
+			goto done;
+		case 0x4001: case 0x4021:	/* shlr, shar */
+			turn.cmp (IdleSimTurn::CMP_FIXED, s.r[rn], 0);
+			s.t = s.r[rn] & 1;
+			s.r[rn] = (op & 0x20) ? (uint32_t) ((int32_t) s.r[rn] >> 1) : s.r[rn] >> 1;
+			goto done;
+		case 0x4008: case 0x4018: case 0x4028:	/* shll2, 8, 16 */
+			turn.input (s.r[rn]);
+			s.r[rn] <<= (op & 0x30) == 0 ? 2 : (op & 0x30) == 0x10 ? 8 : 16;
+			goto done;
+		case 0x4009: case 0x4019: case 0x4029:	/* shlr2, 8, 16 */
+			turn.input (s.r[rn]);
+			s.r[rn] >>= (op & 0x30) == 0 ? 2 : (op & 0x30) == 0x10 ? 8 : 16;
+			goto done;
+		case 0x0029:	/* movt */
+			s.r[rn] = s.t ? 1 : 0;
+			goto done;
+		case 0x002A:	/* sts pr,Rn */
+			s.r[rn] = s.pr;
+			goto done;
+		case 0x402A:	/* lds Rn,pr */
+			s.pr = s.r[rn];
+			goto done;
+		case 0x0012:	/* stc gbr,Rn */
+			s.r[rn] = s.gbr;
+			goto done;
+		case 0x4022:	/* sts.l pr,@-Rn */
+			if (!idle_sim_write (ctx, ov, turn, s.r[rn] - 4, 4, s.pr))
+				return false;
+			s.r[rn] -= 4;
+			goto done;
+		case 0x4026:	/* lds.l @Rn+,pr */
+			if (!idle_sim_read (ctx, ov, turn, s.r[rn], 4, &v))
+				return false;
+			s.pr = v;
+			s.r[rn] += 4;
+			goto done;
+		case 0x400B:	/* jsr @Rn */
+		case 0x402B:	/* jmp @Rn */
+			if (delayed)
+				return false;
+			target = s.r[rn];
+			if (!(op & 0x20))
+				s.pr = pc + 4;
+			branch = slot_follows = true;
+			goto done;
+		case 0x0023:	/* braf */
+		case 0x0003:	/* bsrf */
+			if (delayed)
+				return false;
+			target = pc + 4 + s.r[rn];
+			if (!(op & 0x20))
+				s.pr = pc + 4;
+			branch = slot_follows = true;
+			goto done;
+		}
+		switch (op) {
+		case 0x0009:	/* nop */
+			goto done;
+		case 0x0008:	/* clrt */
+			s.t = false;
+			goto done;
+		case 0x0018:	/* sett */
+			s.t = true;
+			goto done;
+		case 0x000B:	/* rts */
+			if (delayed)
+				return false;
+			target = s.pr;
+			branch = slot_follows = true;
+			goto done;
+		}
+		/* Anything else: not simulated */
+		return false;
+done:
+		if (turn.full)
+			return false;
+		if (delayed) {
+			/* A slot run: on to its branch's target */
+			delayed = false;
+			pc = branch_to;
+			continue;
+		}
+		if (slot_follows) {
+			delayed = true;
+			branch_to = target;
+			pc += 2;
+			continue;
+		}
+		pc = branch ? target : pc + 2;
+	}
+	/* Back at the head */
+	return !delayed && pc == path[0];
+}
+
+static bool
+idle_sim_order (unsigned kind, uint32_t a, uint32_t b)
+{
+	switch (kind) {
+	case IdleSimTurn::CMP_HS: return a >= b;
+	case IdleSimTurn::CMP_HI: return a > b;
+	case IdleSimTurn::CMP_GE: return (int32_t) a >= (int32_t) b;
+	default: return (int32_t) a > (int32_t) b;
+	}
+}
+
+/* The turn a comparison's outcome changes at, the first simulated being 1;
+ * 0 for never; -1 when it cannot be told */
+static int64_t
+idle_sim_change (const IdleSimTurn::Cmp &c1, const IdleSimTurn::Cmp &c2)
+{
+	const uint32_t da = c2.a - c1.a, db = c2.b - c1.b;
+
+	if (c1.kind != c2.kind)
+		return -1;
+	if (da == 0 && db == 0)
+		return 0;
+	if (c1.kind >= IdleSimTurn::CMP_HS) {
+		/* An order, one side moving by one a turn: its outcome changes
+		 * only as the moving value reaches the other one, or wraps
+		 * (around 0, around the sign): the first of those turns where
+		 * it differs */
+		const uint32_t step = da ? da : db, m1 = da ? c1.a : c1.b, other = da ? c1.b : c1.a;
+		const uint32_t at[7] = { other - 1, other, other + 1, 0, 0xFFFFFFFFu, 0x7FFFFFFFu, 0x80000000u };
+		const bool t1 = idle_sim_order (c1.kind, c1.a, c1.b);
+		uint64_t best = 0;
+
+		if ((da && db) || (step != 1 && step != 0xFFFFFFFFu))
+			return -1;
+		for (uint32_t v : at) {
+			const uint32_t dist = step == 1 ? v - m1 : m1 - v;
+
+			for (uint64_t j = 1 + (uint64_t) dist; j <= 2 + (uint64_t) dist; j++) {
+				const uint32_t a = c1.a + (uint32_t) (j - 1) * da, b = c1.b + (uint32_t) (j - 1) * db;
+
+				if (j >= 2 && idle_sim_order (c1.kind, a, b) != t1 && (!best || j < best))
+					best = j;
+			}
+		}
+		return (int64_t) best;
+	}
+	switch (c1.kind) {
+	case IdleSimTurn::CMP_EQ: {
+		/* a - b moving by one a turn: 0 at the turn told */
+		const uint32_t d1 = c1.a - c1.b, dd = da - db;
+
+		if (dd == 1)
+			return 1 + (int64_t) (uint32_t) (0u - d1);
+		if (dd == 0xFFFFFFFFu)
+			return 1 + (int64_t) d1;
+		return -1;
+	}
+	case IdleSimTurn::CMP_PL:	/* a > 0, down by one: false at 0 */
+		if (da != 0xFFFFFFFFu || (int32_t) c1.a <= 0)
+			return -1;
+		return 1 + (int64_t) c1.a;
+	case IdleSimTurn::CMP_PZ:	/* a >= 0, down by one: false at -1 */
+		if (da != 0xFFFFFFFFu || (int32_t) c1.a < 0)
+			return -1;
+		return 2 + (int64_t) c1.a;
+	default:
+		return -1;
+	}
+}
+
+} /* namespace */
+
+/* 1 when turns were taken at once, 0 when none could be yet (the slice's
+ * end, a change near), -1 when they cannot be simulated */
+int
+Sh4::IdleLoop::run_forward_simulated (Sh4 *ctx, const uint32_t *turn, unsigned turn_length)
+{
+	const uint32_t *path = turn;
+	const unsigned length = turn_length;
+	IdleSimState s0, s1, s2;
+	IdleSimOverlay ov;
+	IdleSimTurn t1, t2;
+	int64_t k, j;
+	unsigned i, nwords = 0;
+	int32_t d[16];
+	struct Word {
+		uint8_t	*at;
+		uint32_t size, now, delta;
+	} words[IdleSimOverlay::MAX];
+
+	if (!length)
+		return -1;
+	/* No turn to take before the slice's end: not simulated */
+	if (ctx->remaining / (int) length - 1 <= 0)
+		return 0;
+	sim_runs++;
+	if (ctx->mmu_exact) {
+		ov.asid = IREG_GET (4, CCN_PTEH) & 0xFF;
+		ov.any_asid = tlb_any_asid (ctx);
+	}
+	memcpy (s0.r, ctx->regs.r, sizeof (s0.r));
+	s0.pr = ctx->regs.pr;
+	s0.gbr = ctx->regs.gbr;
+	s0.t = SR.bit.t;
+	s1 = s0;
+	if (!idle_sim_turn (ctx, s1, ov, t1, path, length))
+		return -1;
+	s2 = s1;
+	if (!idle_sim_turn (ctx, s2, ov, t2, path, length))
+		return -1;
+	/* Alike */
+	if (s1.pr != s0.pr || s2.pr != s0.pr || s1.gbr != s0.gbr || s2.gbr != s0.gbr ||
+	    s1.t != s0.t || s2.t != s0.t)
+		return -1;
+	for (i = 0; i < 16; i++) {
+		d[i] = (int32_t) (s1.r[i] - s0.r[i]);
+		if ((int32_t) (s2.r[i] - s1.r[i]) != d[i])
+			return -1;
+	}
+	if (t1.nloads != t2.nloads || t1.nstores != t2.nstores || t1.ncmps != t2.ncmps ||
+	    t1.ninputs != t2.ninputs || t1.lookups != t2.lookups)
+		return -1;
+	for (i = 0; i < t1.nloads; i++)
+		if (t1.loads[i].addr != t2.loads[i].addr || t1.loads[i].size != t2.loads[i].size)
+			return -1;
+	for (i = 0; i < t1.nstores; i++)
+		if (t1.stores[i].addr != t2.stores[i].addr || t1.stores[i].size != t2.stores[i].size)
+			return -1;
+	if (memcmp (t1.inputs, t2.inputs, t1.ninputs * sizeof (t1.inputs[0])))
+		return -1;
+	/* Each word written moving alike: from what memory holds, to its
+	 * last value in each turn */
+	for (i = 0; i < ov.n; i++) {
+		const IdleSimAccess &w = ov.w[i];
+		const uint32_t mask = idle_sim_mask (w.size);
+		uint8_t *at = ((hl::Cpu *) ctx)->mmap->direct (w.addr & ADDR_MASK, true);
+		uint32_t now, v1 = 0;
+		unsigned s;
+
+		if (!at || ctx->blocks.stamps ()[(w.addr & ADDR_MASK) >> Sh4BlockCache::STAMP_BITS] >= ctx->blocks.epoch)
+			return -1;
+		for (s = t1.nstores; s-- > 0;)
+			if (t1.stores[s].addr == w.addr && t1.stores[s].size == w.size) {
+				v1 = t1.stores[s].value;
+				break;
+			}
+		if (s == ~0u)
+			return -1;
+		now = w.size == 4 ? *(const uint32_t *) at : w.size == 2 ? *(const uint16_t *) at : *at;
+		if (((w.value - v1) & mask) != ((v1 - now) & mask))
+			return -1;
+		words[nwords++] = Word { at, w.size, now, (v1 - now) & mask };
+	}
+	/* The turns up to the third before a comparison changes, the slice's
+	 * but the last */
+	k = ctx->remaining / (int) length - 1;
+	for (i = 0; i < t1.ncmps; i++) {
+		j = idle_sim_change (t1.cmps[i], t2.cmps[i]);
+		if (j < 0)
+			return -1;
+		if (j > 0)
+			k = MIN2 (k, j - 3);
+	}
+	if (k <= 0)
+		return 0;
+	for (i = 0; i < 16; i++)
+		ctx->regs.r[i] += (uint32_t) (k * d[i]);
+	for (i = 0; i < nwords; i++) {
+		const uint32_t v = words[i].now + (uint32_t) k * words[i].delta;
+
+		if (words[i].size == 4)
+			memcpy (words[i].at, &v, 4);
+		else if (words[i].size == 2)
+			*(uint16_t *) words[i].at = (uint16_t) v;
+		else
+			*words[i].at = (uint8_t) v;
+	}
+	ctx->stores += (uint64_t) k * t1.nstores;
+	ctx->far_stores += (uint64_t) k;
+	if (t1.lookups)
+		ctx->mmu.urc = idle_sim_urc (ctx->mmu.urc, (IREG_GET (4, CCN_MMUCR) >> 18) & 63,
+		                             (uint64_t) k * t1.lookups);
+	ctx->remaining -= (int) (k * length);
+	ctx->cycles_skipped += (uint64_t) (k * length);
+	sim_turns += (uint64_t) k;
+	sim_taken++;
+	sim_new = true;
+	return 1;
+}
+
 /* After an instruction at pc: the idle loops' look at it */
 static inline void
 sh4_watch_idle (Sh4 *ctx, uint32_t pc, int before)
@@ -2844,6 +3794,13 @@ sh4_watch_idle (Sh4 *ctx, uint32_t pc, int before)
  * but for one found busy, while it is let be. The translations' probe
  * leaves the blocks to this call while a turn is noted (it took 8000 trips
  * a frame back to the run loop in SWRACER). HR_SH4_CHAIN=0 turns it off. */
+
+/* Under the MMU, code at pc the blocks run: in P1 or P2, privileged */
+static inline bool
+sh4_mmu_block (Sh4 *ctx, uint32_t pc)
+{
+	return ctx->mmu_blocks && (pc >> 30) == 2 && SR.bit.md;
+}
 
 /* After a translation of n instructions from pc0 (the cycles left before
  * it, before): the idle loops' look at it, the run loop's or sh4_chain ()'s,
@@ -2876,10 +3833,12 @@ idle_look (Sh4 *ctx, uint32_t pc0, int n, int before, bool chained)
 	if (ctx->idle.noting ()) {
 		for (int i = 0; i < n; i++)
 			ctx->idle.step (pc0 + 2 * (uint32_t) i, i == n - 1 ? 1 + slot : 1);
-	} else if (chained && !(back && ctx->stores == ctx->chain.stores))
-		/* Gone along without a look: a loop that stores */
-		return;
-	else if (chained && !ctx->idle.watches (last, PC)) {
+	} else if (chained && !(back && ctx->stores == ctx->chain.stores)) {
+		/* Gone along without a look: a loop that stores, but one
+		 * whose turns are simulated */
+		if (!back || !ctx->idle.simulates (last, PC))
+			return;
+	} else if (chained && !ctx->idle.watches (last, PC)) {
 		/* One let be: its translation's way back goes on without
 		 * this call for its other turns (a busy loop that stores
 		 * nothing came here at each turn: 3000 times a frame in
@@ -2894,6 +3853,9 @@ idle_look (Sh4 *ctx, uint32_t pc0, int n, int before, bool chained)
 		ctx->idle.back_edge (ctx, last, PC);
 	else if (back)
 		ctx->idle.restart (ctx, last, PC);
+	/* Its translation's way back to sh4_chain () from now on */
+	if (back && ctx->idle.sim_new && ctx->idle.simulates (last, PC))
+		ctx->idle.tell_block (pc0, last, PC);
 }
 
 /* A wait on memory, "load; compare; bt or bf" back to the block's start
@@ -2934,6 +3896,7 @@ sh4_poll_skip (Sh4 *ctx, uint32_t inst)
 		break;
 	}
 	if (addr >= 0xC0000000 || (addr & ADDR_MASK) >= 0x1C000000 || (addr & (size - 1)) ||
+	    (ctx->mmu_exact && (addr >> 30) != 2) ||
 	    !((hl::Cpu *) ctx)->mmap->direct (addr & ADDR_MASK, false))
 		return 0;
 	/* The cycles left once the turn that ran is counted (its 3) */
@@ -2955,26 +3918,99 @@ sh4_chain (Sh4 *ctx, uint32_t pc0, int n)
 
 	ctx->chain.pc0 = pc0;
 	ctx->chain.n = n;
-	if (!ctx->chain.enabled || cpu->state != hl::CPU_STATE_RUN || ctx->mmu_exact ||
-	    ctx->irq_ready)
+	ctx->chain.calls++;
+	if (!ctx->chain.enabled || cpu->state != hl::CPU_STATE_RUN ||
+	    (ctx->mmu_exact && !sh4_mmu_block (ctx, PC)) || ctx->irq_ready)
 		return 0;
 	if (ctx->chain.idle) {
 		idle_look (ctx, pc0, n, ctx->chain.before, true);
 		/* Told: the run loop looks no more */
 		ctx->chain.n = 0;
 	}
-	block = ctx->blocks.peek (PC);
-	if (!block || cpu->remaining <= (int) block->ops.size ())
-		return 0;
-	body = ctx->jit->body (block);
-	if (!body)
-		return 0;
-	ctx->jit->note (PC, block, ctx->blocks.epoch);
+	/* The near table's first, as the translations' probe reads it: the
+	 * block table's lookup missed the host's caches (a 1 MB table of
+	 * pages), a twentieth of the SH-4's C side */
+	{
+		int count = 0;
+
+		body = ctx->jit->near_body (PC, ctx->blocks.epoch, ctx->mmu_exact, ctx->mmu_gen, &count);
+		if (body && cpu->remaining <= count)
+			return 0;
+	}
+	if (!body) {
+		block = ctx->blocks.peek (PC);
+		if (!block || cpu->remaining <= (int) block->ops.size ())
+			return 0;
+		body = ctx->jit->body (block);
+		if (!body)
+			return 0;
+		ctx->jit->note (PC, block, ctx->blocks.epoch, ctx->mmu_gen);
+	}
 	ctx->chain.stores = ctx->stores;
 	ctx->chain.before = cpu->remaining;
 	ctx->chain.links++;
 	ctx->chain.gone++;
+	ctx->chain.calls_gone++;
+	ctx->mmu_gen_entry = ctx->mmu_gen;
 	return (uintptr_t) body;
+}
+
+/* Under the MMU, the code at PC, a translated address: its fetch's
+ * translation, as sh4_fetch () makes it (an exception taken as run () takes
+ * it), then the translation of the block at its physical address, PC its
+ * address still; false for an instruction at a time (no block there, or no
+ * room in the slice). Its idle loops not looked at (their look takes the
+ * addresses as physical) */
+static bool
+sh4_run_translated (Sh4 *ctx, bool skip_idle)
+{
+	hl::Cpu *cpu = ctx;
+	const uint32_t pc = PC;
+	const int before = cpu->remaining;
+	Sh4Block *block;
+	Sh4Native native;
+	uint32_t phys;
+	int n;
+
+	try {
+		phys = sh4_translate_fetch (ctx, pc);
+	} catch (const Sh4Fault &) {
+		cpu->remaining--;
+		if (skip_idle)
+			sh4_watch_idle (ctx, pc, before);
+		return true;
+	}
+	block = ctx->blocks.get (ctx, phys & ADDR_MASK);
+	if (!block || block->patched || cpu->remaining <= (int) block->ops.size ())
+		return false;
+	if (block->native && !block->native_virtual)
+		block->native = NULL;
+	ctx->jit_virtual = true;
+	native = ctx->jit->get (ctx, block);
+	ctx->jit_virtual = false;
+	if (!native)
+		return false;
+	/* Gone on to from the others while the MMU's state stays */
+	ctx->jit->note (pc, block, ctx->blocks.epoch, ctx->mmu_gen);
+	ctx->mmu_gen_entry = ctx->mmu_gen;
+	ctx->chain.stores = ctx->stores;
+	ctx->chain.before = before;
+	ctx->chain.links = 0;
+	try {
+		n = native (ctx, pc);
+	} catch (const Sh4Fault &) {
+		cpu->remaining -= (int) ctx->jit_index + 1;
+		ctx->idle.drop ();
+		return true;
+	}
+	/* Gone on to code in P1 or P2: its last block looked at as usual */
+	if (skip_idle && n != 0) {
+		if (tlb_translated (ctx->chain.pc0))
+			ctx->idle.drop ();
+		else
+			idle_look (ctx, ctx->chain.pc0, n, ctx->chain.before, false);
+	}
+	return true;
 }
 
 /* run ()'s loop over decoded blocks (sh4-blocks.h): the same steps, an
@@ -2997,14 +4033,34 @@ sh4_run_blocks (Sh4 *ctx, bool skip_idle)
 			ctx->use_jit = false;
 	}
 
-	/* The MMU on: the interpreter alone (see "MMU") */
-	while (cpu->remaining > 0 && cpu->state == hl::CPU_STATE_RUN && !ctx->mmu_exact) {
+	/* The MMU on: its code in P1 and P2 alone, the rest an instruction at
+	 * a time; it switched, its blocks dropped first (run ()) */
+	while (cpu->remaining > 0 && cpu->state == hl::CPU_STATE_RUN &&
+	       (!ctx->mmu_exact || ctx->mmu_blocks) && !ctx->mmu.flush_blocks) {
 		Sh4Block *block;
 		size_t i;
 
 		if (!irqs_done)
 			sh4_process_irqs (cpu);
 		irqs_done = false;
+
+		if (ctx->mmu_exact && !sh4_mmu_block (ctx, PC)) {
+			uint32_t pc = PC;
+			int before = cpu->remaining;
+
+			if (ctx->mmu_blocks && tlb_translated (pc) && ctx->use_jit && ctx->jit &&
+			    sh4_run_translated (ctx, skip_idle))
+				continue;
+			try {
+				sh4_step (ctx, pc);
+				PC += 2;
+			} catch (const Sh4Fault &) {
+				cpu->remaining--;
+			}
+			if (skip_idle)
+				sh4_watch_idle (ctx, pc, before);
+			continue;
+		}
 
 		block = ctx->blocks.get (ctx, PC);
 
@@ -3020,11 +4076,24 @@ sh4_run_blocks (Sh4 *ctx, bool skip_idle)
 				int before = cpu->remaining;
 				int n;
 
-				ctx->jit->note (PC, block, ctx->blocks.epoch);
+				ctx->jit->note (PC, block, ctx->blocks.epoch, ctx->mmu_gen);
 				ctx->chain.stores = ctx->stores;
 				ctx->chain.before = before;
 				ctx->chain.links = 0;
-				n = native (ctx, PC);
+				ctx->mmu_gen_entry = ctx->mmu_gen;
+				if (ctx->mmu_exact) {
+					/* An exception: the instructions its block
+					 * ran and its own counted, as run () counts
+					 * them; no idle loop noted on */
+					try {
+						n = native (ctx, PC);
+					} catch (const Sh4Fault &) {
+						cpu->remaining -= (int) ctx->jit_index + 1;
+						ctx->idle.drop ();
+						continue;
+					}
+				} else
+					n = native (ctx, PC);
 				/* The last block, unless sh4_chain () looked at
 				 * it (n 0 then) */
 				if (skip_idle && n != 0)
@@ -3033,19 +4102,25 @@ sh4_run_blocks (Sh4 *ctx, bool skip_idle)
 			}
 		}
 
-		if (!block) {
-			/* Code outside a RAM or ROM: fetched */
+		if (!block || ctx->mmu_exact) {
+			/* Code outside a RAM or ROM: fetched; under the MMU,
+			 * not translated, an instruction at a time */
 			uint32_t pc = PC;
 			int before = cpu->remaining;
 
-			sh4_step (ctx, pc);
-			PC += 2;
+			try {
+				sh4_step (ctx, pc);
+				PC += 2;
+			} catch (const Sh4Fault &) {
+				cpu->remaining--;
+			}
 			if (skip_idle)
 				sh4_watch_idle (ctx, pc, before);
 			continue;
 		}
 
-		sh4_icache_fill (ctx, PC, PC + 2 * block->num_words - 1);
+		if (ctx->icache_on)
+			sh4_icache_fill (ctx, PC, PC + 2 * block->num_words - 1);
 		for (i = 0; ; ) {
 			const Sh4Op &op = block->ops[i];
 			uint32_t pc = PC;
@@ -3106,7 +4181,7 @@ Sh4::run (int cycles)
 	if (slice_hook && skip_idle && !mmu_exact && !irq_ready && cpu->state == hl::CPU_STATE_RUN)
 		slice_hook (ctx);
 	/* The debugger's breakpoints and profile look at each fetch */
-	if (use_blocks && !debugging && !mmu_exact)
+	if (use_blocks && !debugging && (!mmu_exact || mmu_blocks))
 		sh4_run_blocks (ctx, skip_idle);
 	while (cpu->remaining > 0 && cpu->state == hl::CPU_STATE_RUN) {
 		uint32_t pc;
@@ -3404,13 +4479,28 @@ Sh4::~Sh4 ()
 		          (unsigned long long) (cycles_run - cycles_skipped),
 		          (unsigned long long) cycles_skipped, 100.0 * (double) cycles_skipped / (double) cycles_run);
 	if (hl::Profile::enabled && jit)
-		HL_PRINT ("sh4 %c: %u blocks decoded, %u translations in %.0f ms (the arena cleared %u times), %u code epochs",
+		HL_PRINT ("sh4 %c: %u blocks decoded, %u translations in %.0f ms (the arena cleared %u times), %u code epochs; "
+		          "%.0f bytes a translation, %.0f before its slow paths",
 		          config.master ? 'M' : 'S', blocks.decoded (), jit->translated (),
-		          1000.0 * jit->translating_time (), jit->clears (), blocks.epoch);
+		          1000.0 * jit->translating_time (), jit->clears (), blocks.epoch,
+		          jit->translated () ? (double) jit->code_bytes / jit->translated () : 0.0,
+		          jit->translated () ? (double) jit->main_bytes / jit->translated () : 0.0);
+	if (hl::Profile::enabled && jit)
+		jit->print_kinds (config.master ? 'M' : 'S');
+	if (hl::Profile::enabled && idle.sim_turns)
+		HL_PRINT ("sh4 %c: %llu turns of loops that store simulated, taken at once (%u blocks told); "
+		          "%llu simulations, %llu of them run forward",
+		          config.master ? 'M' : 'S', (unsigned long long) idle.sim_turns, idle.sim_blocks,
+		          (unsigned long long) idle.sim_runs, (unsigned long long) idle.sim_taken);
+	if (hl::Profile::enabled && blocks.icache.fetched)
+		HL_PRINT ("sh4 %c: %llu instruction cache lines fetched", config.master ? 'M' : 'S',
+		          (unsigned long long) blocks.icache.fetched);
 	if (hl::Profile::enabled && chain.ends)
-		HL_PRINT ("sh4 %c: %llu translated blocks run, %llu of them gone on to the next (%.1f%%)",
+		HL_PRINT ("sh4 %c: %llu translated blocks run, %llu of them gone on to the next (%.1f%%); "
+		          "sh4_chain () called %llu times, %llu gone on",
 		          config.master ? 'M' : 'S', (unsigned long long) chain.ends,
-		          (unsigned long long) chain.gone, 100.0 * (double) chain.gone / (double) chain.ends);
+		          (unsigned long long) chain.gone, 100.0 * (double) chain.gone / (double) chain.ends,
+		          (unsigned long long) chain.calls, (unsigned long long) chain.calls_gone);
 }
 
 const char *
@@ -3545,6 +4635,13 @@ Sh4::Sh4 (hl::Machine *mach, hl::Mmap *mmap, bool master, bool le) :
 	mach->register_buffer (iregs);
 
 	chain.enabled = hl_util_get_bool_option ("HR_SH4_CHAIN", true);
+	mmu_blocks = hl_util_get_bool_option ("HR_SH4_MMU_JIT", true);
+	/* HR_SH4_IDLE=0: no idle loop run forward (as cpu:option ('idle', 0)) */
+	if (!hl_util_get_bool_option ("HR_SH4_IDLE", true))
+		idle.enabled = false;
+	idle.enabled_sim = hl_util_get_bool_option ("HR_SH4_IDLE_SIM", true);
+	idle.owner = this;
 	blocks.checking = hl_util_get_bool_option ("HR_SH4_EPOCH_CHECK", false);
+	icache_on = hl_util_get_bool_option ("HR_SH4_ICACHE", false);
 	setup_insns_handlers ();
 }

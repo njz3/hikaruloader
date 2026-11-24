@@ -16,19 +16,91 @@ Next version
   PC (a laptop): the Elan's part of a frame went from about 11 ms to 5, the
   frame under the 16.7 ms of 60 frames a second there when the PC runs at
   its speed.
-- NAOMI 2: the lighting can also be done by the graphics card (*NAOMI 2
-  lighting* in the display settings, `ELAN_LIGHTING = GPU`; the processor
-  by default), its shaders lighting the vertices as the processor does,
-  the processor free for the rest. Club Kart, Initial D3, Virtua Fighter 4,
+- NAOMI 2: the lighting done by the graphics card by default (*NAOMI 2
+  lighting* in the display settings, `ELAN_LIGHTING = GPU`; `CPU` for the
+  processor's cores), its shaders lighting the vertices as the processor
+  does, the processor free for the rest. Club Kart, Initial D3, Virtua Fighter 4,
   King of Route 66, Wild Riders and Soul Surfer the same to the pixel;
   Beach Spikers and Virtua Striker 3 a few pixels a step off (1/255). At
   Club Kart 2003's race start on the development PC, a quarter less of the
   processor's time (all its cores: about 27 ms a frame to 21), the frame 4
-  to 7% shorter; more for a processor of few cores.
+  to 7% shorter; on a cabinet's Core i5-4590 (4 cores) and GTX 1050 Ti,
+  the frame 14% shorter (21.5 ms to 18.5).
 - NAOMI: the textures checked for changes at each picture two and a half
   times faster, a twentieth of Club Kart 2003's frame down to a fiftieth;
   the drawing no longer asks the graphics driver for anything at each
   frame (each question made it wait for the driver's own thread).
+- NAOMI, faster, the same frames: the MIE's Z80 waits counted at once (as
+  the Hikaru's MIE), about 1 ms of Club Kart 2003's race frame; a texture
+  hashed only when one of its pages of the video memory was written (the
+  host keeps the written pages); the Elan's vertices without their copies
+  and the colours of those lit later; a few more SH-4 instructions
+  translated (stc SR, GBR's, swap.b, xtrct). On the development PC, Crazy
+  Taxi's attract 8.3 to 7.3 ms a frame, 18 Wheeler's 4.5 to 4.0.
+- NAOMI: the MIE (between the Maple bus and the JVS) simulated by default,
+  its program's answers given in C++ instead of running it on its Z80;
+  *NAOMI's MIE running its program* in the emulation settings
+  (`MIE_PROGRAM = true`) runs it as before. The JVS I/O boards were already
+  simulated (*I/O board running its own program* runs theirs). 44 NAOMI
+  games tried, their coins counted as before, the BIOS's JVS TEST the same;
+  at Club Kart 2003's race, the MIE's part of the frame 1.6% to 0.1%. A
+  saved state keeps the MIE's mode it was made with until the game's
+  reset (the states made before, its program run).
+- NAOMI, NAOMI 2, Atomiswave: faster, the same frames (the memories
+  compared frame by frame with the version before, 30 games). The SH-4's
+  loops that wait while they store (a count in memory, a hook called at
+  each turn: the libraries' waits for so many frames) have their turns
+  taken at once, under the Atomiswave's MMU too; the MMU's code translated;
+  the store queues' words and the TA's packets of 32 bytes without a call
+  each; the libraries' divisions worked out with one division of the PC's;
+  ftrv, shad, shld translated; the translations a quarter smaller. The
+  sound's DSP translated too. The NAOMI's drawing thread shows its frames
+  itself, the machine's thread no longer waiting for the driver to show
+  them; a frame drawn to a texture lets the machine go on once its pixels
+  are back in the video memory. The M4 cartridges (Asian Dynamite) decrypt
+  only what is read. On the development PC, measured side by side: Dead or
+  Alive 2 and Slashout a half to a third less of the time a frame, Cannon
+  Spike and Gun Survivor 2 a third less, Crazy Taxi, Virtua Tennis, Spikers
+  Battle and Virtua Fighter 4 a fifth to a quarter less, Asian Dynamite
+  and Metal Slug 6 about half.
+- NAOMI 2: with *NAOMI 2 geometry and lighting* on the graphics card (the
+  default, formerly *NAOMI 2 lighting*), the card also puts the vertices in
+  the view and on the screen, cuts the triangles at the near plane and
+  culls them, the processor only passing the lists on: Virtua Fighter 4
+  Evolution's Elan 1.4 ms a frame to 0.5 on the development PC, the frame a
+  quarter shorter. The same pictures to the eye: an edge or a texture's
+  pixel a few steps off here and there (the card's divisions).
+- NAOMI, several boards (F355 Challenge deluxe and twin, Airline Pilots,
+  Strike Fighter): the slaves' reads of the link's data port go at once to
+  the port, past the memory map; F355 Challenge deluxe's slaves read it
+  107000 times a frame. Their work 40% shorter, the frame some 15% shorter
+  on four cores of the development PC, the same frames.
+- The SH-4's T bit kept in a register of the PC's in the translated code:
+  a compare and its branch no longer go through SR in memory; 1 to 1.5%
+  faster, the same frames.
+- NAOMI, NAOMI 2: a frame drawn to a texture no longer holds the machine
+  until its pixels are back in the video memory: it goes on while the
+  drawing thread draws them and waits only where it reads or writes those
+  bytes, and the next picture, which shows them as a texture, gets them
+  from the drawing thread once they are there. The same memories as before
+  (12 games compared every 60 frames). Virtua Fighter 4 Evolution waited
+  so at almost each such frame, now at one in 60: some 0.7 ms less a frame
+  on the development PC; Virtua Tennis 2 about 14% faster.
+- NAOMI: a screenshot (the agent's `shot` too) could hold the frame before
+  the last one while the drawing thread shows the frames itself.
+- NAOMI, NAOMI 2, Atomiswave, Hikaru: the sound's ARM7 runs its code
+  translated for the PC's processor, as exact as interpreted (the same
+  memories frame by frame); in Virtua Tennis 2 its part of a frame 0.29 to
+  0.10 ms. `HR_ARM_JIT=0` interprets it as before.
+- Atomiswave: its games' MMU, which only maps the store queues, left out
+  while every other page is its own address: Metal Slug 6, Extreme Hunting
+  and KOF Neowave 12 to 15% faster, the same frames.
+- NAOMI: the sound chip's voices looked at only while they sound; the TA's
+  DMA reads the main RAM in place.
+- The SH-4's instruction cache modelled only for the programs that need it
+  (`sh4_icache` in `data/games.json`: hikcheck, whose RAM test writes over
+  its own code); 101 sets compared frame by frame with and without it, the
+  same. The others 6 to 8% faster (Crazy Taxi, Spikers Battle, Metal Slug 6).
 - NAOMI: the screens a game draws once in a while are shown on, no longer
   black after 3 frames: King of Route 66's white screen before its attract
   (frame 2900 or so) flickered black; Metal Slug 6's "Now Loading" and its

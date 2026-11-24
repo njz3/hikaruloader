@@ -635,11 +635,15 @@ Emulator::write_hashes ()
 	static FILE *fp;
 	static bool looked;
 	static std::vector<uint64_t> block_frames;
+	static uint64_t every = 1;
 
 	if (!looked) {
 		const char *path = getenv ("HR_HASH"), *blocks = getenv ("HR_HASH_BLOCKS");
+		const char *each = getenv ("HR_HASH_EVERY");
 
 		looked = true;
+		if (each && strtoull (each, NULL, 10) > 1)
+			every = strtoull (each, NULL, 10);
 		if (path && *path && !(fp = fopen (path, "w")))
 			HL_ERROR ("HR_HASH: cannot write '%s'", path);
 		for (const char *p = blocks; p && *p; ) {
@@ -652,7 +656,9 @@ Emulator::write_hashes ()
 			p = *end ? end + 1 : end;
 		}
 	}
-	if (fp)
+	/* HR_HASH_EVERY=n: every n frames alone, the machine going on between
+	 * as without the hashes (the drawing's writes not waited for) */
+	if (fp && mach->frame % every == 0)
 		mach->write_hashes (fp, std::find (block_frames.begin (), block_frames.end (), mach->frame) != block_frames.end ());
 }
 

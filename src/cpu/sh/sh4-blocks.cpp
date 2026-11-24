@@ -109,8 +109,11 @@ Sh4BlockCache::decode (Sh4 *ctx, uint32_t pc, Sh4Block *block)
 	if (!ctx->mmap->window (pc, &win))
 		return false;
 
-	/* Within the RAM or ROM, and the page */
+	/* Within the RAM or ROM, and the page; under the MMU, its smallest
+	 * (1 KB): a block in one page of a translated address too */
 	end = MIN2 (win.hi, pc | ((1u << PAGE_BITS) - 1));
+	if (ctx->mmu_exact)
+		end = MIN2 (end, pc | 0x3FF);
 	block->pc = pc;
 	block->code = (const uint16_t *) (win.base + (pc & win.mask));
 	block->num_words = 0;
@@ -123,6 +126,8 @@ Sh4BlockCache::decode (Sh4 *ctx, uint32_t pc, Sh4Block *block)
 	block->native_generation = 0;
 	block->patched = false;
 	block->delay_loop = false;
+	block->mem_loop = Sh4Block::MEM_LOOP_NONE;
+	block->simulated = 0;
 	block->poll_loop = false;
 	block->quiet = 0;
 	block->slot_kept = false;
@@ -156,11 +161,58 @@ Sh4BlockCache::decode (Sh4 *ctx, uint32_t pc, Sh4Block *block)
 			break;
 		}
 	}
-	block->delay_loop = block->ops.size () >= 2 && (block->ops[0].inst & 0xF0FF) == 0x4010 &&
-	                    block->ops[1].inst == 0x8BFD;
+	block->delay_loop = false;
+	if (block->ops.size () >= 2 && (block->ops[0].inst & 0xF0FF) == 0x4010) {
+		unsigned j = 1;
+
+		while (j < block->ops.size () && j < 6 && block->ops[j].inst == 0x0009)
+			j++;
+		/* bf back to the dt: -(j + 2) */
+		if (j < block->ops.size () && block->ops[j].inst == (0x8B00 | ((0u - (j + 2)) & 0xFF))) {
+			block->delay_loop = true;
+			block->delay_len = (uint8_t) (j + 1);
+		}
+	}
 	block->poll_loop = block->ops.size () >= 3 && poll_load (block->ops[0].inst) &&
 	                   compares (block->ops[1].inst) &&
 	                   (block->ops[2].inst == 0x89FC || block->ops[2].inst == 0x8BFC);
+	if (block->ops.size () >= 6) {
+		const uint16_t *w = block->words;
+		const unsigned x = (w[0] >> 8) & 15;
+
+		/* "while (n--)" on the stack: n at r15 + 4d */
+		if (((w[0] & 0xF0FF) == 0x60F2 || (w[0] & 0xF0F0) == 0x50F0) && x != 15 &&
+		    w[1] == (0x70FF | x << 8) &&
+		    (((w[0] & 0xF000) == 0x6000 && w[2] == (0x2F02 | x << 4)) ||
+		     ((w[0] & 0xF000) == 0x5000 && w[2] == (0x1F00 | x << 4 | (w[0] & 15)))) &&
+		    w[3] == (0x7001 | x << 8) && w[4] == (0x2008 | x << 8 | x << 4) && w[5] == 0x8BF9) {
+			block->mem_loop = Sh4Block::MEM_LOOP_STACK;
+			block->mem_reg = 15;
+			block->mem_disp = (w[0] & 0xF000) == 0x5000 ? (uint8_t) (w[0] & 15) : 0;
+		}
+		/* Down to -1 through Rp, read again in R0 */
+		const unsigned p = (w[0] >> 4) & 15;
+		if ((w[0] & 0xF00F) == 0x6002 && p != x && p != 0 && w[1] == (0x70FF | x << 8) &&
+		    w[2] == (0x2002 | p << 8 | x << 4) && w[3] == (0x6002 | p << 4) && w[4] == 0x88FF &&
+		    w[5] == 0x8BF9) {
+			block->mem_loop = Sh4Block::MEM_LOOP_EQ;
+			block->mem_reg = (uint8_t) p;
+			block->mem_disp = 0;
+		}
+		/* While positive, through a pointer from the literals, the store
+		 * in bt/s's slot */
+		const unsigned rp = (w[0] >> 8) & 15, rx = (w[1] >> 8) & 15;
+		if ((w[0] & 0xF000) == 0xD000 && rp != rx && w[1] == (0x6002 | rx << 8 | rp << 4) &&
+		    w[2] == (0x4015 | rx << 8) && w[3] == (0x70FF | rx << 8) && w[4] == 0x8DFA &&
+		    w[5] == (0x2002 | rp << 8 | rx << 4)) {
+			block->mem_loop = Sh4Block::MEM_LOOP_PL;
+			block->mem_reg = (uint8_t) rp;
+			block->mem_disp = 0;
+		}
+		for (unsigned k = 0; k < 6 && block->mem_loop; k++)
+			if (block->ops[k].patched)
+				block->mem_loop = Sh4Block::MEM_LOOP_NONE;
+	}
 	num_decoded++;
 	return !block->ops.empty ();
 }
@@ -258,8 +310,12 @@ Sh4BlockCache::fresh (Sh4Block *block)
 	if (!block->current ()) {
 		if (!held_in_cache (block))
 			return false;
-		/* Looked at again at each entry: not compared for the epoch */
+		/* Looked at again at each entry: not compared for the epoch;
+		 * its lines' replacement starts another */
 		held_epoch = epoch;
+		for (uint32_t a = block->pc & ~((1u << Sh4ICache::LINE_BITS) - 1);
+		     a < block->pc + 2 * block->num_words; a += 1u << Sh4ICache::LINE_BITS)
+			icache.stale[Sh4ICache::index (a)] = true;
 		return true;
 	}
 	if (block->checkable) {
@@ -299,6 +355,26 @@ Sh4BlockCache::hit (uint32_t stamp, uint32_t addr, unsigned size)
 }
 
 void
+Sh4BlockCache::written_range (uint32_t addr, uint32_t len)
+{
+	const uint32_t a = addr & ADDR_MASK;
+	uint32_t s, e;
+
+	if (!len)
+		return;
+	e = (a + len - 1) & ADDR_MASK;
+	if (e < a)
+		e = ADDR_MASK;
+	for (s = a >> STAMP_BITS; s <= e >> STAMP_BITS; s++)
+		if (page_epochs[s] >= epoch) {
+			const uint32_t lo = MAX2 (a, s << STAMP_BITS);
+			const uint32_t hi = MIN2 (e, ((s + 1) << STAMP_BITS) - 1);
+
+			hit (s, lo, hi - lo + 1);
+		}
+}
+
+void
 Sh4BlockCache::watch (uint32_t lo, uint32_t hi, std::function<void (uint32_t)> told)
 {
 	uint32_t p;
@@ -333,6 +409,7 @@ Sh4BlockCache::own (uint32_t lo, uint32_t hi)
 void
 Sh4BlockCache::new_epoch ()
 {
+	memset (icache.stale, 0, sizeof (icache.stale));
 	if (++epoch < ARMED)
 		return;
 	epoch = 1;

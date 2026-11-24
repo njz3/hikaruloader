@@ -20,6 +20,8 @@
 #define __HL_PROFILE_H__
 
 #include <stdint.h>
+#include <utility>
+#include <vector>
 
 #if defined (_MSC_VER)
 #include <intrin.h>
@@ -89,8 +91,12 @@ public:
 	/* HR_SAMPLE: the calling thread sampled too (the drawing thread's),
 	 * reported apart */
 	static void	 sample_this_thread ();
+	/* marks: the kinds of its code, each from its offset on (the
+	 * translations' samples summed by kind) */
+	typedef std::vector<std::pair<uint32_t, const char *>> Marks;
 	static void	 code_written (const void *start, size_t size, char cpu, uint32_t pc,
-			               const uint16_t *words, unsigned num_words);
+			               const uint16_t *words, unsigned num_words,
+			               const Marks *marks = NULL);
 
 	/* Times its block */
 	class Scope {

@@ -147,6 +147,11 @@ private:
 	};
 	/* A channel's registers, as the playback reads them */
 	struct Slot;
+	/* The voices on (Voice::on), a bit each: mix () goes through those
+	 * alone, in the same order. Not in the state: made again from it */
+	uint64_t voices_on = 0;
+	void	 voice_off (Voice &v) { v.on = false; voices_on &= ~(1ull << (&v - st.voice)); }
+	void	 count_voices_on ();
 
 	uint32_t slot_reg (unsigned ch, unsigned reg) const;
 	void	 read_slot (unsigned ch, Slot &s) const;
@@ -193,6 +198,24 @@ private:
 	DspStep	*dsp_cache;		/* 128 */
 	uint16_t madrs_cache[64];
 	bool	 dsp_dirty;
+	/* The program translated to x86-64 (hikaru-aica.cpp, "The DSP
+	 * Translated"), with the cache, for so many steps; HR_DSP_JIT=0
+	 * leaves the interpreter's loop, HR_DSP_CHECK=1 runs both and
+	 * tells where they differ */
+	struct DspJit;
+	DspJit	*dsp_jit = NULL;
+	unsigned dsp_jit_steps = 0;
+	bool	 dsp_jit_on = true, dsp_check = false;
+	/* HR_ARM_JIT: the ARM's code translated (Arm7::jit) */
+	bool	 arm_jit_on = true;
+	typedef void (*DspFn) (void *dsp, uint8_t *ram, uint32_t rb_mask, uint32_t rb_base);
+	DspFn	 dsp_jit_fn = NULL;
+	/* HR_DSP_CHECK: the interpreter's ring buffer writes, (byte, before,
+	 * after), undone before the translation runs */
+	std::vector<uint32_t> dsp_log;
+	bool	 dsp_logging = false;
+	void	 dsp_interpret ();
+	void	 dsp_translate ();
 
 	/* The gain of an attenuation (in 3/32 dB, 64 to halve), 1 << 16
 	 * for none; the envelopes' steps per sample, at each rate (the

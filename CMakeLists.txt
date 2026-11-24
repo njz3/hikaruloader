@@ -78,6 +78,7 @@ set (HIKARU_SRC
 	src/cpu/z80/z80.cpp
 	src/cpu/tlcs90/tlcs90.cpp
 	src/cpu/arm/arm7.cpp
+	src/cpu/arm/arm7-x64.cpp
 	src/cpu/m68k/m68000.cpp
 	src/cpu/m68k/m68000-ops.cpp
 	src/mach/hikaru/hikaru.cpp
@@ -275,7 +276,8 @@ if (TARGET SDL2::SDL2main)
 	target_link_libraries (x76f100test PRIVATE SDL2::SDL2main)
 endif ()
 add_test (NAME x76f100 COMMAND x76f100test)
-add_executable (arm7test tests/arm7_test.cpp src/cpu/arm/arm7.cpp)
+add_executable (arm7test tests/arm7_test.cpp src/cpu/arm/arm7.cpp src/cpu/arm/arm7-x64.cpp
+	src/cpu/x64/x64-emitter.cpp)
 target_link_libraries (arm7test PRIVATE hl)
 if (TARGET SDL2::SDL2main)
 	target_link_libraries (arm7test PRIVATE SDL2::SDL2main)

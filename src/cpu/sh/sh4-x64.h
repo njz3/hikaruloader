@@ -20,7 +20,10 @@
 #define __HL_SH4_X64_H__
 
 #include <deque>
+#include <functional>
 #include <memory>
+#include <map>
+#include <string>
 #include <vector>
 
 #include "cpu/x64/x64-emitter.h"
@@ -66,6 +69,14 @@ struct Sh4Offsets {
 	 * the code epoch (sh4-blocks.h); what the chaining's probe looks at */
 	int32_t target, chain_n, epoch, state, mmu_on, noting, chain_stores, chain_ends,
 		chain_gone, icache;
+	/* The instruction cache's lines held, their words, those fetched;
+	 * the epoch a block last ran on held lines (sh4-blocks.h) */
+	int32_t icache_held, icache_data, icache_fetched, held_epoch;
+	/* Under the MMU: the instruction calling out (Sh4::jit_index) */
+	int32_t jit_index, mmu_gen, mmu_gen_entry;
+	/* A delay slot run (an exception's SPC its branch's) */
+	int32_t in_slot, slot_pc;
+	int32_t sq, jit_tables;
 	/* The FPU's: the banks' first words (FR's, XF's), FPSCR, FPUL */
 	int32_t fr, xf, fpscr, fpul;
 
@@ -77,6 +88,10 @@ struct Sh4Offsets {
  * holds, those not yet in ctx */
 struct Sh4RegCache {
 	static const unsigned NUM = 6;
+	/* SR.T kept as one of them too (0 or 1), put back into SR's bit 0 (an
+	 * and, an or) where the others are written back: a compare and its
+	 * branch no longer go through SR in memory */
+	static const unsigned T = 16;
 
 	const Sh4Offsets *o = NULL;
 	int8_t		 held[NUM];	/* the GPR, -1 none */
@@ -97,6 +112,12 @@ struct Sh4RegCache {
 	void		 flush (x64::Emitter &e);
 	/* None kept (a handler may have changed any) */
 	void		 forget ();
+	/* T in SR (put back if changed), kept; T given up (SR written in
+	 * memory with a new one) */
+	void		 t_to_sr (x64::Emitter &e);
+	void		 t_drop ();
+	/* Register r's value, n's, written back to ctx (T's into SR) */
+	void		 put_back (x64::Emitter &e, x64::Reg r, int n) const;
 	/* Those not in ctx, for a way written apart (a slow path, an exit):
 	 * their host registers and places in ctx */
 	struct Spills {
@@ -139,10 +160,27 @@ public:
 	}
 	/* The block at pc (its translation, its code compared in this epoch)
 	 * in the near table, for the translations' ends to go on to it */
-	void		 note (uint32_t pc, const Sh4Block *block, uint32_t epoch);
+	void		 note (uint32_t pc, const Sh4Block *block, uint32_t epoch, uint32_t gen = 0);
+	/* The body the near table holds for pc, compared in epoch (under the
+	 * MMU, noted under gen); its instructions in count. NULL when it holds
+	 * none */
+	void		*near_body (uint32_t pc, uint32_t epoch, bool mmu, uint32_t gen, int *count) const
+	{
+		const Near &n = near_table[(pc >> 1) & near_mask];
+
+		if (n.pc != pc || n.checked != epoch || (mmu && n.gen != gen) || !n.body)
+			return NULL;
+		*count = n.count;
+		return n.body;
+	}
 	/* Forgets every translation (the arena full, a reset) */
 	void		 clear ();
 	unsigned	 translated () const { return num_translated; }
+	/* For HR_PROFILE: the bytes written, those before the slow paths;
+	 * with HR_SAMPLE, the bytes of each kind of code (marks) */
+	uint64_t	 code_bytes = 0, main_bytes = 0;
+	std::map<std::string, uint64_t> kind_bytes;
+	void		 print_kinds (char cpu) const;
 	/* The times all were dropped, the arena full */
 	unsigned	 clears () const { return num_clears; }
 	/* The time taken translating, in seconds */
@@ -164,9 +202,9 @@ protected:
 	/* The slow paths, the interpreter's: they set the program counter
 	 * first (the logs, an abort) */
 	void		 call_read (x64::Emitter &e, const Sh4Offsets &o, int32_t at,
-			            unsigned size);
+			            unsigned size, bool slot = false);
 	void		 call_write (x64::Emitter &e, const Sh4Offsets &o, int32_t at,
-			             unsigned size);
+			             unsigned size, bool slot = false);
 	/* A store's address (ecx) away from the stack, counted */
 	void		 count_far (x64::Emitter &e, const Sh4Offsets &o);
 	/* The store's count (Sh4::stores, sh4_put ()'s) and the far one's,
@@ -186,20 +224,52 @@ protected:
 	 * (std::function, each with a copy of Sh4Offsets) took a dozen
 	 * allocations a block, half of its translation's time */
 	struct Cold {
-		enum Kind { EXIT, READ, WRITE, HANDLER } kind;
+		/* GROUP: the handlers of size ops from at / 2, an interrupt
+		 * looked for after each (access_group ()'s slow path) */
+		enum Kind { EXIT, READ, WRITE, HANDLER, GROUP } kind;
 		x64::Label	*from, *to;
 		Sh4RegCache::Spills spill;
 		int32_t		 at;
 		unsigned	 size;
 		uint16_t	 inst;
 		Sh4Handler	 fn;
+		/* An access of a delay slot written out (slot_op ()) */
+		bool		 slot;
 	};
 	void		 cold_path (Cold::Kind kind, x64::Label &from, x64::Label &to,
 			            int32_t at = 0, unsigned size = 0, uint16_t inst = 0,
 			            Sh4Handler fn = NULL)
 	{
-		cold.push_back (Cold { kind, &from, &to, rc.spills (), at, size, inst, fn });
+		cold.push_back (Cold { kind, &from, &to, rc.spills (), at, size, inst, fn, in_slot });
 	}
+	/* Writing a delay slot out (slot_op ()) */
+	bool		 in_slot = false;
+	/* Sh4::hot_read's, for the reads' slow ways (call_read ()) */
+	uint32_t	 hot_addr = ~0u;
+	uint32_t	 (*hot_fn) (void *obj) = nullptr;
+	void		*hot_obj = nullptr;
+	/* Translating under the MMU (see "MMU" in sh4.cpp): the loads and
+	 * stores straight to P1 and P2 alone, privileged; before a call out,
+	 * the instruction's index kept for an exception; no access written in
+	 * a delay slot */
+	bool		 mmu_mode = false;
+	/* And for code at a translated address (Sh4::jit_virtual): no literal
+	 * read here, left once the MMU's state moved (Sh4::mmu_gen) */
+	bool		 virt_mode = false;
+	void		 call_index (x64::Emitter &e, const Sh4Offsets &o, int32_t at, bool slot = false);
+	/* A store's slow path: one to a store queue kept until its pref
+	 * (Sh4::sq_buffered) written there at once, as sh4_sq_put () does
+	 * (ecx the address, r10 the value), then on to back */
+	void		 sq_store (x64::Emitter &e, const Sh4Offsets &o, unsigned size, x64::Label &back);
+	bool		 sq_inline = false;
+	/* The access just written cannot reach a device (a literal read at
+	 * the translation): no interrupt check after it */
+	bool		 no_device = false;
+	void		 mmu_guard (x64::Emitter &e, const Sh4Offsets &o, x64::Label &slow);
+	/* HR_SAMPLE: the kinds of the code being written, each from its
+	 * offset on (hl::Profile::code_written ()) */
+	std::vector<std::pair<uint32_t, const char *>> marks;
+	void		 mark (x64::Emitter &e, const char *what);
 	/* An access's slow path, written after the block: bound at slow,
 	 * back to back after it */
 	void		 slow_path (x64::Label &slow, x64::Label &back, bool write, int32_t at,
@@ -242,10 +312,33 @@ private:
 	void		*table = NULL;
 
 	bool		 start_arena ();
+	/* The ways out the translations share, written in the arena once a
+	 * generation (emit_stubs ()), apart under the MMU: the probe (r8d the
+	 * count, PC set, esi the block's address), its checks (the count taken
+	 * off), sh4_chain (), and back to the run loop. A copy in each
+	 * translation made them some 150 bytes longer */
+	struct Stubs { const uint8_t *probe = NULL, *checks = NULL, *chain = NULL; };
+	Stubs		 stubs[2];
+	unsigned	 stubs_generation = 0;
+	bool		 emit_stubs (Sh4 *ctx);
 	Sh4Native	 translate (Sh4 *ctx, Sh4Block *block);
 	bool		 memory_op (x64::Emitter &e, const Sh4Offsets &o, uint16_t inst,
 			            int32_t at, uint32_t pc);
 	bool		 native_op (x64::Emitter &e, const Sh4Offsets &o, uint16_t inst);
+	/* A division's steps from op i, div1 and rotcl on the same registers:
+	 * how many written out at once (0 for none) */
+	unsigned	 division_run (x64::Emitter &e, const Sh4Offsets &o, const Sh4Block *block, size_t i);
+	void		 division_pairs (x64::Emitter &e, x64::Reg a, x64::Reg d, x64::Reg q, unsigned k,
+			                 const std::function<void ()> &slow_steps);
+	/* A run of 32-bit accesses through one base register from op i (the
+	 * pushes and pops of a function, a vector's fmov.s), its alignment
+	 * and its page looked at once: the ops taken, 0 for none. seq the
+	 * ways out (those its slow path takes in forced) */
+	unsigned	 access_group (x64::Emitter &e, const Sh4Offsets &o, const Sh4Block *block, size_t i,
+			               x64::Label *seq, bool *forced, bool singles);
+	/* A delay loop on a word in memory (Sh4Block::mem_loop): its turns
+	 * but the last taken at once, at the block's entry */
+	void		 memory_loop (x64::Emitter &e, const Sh4Offsets &o, const Sh4Block *block);
 	/* The memory map of the block being translated (a PC-relative load
 	 * from RAM or ROM read at its host address) */
 	hl::Mmap	*translating = NULL;
@@ -275,12 +368,13 @@ private:
 		uint32_t	 pc;		/* 29 bits; odd: none */
 		uint32_t	 checked;	/* the code epoch it was compared in */
 		int32_t		 count;		/* its instructions */
-		uint32_t	 unused;
+		uint32_t	 gen;		/* the MMU's state's (Sh4::mmu_gen) */
 		void		*body;
 		uint64_t	 unused2;
 	};
 	static const unsigned NEAR_BITS = 16;
 	std::unique_ptr<Near[]> near_table { new Near[1u << NEAR_BITS] };
+	static const uint32_t near_mask = (1u << NEAR_BITS) - 1;
 	void		 clear_near ();
 };
 
@@ -305,8 +399,10 @@ protected:
 	void		 store (x64::Emitter &e, const Sh4Offsets &o, int32_t at,
 			        unsigned size) override;
 private:
-	uint8_t * const	*read_table, * const *write_table;
-	void		 lookup (x64::Emitter &e, const Sh4Offsets &o, uint8_t * const *table,
+	/* memory_loop () reads the write table too */
+	friend class Sh4X64;
+	const intptr_t	*read_table, *write_table;
+	void		 lookup (x64::Emitter &e, const Sh4Offsets &o, const intptr_t *table,
 			         x64::Label &slow, unsigned size, bool store);
 };
 

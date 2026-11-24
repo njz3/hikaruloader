@@ -179,9 +179,10 @@ Cart::setup (uint32_t address, bool is_dma)
 		s.cur = address & 0x1FFFFFFE;
 		s.encryption = (s.rom_offset & 0x40000000) != 0;
 		if (s.encryption) {
+			/* Decrypted as read (read ()): a PIO read sets up again
+			 * after each word */
 			s.iv = 0;
 			s.counter = 0;
-			m4_fill ();
 		}
 		break;
 	}
@@ -194,6 +195,8 @@ Cart::read (uint8_t *out, uint32_t size)
 		uint32_t n = size;
 
 		if (s.encryption && (type == TYPE_M1 || type == TYPE_M4)) {
+			if (type == TYPE_M4)
+				m4_fill (std::min<uint32_t> (BUFFER_SIZE, (size + 1) & ~1u));
 			n = std::min (n, s.buffer_size);
 			if (!n)
 				return;
@@ -496,9 +499,9 @@ Cart::m4_round (uint16_t word, uint16_t subkey) const
 }
 
 void
-Cart::m4_fill ()
+Cart::m4_fill (uint32_t want)
 {
-	while (s.buffer_size < BUFFER_SIZE) {
+	while (s.buffer_size < want) {
 		uint16_t enc = rom_u16 (s.cur);
 		uint16_t dec = s.iv;
 
@@ -522,7 +525,6 @@ Cart::m4_advance (uint32_t size)
 		s.buffer_size -= size;
 	} else
 		s.buffer_size = 0;
-	m4_fill ();
 }
 
 #define SAVE(thing_) \

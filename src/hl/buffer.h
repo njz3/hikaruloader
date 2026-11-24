@@ -21,6 +21,8 @@
 #ifndef __HL_BUFFER_H__
 #define __HL_BUFFER_H__
 
+#include <vector>
+
 #include "hl/core.h"
 #include "hl/state.h"
 
@@ -75,6 +77,11 @@ public:
 
 	/* NULL when the memory cannot be allocated */
 	static Buffer	*create (unsigned size, unsigned alignment = 0, Order order = NATIVE);
+	/* The same, its written pages kept by the host (Windows' write watch,
+	 * the processor's dirty bits: any write, the CPUs' direct ones, a DMA's
+	 * memcpy, a state's load); without, as create () (written () false).
+	 * Not in a section: fastmem leaves it to the page table */
+	static Buffer	*create_watched (unsigned size, Order order = NATIVE);
 	/* The contents of a file; NULL when it is missing, or not reqsize
 	 * bytes long (unless reqsize is ~0) */
 	static Buffer	*from_file (const char *path, unsigned reqsize);
@@ -105,6 +112,11 @@ public:
 	int		 load_state (State *state);
 	int		 save_state (State *state);
 
+	/* create_watched ()'s: the pages (of WATCH_PAGE bytes) written since
+	 * the last call, their indices; false when not watched */
+	bool		 written (std::vector<uint32_t> &pages);
+	static const unsigned WATCH_PAGE = 4096;
+
 private:
 	Buffer (uint8_t *ptr, unsigned size, Order order) :
 		buf_ptr (ptr), buf_size (size), order (order) {}
@@ -113,6 +125,7 @@ private:
 	unsigned buf_size;
 	Order order;
 	void *section = NULL;
+	bool watched = false;
 };
 
 /* NATIVE and LE32 are the same on the little endian hosts Hikaruloader runs on */

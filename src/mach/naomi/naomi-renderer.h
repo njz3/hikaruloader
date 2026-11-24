@@ -19,6 +19,7 @@
 #ifndef __HL_NAOMI_RENDERER_H__
 #define __HL_NAOMI_RENDERER_H__
 
+#include <functional>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -127,7 +128,12 @@ public:
 		 * last picture drawn shown on, not the VRAM (a game showing its
 		 * loading screen, drawn once in a while) */
 		bool rendered = false;
-		std::vector<uint32_t> vram_rgba;
+		/* The framebuffer's lines as read (vram_line bytes each, their
+		 * words in order), turned into colours where they are drawn
+		 * (show_vram ()): the machine's thread spent 0.36 ms a frame on
+		 * Extreme Hunting's screens without a scene */
+		std::vector<uint8_t> vram_raw;
+		unsigned vram_line = 0, vram_bytes = 2, vram_depth = 0;
 		View view;
 	};
 	/* quiet: the frames without a scene for the screen, this one counted */
@@ -139,6 +145,10 @@ public:
 	Picture	 draw_frame (Frame &f);
 	/* draw_frame's work, which may run out of memory */
 	Picture	 draw_frame_now (Frame &f);
+	/* Called once a frame's scenes drawn to textures are back in the
+	 * VRAM, before its screen's (the drawing thread's: the machine goes
+	 * on from there) */
+	std::function<void ()> textures_done;
 	/* This frame's scenes, in that view */
 	Picture	 draw_picture (const View &view = View ());
 	/* A picture over the bound framebuffer's viewport */
@@ -195,6 +205,7 @@ private:
 	/* ELAN_LIGHTING GPU: the scene's vertices to light (Scene::lighting)
 	 * lit, their colours put in vbo, as draw_scene () filled it */
 	void light_scene (const Scene &scene);
+	void elan_scene (const Scene &scene);
 	void set_scene_uniforms (const Program &p);
 	/* The view turns d's 3D (View): a scene for the screen */
 	bool view_on (const Draw &d) const;
@@ -207,6 +218,7 @@ private:
 	void write_back (const Draw &d, Target &t);
 	static bool read_vram (Holly *holly, Frame &f);
 	bool show_vram (const Frame &f);
+	std::vector<uint32_t> vram_rgba;
 	GLuint filter_lines (const Draw &d);
 	GLuint texture (uint32_t tcw, uint32_t tsp);
 
@@ -250,6 +262,15 @@ private:
 	GLuint light_program = 0, color_program = 0;
 	GLint u_light_count = -1, u_color_count = -1;
 	GLuint light_buffers[5] = {};
+	/* elan_scene ()'s: the points' and the triangles' passes; the buffers
+	 * of the light sets, the lists' words, each vertex's list, the lists,
+	 * the points, the triangles */
+	GLuint elan_points_program = 0, elan_triangles_program = 0;
+	GLint u_points_count = -1, u_triangles_count = -1, u_triangles_base = -1;
+	GLuint elan_buffers[6] = {};
+	/* The vertex buffer's first of them (draw_scene ()) */
+	uint32_t elan_at = 0;
+	uint32_t first_of (const Batch &b) const { return b.elan ? elan_at + b.first : b.first; }
 	/* The vertices' 2D marks while the view turns (draw_scene ()) */
 	GLuint flag_vbo;
 	std::vector<uint8_t> flags;
@@ -369,10 +390,37 @@ private:
 	bool	 start_thread ();
 	void	 stop_thread ();
 	void	 wait_thread (bool rethrow);
+	/* A frame drawn to textures: the machine goes on at once, the VRAM
+	 * those are written back to guarded meanwhile (hl::Mmap::guard (),
+	 * Holly::vram_sync): the machine waits for them there, as late as it
+	 * can, instead of at the frame's end. The VRAM's offsets written, a
+	 * pair a board */
+	std::vector<std::vector<std::pair<uint32_t, uint32_t>>> rtt_ranges;
+	std::vector<hl::Mmap *> rtt_guarded;
+	bool	 rtt_pending = false;
+	bool	 rtt_defer (const std::vector<unsigned> &shown);
+	void	 rtt_wait ();
+	/* rtt_wait () when bytes from offs of board's VRAM are written back */
+	void	 rtt_wait (unsigned board, uint32_t offs, uint32_t bytes);
+	/* Holly::vram_later's: the textures to take from the VRAM once those
+	 * pixels are back (under the thread's lock); fill_later () takes them */
+	struct Later {
+		unsigned board;
+		uint32_t addr, bytes;
+		std::shared_ptr<TextureData> data;
+	};
+	std::vector<Later> rtt_later;
+	bool	 rtt_texture_later (unsigned board, const std::shared_ptr<TextureData> &data, uint32_t addr,
+		                    uint32_t bytes);
+	void	 fill_later ();
+	void	 sync () override { rtt_wait (); }
 	static void thread_main (Renderer *owner);
 	void	 draw_job ();
 	void	 threaded_end_frame (const std::vector<unsigned> &shown);
 	void	 present (unsigned set);
+	/* On the thread, bound to the window: the set it drew, shown and
+	 * swapped there (Thread::present) */
+	void	 present_on_thread (unsigned set);
 	static bool flush (void *data);
 
 	Naomi	*naomi;

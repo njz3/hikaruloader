@@ -121,6 +121,30 @@ MultiboardPort::reset (hl::ResetType type)
 	refresh ();
 }
 
+uint32_t
+MultiboardPort::data_read ()
+{
+	uint32_t bank = (bank_status () & 1) ? 0 : 0x80000, at, val;
+
+	if (master ()) {
+		bank = 0x80000 - bank;
+		at = offset + bank / 2;
+	} else
+		at = (offset & 0xFFFF) + (id - 1) * 0x10000 + bank / 2;
+	val = view[at & (MEM_WORDS - 1)];
+	offset++;
+	return val;
+}
+
+/* Holly::get () gives G1_DATA's word whatever the size: the same here */
+void
+MultiboardPort::hot_read (Sh4 *cpu)
+{
+	cpu->hot_read_addr = G1_DATA;
+	cpu->hot_read = [] (void *port) { return ((MultiboardPort *) port)->data_read (); };
+	cpu->hot_read_obj = this;
+}
+
 bool
 MultiboardPort::g1_get (uint32_t addr, uint32_t *val)
 {
@@ -128,18 +152,9 @@ MultiboardPort::g1_get (uint32_t addr, uint32_t *val)
 	case G1_OFFSET:
 		*val = offset;
 		return true;
-	case G1_DATA: {
-		uint32_t bank = (bank_status () & 1) ? 0 : 0x80000, at;
-
-		if (master ()) {
-			bank = 0x80000 - bank;
-			at = offset + bank / 2;
-		} else
-			at = (offset & 0xFFFF) + (id - 1) * 0x10000 + bank / 2;
-		*val = view[at & (MEM_WORDS - 1)];
-		offset++;
+	case G1_DATA:
+		*val = data_read ();
 		return true;
-	}
 	case G1_DMA_OFFSET:
 		*val = dma_offset;
 		return true;

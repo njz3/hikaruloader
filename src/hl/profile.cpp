@@ -102,6 +102,7 @@ struct Written {
 	char		cpu;
 	uint32_t	pc;
 	std::vector<uint16_t> words;
+	Profile::Marks	marks;
 };
 static std::map<uint64_t, Written> written;
 
@@ -298,7 +299,7 @@ sample_report ()
 {
 	HANDLE process = GetCurrentProcess ();
 	HMODULE program = GetModuleHandleA (NULL);
-	std::unordered_map<std::string, uint64_t> by_name, by_block, by_caller;
+	std::unordered_map<std::string, uint64_t> by_name, by_block, by_caller, by_kind;
 	/* Each block's start, its samples by address (HR_SAMPLE_DUMP) */
 	std::unordered_map<std::string, uint64_t> block_start;
 	std::unordered_map<std::string, std::map<uint64_t, uint64_t>> block_at;
@@ -370,6 +371,16 @@ sample_report ()
 				by_block[label] += kv.second;
 				block_start[label] = w->first;
 				block_at[label][kv.first] += kv.second;
+				/* Its kind of code: the last mark at or before it */
+				if (!w->second.marks.empty ()) {
+					const Profile::Marks &m = w->second.marks;
+					uint32_t offs = (uint32_t) (kv.first - w->first);
+					auto k = std::upper_bound (m.begin (), m.end (), offs,
+					                           [] (uint32_t a, const std::pair<uint32_t, const char *> &b) {
+					                                   return a < b.first; });
+
+					by_kind[k == m.begin () ? "(before the marks)" : (--k)->second] += kv.second;
+				}
 			}
 		}
 		by_name[name] += kv.second;
@@ -417,6 +428,19 @@ sample_report ()
 	for (i = 0; i < callers.size () && i < (size_t) hl_util_get_int_option ("HR_SAMPLE_TOP", 48) / 2; i++)
 		HL_PRINT ("  %5.2f%%  %s", 100.0 * (double) callers[i].first / (double) (all ? all : 1),
 		          callers[i].second.c_str ());
+	if (!by_kind.empty ()) {
+		std::vector<std::pair<uint64_t, std::string>> kinds;
+		uint64_t marked = 0;
+
+		for (auto &kv : by_kind) {
+			kinds.push_back (std::make_pair (kv.second, kv.first));
+			marked += kv.second;
+		}
+		std::sort (kinds.begin (), kinds.end (), std::greater<> ());
+		HL_PRINT ("samples: the translations by their kind of code (%llu samples):", (unsigned long long) marked);
+		for (auto &k : kinds)
+			HL_PRINT ("  %5.1f%%  %s", 100.0 * (double) k.first / (double) marked, k.second.c_str ());
+	}
 	HL_PRINT ("samples: the busiest translated blocks, of all the samples (their words):");
 	for (i = 0; i < blocks.size () && i < 40; i++)
 		HL_PRINT ("  %5.2f%%  %s", 100.0 * (double) blocks[i].first / (double) (all ? all : 1),
@@ -424,9 +448,9 @@ sample_report ()
 
 	/* HR_SAMPLE_DUMP=dir: the busiest blocks' host code, block<rank>.bin,
 	 * and its samples by offset, block<rank>.txt (the first line, the
-	 * block's words) */
+	 * block's words); HR_SAMPLE_DUMP_N of them (40) */
 	if (const char *dir = getenv ("HR_SAMPLE_DUMP"))
-		for (i = 0; i < blocks.size () && i < 40; i++) {
+		for (i = 0; i < blocks.size () && i < (size_t) hl_util_get_int_option ("HR_SAMPLE_DUMP_N", 40); i++) {
 			const std::string &label = blocks[i].second;
 			uint64_t start = block_start[label];
 			auto w = written.find (start);
@@ -435,12 +459,12 @@ sample_report ()
 
 			if (w == written.end ())
 				continue;
-			snprintf (path, sizeof (path), "%s/block%02u.bin", dir, (unsigned) i);
+			snprintf (path, sizeof (path), "%s/block%04u.bin", dir, (unsigned) i);
 			if ((f = fopen (path, "wb")) != NULL) {
 				fwrite ((const void *) (uintptr_t) start, 1, (size_t) (w->second.end - start), f);
 				fclose (f);
 			}
-			snprintf (path, sizeof (path), "%s/block%02u.txt", dir, (unsigned) i);
+			snprintf (path, sizeof (path), "%s/block%04u.txt", dir, (unsigned) i);
 			if ((f = fopen (path, "w")) != NULL) {
 				fprintf (f, "%s\n", label.c_str ());
 				for (auto &at : block_at[label])
@@ -454,7 +478,7 @@ sample_report ()
 
 void
 Profile::code_written (const void *start, size_t size, char cpu, uint32_t pc, const uint16_t *words,
-                       unsigned num_words)
+                       unsigned num_words, const Marks *marks)
 {
 #ifdef _WIN32
 	uint64_t a = (uint64_t) (uintptr_t) start, b = a + size;
@@ -466,9 +490,10 @@ Profile::code_written (const void *start, size_t size, char cpu, uint32_t pc, co
 	it = written.lower_bound (a);
 	if (it != written.begin () && (--it)->second.end > a)
 		written.erase (it);
-	written[a] = Written { b, cpu, pc, std::vector<uint16_t> (words, words + num_words) };
+	written[a] = Written { b, cpu, pc, std::vector<uint16_t> (words, words + num_words),
+	                       marks ? *marks : Marks () };
 #else
-	(void) start; (void) size; (void) cpu; (void) pc; (void) words; (void) num_words;
+	(void) start; (void) size; (void) cpu; (void) pc; (void) words; (void) num_words; (void) marks;
 #endif
 }
 

@@ -100,6 +100,50 @@ Buffer::create (unsigned size, unsigned alignment, Order order)
 }
 
 Buffer *
+Buffer::create_watched (unsigned size, Order order)
+{
+#ifdef _WIN32
+	uint8_t *ptr = (uint8_t *) VirtualAlloc (NULL, size, MEM_RESERVE | MEM_COMMIT | MEM_WRITE_WATCH,
+	                                         PAGE_READWRITE);
+
+	if (ptr) {
+		Buffer *buffer = new Buffer (ptr, size, order);
+
+		/* Zeroed by VirtualAlloc; nothing written yet */
+		buffer->watched = true;
+		ResetWriteWatch (ptr, size);
+		return buffer;
+	}
+#endif
+	return create (size, 0, order);
+}
+
+bool
+Buffer::written (std::vector<uint32_t> &pages)
+{
+	pages.clear ();
+#ifdef _WIN32
+	if (!watched)
+		return false;
+
+	std::vector<void *> addrs ((buf_size + WATCH_PAGE - 1) / WATCH_PAGE);
+	ULONG_PTR count = addrs.size ();
+	ULONG granularity = 0;
+
+	if (GetWriteWatch (WRITE_WATCH_FLAG_RESET, buf_ptr, buf_size, addrs.data (), &count, &granularity) != 0 ||
+	    granularity != WATCH_PAGE) {
+		watched = false;
+		return false;
+	}
+	for (ULONG_PTR i = 0; i < count; i++)
+		pages.push_back ((uint32_t) (((uint8_t *) addrs[i] - buf_ptr) / WATCH_PAGE));
+	return true;
+#else
+	return false;
+#endif
+}
+
+Buffer *
 Buffer::from_file (const char *path, unsigned reqsize)
 {
 	Buffer *buffer = NULL;
@@ -142,6 +186,10 @@ Buffer::~Buffer ()
 	if (section) {
 		UnmapViewOfFile (buf_ptr);
 		CloseHandle ((HANDLE) section);
+		return;
+	}
+	if (watched) {
+		VirtualFree (buf_ptr, 0, MEM_RELEASE);
 		return;
 	}
 	_aligned_free (buf_ptr);

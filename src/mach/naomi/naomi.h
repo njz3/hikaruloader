@@ -87,6 +87,9 @@ struct Batch {
 	bool two_volume;
 	uint32_t tsp1, tcw1;
 	uint32_t first1;
+	/* Its vertices the graphics card's (SceneElan): first and count in
+	 * those it writes, after the scene's others in the vertex buffer */
+	bool elan;
 };
 
 /* A modifier volume's triangles: three xyz each */
@@ -153,6 +156,65 @@ struct GpuLightSet {
 	GpuLight lights[16];
 };
 
+/*
+ * The NAOMI 2's vertices transformed by the graphics card too (ELAN_LIGHTING
+ * GPU, Elan::gpu_list ()): a list's words as the Elan read them, its matrices
+ * and what it asks for; its triangles, as its strips and fans make them. The
+ * renderer's compute shaders put each vertex in the view and on the screen
+ * and light it, then cut each triangle along the near plane and leave out
+ * those the Holly would (behind, culled), six vertices a triangle written in
+ * the vertex buffer (the cut ones', or nothing to draw): what
+ * Elan::polygon_list () and Holly::ta_triangle () do (elan_cs_src). The
+ * shaders read these as they are (std430)
+ */
+struct GpuElanList {
+	float	 matrix[12];	/* to the view's space, by rows */
+	float	 normals[12];	/* the normals', by rows, a pad each */
+	float	 proj[4];	/* fx, tx, fy, ty */
+	float	 env_u, env_v, near_plane, cull;
+	float	 gmp_diffuse[4], gmp_specular[4];
+	/* Its first vertex's first word in SceneElan::words, its words a
+	 * vertex, its UV's and colour's words in a vertex */
+	uint32_t first, words, uv_at, rgb_at;
+	uint32_t flags;		/* GpuElanList::Flags */
+	uint32_t set;		/* its light set, in SceneElan::sets */
+	uint32_t isp;		/* the Holly's: culling, Gouraud */
+	uint32_t vertex;	/* its first vertex's index */
+
+	enum Flags {
+		UV = 1, RGB = 2, ENV_ANY = 4, ENV0 = 8, BUMP = 16, CONSTANT = 32, TEXTURED = 64,
+		GMP_D0 = 128, GMP_S0 = 256, CLIP = 512
+	};
+};
+
+/* A triangle's vertices (indices of SceneElan's), the third's colours
+ * (another's in a flat strip's odd ones), its six vertices' first */
+struct GpuElanTriangle {
+	uint32_t a, b, c, c_color;
+	uint32_t at;
+	uint32_t pad[3];
+};
+
+struct SceneElan {
+	std::vector<uint32_t> words;
+	std::vector<uint32_t> list_of;	/* each vertex's list */
+	std::vector<GpuElanList> lists;
+	std::vector<GpuElanTriangle> triangles;
+	std::vector<GpuLightSet> sets;
+	uint32_t vertices = 0;		/* those written: six a triangle */
+
+	bool	 empty () const { return triangles.empty (); }
+	void	 clear ()
+	{
+		words.clear ();
+		list_of.clear ();
+		lists.clear ();
+		triangles.clear ();
+		sets.clear ();
+		vertices = 0;
+	}
+};
+
 struct SceneLighting {
 	std::vector<GpuLightSet> sets;
 	std::vector<LitVertex> lit;
@@ -172,6 +234,9 @@ struct SceneLighting {
 /* A renderer lights the scenes (its compute shaders made): the Elan leaves
  * them its vertices with ELAN_LIGHTING GPU */
 extern std::atomic<bool> gpu_lighting;
+/* It transforms them too (elan_cs_src made): the Elan leaves the scenes its
+ * lists (SceneElan) */
+extern std::atomic<bool> gpu_geometry;
 
 /* What the TA made of a list of parameters */
 struct Scene {
@@ -185,11 +250,14 @@ struct Scene {
 	float max_z = 1e-6f;
 	/* Its vertices to light, with ELAN_LIGHTING GPU (else none) */
 	SceneLighting lighting;
+	/* Its lists the graphics card transforms (else none) */
+	SceneElan elan;
 
 	/* Empty again, the vectors' room kept */
 	void clear ()
 	{
 		lighting.clear ();
+		elan.clear ();
 		vertices.clear ();
 		vertices1.clear ();
 		for (std::vector<Batch> &b : batches)
@@ -206,6 +274,11 @@ struct Scene {
 struct TextureData {
 	std::vector<uint8_t> bytes;
 	uint64_t hash;
+	/* Holly::keep_textures ()'s, its machine's thread alone: the VRAM's
+	 * generation it was found the same at (Holly::vram_track ()), the
+	 * stride it was hashed with */
+	mutable uint32_t gen = 0;
+	uint32_t stride = 0;
 };
 
 typedef std::unordered_map<uint64_t, std::shared_ptr<const TextureData>> TextureMap;
@@ -218,6 +291,8 @@ texture_key (uint32_t tcw, uint32_t tsp)
 
 /* The bytes of a texture in the VRAM (naomi-renderer.cpp) */
 uint32_t texture_size (uint32_t tcw, uint32_t tsp, uint32_t text_control);
+/* Its bytes hashed, to tell when they change (naomi-holly.cpp) */
+uint64_t texture_hash (const uint8_t *p, size_t bytes, uint64_t seed);
 
 /* Holly's registers as a drawing wants them, at its STARTRENDER */
 struct Draw {
@@ -290,7 +365,8 @@ private:
 	void	 m1_advance (uint32_t size);
 	/* M4 */
 	uint16_t m4_round (uint16_t word, uint16_t subkey) const;
-	void	 m4_fill ();
+	/* Decrypted ahead up to want bytes in the buffer */
+	void	 m4_fill (uint32_t want);
 	void	 m4_advance (uint32_t size);
 
 	hl::Buffer *rom_buffer;
@@ -487,6 +563,9 @@ public:
 
 	hl::Eeprom93C46 eeprom;
 	bool	 monitor_15khz = false;
+	/* Its program not run, its answers given here (MIE_PROGRAM false);
+	 * see "The MIE Simulated" */
+	bool	 simulated = false;
 	/* The board's switches SW1 (bits 0-3, 1 off): where it is in a cabinet
 	 * of several screens; 0F for a board alone */
 	uint8_t	 switches = 0x0F;
@@ -495,9 +574,47 @@ private:
 	void	 reply_timer ();
 	void	 raise_irq (int level);
 	void	 update_irq ();
+	/* Runs the Z80 for left T-states, its idle loops at once (as the
+	 * Hikaru's MIE: hikaru-mie.cpp) */
+	void	 run_z80 (int &left);
+	void	 came_back ();
+
+	/* The simulation: a frame's answer made (sim.out), given eight words
+	 * at a time, a line each, as the program does */
+	void	 sim_frame (const uint32_t *data, uint32_t words);
+	void	 sim_deliver ();
+	/* An answer's frame: its command, its words (the bytes, padded) */
+	void	 sim_answer (uint8_t cmd, uint32_t head, const uint8_t *bytes, uint32_t len);
+	void	 sim_command (uint32_t head, const uint8_t *in, uint32_t len);
+	/* A JVS request to a node (FF: all), the stored repeat before or
+	 * after it; its answer kept on the channel */
+	void	 sim_jvs (unsigned node, unsigned channel, const uint8_t *req, unsigned len, int repeat);
+	/* The channel's answers, for a 15 */
+	void	 sim_receive (unsigned channel, std::vector<uint8_t> &out);
+	/* The JVS bus's lines as port 91 reads them */
+	uint8_t	 sim_sense () const;
+	uint8_t	 in_port_value (unsigned p) const;
 
 	Board	*board;
 	std::unique_ptr<Z80> z80;
+	/* The Z80's idle loops, their turns counted at once (MIE_IDLE_SKIP=0
+	 * in the environment: each instruction run). Not in the states: found
+	 * again after a load */
+	bool	 idle_skip;
+	struct {
+		/* A head the Z80 came back to, as it was there */
+		uint16_t head;
+		bool	 valid;
+		/* One turn found: back as it was, nothing changed */
+		bool	 confirmed;
+		/* A write, a port, the SH-4's Maple frame, an interrupt since
+		 * the head: the next turn may go elsewhere */
+		bool	 touched;
+		Z80::Registers regs;
+		/* A turn's T-states, and R's count */
+		int	 t;
+		uint8_t	 r;
+	} idle = {};
 	uint8_t	 rom[2048];
 	uint8_t	 ram[0x8800];
 
@@ -514,6 +631,27 @@ private:
 		uint8_t	 jvs_lcr, jvs_control;
 		int32_t	 owed;
 	} s;
+
+	enum { SIM_OUT = 160 };
+	struct Sim {
+		/* 0 its ROM's, 1 a program sent, 2 that program's JVS started */
+		uint8_t	 program;
+		/* Crazy Taxi's program: 13 and 17 the other way */
+		uint8_t	 crazy;
+		/* Each node's request repeated: its length, its bytes */
+		uint8_t	 repeat[32][256];
+		/* Each channel's answers: the node, a status, a length, the
+		 * bytes as the UART had them */
+		uint8_t	 rx[32][260];
+		uint32_t rx_len[32];
+		/* The last request's byte 2, given back */
+		uint8_t	 tag[32];
+		/* The answer: its words, those given so far */
+		uint32_t out[SIM_OUT];
+		uint32_t out_n, out_at;
+		/* The program being sent: a hash of its pieces, in order */
+		uint32_t hash;
+	} sim;
 };
 
 /* The Holly: the system bus, the G1 and G2 buses, the Maple bus, the PowerVR 2
@@ -532,6 +670,9 @@ public:
 
 	/* Area 4: the TA's FIFO, the YUV converter, the direct path */
 	void	 area4_put (unsigned size, uint32_t addr, uint64_t val);
+	/* n words put from addr on (a store queue's burst): to the TA's FIFO
+	 * as a whole packet when they make one */
+	void	 area4_words (uint32_t addr, const uint32_t *words, unsigned n);
 	/* The VRAM's 32-bit path */
 	static uint32_t map32 (uint32_t addr)
 	{
@@ -565,9 +706,23 @@ public:
 	/* The display reads a framebuffer a scene for the screen was drawn to
 	 * lately (FB_R_SOF1 one of rendered's), its VRAM as it was then: the
 	 * picture drawn stands for it (BoardRenderer::take ()) */
-	bool	 shows_rendered () const;
+	bool	 shows_rendered ();
 
 	hl::Buffer *vram;
+	/* The renderer's: a picture drawn to a texture back in the VRAM before
+	 * the machine reads or writes bytes of it (Renderer::rtt_wait ()):
+	 * those from offs (the VRAM's own, the 64-bit path's), all for ~0 */
+	std::function<void (uint32_t offs, uint32_t bytes)> vram_sync;
+	/* Such pixels on their way (the renderer's, till vram_sync () waits):
+	 * a STARTRENDER waits only for those its textures and words read */
+	bool	 vram_behind = false;
+	/* The renderer's: a texture of a STARTRENDER wholly within those
+	 * pixels, its bytes and hash left to the drawing thread, which takes
+	 * them from the VRAM once they are there (the machine waits for them
+	 * before it touches those bytes, so they are what it would have read
+	 * after waiting): false where they are back (read the VRAM) or the
+	 * texture lies partly outside (wait) */
+	std::function<bool (const std::shared_ptr<TextureData> &data, uint32_t addr, uint32_t bytes)> vram_later;
 	uint32_t frames;
 	/* The Elan's end of a list asks for this */
 	void	 raise_ist (uint32_t bits);
@@ -583,6 +738,12 @@ public:
 	/* The index of its first vertex in the scene, -1 when it was left
 	 * out (culled, behind) */
 	int	 elan_triangle (const Vertex &a, const Vertex &b, const Vertex &c);
+	/* n vertices the graphics card writes (SceneElan) in the polygon's
+	 * batch: the first's index among those, -1 for want of memory */
+	int	 elan_slots (unsigned n);
+	/* CULL_VAL's bits: the area under which the culling leaves a
+	 * triangle out */
+	uint32_t elan_cull () const;
 	/* The scene its triangles go to */
 	const std::shared_ptr<Scene> &elan_scene () const { return building; }
 	/* A modifier volume, and its triangles: three xyz on the screen */
@@ -613,7 +774,7 @@ private:
 	void	 ta_modifier (const uint32_t *w);
 	void	 ta_store (Vertex v, const Vertex &v1, bool end);
 	void	 ta_triangle (Vertex a, Vertex b, Vertex c, const Vertex *second = NULL, int *first = NULL);
-	Batch	&ta_batch ();
+	Batch	&ta_batch (bool elan = false);
 	void	 yuv_data (const uint32_t *w, unsigned words);
 	void	 yuv_block ();
 	void	 fifo_word (uint32_t word);
@@ -656,10 +817,21 @@ private:
 	struct Rendered {
 		uint32_t at;
 		uint64_t hash;
+		uint32_t gen;	/* the VRAM's generation then */
 		bool	 valid;
 	};
 	Rendered rendered[2] = {};
 	uint64_t fb_hash (uint32_t at) const;
+	/* The VRAM's pages written since the last time, given the next
+	 * generation (the VRAM watched: vram_watched); the latest generation
+	 * of the pages under a range of the VRAM's offsets, of a framebuffer
+	 * the display reads */
+	void	 vram_track ();
+	uint32_t vram_since (uint32_t offs, uint32_t bytes) const;
+	uint32_t fb_since (uint32_t at) const;
+	std::vector<uint32_t> vram_gen, vram_written;
+	uint32_t vram_gen_now = 0;
+	bool	 vram_watched = true;
 	/* The textures' copies, for those that did not change at the next
 	 * STARTRENDER */
 	TextureMap kept_textures;
@@ -779,9 +951,15 @@ private:
 	void	 update_lights ();
 
 	void	 polygon_list (const uint32_t *ich);
+	/* polygon_list ()'s with the graphics card transforming (SceneElan) */
+	void	 gpu_list (const uint32_t *w, uint32_t count, unsigned words, uint32_t flags, uint32_t isp,
+		           bool clip, float nearest);
+	uint32_t gpu_light_set (Scene *scene);
 	void	 modifier_list (const uint32_t *ich, const uint32_t *w, unsigned words);
 	void	 modifier_triangle (const float *a, const float *b, const float *c);
-	bool	 in_depth_range (const uint32_t *w, uint32_t count, unsigned words, bool *clip) const;
+	/* nearest: the list's box's depth nearest the eye (the view's z) */
+	bool	 in_depth_range (const uint32_t *w, uint32_t count, unsigned words, bool *clip,
+		                 float *nearest = NULL) const;
 	void	 view_position (const uint32_t *w, float *out) const;
 	/* The light set of the vertices lit now, kept once for them */
 	uint32_t light_set ();
@@ -814,6 +992,10 @@ private:
 	/* What they say, read again after a state */
 	float	 matrix[12];		/* to the view's space, by rows */
 	float	 normal_matrix[9];	/* by columns */
+	/* The same a column a vector, a lane a row (columns ()): the rows'
+	 * sums four lanes at once, each in the order the rows' are */
+	float	 matrix_cols[4][4], normal_cols[3][4];
+	void	 columns ();
 	float	 near_plane, far_plane;
 	float	 env_u, env_v;
 	uint32_t gmp_params;
@@ -822,6 +1004,9 @@ private:
 	LightSet ls;
 	/* Its changes, and the one kept last in sets */
 	uint64_t ls_changes, ls_kept;
+	/* gpu_light_set ()'s: the scene and the change it kept one for last */
+	const Scene *gpu_set_scene = NULL;
+	uint64_t gpu_set_changes = 0;
 
 	/* The vertices lit at the next flush_lighting (): on several threads,
 	 * each alone (the same colours whatever their number), the clipped
@@ -840,6 +1025,8 @@ private:
 	bool	 culling_reversed, open_volume, shadowed_volume;
 	uint32_t model_tsp;
 	uint64_t commands;	/* those of this kick */
+	/* HR_PROFILE's: the kicks, their polygon lists and their vertices */
+	uint64_t prof_kicks = 0, prof_lists = 0, prof_vertices = 0;
 };
 
 /* What carries a communication board's frames to the next board of its ring:
@@ -951,6 +1138,10 @@ public:
 
 	/* False when the address is not the link's */
 	bool	 g1_get (uint32_t addr, uint32_t *val);
+	/* The data port's next word (G1_DATA, read in a loop): the board's
+	 * SH-4 reads it at once (Sh4::hot_read) */
+	uint32_t data_read ();
+	void	 hot_read (Sh4 *cpu);
 	bool	 g1_put (uint32_t addr, uint32_t val);
 	/* A slave without a cartridge: its G1 DMA from the link's memory */
 	bool	 dma (uint32_t size, uint8_t *out);
@@ -1275,7 +1466,7 @@ public:
 private:
 	hl::Mmap *setup_mmap ();
 	/* name, HR_HASH's: the board's number after it but the master's */
-	void	 add_buffer (hl::Buffer *&buf, unsigned size, bool battery, const char *name);
+	void	 add_buffer (hl::Buffer *&buf, unsigned size, bool battery, const char *name, bool watched = false);
 	char	 debug_text[256];
 	uint8_t	 nvram_old[128 + 128 + 132];
 };
@@ -1361,6 +1552,12 @@ private:
 	std::atomic<unsigned> sleeping { 0 };
 	std::atomic<bool> quitting { false };
 	unsigned slice_line = 0, slice_count = 0;
+	/* HR_BOARD_TIMES=1: each board's time running its slices, the master's
+	 * waiting for the others, in nanoseconds (two clock reads a slice
+	 * and a board; HR_PROFILE's sections slow the boards down) */
+	bool	 board_times = false;
+	std::vector<uint64_t> board_busy, board_slice;
+	uint64_t master_wait = 0, timed_frames = 0, slowest_sum = 0, between = 0, frame_all = 0, frame_end = 0;
 };
 
 } /* namespace naomi */

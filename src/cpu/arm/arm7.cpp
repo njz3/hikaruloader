@@ -198,6 +198,16 @@ Arm7::run (int cycles)
 			if (done >= cycles)
 				break;
 		}
+		/* A block at once, unless step () would take an interrupt */
+		if (jit && !(regs.fiq_line && !(regs.cpsr & PSR_F)) &&
+		    !(regs.irq_line && !(regs.cpsr & PSR_I))) {
+			int n = run_translated (cycles - done);
+
+			if (n > 0) {
+				done += n;
+				continue;
+			}
+		}
 		done += step ();
 	}
 	return done;

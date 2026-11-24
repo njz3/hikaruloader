@@ -33,6 +33,96 @@ dynarec writes its 32-bit loads and stores out for whichever way is chosen
 (a class each: the interpreter's path, the page table, fastmem), the
 devices always through the interpreter's path; the same machine all three.
 
+Under the MMU (MMUCR.AT: the Atomiswave's Metal Slug 6, Extreme Hunting,
+The King of Fighters Neowave, the M4 cartridges' Asian Dynamite) the blocks
+and their translations run too (sh4.cpp, "MMU"): their loads and stores
+straight to P1 and P2 alone, privileged, the others through the
+interpreter's access and the TLB (URC counted the same); code at a
+translated address (U0, P3) run by the block at its fetch's physical
+address, gone on to while the MMU's state stays (`Sh4::mmu_gen`: the TLBs,
+PTEH, MMUCR, SR.MD, the ITLB's refills); an exception thrown in a
+translation unwinds it, the instructions it ran counted. The same machine
+as the interpreter (with the idle loops off on both sides: their look
+differs between the two ways, `HR_SH4_IDLE=0`). `HR_SH4_MMU_JIT=0` leaves
+the MMU to the interpreter alone. The NAOMI's and the Atomiswave's
+programs are trusted not to fault (`Sh4::mmu_trusted`, as the Gaelco's):
+the Atomiswave's map the store queues' area alone (E0000000 to the RAM and
+the TA), so the MMU is left out (`sh4_mmu_update ()`), as long as every
+other page is its own address, read and written; one that maps otherwise
+has it exact again. Metal Slug 6, Extreme Hunting and KOF Neowave 12 to 15%
+faster, the same frames. The idle loops' turns may be up to 128
+instructions (`IdleLoop::MAX_PATH`): Wild Riders' main loop calls its
+tasks' functions while it waits, three quarters of its SH-4 then run
+forward.
+
+A loop whose turns store (a count in memory, the libraries' "wait so many
+frames" calling a hook at each turn) has its next two turns simulated on a
+copy (sh4.cpp, "Idle Loops Simulated"): the same path, addresses and
+inputs to what is not a sum, each register and word written moving by the
+same amount, each comparison's outcome known to the turn it changes; then
+the turns up to the third before it are taken at once. Under the MMU, its
+accesses translated without side effects, URC moved as their lookups would
+move it. `HR_SH4_IDLE_SIM=0` turns it off (the same machine either way,
+`tools/regress.py` with it on and off).
+
+The translations share their probe, `sh4_chain ()`'s call and the way back
+to the run loop (`Sh4X64::emit_stubs ()`, written at each arena's start):
+each was some 150 bytes of each translation. The page tables the
+translations read (`Mmap::wide_read_table ()`) hold each page's host
+address less its own, read through `Sh4::jit_tables`. A run of 32-bit
+accesses through one base register (pushes, pops, a vector's `fmov.s`) has
+its alignment and page looked at once (`access_group ()`); pairs `rotcl;
+div1` of the libraries' divisions are worked out with one host division
+when the remainder allows it (`division_pairs ()`), else step by step;
+`ftrv`, `shad` and `shld` are written out. With HR_PROFILE, "bytes a
+translation" and, with HR_SAMPLE too, the bytes by kind of code.
+
+The NAOMI's drawing thread (THREADED_RENDERING) shows and swaps the frame it
+drew itself while one board is shown in the main window and the interface
+draws nothing over it (`Renderer::present_on_thread ()`); the window's
+context shows it again for a capture (`flush ()`), once the GPU is done
+with the thread's swap (`Thread::swapped`: else the capture could read the
+back buffer after the flip, the frame before). A frame drawn to a texture
+lets the machine go on at once: the VRAM its pixels go back to is left out
+of the SH-4s' page tables meanwhile (`hl::Mmap::guard ()`, the 64-bit
+paths), and the machine waits for them at its first access there, at the
+32-bit path's, Holly's (a DMA, the TA's texture writes, YUV) or the Elan's
+access to those bytes (`Holly::vram_sync`), at the next frame's end
+(`Renderer::rtt_wait ()`), and before the memories are hashed or saved
+(`hl::Renderer::sync ()`; `HR_HASH_EVERY` below). A STARTRENDER waits only
+for the words it reads there; a texture of it wholly within those pixels
+(the picture drawn to a texture a frame, shown by the next: Virtua Fighter
+4) gets its bytes and hash from the drawing thread, which takes them from
+the VRAM once they are back and before the machine may go on touching
+them (`Holly::vram_later`, `Renderer::fill_later ()`): what the machine
+would have read after waiting. Virtua Fighter 4 Evolution waited so at
+1242 frames of 1245 drawn to a texture, now 19.
+
+Timing two programs against each other on a PC that runs others: both at
+once, each on one half of the cores, the halves and the order of their
+starts swapped at the next round, the geometric mean of the rounds. The one
+started last has the window's focus, a quarter faster on a loaded PC.
+
+The AICA's DSP runs its program translated to x86-64 too (hikaru-aica.cpp,
+"The DSP Translated"): made again when the program, COEF or MADRS change;
+`HR_DSP_JIT=0` keeps the interpreter's loop, `HR_DSP_CHECK=1` runs the
+interpreter first at each sample, its ring buffer writes undone, then the
+translation, and tells where the state or the writes differ.
+
+The AICAs' ARM7s run their RAM's code translated to x86-64 as well
+(src/cpu/arm/arm7-x64.cpp, `Arm7::jit`): a block up to a branch, a write to
+r15, a change of mode or of the interrupts' mask, or 32 instructions; its
+code compares the RAM's words with those it was made from first (the SH-4
+loads the drivers between two runs) and leaves to `run ()`, which makes it
+again, when they differ. The blocks go on to each other through a
+dispatcher written once, as `run ()` would: while the budget lasts (an
+instruction starts while the cycles run are fewer), no interrupt waits, r15
+is not the scan loop's head; a store to the bus (the AICA's registers, the
+interrupts' lines) or to the block's own words leaves to it. The same
+registers, flags, memory and cycles as `step ()`; `arm7test` runs 3000
+random programs both ways (`arm7test --bench --jit` its speed).
+`HR_ARM_JIT=0` interprets them again.
+
 
 Languages
 ---------
@@ -192,8 +282,15 @@ In the environment:
   (vcruntime's memcpy as `_NLG_Return2`). `HR_SAMPLE_AT=1` adds each
   address's offset, `HR_SAMPLE_TOP=n` shows n functions (48), and
   `HR_SAMPLE_DUMP=<dir>` writes the 40 busiest translated blocks' x86-64
-  code there (`block00.bin`...) with their samples by offset
-  (`block00.txt`, its first line the block's words), for a disassembler.
+  code there (`block0000.bin`...; `HR_SAMPLE_DUMP_N=n`, n of them) with
+  their samples by offset (`block0000.txt`, its first line the block's
+  words), for a disassembler. The translations' samples are summed by kind
+  of code too, as the translator marks it (`Sh4X64::mark ()`: a block's
+  entry and its instruction cache's lines, the loads' and stores' parts,
+  the ways out, the probe...). The NAOMI's drawing thread is sampled
+  apart; with `HR_PROFILE`, the NAOMI tells the GPU's time drawing a
+  frame, the drawing thread's time on one, the machine's waits for it and
+  the frames drawn into a texture (which it waits for whole).
 - `HR_EXIT_DUMPS=1` dumps all the machine's memories on the way out
   (`<game>-ram-m.bin` and the others, some 150 MB), in the working directory
   or the write directory's `<game>/`.
@@ -239,16 +336,52 @@ In the environment:
   divisions and powers are not the processor's to the last bit: a colour
   may come a step (1/255) off, a picture read back into the VRAM with it.
   Without a compute shader (OpenGL below 4.3) the processor lights them.
+  The graphics card transforms them too then (`HR_ELAN_GEOMETRY=0` leaves
+  that to the processor, the lighting alone to the card): a polygon list
+  goes to the scene as it came (`Elan::gpu_list`, `Scene::elan`: its words,
+  its matrices, projection and flags, its light set), after the processor's
+  near and far test of its box; its strips and fans make triangles of its
+  vertices' indices, six vertices reserved each in its batch
+  (`Holly::elan_slots`, `Batch::elan`: numbered after the scene's other
+  vertices, the background's, in the vertex buffer, `first_of`). Before the
+  scene is drawn, `BoardRenderer::elan_scene` runs `elan_points_src` (each
+  vertex in the view, on the screen, lit: `Elan::polygon_list`'s and
+  `light ()`, shared with `light_cs_src`) and `elan_triangles_src` (each
+  triangle cut along the near plane as `Elan::triangle`, left out behind
+  the eye or culled as `Holly::ta_triangle`, flat ones in their third
+  vertex's colours; its vertices, a second cut triangle's or ones that draw
+  nothing, written in the vertex buffer). The scene's greatest 1/W is the
+  lists' boxes' nearest (the depth's scale, a little wider than the
+  triangles'). Pictures against the processor's: a pixel a step off here
+  and there (the GPU's divisions; `precise` keeps the operations unfused);
+  Virtua Fighter 4 Evolution's Elan 1.4 ms a frame to 0.5.
 - A NAOMI frame without a scene for the screen (`BoardRenderer::take`,
   `draw_frame_now`) shows the last picture drawn for 3 frames, then the
   framebuffer the display reads in the VRAM (`read_vram`: what the
   processor drew there, the BIOS's screens); but on and on the picture
   drawn while the display reads a framebuffer one of the two last scenes
   for the screen was drawn to, its VRAM unchanged since
-  (`Holly::shows_rendered`: a hash of a word in four of a line in two at
-  the STARTRENDER and then): the board's drawings are not written in our
+  (`Holly::shows_rendered`): the board's drawings are not written in our
   VRAM. King of Route 66's loading screen, drawn every 14 frames, flickered
   black.
+- The NAOMI's VRAM is a write-watched memory (`hl::Buffer::create_watched`:
+  Windows' `MEM_WRITE_WATCH`, the processor's dirty bits, whoever writes:
+  the SH-4's direct stores, a DMA's memcpy, a state's load). At each
+  STARTRENDER `Holly::vram_track` gives the pages written since a new
+  generation; a texture kept is the same while none of its pages is newer
+  than the generation it was found the same at (`keep_textures`: it is
+  hashed only then), a framebuffer the display reads likewise
+  (`fb_since`). Some 8 pages a frame at Club Kart 2003's race. Elsewhere
+  than Windows, or if the watch fails, the hashes as before (`fb_hash`,
+  `texture_hash`). Not a section: fastmem leaves the VRAM to the page
+  table.
+- `HR_BOARD_TIMES=1` (NAOMI, several boards): each board's time running its
+  slices, the master's waiting for the others, each slice's slowest board
+  summed, the machine's frame, printed at the end, a frame's milliseconds
+  (two clock reads a slice and a board; HR_PROFILE's sections slow the
+  boards' threads down). F355 Challenge deluxe on four cores: the slaves
+  work the first two thirds of the frame, the slowest of them the frame's
+  path.
 - `HR_DISPLAY=<n>`: the window opens on SDL's display n (the log lists them
   at the start, `INDEX:n`), for runs kept off the monitor one works on; the
   window centred again stays on its monitor.
@@ -258,7 +391,10 @@ In the environment:
   number after the master's, `bufN` the devices' registers, then
   `hashed_extra ()`'s: the NAOMI link's memory). `HR_HASH_BLOCKS=<frame>[,...]`
   adds those frames' 64 KB blocks, `B <frame> <name> <offset> <hash>`: where
-  two runs differ. A frame some 25 ms slower on a three-board NAOMI; for
+  two runs differ. `HR_HASH_EVERY=<n>` hashes every n frames alone: the
+  hashes wait for the drawing's writes into the memories (a frame drawn to
+  a texture), which the machine otherwise waits for later, so a run hashed
+  at each frame never runs the ways it waits then. A frame some 25 ms slower on a three-board NAOMI; for
   `tools/regress.py` (below, "Regressions").
 - `MIE_SPEED` and `MIE_IDLE_SKIP=0`, see below.
 - `FFB_GAIN`, `FFB_INVERT`: the force feedback (see README.md);
@@ -320,7 +456,16 @@ Controls: the MIE and the JVS bus
 
 The games read the cabinet through the MIE (315-6146), whose Z80 runs a
 program the game puts in its RAM; that program drives the JVS bus, where the
-I/O boards hang in a chain. Hikaruloader runs that Z80 (`src/cpu/z80`, its
+I/O boards hang in a chain. On the NAOMI that program is simulated by
+default: its answers to the SH-4's Maple frames given in C++
+(`naomi-mie.cpp`, "The MIE Simulated": the commands, the JVS's requests
+repeated, the answers' formats, as `HR_LOG_MIE=1` shows them with the program
+run), the Z80 left idle; `MIE_PROGRAM = true` runs it, as below. Crazy
+Taxi's program, known by its hash, answers otherwise (13 and 17 swapped, no
+node in its answers). Simulated, a state keeps the simulation's own state in
+the Z80's RAM, behind a mark (the layout the same); a state loaded keeps the
+mode it was made with, the program run or simulated, until the game's reset. `HR_LOG_MIE=1` logs each Maple frame to the MIE
+and its answer, either way. Hikaruloader runs that Z80 (`src/cpu/z80`, its
 tests: `ctest -C RelWithDebInfo` in `build`), and emulates the bus and a Sega
 837-13551 I/O board on it (`src/hl/jvs.cpp`): Test (F2), Service (F1, 9), the
 coins (5, 6), Start (Enter), the arrows and four buttons, to bind in the
@@ -393,7 +538,14 @@ channel n at 2n), checked in the game's JVS TEST screen.
   out of 8. Eight runs at once from boot now give the same memories (RAM,
   VRAM, sound RAM of each board, the link's) for 1800 frames. Its side
   boards' frame behind the master (`Renderer::late_middle`) is the same with
-  either: not the threads'.
+  either: not the threads'. A slave reads the link's data port (G1_DATA, a
+  word a read) in a loop, F355 Challenge deluxe's 107000 times a frame (36
+  words a record, some 3000 records): the port is the SH-4's "hot" read
+  (`Sh4::hot_read`, `MultiboardPort::hot_read`), its translations' slow
+  ways and `sh4_read ()` calling `MultiboardPort::data_read` at once, past
+  the memory map's search and Holly's decoding (the same word, the same
+  offset moved on). Its slaves' work 6.3 ms a frame to 3.5-3.9 on four of
+  the development PC's cores, the frame 11 ms to 9.5.
 - A node of the ring that is its own next (`hl::RingLink`, `PORT_OUT` =
   `PORT_IN` on 127.0.0.1, a cabinet alone by default) opens no socket: what
   it sends is put back for its own `receive ()` at once (Gaelco's link at
@@ -472,6 +624,13 @@ channel n at 2n), checked in the game's JVS TEST screen.
   the tests, `HR_LOG_GUN=1` logs the positions read); command 70, Namco's
   board start (Mazan's sensors: `JvsDevice::maker_command`), as Flycast
   answers it, the FCB's channels 0 until it ends;
+- A program's own needs, in `data/games.json` too: `sh4_icache` `true`
+  models its SH-4s' instruction cache (8 KB of 32-byte lines, the code kept
+  as it was fetched while its line stays, `Sh4ICache`), for hikcheck, whose
+  RAM test writes over its own code without emptying the cache. The others
+  run without it: the code is the memory's, the translations' entries no
+  longer note their lines (6 to 8% of the time of Crazy Taxi, Spikers
+  Battle, Metal Slug 6). `HR_SH4_ICACHE=1` models it for all;
 - A cabinet's other hardware, in `data/games.json` too (a clone's is its
   parent's, `hl::Game`): `io_boards` `["837-13844"]` the racing cabinets' I/O
   board (Hikaru and NAOMI), `drive_board` the wheel's drive board on it
@@ -789,7 +948,8 @@ channel n at 2n), checked in the game's JVS TEST screen.
   whole turns are counted at once (its cycles and R too). The games' MIE
   program waits so for the SH-4's commands four fifths of its time; the MIE
   then takes a third of the time, the same frames. `MIE_IDLE_SKIP=0` in the
-  environment runs each instruction.
+  environment runs each instruction. The NAOMI's MIE does the same
+  (`naomi::Mie::run_z80`): about 1 ms of Club Kart 2003's race frame.
 
 
 Save states

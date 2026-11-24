@@ -442,12 +442,13 @@ stretched display mode, `SCALE_FILTER` is read as `SCALING_FILTER`, and
   with OpenGL 4.3 and no MSAA; off, or without them, each mesh is sorted as
   a whole, lighter for a weak graphics card. The Gaelco games' too (their
   chip sorts them so); off, each of their triangles is sorted whole.
-- *NAOMI 2 lighting* (`ELAN_LIGHTING`): the lights of the NAOMI 2 games
-  (Club Kart, Initial D, Virtua Fighter 4...) worked out by the processor
-  (CPU, on several of its cores, by default) or by the graphics card's
-  shaders (GPU, OpenGL 4.3), the processor then free for the rest: for a PC
-  whose processor slows these games while its graphics card has time to
-  spare. The colours may come a step off here and there.
+- *NAOMI 2 geometry and lighting* (formerly *NAOMI 2 lighting*,
+  `ELAN_LIGHTING`): the vertices of the NAOMI 2 games (Club Kart, Initial
+  D, Virtua Fighter 4...) put in the view, on the screen and lit by the
+  graphics card's shaders (GPU, by default; OpenGL 4.3, else the
+  processor), the processor then free for the rest, or by the processor
+  (CPU, the lights on several of its cores), as the board does. By the
+  graphics card a pixel or a colour may come a step off here and there.
 - *Widescreen 3D (16:9)*: the 3D is drawn at 854x480 and seen wider; its
   middle stays as the game draws it. The 2D (texts, logos) stays 4:3 in the
   middle, or is stretched to 16:9 for a game that needs it. The games were
@@ -548,6 +549,10 @@ front, 3 dB lower. Also the front/rear balance and the volume.
   The test menu's JVS TEST then shows the board's own answers. Test and
   Service go through that board, as on a cabinet, no longer through the
   main board's switches. Without the file, the simulation (the log says so).
+- *NAOMI's MIE running its program* (`MIE_PROGRAM`, off by default, at the
+  game's start): the NAOMI's MIE, between the Maple bus and the JVS, runs
+  its ROM and the program the game sends it on its Z80, as on the board,
+  instead of its simulation: slower, with the board's timings.
 - *Security chips* (`SECURITY_CHIPS`, off by default, at the game's start):
   the ROM board's X76F100 secure EEPROM and the main board's 93C46 answer
   from their images, `x76f100.ic85` and `93c46.ic115` (MAME's newer

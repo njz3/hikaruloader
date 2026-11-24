@@ -592,11 +592,11 @@ msgid "Graphics card (GPU)"
 msgstr ""
 
 #: src/ui/ui_common.cpp
-msgid "NAOMI 2 lighting"
+msgid "NAOMI 2 geometry and lighting"
 msgstr ""
 
 #: src/ui/ui_common.cpp
-msgid "The NAOMI 2's lights (Club Kart, Initial D, Virtua Fighter 4...): on the processor's cores, as the board lights, or by the graphics card's shaders, the processor free for the rest (OpenGL 4.3; a colour a step off here and there)."
+msgid "The NAOMI 2's vertices (Club Kart, Initial D, Virtua Fighter 4...): put in the view, on the screen and lit on the processor's cores, as the board does, or by the graphics card's shaders, the processor free for the rest (OpenGL 4.3; a pixel or a colour a step off here and there)."
 msgstr ""
 
 #: src/ui/ui_common.cpp
@@ -873,6 +873,14 @@ msgstr ""
 
 #: src/ui/ui_common.cpp
 msgid "The JVS I/O board's processor runs its program, as on the cabinet, instead of its simulation: 315-6215 (MAME's jvs13551 set), epr-21868 for NASCAR Arcade (the 18wheelr set); without the file, the simulation. Test and Service then go through that board, as a cabinet's."
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "NAOMI's MIE running its program"
+msgstr ""
+
+#: src/ui/ui_common.cpp
+msgid "The NAOMI's MIE (between the Maple bus and the JVS) runs its ROM and the program the game sends on its Z80, as on the board, instead of its simulation: slower, with the board's timings."
 msgstr ""
 
 #: src/ui/ui_common.cpp

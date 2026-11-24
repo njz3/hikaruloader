@@ -383,6 +383,7 @@ Game::create (GameList *game_list, const char *path, const char *name, const cha
 				game->io_boards.push_back (json_string_value (json_array_get (io_boards, k)));
 			if (json_is_integer (inherited ("io_players")))
 				game->io_players = (unsigned) json_integer_value (inherited ("io_players"));
+			game->sh4_icache = json_is_true (inherited ("sh4_icache"));
 			game->drive_board = text_of ("drive_board");
 			game->servo_board = text_of ("servo_board");
 			game->card_reader = text_of ("card_reader");

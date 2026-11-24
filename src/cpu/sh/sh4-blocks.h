@@ -94,11 +94,31 @@ public:
 	void			*native = NULL;
 	void			*native_body = NULL;
 	unsigned		 native_generation = 0;
+	/* Translated for code at a translated address under the MMU (see
+	 * Sh4::jit_virtual): right for any; one that is not, translated again
+	 * for such code */
+	bool			 native_virtual = false;
 	/* An instruction the machine patches: not translated */
 	bool			 patched = false;
-	/* A delay loop, "dt Rn; bf" back to its start: its translation takes
-	 * its turns at once (sh4-x64.cpp) */
+	/* A delay loop, "dt Rn; bf" back to its start, nops between allowed
+	 * ("dt Rn; nop; bf", Crazy Taxi's and Virtua Fighter 4's): its
+	 * translation takes its turns at once (sh4-x64.cpp); delay_len its
+	 * instructions a turn */
 	bool			 delay_loop = false;
+	uint8_t			 delay_len = 2;
+	/* A delay loop on a word in memory, its first six instructions (the
+	 * compilers' "while (n--)" on a volatile n), back to its start: its
+	 * translation takes its turns but the last at once (sh4-x64.cpp,
+	 * memory_loop ()). MEM_LOOP_STACK: "mov.l @(d,r15),Rx; add #-1,Rx;
+	 * mov.l Rx,@(d,r15); add #1,Rx; tst Rx,Rx; bf"; MEM_LOOP_EQ:
+	 * "mov.l @Rp,Rx; add #-1,Rx; mov.l Rx,@Rp; mov.l @Rp,R0; cmp/eq #-1,R0;
+	 * bf"; MEM_LOOP_PL: "mov.l @(disp,PC),Rp; mov.l @Rp,Rx; cmp/pl Rx;
+	 * add #-1,Rx; bt/s; mov.l Rx,@Rp". mem_reg is Rp (r15 for the stack's),
+	 * mem_disp the word's offset from it */
+	enum { MEM_LOOP_NONE, MEM_LOOP_STACK, MEM_LOOP_EQ, MEM_LOOP_PL };
+	uint8_t			 mem_loop = MEM_LOOP_NONE;
+	uint8_t			 mem_reg = 0;
+	uint8_t			 mem_disp = 0;
 	/* A wait on memory, "load; compare; bt or bf" back to its start: its
 	 * translation's way back takes the slice's other turns off
 	 * (sh4_poll_skip ()) */
@@ -106,6 +126,10 @@ public:
 	/* Its way back's turns the idle loops let be, gone on without their
 	 * look (its translation counts them down) */
 	int32_t			 quiet = 0;
+	/* Its way back closes a loop whose turns the idle loops simulate
+	 * (sh4.cpp, "Idle Loops Simulated"): its translation ends a turn that
+	 * stored at sh4_chain () all the same, for their look */
+	uint8_t			 simulated = 0;
 	/* In the CPU's own RAM or ROM: compared once an epoch, the last one
 	 * checked */
 	bool			 checkable = false;
@@ -149,7 +173,15 @@ public:
 
 	uint32_t		 tags[NUM_LINES];
 	bool			 held[NUM_LINES];
+	/* The lines a block runs from while its memory was rewritten (stale,
+	 * Sh4BlockCache::fresh ()): their replacement looks at the blocks again
+	 * (a new epoch); the others' changes nothing (their code the memory's).
+	 * Cleared at each epoch. Each line replaced started one before, Virtua
+	 * Fighter 4 Evolution's 2.7 a frame, its blocks all compared again */
+	bool			 stale[NUM_LINES];
 	uint16_t		 data[NUM_LINES][LINE_WORDS];
+	/* HR_PROFILE: the lines fetched */
+	uint64_t		 fetched = 0;
 
 	static unsigned		 index (uint32_t addr) { return (addr >> LINE_BITS) & (NUM_LINES - 1); }
 	static uint32_t		 tag (uint32_t addr) { return (addr & 0x1FFFFFFF) >> LINE_BITS; }
@@ -158,6 +190,7 @@ public:
 		for (unsigned i = 0; i < NUM_LINES; i++) {
 			tags[i] = NONE;
 			held[i] = false;
+			stale[i] = false;
 		}
 	}
 	bool			 present (uint32_t addr) const
@@ -202,13 +235,15 @@ public:
 	/* The instruction cache emptied (CCR.ICI, a line invalidated): the
 	 * code is the memory's again */
 	void			 icache_changed () { new_epoch (); }
-	/* A line replaced: a block that ran from a line gone (its memory
+	/* The line at index replaced: a block that ran from it (its memory
 	 * rewritten meanwhile) looked at again */
-	void			 line_replaced ()
+	void			 line_replaced (unsigned index)
 	{
-		if (held_epoch == epoch)
+		if (held_epoch == epoch && icache.stale[index])
 			new_epoch ();
 	}
+	/* For the translations' fetches (sh4-x64.cpp) */
+	const uint32_t		*held_epoch_at () const { return &held_epoch; }
 
 	/* Code epochs (above). The CPU's own RAM or ROM, from lo to hi (29
 	 * bits): where nothing writes but the CPU and what the machine tells
@@ -223,6 +258,10 @@ public:
 	static const unsigned STAMP_BITS = 8;
 	uint32_t		*stamps () const { return page_epochs.get (); }
 	void			 new_epoch ();
+	/* len bytes from addr written by a device (a DMA): a new epoch when
+	 * they fall on code compared in this one, as the CPU's stores; a
+	 * watched page's told */
+	void			 written_range (uint32_t addr, uint32_t len);
 	/* A write of size bytes at addr: a new epoch when it falls on code
 	 * compared in this one; a watched page's told */
 	void			 written (uint32_t addr, unsigned size)
@@ -255,6 +294,7 @@ private:
 	std::unique_ptr<Page>	 pages[NUM_PAGES];
 	unsigned		 num_decoded = 0;
 	std::unique_ptr<uint32_t[]> page_epochs { new uint32_t[NUM_STAMPS] () };
+
 	uint32_t		 own_lo[4], own_hi[4];
 	unsigned		 num_own = 0;
 	/* The pages watched, those told since rearm () */
@@ -290,6 +330,10 @@ Sh4Handler	 sh4_handler (uint16_t inst);
 bool		 sh4_may_branch (uint16_t inst);
 /* The lines of the block at pc, up to the byte at last, fetched (sh4.cpp) */
 void		 sh4_icache_fill (Sh4 *ctx, uint32_t pc, uint32_t last);
+/* A line replaced by a translation's own fetch (Sh4BlockCache::line_replaced ()) */
+void		 sh4_icache_replaced (Sh4 *ctx, unsigned index);
+/* CCR in the on-chip registers, LE32: ICE its bit 8 */
+const uint32_t	*sh4_ccr_at (Sh4 *ctx);
 /* A 32-bit load and store as the handlers make them (sh4.cpp): on-chip
  * registers, store queues, the memory map, the stores counted, the write
  * hooks: the translations' way when they cannot go straight */

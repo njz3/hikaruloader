@@ -171,6 +171,17 @@ normalize3 (float *v)
 	}
 }
 
+/* A normal's signed byte over 127, by its byte: the division made once */
+static const struct NormalUnits {
+	float v[256];
+	NormalUnits ()
+	{
+		for (unsigned i = 0; i < 256; i++)
+			v[i] = (float) (int8_t) i / 127.0f;
+	}
+	float operator[] (unsigned i) const { return v[i]; }
+} normal_units;
+
 /* The 12 bits of a light's axis, the top 8 in the light's word, the low 4 in
  * its command */
 static inline float
@@ -199,6 +210,7 @@ struct Elan::Transformed {
 };
 
 std::atomic<bool> gpu_lighting { false };
+std::atomic<bool> gpu_geometry { false };
 
 Elan::Elan (Board *board_, hl::Buffer *ram_) :
 	hl::Device (board_->machine),
@@ -390,6 +402,7 @@ Elan::update_matrix ()
 
 		memcpy (matrix, view, sizeof (matrix));
 		memcpy (normal_matrix, normals, sizeof (normal_matrix));
+		columns ();
 		env_u = env_v = 0.0f;
 		return;
 	}
@@ -411,6 +424,22 @@ Elan::update_matrix ()
 	far_plane = to_float (w[38]);
 	env_u = to_float (w[9]);
 	env_v = to_float (w[19]);
+	columns ();
+}
+
+void
+Elan::columns ()
+{
+	for (unsigned c = 0; c < 4; c++) {
+		for (unsigned r = 0; r < 3; r++)
+			matrix_cols[c][r] = matrix[r * 4 + c];
+		matrix_cols[c][3] = 0.0f;
+	}
+	for (unsigned c = 0; c < 3; c++) {
+		for (unsigned r = 0; r < 3; r++)
+			normal_cols[c][r] = normal_matrix[r * 3 + c];
+		normal_cols[c][3] = 0.0f;
+	}
 }
 
 void
@@ -793,6 +822,10 @@ struct Elan::Workers {
 
 Elan::~Elan ()
 {
+	if (hl::Profile::enabled && prof_kicks)
+		HL_PRINT ("elan: %llu kicks at depth 0, %llu polygon lists (%.1f a kick), %llu vertices (%.1f a list)",
+		          (unsigned long long) prof_kicks, (unsigned long long) prof_lists, (double) prof_lists / prof_kicks,
+		          (unsigned long long) prof_vertices, prof_lists ? (double) prof_vertices / prof_lists : 0.0);
 }
 
 void
@@ -959,14 +992,23 @@ void
 Elan::project (Transformed &v) const
 {
 	float z = v.pos[2];
+	/* fx x / z, -fy y / z and -1 / z a lane each: the same divisions */
+	const __m128 q = _mm_div_ps (_mm_setr_ps (s.proj[0] * v.pos[0], -s.proj[2] * v.pos[1], -1.0f, 1.0f),
+	                             _mm_setr_ps (z, z, z, 1.0f));
+	float t[4];
 
-	v.screen.x = s.proj[0] * v.pos[0] / z + s.proj[1];
-	v.screen.y = -s.proj[2] * v.pos[1] / z + s.proj[3];
-	v.screen.z = z != 0.0f ? -1.0f / z : 0.0f;
+	_mm_storeu_ps (t, q);
+	v.screen.x = t[0] + s.proj[1];
+	v.screen.y = t[1] + s.proj[3];
+	v.screen.z = z != 0.0f ? t[2] : 0.0f;
 	v.screen.u = v.u;
 	v.screen.v = v.v;
-	v.screen.base = pack (v.base);
-	v.screen.offset = pack (v.offset);
+	/* A vertex lit later has its colours put in the scene then
+	 * (flush_lighting ()): these would be overwritten */
+	if (v.ref == -1) {
+		v.screen.base = pack (v.base);
+		v.screen.offset = pack (v.offset);
+	}
 }
 
 /* Where the edge from a to b, a inside, crosses the near plane */
@@ -1076,33 +1118,45 @@ vertex_words (uint32_t flags)
 void
 Elan::view_position (const uint32_t *w, float *out) const
 {
-	float x = to_float (w[1]), y = to_float (w[2]), z = to_float (w[3]);
+	/* Each row m0 x + m1 y + m2 z + m3, a lane each, in that order */
+	const __m128 x = _mm_set1_ps (to_float (w[1])), y = _mm_set1_ps (to_float (w[2])), z = _mm_set1_ps (to_float (w[3]));
+	const __m128 r = _mm_add_ps (_mm_add_ps (_mm_add_ps (_mm_mul_ps (_mm_loadu_ps (matrix_cols[0]), x),
+	                                                     _mm_mul_ps (_mm_loadu_ps (matrix_cols[1]), y)),
+	                                         _mm_mul_ps (_mm_loadu_ps (matrix_cols[2]), z)),
+	                             _mm_loadu_ps (matrix_cols[3]));
+	float t[4];
 
-	out[0] = matrix[0] * x + matrix[1] * y + matrix[2] * z + matrix[3];
-	out[1] = matrix[4] * x + matrix[5] * y + matrix[6] * z + matrix[7];
-	out[2] = matrix[8] * x + matrix[9] * y + matrix[10] * z + matrix[11];
+	_mm_storeu_ps (t, r);
+	out[0] = t[0];
+	out[1] = t[1];
+	out[2] = t[2];
 }
 
 /* False when the list is wholly out of the near and far planes; clip, when it
  * crosses the near one */
 bool
-Elan::in_depth_range (const uint32_t *w, uint32_t count, unsigned words, bool *clip) const
+Elan::in_depth_range (const uint32_t *w, uint32_t count, unsigned words, bool *clip, float *nearest) const
 {
 	float lo = 1e38f, hi = -1e38f, low[3], high[3], extent, center;
 	uint32_t i;
-	unsigned c;
 
-	for (c = 0; c < 3; c++) {
-		low[c] = 1e38f;
-		high[c] = -1e38f;
-	}
-	for (i = 0; i < count; i++, w += words) {
-		for (c = 0; c < 3; c++) {
-			float p = to_float (w[c + 1]);
+	{
+		/* The three at once: _mm_min_ps (p, low) is std::min (low, p),
+		 * _mm_max_ps (p, high) std::max (high, p), NaNs alike */
+		__m128 lo4 = _mm_set1_ps (1e38f), hi4 = _mm_set1_ps (-1e38f);
+		float t[4];
 
-			low[c] = std::min (low[c], p);
-			high[c] = std::max (high[c], p);
+		for (i = 0; i < count; i++, w += words) {
+			const __m128 p = _mm_movelh_ps (_mm_castpd_ps (_mm_load_sd ((const double *) (w + 1))),
+			                                _mm_load_ss ((const float *) (w + 3)));
+
+			lo4 = _mm_min_ps (p, lo4);
+			hi4 = _mm_max_ps (p, hi4);
 		}
+		_mm_storeu_ps (t, lo4);
+		memcpy (low, t, sizeof (low));
+		_mm_storeu_ps (t, hi4);
+		memcpy (high, t, sizeof (high));
 	}
 	/* The depth of the box the list lies in */
 	center = matrix[8] * (low[0] + high[0]) * 0.5f + matrix[9] * (low[1] + high[1]) * 0.5f +
@@ -1116,6 +1170,8 @@ Elan::in_depth_range (const uint32_t *w, uint32_t count, unsigned words, bool *c
 	if (lo > -near_plane || hi < -far_plane)
 		return false;
 	*clip = hi > -near_plane;
+	if (nearest)
+		*nearest = hi;
 	return true;
 }
 
@@ -1213,6 +1269,7 @@ Elan::polygon_list (const uint32_t *ich)
 	unsigned words = vertex_words (flags);
 	bool textured, offset = (pcw >> 2) & 1, gouraud = (pcw >> 1) & 1, shadow = (pcw >> 7) & 1;
 	bool env0 = false, env_any = false, constant = false, clip = false, bump, has_uv, has_rgb;
+	float nearest = 0.0f;
 	unsigned uv_at = 4, rgb_at = 4;
 
 	/* Not one the chip's lists are known to use */
@@ -1234,7 +1291,7 @@ Elan::polygon_list (const uint32_t *ich)
 			return;
 		}
 	}
-	if (!in_depth_range (w, count, words, &clip))
+	if (!in_depth_range (w, count, words, &clip, &nearest))
 		return;
 
 	textured = has_uv && ((pcw >> 3) & 1);
@@ -1271,11 +1328,39 @@ Elan::polygon_list (const uint32_t *ich)
 	}
 
 	list_gouraud = gouraud;
-	Transformed center = {}, p = {}, q = {}, v = {};
+	/* The graphics card transforming, lighting, cutting and culling them:
+	 * the list as it is, its triangles (gpu_list ()) */
+	{
+		static const bool geometry = hl_util_get_bool_option ("HR_ELAN_GEOMETRY", true);
+
+		if (geometry && hl::Config::get ()->elan_lighting == hl::ELAN_LIGHTING_GPU && gpu_geometry.load ()) {
+			typedef GpuElanList G;
+			const uint32_t f = (has_uv ? G::UV : 0) | (has_rgb ? G::RGB : 0) | (env_any ? G::ENV_ANY : 0) |
+			                   (env0 ? G::ENV0 : 0) | (bump ? G::BUMP : 0) | (constant ? G::CONSTANT : 0) |
+			                   (textured ? G::TEXTURED : 0) | ((gmp_params & GMP_D0) ? G::GMP_D0 : 0) |
+			                   ((gmp_params & GMP_S0) ? G::GMP_S0 : 0) | (clip ? G::CLIP : 0);
+
+			gpu_list (w, count, words, f | (rgb_at << 16), isp, clip, nearest);
+			return;
+		}
+	}
+	/* The last two vertices and this one, turned around by pointers: two
+	 * copies of 88 bytes a vertex, 10 MB a frame at Club Kart's start */
+	Transformed center = {}, slots[3] = {};
+	Transformed *p = &slots[0], *q = &slots[1], *vp = &slots[2];
 	unsigned n = 0;
 	bool start = true, odd = false;
 
+	auto turn = [&] () {
+		Transformed *t = p;
+
+		p = q;
+		q = vp;
+		vp = t;
+	};
+
 	for (i = 0; i < count; i++, w += words) {
+		Transformed &v = *vp;
 		uint32_t header = w[0];
 		float normal[3], in_n[3], base_in[4] = { 1, 1, 1, 1 };
 		unsigned c;
@@ -1298,13 +1383,25 @@ Elan::polygon_list (const uint32_t *ich)
 		if (gmp_params & GMP_S0)
 			memcpy (v.offset, gmp_specular, sizeof (v.offset));
 
-		in_n[0] = (float) (int8_t) header / 127.0f;
-		in_n[1] = (float) (int8_t) (header >> 8) / 127.0f;
-		in_n[2] = (float) (int8_t) (header >> 16) / 127.0f;
-		for (c = 0; c < 3; c++)
-			normal[c] = normal_matrix[c * 3] * in_n[0] + normal_matrix[c * 3 + 1] * in_n[1] +
-			            normal_matrix[c * 3 + 2] * in_n[2];
-		normalize3 (normal);
+		in_n[0] = normal_units[header & 255];
+		in_n[1] = normal_units[(header >> 8) & 255];
+		in_n[2] = normal_units[(header >> 16) & 255];
+		{
+			/* Each row's sum a lane, in the row's order; then divided
+			 * by the length, the three at once (normalize3 ()) */
+			__m128 n = _mm_add_ps (_mm_add_ps (_mm_mul_ps (_mm_loadu_ps (normal_cols[0]), _mm_set1_ps (in_n[0])),
+			                                   _mm_mul_ps (_mm_loadu_ps (normal_cols[1]), _mm_set1_ps (in_n[1]))),
+			                       _mm_mul_ps (_mm_loadu_ps (normal_cols[2]), _mm_set1_ps (in_n[2])));
+			float t[4], len;
+
+			_mm_storeu_ps (t, n);
+			len = sqrtf (dot3 (t, t));
+			if (len > 0.0f)
+				_mm_storeu_ps (t, _mm_div_ps (n, _mm_set1_ps (len)));
+			normal[0] = t[0];
+			normal[1] = t[1];
+			normal[2] = t[2];
+		}
 
 		if (bump)
 			memset (v.offset, 0, sizeof (v.offset));
@@ -1337,33 +1434,145 @@ Elan::polygon_list (const uint32_t *ich)
 		}
 		if (n >= 1 && !((header >> 29) & 1) && ((header >> 30) & 1)) {
 			/* A fan's: around the first vertex */
-			triangle (center, q, v, clip);
-			p = q;
-			q = v;
+			triangle (center, *q, v, clip);
+			turn ();
 			odd = true;
 		} else {
 			if (n >= 2) {
 				if (odd) {
 					/* Flat shading: the last vertex's colour */
-					Transformed last = q;
+					Transformed last = *q;
 
 					if (!gouraud) {
 						last.screen.base = v.screen.base;
 						last.screen.offset = v.screen.offset;
 						last.ref = v.ref;
 					}
-					triangle (p, v, last, clip);
+					triangle (*p, v, last, clip);
 				} else
-					triangle (p, q, v, clip);
+					triangle (*p, *q, v, clip);
 				odd = !odd;
 			}
-			p = q;
-			q = v;
+			turn ();
 		}
 		n++;
 		if (header >> 31)
 			start = true;
 	}
+}
+
+/* polygon_list ()'s with the graphics card transforming the vertices: the
+ * list's words, matrices and flags (flags' top half: its colour's word in a
+ * vertex) to the scene (SceneElan), its triangles as the strips and fans make
+ * them, six vertices each in the polygon's batch; the scene's greatest 1/W
+ * from the list's box (the triangles' own are the card's) */
+void
+Elan::gpu_list (const uint32_t *w, uint32_t count, unsigned words, uint32_t flags, uint32_t isp, bool clip,
+                float nearest)
+{
+	Holly *holly = board->holly;
+	Scene *scene = holly->elan_scene ().get ();
+	SceneElan &g = scene->elan;
+	const uint32_t list = (uint32_t) g.lists.size (), vertex = (uint32_t) g.list_of.size ();
+	const bool gouraud = (isp >> 23) & 1;
+	uint32_t i, p = 0, q = 0, center = 0, n = 0;
+	bool start = true, odd = false;
+
+	try {
+		GpuElanList l = {};
+		unsigned r, c;
+
+		memcpy (l.matrix, matrix, sizeof (l.matrix));
+		for (r = 0; r < 3; r++)
+			for (c = 0; c < 3; c++)
+				l.normals[r * 4 + c] = normal_matrix[r * 3 + c];
+		memcpy (l.proj, s.proj, sizeof (l.proj));
+		l.env_u = env_u;
+		l.env_v = env_v;
+		l.near_plane = near_plane;
+		l.cull = to_float (holly->elan_cull ());
+		memcpy (l.gmp_diffuse, gmp_diffuse, sizeof (l.gmp_diffuse));
+		memcpy (l.gmp_specular, gmp_specular, sizeof (l.gmp_specular));
+		l.first = (uint32_t) g.words.size ();
+		l.words = words;
+		l.uv_at = 4;
+		l.rgb_at = flags >> 16;
+		l.flags = flags & 0xFFFF;
+		l.isp = isp;
+		l.vertex = vertex;
+		l.set = (flags & (GpuElanList::BUMP | GpuElanList::CONSTANT)) ? 0 : gpu_light_set (scene);
+		g.lists.push_back (l);
+		g.words.insert (g.words.end (), w, w + (size_t) count * words);
+		g.list_of.insert (g.list_of.end (), count, list);
+	} catch (const std::bad_alloc &) {
+		HL_ERROR_FEW ("elan: no memory left (another program took it?): a list dropped");
+		return;
+	}
+
+	auto triangle = [&] (uint32_t a, uint32_t b, uint32_t c, uint32_t c_color) {
+		int at = holly->elan_slots (6);
+
+		if (at < 0)
+			return;
+		try {
+			g.triangles.push_back ({ a, b, c, c_color, (uint32_t) at, { 0, 0, 0 } });
+		} catch (const std::bad_alloc &) {
+		}
+	};
+	/* As polygon_list () turns its three vertices around: p and q the
+	 * two before this one */
+	for (i = 0; i < count; i++) {
+		const uint32_t v = vertex + i, header = w[(size_t) i * words];
+
+		if (start) {
+			center = v;
+			n = 0;
+			odd = false;
+			start = false;
+		}
+		if (n >= 1 && !((header >> 29) & 1) && ((header >> 30) & 1)) {
+			/* A fan's: around the first vertex */
+			triangle (center, q, v, v);
+			odd = true;
+		} else if (n >= 2) {
+			/* Flat shading: the last vertex's colours */
+			if (odd)
+				triangle (p, v, q, gouraud ? q : v);
+			else
+				triangle (p, q, v, v);
+			odd = !odd;
+		}
+		p = q;
+		q = v;
+		n++;
+		if (header >> 31)
+			start = true;
+	}
+
+	/* The nearest any of them can be, as Holly::ta_triangle () keeps the
+	 * greatest 1/W */
+	{
+		const float d = clip ? near_plane : -nearest;
+
+		if (d > 0.0f && std::isfinite (1.0f / d))
+			scene->max_z = std::max (scene->max_z, 1.0f / d);
+	}
+}
+
+/* The light set of the list's vertices in the scene (SceneElan::sets): the
+ * last one again while neither changes */
+uint32_t
+Elan::gpu_light_set (Scene *scene)
+{
+	std::vector<GpuLightSet> &kept = scene->elan.sets;
+
+	if (kept.empty () || gpu_set_scene != scene || gpu_set_changes != ls_changes) {
+		kept.emplace_back ();
+		gpu_set (ls, kept.back ());
+		gpu_set_scene = scene;
+		gpu_set_changes = ls_changes;
+	}
+	return (uint32_t) kept.size () - 1;
 }
 
 /*
@@ -1381,6 +1590,8 @@ Elan::fail ()
 bool
 Elan::run (const uint8_t *data, int64_t size, unsigned depth)
 {
+	if (!depth)
+		prof_kicks++;
 	Holly *holly = board->holly;
 	const uint8_t *limit = (data >= ram_base && data < ram_base + RAM_SIZE) ? ram_base + RAM_SIZE :
 	                       (const uint8_t *) s.cmd + sizeof (s.cmd);
@@ -1431,8 +1642,11 @@ Elan::run (const uint8_t *data, int64_t size, unsigned depth)
 			used = 32 + (uint64_t) words * 4 * w[7];
 			if (used > (uint64_t) (limit - data))
 				return fail ();
-			if (words)
+			if (words) {
+				prof_lists++;
+				prof_vertices += w[7];
 				polygon_list (w);
+			}
 			break;
 		}
 		case CMD_MODEL: {
@@ -1496,6 +1710,8 @@ Elan::run (const uint8_t *data, int64_t size, unsigned depth)
 					bytes = std::min (bytes, RAM_SIZE - from);
 					source = ram_base + from;
 				}
+				if (holly->vram_sync)
+					holly->vram_sync (to, bytes);
 				memcpy (holly->vram->ptr (to), source, bytes);
 				s.dma_lines = dma_duration (bytes);
 			} else {

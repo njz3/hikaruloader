@@ -259,6 +259,38 @@ public:
 	bool	mmu_exact = false;
 	/* The machine's word that its program never faults under the MMU */
 	bool	mmu_trusted = false;
+	/* The instruction cache modelled (Sh4ICache: code kept as fetched while
+	 * its line stays), else the code is the memory's: for the games that
+	 * ask for it (games.json "sh4_icache", the machine's word), for all
+	 * with HR_SH4_ICACHE=1. Set before the first block runs */
+	bool	icache_on = false;
+	/* A device's register a program reads again and again (the multiboard
+	 * link's data port: 100000 times a frame by F355 Challenge's slaves):
+	 * its value from hot_read at once, past the memory map's search and the
+	 * device's decoding (the same value, the same effects), the MMU off;
+	 * the translations' slow ways call it themselves. Its 29-bit address,
+	 * ~0 for none. Set before the first block is translated */
+	uint32_t hot_read_addr = ~0u;
+	uint32_t (*hot_read) (void *obj) = nullptr;
+	void	*hot_read_obj = nullptr;
+	/* Under the MMU, the code in P1 and P2 run privileged by the blocks
+	 * and their translations as without it (see "MMU"); HR_SH4_MMU_JIT=0
+	 * leaves it all to the interpreter. The instruction a translation runs
+	 * when it calls out (its index in its block), for an exception's
+	 * cycles */
+	bool	mmu_blocks = true;
+	uint32_t	jit_index = 0;
+	/* Under the MMU, code at translated addresses (U0, P3) run by the
+	 * translations too, its block found by its fetch's physical address:
+	 * jit_virtual while one is translated for it (no literal read at the
+	 * translation: the TLB counts each access); mmu_gen moved by whatever
+	 * changes a fetch's translation (the TLBs, PTEH's ASID, MMUCR, SR.MD),
+	 * such a translation left once it differs from mmu_gen_entry */
+	bool	jit_virtual = false;
+	uint32_t	mmu_gen = 0, mmu_gen_entry = 0;
+	/* The translations' tables, read through ctx (7 bytes an access, an
+	 * immediate's 10): the page tables (read, write), the code stamps */
+	const void	*jit_tables[3] = {};
 	/* The delay slot run (in_slot): its address, for the exceptions */
 	uint32_t	slot_pc;
 	/* What the SCIF sent since the last line, for the log */
@@ -373,7 +405,7 @@ public:
 	 * slice, nothing else running meanwhile. See sh4.cpp */
 	class IdleLoop {
 	public:
-		static const unsigned MAX_PATH = 24;
+		static const unsigned MAX_PATH = 128;
 		/* How far back a loop's branch may go, in bytes: its path may
 		 * skip a body (VON4's 0C711ABE, 58 bytes for 9 instructions) */
 		static const unsigned MAX_SPAN = 256;
@@ -425,6 +457,22 @@ public:
 		}
 		/* The turns watches () would let go yet, handed over to the
 		 * translation (Sh4Block::quiet): the next one looked at */
+		/* The loop from tail_ back to head_ has its turns simulated
+		 * (run_forward_simulated ()): looked at though it stores */
+		bool		 simulates (uint32_t tail_, uint32_t head_)
+		{
+			Known &k = known_of (tail_, head_);
+
+			return k.tail == tail_ && k.head == head_ && k.simulated;
+		}
+		/* For HR_PROFILE: the turns simulated, taken at once; the
+		 * translations whose way back closes such a loop */
+		uint64_t	 sim_turns = 0, sim_runs = 0, sim_taken = 0;
+		/* Turns simulated since the last block told (tell_block ()) */
+		bool		 sim_new = false;
+		unsigned	 sim_blocks = 0;
+		/* HR_SH4_IDLE_SIM=0 turns the simulations off */
+		bool		 enabled_sim = true;
 		int		 hand_over (uint32_t tail_, uint32_t head_)
 		{
 			Known &k = known_of (tail_, head_);
@@ -467,12 +515,28 @@ public:
 			uint32_t plan_epoch = 0;
 			/* Started since a turn closed (back_edge ()) */
 			unsigned opened = 0;
+			/* Its turns simulated (it stores): run forward so
+			 * before; the simulations failed since */
+			bool	 simulated = false;
+			unsigned sim_fails = 0;
+			/* The block its translation's way back is in, told
+			 * (Sh4Block::simulated) */
+			uint32_t sim_pc0 = ~0u;
 		} known[64];
 		Known		&known_of (uint32_t t, uint32_t h)
 		{
 			return known[((t >> 1) * 0x9E3779B1u ^ (h >> 1) * 0x85EBCA6Bu) >> 26];
 		}
 		void		 let_be (uint32_t t, uint32_t h);
+		/* A loop no longer simulated: its block told, the entry
+		 * cleared */
+		void		 forget (Known &k);
+	public:
+		/* The loop from tail_ back to head_ simulated, its way back
+		 * in the block at pc0: told (Sh4Block::simulated) */
+		void		 tell_block (uint32_t pc0, uint32_t tail_, uint32_t head_);
+		Sh4		*owner = NULL;
+	private:
 
 		uint32_t	 head = 0, tail = ~0u;
 		bool		 tracking = false;
@@ -503,6 +567,8 @@ public:
 
 		void		 start (Sh4 *ctx, uint32_t tail, uint32_t head);
 		int		 run_forward (Sh4 *ctx, const Known *known_turn, Plan *plan);
+		int		 run_forward_simulated (Sh4 *ctx, const uint32_t *turn, unsigned turn_length);
+		bool		 simulate (Sh4 *ctx, Known &k, uint32_t t, uint32_t h);
 	} idle;
 
 	/* A translation's end going straight on to the next block's
@@ -522,8 +588,9 @@ public:
 		uint64_t	 stores = 0;
 		int		 before = 0;
 		unsigned	 links = 0;
-		/* For HR_PROFILE: the translations' ends, those gone on */
-		uint64_t	 ends = 0, gone = 0;
+		/* For HR_PROFILE: the translations' ends, those gone on; the
+		 * calls to sh4_chain (), those that went on */
+		uint64_t	 ends = 0, gone = 0, calls = 0, calls_gone = 0;
 	} chain;
 	/* A jump's target, kept across its delay slot by its translation
 	 * (sh4-x64.cpp) */

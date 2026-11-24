@@ -347,6 +347,9 @@ public:
 	 * JVS I/O board's CPU running its own program (315-6215, epr-21868)
 	 * instead of its simulation (hl/ioboard.h) */
 	bool		io_board_program;
+	/* The NAOMI's MIE (315-6146) running its ROM and the program the game
+	 * sends on its Z80, as on the board, instead of its simulation */
+	bool		mie_program;
 	/* The security chips answering as the boards' do: the ROM board's
 	 * X76F100 and the main board's 93C46 from their images, SGNASCAR's
 	 * Actel FPGA as the chip (hikaru-memctl.cpp) */

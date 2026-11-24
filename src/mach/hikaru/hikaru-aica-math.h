@@ -20,6 +20,9 @@
 #define __HL_HIKARU_AICA_MATH_H__
 
 #include <stdint.h>
+#ifdef _MSC_VER
+#include <intrin.h>
+#endif
 
 #include <algorithm>
 
@@ -47,11 +50,21 @@ static inline uint16_t
 aica_dsp_pack (int32_t val)
 {
 	uint32_t sign = (val >> 23) & 1, temp = ((uint32_t) val ^ ((uint32_t) val << 1)) & 0xFFFFFF;
-	uint32_t exponent = 0;
+	uint32_t exponent = 12;
 
-	while (!(temp & 0x800000) && exponent < 12) {
-		exponent++;
-		temp <<= 1;
+	/* The leading bits like the sign: the zeros above temp's top bit, 12
+	 * at most (a loop of 12 turns before, a twelfth of the DSP's time) */
+	if (temp) {
+#ifdef _MSC_VER
+		unsigned long top;
+
+		_BitScanReverse (&top, temp);
+#else
+		const unsigned top = 31u - (unsigned) __builtin_clz (temp);
+#endif
+		exponent = 23u - (uint32_t) top;
+		if (exponent > 12)
+			exponent = 12;
 	}
 	if (exponent < 12)
 		val = (int32_t) (((uint32_t) val << exponent) & 0x3FFFFF);

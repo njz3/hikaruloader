@@ -127,6 +127,11 @@ public:
 	bool net_dimm = false;
 	/* A motion cabinet whose PC the Net DIMM talks to (games.json "motion_pc") */
 	bool motion_pc = false;
+	/* Its SH-4s' instruction cache modelled (games.json "sh4_icache", a
+	 * clone's its parent's): a program that runs code it wrote over
+	 * without emptying the cache (hikcheck's RAM test); the others without
+	 * it, faster (Sh4::icache_on) */
+	bool sh4_icache = false;
 	/* The JVS I/O boards of its cabinet (games.json "io_boards"), the one
 	 * nearest the main board first, by their Sega numbers; none listed: the
 	 * machine's usual board */

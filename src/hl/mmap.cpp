@@ -55,7 +55,17 @@ Mmap::add (uint32_t lo, uint32_t hi, uint32_t mask, uint32_t flags,
 	HL_ASSERT (buf != NULL || dev != NULL);
 	HL_ASSERT (name != NULL);
 
-	regions.push_back (Region { lo, hi, mask, flags, buf, dev, name });
+	Region r { lo, hi, mask, flags, buf, dev, name, true, true };
+
+	for (const Region &e : regions)
+		if (e.lo <= hi && lo <= e.hi) {
+			if (e.flags & HL_REGION_R)
+				r.first_r = false;
+			if (e.flags & HL_REGION_W)
+				r.first_w = false;
+		}
+	regions.push_back (r);
+	last_r = last_w = NULL;
 	if (use_pages)
 		set_page_table (true);
 	if (fast_base)
@@ -231,16 +241,16 @@ Mmap::set_page_table (bool on)
 void
 Mmap::make_wide () const
 {
-	const size_t size = sizeof (uint8_t *) << (32 - PAGE_BITS);
+	const size_t size = sizeof (intptr_t) << (32 - PAGE_BITS);
 
 	if (wide_read)
 		return;
 #ifdef _WIN32
-	wide_read = (uint8_t **) VirtualAlloc (NULL, size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
-	wide_write = (uint8_t **) VirtualAlloc (NULL, size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+	wide_read = (intptr_t *) VirtualAlloc (NULL, size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+	wide_write = (intptr_t *) VirtualAlloc (NULL, size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
 #else
-	wide_read = (uint8_t **) calloc (1, size);
-	wide_write = (uint8_t **) calloc (1, size);
+	wide_read = (intptr_t *) calloc (1, size);
+	wide_write = (intptr_t *) calloc (1, size);
 #endif
 	if (!wide_read || !wide_write)
 		HL_ABORT ("out of memory for the page tables");
@@ -259,10 +269,58 @@ Mmap::fill_wide () const
 			uint8_t *w = page < write_pages.size () ? write_pages[page] : NULL;
 
 			if (r || wide_read[at])
-				wide_read[at] = r;
+				wide_read[at] = wide_bias (r, at);
 			if (w || wide_write[at])
-				wide_write[at] = w;
+				wide_write[at] = wide_bias (w, at);
 		}
+}
+
+bool
+Mmap::guard (uint32_t lo, uint32_t hi, std::function<void ()> hit)
+{
+	uint32_t p;
+
+	if (!use_pages || fast_base || hi < lo || hi >= (NUM_PAGES << PAGE_BITS))
+		return false;
+	for (p = lo >> PAGE_BITS; p <= hi >> PAGE_BITS; p++) {
+		bool already = false;
+
+		for (const Guarded &g : guarded)
+			already |= g.page == p;
+		if (already)
+			continue;
+		guarded.push_back (Guarded { p, read_pages[p], write_pages[p] });
+		read_pages[p] = write_pages[p] = NULL;
+		if (wide_read)
+			for (unsigned k = 0; k < WIDE_ALIASES; k++) {
+				const uint32_t at = (k << (29 - PAGE_BITS)) | p;
+
+				wide_read[at] = 0;
+				wide_write[at] = 0;
+			}
+	}
+	guard_ranges.push_back (std::make_pair (lo, hi));
+	guard_hit = hit;
+	return true;
+}
+
+void
+Mmap::unguard ()
+{
+	for (const Guarded &g : guarded) {
+		read_pages[g.page] = g.read;
+		write_pages[g.page] = g.write;
+		if (wide_read)
+			for (unsigned k = 0; k < WIDE_ALIASES; k++) {
+				const uint32_t at = (k << (29 - PAGE_BITS)) | g.page;
+
+				wide_read[at] = wide_bias (g.read, at);
+				wide_write[at] = wide_bias (g.write, at);
+			}
+	}
+	guarded.clear ();
+	guard_ranges.clear ();
+	guard_hit = nullptr;
 }
 
 Mmap::~Mmap ()
@@ -309,10 +367,22 @@ Mmap::find (uint32_t addr, uint32_t flags)
 {
 	HL_ASSERT ((flags & ~HL_REGION_RW) == 0);
 
+	/* The last one found again, when no region before it overlaps it:
+	 * the first one there all the same (TA's FIFO, a store queue's eight
+	 * words, searched each among some fifty) */
+	Region *last = flags == HL_REGION_W ? last_w : flags == HL_REGION_R ? last_r : NULL;
+
+	if (last && addr >= last->lo && addr <= last->hi)
+		return last;
 	for (Region &region : regions)
 		if (addr >= region.lo && addr <= region.hi &&
-		    (region.flags & flags))
+		    (region.flags & flags)) {
+			if (flags == HL_REGION_W && region.first_w)
+				last_w = &region;
+			else if (flags == HL_REGION_R && region.first_r)
+				last_r = &region;
 			return &region;
+		}
 	return NULL;
 }
 
@@ -345,6 +415,8 @@ Mmap::get (unsigned size, uint32_t addr, void *data)
 		memcpy (data, fast_base + addr, size);
 		return 0;
 	}
+	if (!guard_ranges.empty ())
+		guard_check (addr & 0x1FFFFFFF);
 	if (use_pages && addr < (NUM_PAGES << PAGE_BITS)) {
 		const uint8_t *page = read_pages[addr >> PAGE_BITS];
 		if (page) {
@@ -395,6 +467,8 @@ Mmap::put (unsigned size, uint32_t addr, uint64_t data)
 		memcpy (fast_base + addr, &data, size);
 		return 0;
 	}
+	if (!guard_ranges.empty ())
+		guard_check (addr & 0x1FFFFFFF);
 	if (use_pages && addr < (NUM_PAGES << PAGE_BITS)) {
 		uint8_t *page = write_pages[addr >> PAGE_BITS];
 		if (page) {
@@ -430,6 +504,29 @@ Mmap::put (unsigned size, uint32_t addr, uint64_t data)
 	}
 
 	return region->dev->put (size, addr, data);
+}
+
+int
+Mmap::put_words (uint32_t addr, const uint32_t *words, unsigned n)
+{
+	Region *region;
+	unsigned i;
+	int ret = 0;
+
+	if (!guard_ranges.empty ())
+		guard_check (addr & 0x1FFFFFFF);
+	/* All in a device's region, unlogged, that takes 4 bytes: its put ()s
+	 * at once; else one put () a word, as before */
+	region = (fast (fast_write, addr) || (use_pages && addr < (NUM_PAGES << PAGE_BITS) &&
+	          write_pages[addr >> PAGE_BITS])) ? NULL : find (addr, HL_REGION_W);
+	if (region && region->dev && !(region->flags & HL_REGION_DIRECT) &&
+	    !(region->flags & HL_REGION_LOG_W) && (region->flags & get_size_flag_for_size (4)) &&
+	    addr + 4 * (n - 1) <= region->hi) {
+		return region->dev->put_words (addr, words, n);
+	}
+	for (i = 0; i < n; i++)
+		ret |= put (4, addr + i * 4, words[i]);
+	return ret;
 }
 
 } /* namespace hl */

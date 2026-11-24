@@ -21,6 +21,7 @@
 #ifndef __HL_MMAP_H__
 #define __HL_MMAP_H__
 
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -61,6 +62,9 @@ public:
 	/* 0 when an access is handled, -1 otherwise */
 	int	get (unsigned size, uint32_t addr, void *data);
 	int	put (unsigned size, uint32_t addr, uint64_t data);
+	/* n words put from addr on, as n puts of 4 bytes one after the other
+	 * (a store queue's burst): the region found once */
+	int	put_words (uint32_t addr, const uint32_t *words, unsigned n);
 
 	/* The page table: for each 4 KB page of the first 512 MB that one
 	 * RAM or ROM holds whole (no device, no log), where it lies in the
@@ -94,11 +98,13 @@ public:
 	 * reads them (sh4_get ()): the 512 MB of the table at each of U0's
 	 * four, P1, P2; none at P3, P4 (the on-chip registers, the store
 	 * queues). The translations' lookups need then no test of the area
-	 * and no 29-bit mask. Made at the first call (8 MB each, reserved:
+	 * and no 29-bit mask; each entry the page's host address less the
+	 * address it is at, the access at the entry plus the address (no mask
+	 * of the offset either). Made at the first call (8 MB each, reserved:
 	 * only the pages written count), kept with the tables after */
 	static const unsigned WIDE_ALIASES = 6;
-	uint8_t	* const *wide_read_table () const { make_wide (); return wide_read; }
-	uint8_t	* const *wide_write_table () const { make_wide (); return wide_write; }
+	const intptr_t *wide_read_table () const { make_wide (); return wide_read; }
+	const intptr_t *wide_write_table () const { make_wide (); return wide_write; }
 
 	/* Where addr lies in the host when get () or put () would go straight
 	 * there (fastmem, then the page table), an access not crossing a 4 KB
@@ -124,10 +130,22 @@ public:
 		if (use_pages && addr < (NUM_PAGES << PAGE_BITS)) {
 			read_pages[addr >> PAGE_BITS] = (uint8_t *) host;
 			if (wide_read)
-				for (unsigned k = 0; k < WIDE_ALIASES; k++)
-					wide_read[(k << (29 - PAGE_BITS)) | (addr >> PAGE_BITS)] = (uint8_t *) host;
+				for (unsigned k = 0; k < WIDE_ALIASES; k++) {
+					const uint32_t at = (k << (29 - PAGE_BITS)) | (addr >> PAGE_BITS);
+
+					wide_read[at] = wide_bias (host, at);
+				}
 		}
 	}
+
+	/* The page table's pages from lo to hi left to the slow path, hit
+	 * called at the first access there through the map (it may unguard
+	 * ()): a buffer a device writes behind the CPU's back, which its
+	 * accesses wait for. False where the table is not used (fastmem,
+	 * regions alone) */
+	bool	guard (uint32_t lo, uint32_t hi, std::function<void ()> hit);
+	/* The pages guarded back in the table */
+	void	unguard ();
 
 	/* A RAM or ROM that holds addr, readable in place (little endian):
 	 * the CPUs fetch their code from it without a lookup each time */
@@ -148,6 +166,9 @@ private:
 		Buffer *buf;
 		Device *dev;
 		std::string name;
+		/* No region before it overlaps it with a read, a write: any
+		 * address in it finds it first (find ()'s cache) */
+		bool first_r, first_w;
 	};
 
 	int	 add (uint32_t lo, uint32_t hi, uint32_t mask, uint32_t flags,
@@ -162,11 +183,40 @@ private:
 	static const unsigned NUM_GRANULES = 1u << (29 - GRANULE_BITS);
 
 	std::vector<Region> regions;
+	/* find ()'s last answers, read and write, when first there */
+	Region	*last_r = NULL, *last_w = NULL;
 	bool	 use_pages = false;
 	std::vector<uint8_t *> read_pages, write_pages;
-	mutable uint8_t **wide_read = NULL, **wide_write = NULL;
+	/* Each page's host address less its own (at its alias's address):
+	 * the host's address of an access, the entry plus the address; 0 for
+	 * none (a page whose difference is 0 as none: the slow path) */
+	mutable intptr_t *wide_read = NULL, *wide_write = NULL;
+	static intptr_t wide_bias (const uint8_t *host, uint32_t page)
+	{
+		return host ? (intptr_t) host - (intptr_t) ((uintptr_t) page << PAGE_BITS) : 0;
+	}
 	void	 make_wide () const;
 	void	 fill_wide () const;
+
+	/* guard ()'s: the pages taken out of the table (theirs to put back),
+	 * the ranges, the call */
+	struct Guarded {
+		uint32_t page;
+		uint8_t	*read, *write;
+	};
+	std::vector<Guarded> guarded;
+	std::vector<std::pair<uint32_t, uint32_t>> guard_ranges;
+	std::function<void ()> guard_hit;
+	void	 guard_check (uint32_t addr)
+	{
+		for (const auto &r : guard_ranges)
+			if (addr >= r.first && addr <= r.second) {
+				std::function<void ()> hit = guard_hit;
+
+				hit ();
+				return;
+			}
+	}
 
 	uint8_t	*fast_base = NULL;
 	unsigned layout_version = 0;

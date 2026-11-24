@@ -72,6 +72,10 @@ public:
 	/* Draws the frame, then lets the window present it */
 	void		end_frame ();
 	virtual void	reset () {}
+	/* The machine's memories as the drawing leaves them: its writes into
+	 * them (a picture drawn to a texture, back in the VRAM) done; before
+	 * they are hashed or saved */
+	virtual void	sync () {}
 	/* The video outputs the game has drawn for */
 	virtual unsigned screens () const { return 1; }
 	/* F8: the next output shown, where there are several */

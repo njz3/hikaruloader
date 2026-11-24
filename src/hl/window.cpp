@@ -463,8 +463,10 @@ present (void)
 {
 	int dw, dh;
 
-	Window::drawable_size (&dw, &dh);
-	if (overlay_hook) {
+	/* The interface's, when it has something to draw: its GL errors read
+	 * at each frame otherwise, each read waiting for the driver's thread */
+	if (overlay_hook && (!overlay_wanted_hook || overlay_wanted_hook ())) {
+		Window::drawable_size (&dw, &dh);
 		glBindFramebuffer (GL_FRAMEBUFFER, 0);
 		glViewport (0, 0, dw, dh);
 		overlay_hook (dw, dh);

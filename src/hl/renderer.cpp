@@ -52,8 +52,13 @@ Renderer::begin_frame ()
 void
 Renderer::end_frame ()
 {
+	/* GL's errors stay until read: looked at once a second (each read
+	 * waits for the driver's thread, 1% of Virtua Tennis's machine) */
+	static unsigned frames;
+
 	on_end_frame ();
-	HL_ASSERT_NO_GL_ERROR_FRAME ();
+	if (gl::checking || !(++frames % 60))
+		HL_ASSERT_NO_GL_ERROR_FRAME ();
 	HL_PROFILE (PRESENT);
 	Window::frame_done (message);
 }

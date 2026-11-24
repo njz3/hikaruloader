@@ -1388,6 +1388,8 @@ gaelco_init (Gaelco *gaelco)
 	for (hl::Cpu *cpu : { gaelco->sh_m, gaelco->sh_s }) {
 		((Sh4 *) cpu)->blocks.own (0x0C000000, 0x0CFFFFFF);
 		((Sh4 *) cpu)->blocks.own (0x00000000, 0x03FFFFFF);
+		if (mach->game && mach->game->sh4_icache)
+			((Sh4 *) cpu)->icache_on = true;
 	}
 	((Sh4 *) gaelco->sh_m)->cpu_hz = (uint32_t) gaelco->fpga->cpu_hz;
 	((Sh4 *) gaelco->sh_s)->cpu_hz = (uint32_t) gaelco->fpga->cpu_hz;
