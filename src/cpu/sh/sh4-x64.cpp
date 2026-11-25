@@ -506,10 +506,6 @@ Sh4X64::link_field (Sh4X64 *jit, uint8_t *field, void *body)
 	return body;
 }
 
-/* For HR_PROFILE: the traps' stores gone through the page table, those on
- * a code page's (the stamps looked at) */
-static uint64_t table_writes, table_code_writes;
-
 /* The ways out all translations share, under the MMU (gen checked) and
  * without: written once a generation, at its start */
 void
@@ -518,8 +514,7 @@ Sh4X64::print_kinds (char cpu) const
 	uint64_t total = 0;
 
 	if (table_writes)
-		HL_PRINT ("sh4 %c: %llu stores through the page table (traps), %llu of them on code pages", cpu,
-		          (unsigned long long) table_writes, (unsigned long long) table_code_writes);
+		HL_PRINT ("sh4 %c: %llu stores through the page table (traps)", cpu, (unsigned long long) table_writes);
 
 	for (const auto &k : kind_bytes)
 		total += k.second;
@@ -4483,10 +4478,6 @@ Sh4X64::translate (Sh4 *ctx, Sh4Block *block)
 				access_store (e, c.size, RCX);
 				e.jmp (*c.to);
 				e.bind (code_page);
-				if (hl::Profile::enabled) {
-					e.mov_imm64 (R11, (uint64_t) (uintptr_t) &table_code_writes);
-					e.add64_mem_imm (R11, 0, 1);
-				}
 				e.load64 (R8, RBX, o.jit_tables + 24);
 				e.load64_index (R9, R8, RAX, 8);
 				e.test64 (R9, R9);

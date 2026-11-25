@@ -2730,14 +2730,11 @@ delay_slot (Sh4 *ctx, uint32_t pc)
  * while profiling or with breakpoints; cpu:option ('idle', 0) turns it
  * off. */
 
-/* For HR_PROFILE: the turns noted, by their loop (tail, head), each CPU's */
-static std::unordered_map<uint64_t, uint64_t> noted_turns[2];
-
 void
 Sh4::IdleLoop::start (Sh4 *ctx, uint32_t tail_, uint32_t head_)
 {
 	if (hl::Profile::enabled)
-		noted_turns[ctx->config.master ? 0 : 1][((uint64_t) tail_ << 32) | head_]++;
+		noted_turns[((uint64_t) tail_ << 32) | head_]++;
 	tail = tail_;
 	head = head_;
 	seen = 0;
@@ -3903,7 +3900,7 @@ Sh4::IdleLoop::run_forward_simulated (Sh4 *ctx, const uint32_t *turn, unsigned t
 				hl::Profile::count (hl::Profile::SH4_LOOPS, 1);
 			}
 		}
-	} timed { hl::Profile::enabled && ctx->config.master ? hl::Profile::now () : 0 };
+	} timed { hl::Profile::enabled && ctx->config.master && ctx->profiled ? hl::Profile::now () : 0 };
 	/* No turn to take before the slice's end: not simulated */
 	if (ctx->remaining / (int) length - 1 <= 0)
 		return 0;
@@ -4815,8 +4812,7 @@ Sh4::~Sh4 ()
 		jit->print_kinds (config.master ? 'M' : 'S');
 	if (hl::Profile::enabled) {
 		/* The loops whose turns were noted the most */
-		std::vector<std::pair<uint64_t, uint64_t>> top (noted_turns[config.master ? 0 : 1].begin (),
-		                                                noted_turns[config.master ? 0 : 1].end ());
+		std::vector<std::pair<uint64_t, uint64_t>> top (idle.noted_turns.begin (), idle.noted_turns.end ());
 		uint64_t all = 0;
 
 		for (const auto &kv : top)

@@ -5,6 +5,14 @@ What each version brings, for those who play. How the versions are numbered
 and released: [DEVELOPMENT.md](DEVELOPMENT.md), "Versions and releases".
 
 
+In preparation
+--------------
+
+- Measuring with HR_PROFILE=1 no longer freezes nor crashes at exit the
+  games of several boards (F355 Challenge Deluxe): counts of 0.8.15 the
+  boards shared are each board's own. Playing without it was not affected.
+
+
 0.8.15 (2026-11-25)
 -------------------
 

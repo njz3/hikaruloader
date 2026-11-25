@@ -293,6 +293,9 @@ public:
 	 * device's decoding (the same value, the same effects), the MMU off;
 	 * the translations' slow ways call it themselves. Its 29-bit address,
 	 * ~0 for none. Set before the first block is translated */
+	/* HR_PROFILE's tree for this CPU's time (its "loops simulated"): the
+	 * NAOMI's first board alone, the others on threads of their own */
+	bool	profiled = true;
 	uint32_t hot_read_addr = ~0u;
 	uint32_t (*hot_read) (void *obj) = nullptr;
 	void	*hot_read_obj = nullptr;
@@ -515,6 +518,11 @@ public:
 		/* For HR_PROFILE: the turns simulated, taken at once; the
 		 * translations whose way back closes such a loop */
 		uint64_t	 sim_turns = 0, sim_runs = 0, sim_taken = 0, sim_insts = 0, sim_cached = 0;
+		/* For HR_PROFILE: the turns noted, by their loop (tail << 32 |
+		 * head), this CPU's own (the NAOMI's boards on threads of their
+		 * own: a table shared by them was corrupted, F355 Challenge
+		 * Deluxe's exit crashed) */
+		std::unordered_map<uint64_t, uint64_t> noted_turns;
 		/* Turns simulated since the last block told (tell_block ()) */
 		bool		 sim_new = false;
 		unsigned	 sim_blocks = 0;

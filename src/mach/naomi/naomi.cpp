@@ -579,6 +579,8 @@ Board::init ()
 	Sh4 *cpu = new Sh4 (machine, mmap, true, true);
 	sh = cpu;
 	cpu->user = this;
+	/* HR_PROFILE's tree: the first board's CPU (Board::run_lines ()) */
+	cpu->profiled = !index;
 	cpu->sq_buffered = true;
 	/* The TA's packets from the store queues straight to the Holly (the
 	 * "TA" region below, its Area4 device's put_words ()) */

@@ -283,6 +283,9 @@ protected:
 	 * base's mov); those of the translation being written */
 	uint8_t		*trap_base = NULL;
 	struct TrapSite { uint32_t patch, slow; };
+	/* For HR_PROFILE: the traps' stores gone through the page table; this
+	 * translator's own (each NAOMI board's on its thread) */
+	uint64_t	 table_writes = 0;
 	std::unordered_map<uint32_t, TrapSite> trap_sites;
 	struct PendingTrap { uint8_t *patch, *load, *end; x64::Label *slow; };
 	std::vector<PendingTrap> pending_traps;
