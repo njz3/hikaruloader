@@ -5,8 +5,8 @@ What each version brings, for those who play. How the versions are numbered
 and released: [DEVELOPMENT.md](DEVELOPMENT.md), "Versions and releases".
 
 
-In preparation
---------------
+0.8.15 (2026-11-25)
+-------------------
 
 - NAOMI, Atomiswave: the polygons' vertices the game sends read by the
   drawing thread, the machine's thread keeping their bytes: Crazy Taxi's
