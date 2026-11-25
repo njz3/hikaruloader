@@ -198,11 +198,18 @@ private:
 	DspStep	*dsp_cache;		/* 128 */
 	uint16_t madrs_cache[64];
 	bool	 dsp_dirty;
+	/* mix ()'s MVOL and the effects' gains (EFSDL, EFPAN; 0 for none),
+	 * left and right, as read at the last write there (fx_dirty) when
+	 * optimized */
+	uint32_t fx_mvol;
+	int32_t	 fx_gain[16][2];
+	bool	 fx_dirty;
 	/* The program translated to x86-64 (hikaru-aica.cpp, "The DSP
 	 * Translated"), with the cache, for so many steps; HR_DSP_JIT=0
 	 * leaves the interpreter's loop, HR_DSP_CHECK=1 runs both and
 	 * tells where they differ */
 	struct DspJit;
+	void	 fx_gains (unsigned i, bool mono, int32_t *gain) const;
 	DspJit	*dsp_jit = NULL;
 	unsigned dsp_jit_steps = 0;
 	bool	 dsp_jit_on = true, dsp_check = false;

@@ -102,6 +102,8 @@ public:
 	void		 mov_imm32 (Reg dst, uint32_t imm);
 	/* dst = src + disp, 32 bits */
 	void		 lea32 (Reg dst, Reg src, int32_t disp);
+	/* lea r32, [base + index] */
+	void		 lea32_index (Reg dst, Reg base, Reg index);
 	/* 32-bit loads and stores at [base + disp] */
 	void		 load32 (Reg dst, Reg base, int32_t disp);
 	void		 store32 (Reg base, int32_t disp, Reg src);
@@ -164,9 +166,12 @@ public:
 	void		 imul32 (Reg dst, Reg src);
 	/* 64 bits: imul, a sign-extended 32-bit register, sar by a count */
 	void		 imul64 (Reg dst, Reg src);
+	/* dst = src * imm (64 bits, imm sign-extended) */
+	void		 imul64_imm (Reg dst, Reg src, int32_t imm);
 	void		 movsxd (Reg dst, Reg src);
 	void		 sar64_imm (Reg r, uint8_t count);
 	void		 shl64_imm (Reg r, uint8_t count);
+	void		 shr64_imm (Reg r, uint8_t count);
 	/* rdx:rax / r: rax the quotient, rdx the remainder */
 	void		 div64 (Reg r);
 	/* edx:eax / r32 */
@@ -194,6 +199,9 @@ public:
 	 * from a byte or a word at [base + disp]; neg r32 */
 	void		 load64 (Reg dst, Reg base, int32_t disp);
 	void		 store64 (Reg base, int32_t disp, Reg src);
+	/* src's low byte, word (a REX always: r8b-r15b, sil...) */
+	void		 store8 (Reg base, int32_t disp, Reg src);
+	void		 store16 (Reg base, int32_t disp, Reg src);
 	void		 ror64_imm (Reg r, uint8_t count);
 	void		 movsx8_mem (Reg dst, Reg base, int32_t disp);
 	void		 movsx16_mem (Reg dst, Reg base, int32_t disp);
@@ -209,6 +217,10 @@ public:
 	void		 rot32 (Rot op, Reg r, uint8_t count);
 	/* shl (4), shr (5), sar (7) r by cl */
 	void		 shift32_cl (unsigned op, Reg r);
+	/* dst = src where c holds (cmovcc r32, r/m32) */
+	void		 cmov32 (Cond c, Reg dst, Reg src);
+	/* dst = the index of src's top bit set, ZF set for none */
+	void		 bsr32 (Reg dst, Reg src);
 	/* imul r32, [base + disp] */
 	void		 imul32_mem (Reg r, Reg base, int32_t disp);
 
@@ -233,6 +245,13 @@ public:
 	void		 ucomiss_mem (unsigned x, Reg base, int32_t disp);
 	void		 cvtsi2ss_mem (unsigned x, Reg base, int32_t disp);
 	void		 cvttss2si_mem (Reg r, Reg base, int32_t disp);
+	/* The register forms, any xmm (0-15): ucomiss x, y; cvttss2si r, x;
+	 * movaps x, y; movd x, r32 and r32, x */
+	void		 ucomiss_reg (unsigned x, unsigned y);
+	void		 cvttss2si_reg (Reg r, unsigned x);
+	void		 movaps_reg (unsigned x, unsigned y);
+	void		 movd_to_xmm (unsigned x, Reg r);
+	void		 movd_from_xmm (Reg r, unsigned x);
 
 	/* Jumps to a label, bound before or after, or to a register's
 	 * address */

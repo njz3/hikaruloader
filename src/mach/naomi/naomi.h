@@ -238,6 +238,32 @@ extern std::atomic<bool> gpu_lighting;
  * lists (SceneElan) */
 extern std::atomic<bool> gpu_geometry;
 
+/* The TA's state between its parameters (plain data, for the states) */
+struct TaState {
+	uint32_t fifo[16];
+	uint32_t fifo_words;
+	uint8_t	 half;		/* the first half of 64 bytes is in fifo */
+	int8_t	 list;		/* the list open, else -1 */
+	uint8_t	 mod;		/* a modifier volume's triangles */
+	uint8_t	 sprite;
+	uint32_t vertex_type;
+	uint32_t pcw, isp, tsp, tcw, tsp1, tcw1;
+	float	 face[4], face1[4], face_offset[4];
+	uint32_t sprite_base, sprite_offset;
+	uint8_t	 clip_mode;
+	uint16_t clip[4];
+	uint8_t	 new_batch;
+	uint8_t	 two_volume;
+	Vertex	 strip[2], strip1[2];
+	uint32_t strip_n;
+};
+
+/* A polygon's or a sprite's texture words, as its header gave them */
+struct TaTexture {
+	uint32_t isp, tsp, tcw, tsp1, tcw1;
+	uint8_t	 two_volume;
+};
+
 /* What the TA made of a list of parameters */
 struct Scene {
 	std::vector<Vertex> vertices;
@@ -252,10 +278,42 @@ struct Scene {
 	SceneLighting lighting;
 	/* Its lists the graphics card transforms (else none) */
 	SceneElan elan;
+	/* Its vertices' parameters not read yet (see "The TA's Vertices Read
+	 * Later" in naomi-holly.cpp): their words, 8 a parameter; the state to
+	 * read them from (then the state they left); at a parameter's index,
+	 * the TA's list started again, the cull value and MXCSR as they were
+	 * from it; the textures their headers name. ta_realize () reads them */
+	struct Deferred {
+		bool	 on = false;
+		/* Shown (a STARTRENDER): its words closed, read under lock */
+		bool	 published = false;
+		std::vector<uint32_t> words;
+		size_t	 read = 0;
+		TaState	 state = {};
+		uint32_t cull = 0, csr = ~0u;
+		std::vector<std::pair<uint32_t, uint32_t>> resets, culls, csrs;
+		size_t	 resets_read = 0, culls_read = 0, csrs_read = 0;
+		std::vector<TaTexture> textures;
+		std::mutex lock;
+
+		void	 clear ()
+		{
+			on = published = false;
+			words.clear ();
+			read = 0;
+			resets.clear ();
+			culls.clear ();
+			csrs.clear ();
+			resets_read = culls_read = csrs_read = 0;
+			csr = ~0u;
+			textures.clear ();
+		}
+	} deferred;
 
 	/* Empty again, the vectors' room kept */
 	void clear ()
 	{
+		deferred.clear ();
 		lighting.clear ();
 		elan.clear ();
 		vertices.clear ();
@@ -295,6 +353,38 @@ uint32_t texture_size (uint32_t tcw, uint32_t tsp, uint32_t text_control);
 uint64_t texture_hash (const uint8_t *p, size_t bytes, uint64_t seed);
 
 /* Holly's registers as a drawing wants them, at its STARTRENDER */
+/* A scene's parameters left, read now (Scene::Deferred), as the TA would have
+ * read them as they came; by the drawing thread before it draws, by the
+ * machine's before it changes or saves what they left */
+void	 ta_realize (Scene &s, bool then_at_once = false);
+
+/* The TA's reading of its parameters into a scene, from a state. fsm: the
+ * machine's look at those read later (the state, the ends of list told, the
+ * textures noted; no vertex); holly NULL: read later, no end of list told */
+class TaReader {
+public:
+	TaState	&ta;
+	Scene	&scene;
+	uint32_t cull_val;
+	Holly	*holly;
+	bool	 fsm = false;
+	bool	 from_elan = false;
+
+	TaReader (TaState &t, Scene &s, uint32_t cull_, Holly *h) : ta (t), scene (s), cull_val (cull_), holly (h) {}
+	void	 packet (const uint32_t *w);
+	void	 reset_list ();
+	Batch	&batch (bool elan = false);
+	void	 triangle (Vertex a, Vertex b, Vertex c, const Vertex *second = NULL, int *first = NULL);
+
+private:
+	void	 polygon_header (const uint32_t *w);
+	void	 vertex (const uint32_t *w);
+	void	 sprite (const uint32_t *w);
+	void	 modifier (const uint32_t *w);
+	void	 store (Vertex v, const Vertex &v1, bool end);
+	void	 note_texture ();
+};
+
 struct Draw {
 	std::shared_ptr<Scene> scene;
 	TextureMap textures;
@@ -673,6 +763,13 @@ public:
 	/* n words put from addr on (a store queue's burst): to the TA's FIFO
 	 * as a whole packet when they make one */
 	void	 area4_words (uint32_t addr, const uint32_t *words, unsigned n);
+	/* A store queue's packet for target (29 bits), straight from the
+	 * SH-4 (Sh4::sq_direct): true when it went into the FIFO as
+	 * area4_words () would have put it there (area 4's polygon path, the
+	 * FIFO empty), else left to the memory map */
+	static bool sq_packet (void *holly, uint32_t target, const uint32_t *words);
+	/* SB_FFST (005F688C) as get () reads it, for Sh4::hot_read2 */
+	static uint32_t ffst_read (void *holly);
 	/* The VRAM's 32-bit path */
 	static uint32_t map32 (uint32_t addr)
 	{
@@ -764,17 +861,23 @@ private:
 	void	 pvr_dma ();
 	void	 maple_step ();
 	void	 maple_start ();
+	friend class TaReader;
 	void	 after (unsigned lines_, uint32_t ist);
 
 	void	 ta_reset_list ();
+	/* The same, at LIST_CONT or a soft reset: noted in the parameters left */
+	void	 ta_reset_marked ();
 	void	 keep_textures (Draw &d);
-	void	 ta_polygon_header (const uint32_t *w);
-	void	 ta_vertex (const uint32_t *w);
-	void	 ta_sprite (const uint32_t *w);
-	void	 ta_modifier (const uint32_t *w);
-	void	 ta_store (Vertex v, const Vertex &v1, bool end);
-	void	 ta_triangle (Vertex a, Vertex b, Vertex c, const Vertex *second = NULL, int *first = NULL);
-	Batch	&ta_batch (bool elan = false);
+	TaReader ta_reader () { return TaReader (ta, *building, pvr[0x078 / 4], this); }
+	void	 ta_triangle (Vertex a, Vertex b, Vertex c, const Vertex *second = NULL, int *first = NULL)
+	{
+		ta_reader ().triangle (a, b, c, second, first);
+	}
+	Batch	&ta_batch (bool elan = false) { return ta_reader ().batch (elan); }
+	/* A parameter left for later (Scene::Deferred), the machine's look at it */
+	void	 ta_defer (const uint32_t *w);
+	/* HR_TA_DEFER=0: each read as it comes (the Elan's boards always) */
+	bool	 ta_defers = true;
 	void	 yuv_data (const uint32_t *w, unsigned words);
 	void	 yuv_block ();
 	void	 fifo_word (uint32_t word);
@@ -837,24 +940,7 @@ private:
 	TextureMap kept_textures;
 
 	/* Plain data, for the states */
-	struct {
-		uint32_t fifo[16];
-		uint32_t fifo_words;
-		uint8_t	 half;		/* the first half of 64 bytes is in fifo */
-		int8_t	 list;		/* the list open, else -1 */
-		uint8_t	 mod;		/* a modifier volume's triangles */
-		uint8_t	 sprite;
-		uint32_t vertex_type;
-		uint32_t pcw, isp, tsp, tcw, tsp1, tcw1;
-		float	 face[4], face1[4], face_offset[4];
-		uint32_t sprite_base, sprite_offset;
-		uint8_t	 clip_mode;
-		uint16_t clip[4];
-		uint8_t	 new_batch;
-		uint8_t	 two_volume;
-		Vertex	 strip[2], strip1[2];
-		uint32_t strip_n;
-	} ta;
+	TaState	 ta;
 	struct {
 		uint32_t data[384 / 4];
 		uint32_t bytes;
@@ -1427,6 +1513,8 @@ public:
 	/* False on a slave: what it runs comes through the link */
 	bool	 has_cart;
 	MultiboardPort *link;
+	/* Sh4::hot_read's: the cartridge's PIO data port (005F7008) */
+	static uint32_t pio_data (void *board);
 	CommBoard comm;
 	/* Its G1 bus has the communication board */
 	bool	 has_comm = false;

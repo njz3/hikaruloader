@@ -68,6 +68,8 @@ struct Sh4Offsets {
 	int32_t pc, pr, sr, gbr, macl, mach, remaining, irq_ready, stores, far_stores, r[16];
 	/* The other bank's R0-R7 (Rn_BANK) */
 	int32_t rbank;
+	/* irq_ready, mmu_exact, the idle loops' noting: one word */
+	int32_t chain_stop;
 	/* A jump's target across its slot, the last block's count (chaining);
 	 * the code epoch (sh4-blocks.h); what the chaining's probe looks at */
 	int32_t target, chain_n, epoch, state, mmu_on, noting, chain_stores, chain_ends,
@@ -119,8 +121,9 @@ struct Sh4RegCache {
 	 * memory with a new one) */
 	void		 t_to_sr (x64::Emitter &e);
 	void		 t_drop ();
-	/* Register r's value, n's, written back to ctx (T's into SR) */
-	void		 put_back (x64::Emitter &e, x64::Reg r, int n) const;
+	/* Register r's value, n's, written back to ctx (T's into SR: with
+	 * rax free, a load and a store, else an and and an or on SR) */
+	void		 put_back (x64::Emitter &e, x64::Reg r, int n, bool rax_free = false) const;
 	/* Those not in ctx, for a way written apart (a slow path, an exit):
 	 * their host registers and places in ctx */
 	struct Spills {
@@ -132,8 +135,57 @@ struct Sh4RegCache {
 		bool	 empty () const { return n == 0; }
 	};
 	Spills		 spills () const;
+	/* Each of regs loaded and taken as changed (written back at the ways
+	 * out): a loop's registers kept through its turns; the same registers
+	 * in the same host registers as other */
+	void		 preload (x64::Emitter &e, const unsigned *regs, unsigned n);
+	bool		 same_places (const Sh4RegCache &other) const;
+	bool		 empty () const;
 
 private:
+	int		 take (x64::Emitter &e, unsigned n, bool load);
+};
+
+/* The FPU's singles (FR0-FR15, the bank FPSCR.FR shows) in xmm6-xmm15,
+ * which the calls keep (Windows' convention: the prologue saves them):
+ * the same as Sh4RegCache, for the FPU's arithmetic and moves (see "The
+ * FPU's Registers" in sh4-x64.cpp). FRn at fr + 4 * (n ^ 1) in ctx */
+struct Sh4FpuCache {
+	static const unsigned NUM = 10;
+	static unsigned	 xmm (unsigned k) { return 6 + k; }
+
+	const Sh4Offsets *o = NULL;
+	int8_t		 held[NUM];	/* the FR, -1 none */
+	bool		 dirty[NUM];
+	uint32_t	 used[NUM];
+	uint32_t	 clock = 0;
+
+	void		 reset (const Sh4Offsets *offsets);
+	/* FRn's xmm, loaded; to be written whole; read and written */
+	unsigned	 read (x64::Emitter &e, unsigned n);
+	unsigned	 write (x64::Emitter &e, unsigned n);
+	unsigned	 modify (x64::Emitter &e, unsigned n);
+	/* As Sh4RegCache's: written back, kept (a way out); written back,
+	 * clean (a call that reads them); none kept (a call that may change
+	 * them); FRn's alone written back and given up (an access of ctx's
+	 * copy) */
+	void		 store_dirty (x64::Emitter &e) const;
+	void		 flush (x64::Emitter &e);
+	void		 forget ();
+	void		 give_up (x64::Emitter &e, unsigned n);
+	bool		 empty () const;
+	struct Spills {
+		std::pair<unsigned, int32_t> r[NUM];
+		unsigned n = 0;
+
+		const std::pair<unsigned, int32_t> *begin () const { return r; }
+		const std::pair<unsigned, int32_t> *end () const { return r + n; }
+		bool	 empty () const { return n == 0; }
+	};
+	Spills		 spills () const;
+
+private:
+	int32_t		 at (unsigned n) const;
 	int		 take (x64::Emitter &e, unsigned n, bool load);
 };
 
@@ -202,19 +254,44 @@ public:
 	 * sh4-x64.cpp): all put back to their stub, the code epoch moved (the
 	 * blocks to be compared again first) */
 	void		 unlink ();
-	/* The link stub's call: the way out whose jump's rel32 field is at
-	 * site goes to body from now on; body */
+	/* The link stub's call: the way out at site (its 12 bytes, see
+	 * "Links") goes to body from now on; body */
 	static void	*link (Sh4X64 *jit, uint8_t *site, void *body);
+	/* The same for a way out with its checks in line: its jump's rel32
+	 * field at field, from there to body */
+	static void	*link_field (Sh4X64 *jit, uint8_t *field, void *body);
+	static void	 site_unlinked (uint8_t *site, const uint8_t *link_stub);
 	/* The same for a way out to an address known as it runs, its last
 	 * address's field at cached: pc and body kept there, until it went to
 	 * too many others (DYN_TRIES): then the plain look for good */
 	static void	*link_dyn (Sh4X64 *jit, uint8_t *cached, void *body, uint32_t pc);
 	uint64_t	 links_made () const { return num_links; }
+	/* Traps (see "Traps" in sh4-x64.cpp): the accesses sent through the
+	 * page table by a fault, each written over then */
+	uint64_t	 traps_taken () const { return num_traps; }
+	/* The fault at rip, reading at addr: one of its loads' (the program
+	 * counter then its slow path's, *rip) */
+	bool		 trapped (uintptr_t rip, uintptr_t addr, uint64_t *new_rip);
 	/* The time taken translating, in seconds */
 	double		 translating_time () const { return translate_seconds; }
 
 protected:
 	Sh4X64 (Kind kind, const hl::Mmap *mmap);
+	/* Traps: the base the loads read at (Sh4X64Pages, hl::Mmap::traps ()),
+	 * NULL for none; each load's place by its offset in the arena, its
+	 * slow path's and the start of the instructions written over (the
+	 * base's mov); those of the translation being written */
+	uint8_t		*trap_base = NULL;
+	struct TrapSite { uint32_t patch, slow; };
+	std::unordered_map<uint32_t, TrapSite> trap_sites;
+	struct PendingTrap { uint8_t *patch, *load, *end; x64::Label *slow; };
+	std::vector<PendingTrap> pending_traps;
+	uint64_t	 num_traps = 0;
+	void		 trap_register ();
+
+	/* The stores' code stamps left to the write table's pages
+	 * (Sh4BlockCache::code_page, hl::Mmap::code_page) */
+	bool		 code_pages_on = false;
 
 	/* A load of size bytes (1, 2, 4, 8): the address in ecx, the value to
 	 * eax (8 and 16 bits sign extended) or rax. A store: the address in
@@ -243,6 +320,11 @@ protected:
 	 * instructions more each */
 	void		 count_store (x64::Emitter &e, const Sh4Offsets &o);
 	bool		 store_counted = false;
+	/* The translation may count a store (Sh4::stores): one written, a
+	 * slow path's, a handler's, a group's, a pref's. Without, its ways out
+	 * linked leave chain.stores as it is, equal to stores already (each
+	 * entry sets it so) */
+	bool		 may_store = false;
 	int		 store_base = -1;
 	/* A way written after the block (translate ()'s end), from a label to
 	 * another, the GPRs not in ctx written there first: an exit; an
@@ -257,7 +339,7 @@ protected:
 		 * the jump's way when it went, else to (a delay slot's FPU
 		 * work with FPSCR.PR or SR.FD set, translate ()'s
 		 * slot_guards) */
-		enum Kind { EXIT, READ, WRITE, HANDLER, GROUP, BRANCH } kind;
+		enum Kind { EXIT, READ, WRITE, HANDLER, GROUP, BRANCH, TABLE_READ, TABLE_WRITE } kind;
 		x64::Label	*from, *to;
 		Sh4RegCache::Spills spill;
 		int32_t		 at;
@@ -266,19 +348,32 @@ protected:
 		Sh4Handler	 fn;
 		/* An access of a delay slot written out (slot_op ()) */
 		bool		 slot;
+		/* TABLE_READ, TABLE_WRITE: a trap's load or store gone to the
+		 * page table's look, from, back at to; its slow path's */
+		x64::Label	*slow = nullptr;
+		/* The FPU's singles not in ctx (Sh4FpuCache) */
+		Sh4FpuCache::Spills fspill;
 	};
 	void		 cold_path (Cold::Kind kind, x64::Label &from, x64::Label &to,
 			            int32_t at = 0, unsigned size = 0, uint16_t inst = 0,
 			            Sh4Handler fn = NULL)
 	{
 		cold.push_back (Cold { kind, &from, &to, rc.spills (), at, size, inst, fn, in_slot });
+		cold.back ().fspill = fc.spills ();
+		if (kind != Cold::EXIT && kind != Cold::READ && kind != Cold::TABLE_READ)
+			may_store = true;
 	}
 	/* Writing a delay slot out (slot_op ()) */
 	bool		 in_slot = false;
 	/* Sh4::hot_read's, for the reads' slow ways (call_read ()) */
 	uint32_t	 hot_addr = ~0u;
+	/* TCNT0's reads straight (HR_SH4_TCNT_DIRECT=0: through sh4_read32 ()) */
+	bool		 tcnt_direct = true;
 	uint32_t	 (*hot_fn) (void *obj) = nullptr;
 	void		*hot_obj = nullptr;
+	uint32_t	 hot2_addr = ~0u;
+	uint32_t	 (*hot2_fn) (void *obj) = nullptr;
+	void		*hot2_obj = nullptr;
 	/* Translating under the MMU (see "MMU" in sh4.cpp): the loads and
 	 * stores straight to P1 and P2 alone, privileged; before a call out,
 	 * the instruction's index kept for an exception; no access written in
@@ -292,6 +387,13 @@ protected:
 	 * (Sh4::sq_buffered) written there at once, as sh4_sq_put () does
 	 * (ecx the address, r10 the value), then on to back */
 	void		 sq_store (x64::Emitter &e, const Sh4Offsets &o, unsigned size, x64::Label &back);
+	/* A store the page table has no page for, ecx the address, r10 the
+	 * value: to the NAOMI's 32-bit VRAM path straight (Sh4::vram32_base),
+	 * then to done (counted there), else to slow */
+	void		 vram32_store (x64::Emitter &e, const Sh4Offsets &o, unsigned size, x64::Label &done,
+				       x64::Label &slow);
+	uint8_t		*vram32_base = nullptr;
+	const bool	*vram32_busy = nullptr;
 	bool		 sq_inline = false;
 	/* The access just written cannot reach a device (a literal read at
 	 * the translation): no interrupt check after it */
@@ -307,6 +409,14 @@ protected:
 			            unsigned size)
 	{
 		cold_path (write ? Cold::WRITE : Cold::READ, slow, back, at, size);
+	}
+	/* A trap's access through the page table, from table back to back;
+	 * slow its slow path (see "Traps") */
+	void		 table_path (x64::Label &table, x64::Label &back, x64::Label &slow, bool write,
+			             int32_t at, unsigned size)
+	{
+		cold_path (write ? Cold::TABLE_WRITE : Cold::TABLE_READ, table, back, at, size);
+		cold.back ().slow = &slow;
 	}
 	/* A label of this translation (those of the ones before used again) */
 	x64::Label	&label ()
@@ -324,6 +434,15 @@ protected:
 	const uint32_t	*stamps = NULL;
 	/* The GPRs of the block being translated in host registers */
 	Sh4RegCache	 rc;
+	/* The FPU's singles in host registers (HR_SH4_FPU_CACHE=0: none, each
+	 * FPU instruction from and to ctx); fpu_cache_on for the block being
+	 * translated (not under the MMU, the page table's backend); the
+	 * prologue saving xmm6-xmm15 (all translations: one frame) */
+	Sh4FpuCache	 fc;
+	bool		 fpu_cache_on = false, saves_xmm = false;
+	/* The frame the prologue takes below its pushes (the xmm saved at
+	 * XMM_AT up) */
+	static const int32_t FRAME = 216, XMM_AT = 48;
 
 private:
 	/* VON4 filled 32 MB four times in its first minute (29000 blocks),
@@ -343,6 +462,11 @@ private:
 	void		*table = NULL;
 
 	bool		 start_arena ();
+	/* The translations' prologue, its unwind codes (UNWIND_CODE slots,
+	 * the last instruction's first) to codes when not NULL; its size.
+	 * The way back to the run loop's epilogue, the same undone */
+	unsigned	 emit_prologue (x64::Emitter &e, std::vector<uint8_t> *codes) const;
+	void		 emit_epilogue (x64::Emitter &e) const;
 	/* The ways out the translations share, written in the arena once a
 	 * generation (emit_stubs ()), apart under the MMU: the probe (r8d the
 	 * count, PC set, esi the block's address), its checks (the count taken
@@ -353,12 +477,19 @@ private:
 		/* The linked ways out's checks (called), the link (none under
 		 * the MMU); for an address known as it runs, the link and the
 		 * plain look (no link) */
-		const uint8_t *link_checks = NULL, *link = NULL, *link_dyn = NULL, *look = NULL;
+		const uint8_t *link_checks = NULL, *link = NULL, *link_dyn = NULL, *look = NULL,
+			      *dyn_checks = NULL;
+		/* A way out with its checks in line, not linked yet: r9 its
+		 * jump's rel32 field (see "Links") */
+		const uint8_t *link_in = NULL;
 	};
 	/* The rel32 fields of the jumps linked; the last addresses' fields
 	 * of the ways out to addresses known as they run, and the times
 	 * each went elsewhere */
 	std::vector<uint8_t *> linked, cached;
+	/* The ways out with their checks in line linked: their jump's rel32
+	 * field, the place it went before (unlink ()) */
+	std::vector<std::pair<uint8_t *, const uint8_t *>> linked_in;
 	std::unordered_map<uint8_t *, unsigned> dyn_tries;
 	static const unsigned DYN_TRIES = 8;
 	/* Their layout from the cached field: the jump to the body, the jump
@@ -372,6 +503,16 @@ private:
 	bool		 memory_op (x64::Emitter &e, const Sh4Offsets &o, uint16_t inst,
 			            int32_t at, uint32_t pc);
 	bool		 native_op (x64::Emitter &e, const Sh4Offsets &o, uint16_t inst);
+	/* T = c's flag, in its host register; where the flags still hold it
+	 * (no code written since), the condition */
+	void		 set_t_cond (x64::Emitter &e, x64::Cond c);
+	uint8_t		*t_flags_at = nullptr;
+	x64::Cond	 t_flags_cond = x64::CC_E;
+	/* The FPU's arithmetic (sh4-x64.cpp); fc_checked, the FPU's
+	 * registers as they stood at its test of PR or FD (its slow way's) */
+	bool		 fpu_op (x64::Emitter &e, const Sh4Offsets &o, Sh4RegCache &rc, uint16_t inst,
+			         x64::Label &slow, bool &fallback, bool &pr_ok, bool &fd_ok);
+	Sh4FpuCache	 fc_checked;
 	/* A division's steps from op i, div1 and rotcl on the same registers:
 	 * how many written out at once (0 for none) */
 	unsigned	 division_run (x64::Emitter &e, const Sh4Offsets &o, const Sh4Block *block, size_t i);
@@ -457,7 +598,7 @@ protected:
 private:
 	/* memory_loop () reads the write table too */
 	friend class Sh4X64;
-	const intptr_t	*read_table, *write_table;
+	const intptr_t	*read_table, *write_table, *write_all_table;
 	void		 lookup (x64::Emitter &e, const Sh4Offsets &o, const intptr_t *table,
 			         x64::Label &slow, unsigned size, bool store);
 };

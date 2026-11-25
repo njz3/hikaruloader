@@ -176,6 +176,13 @@ Emitter::lea32 (Reg dst, Reg src, int32_t disp)
 }
 
 void
+Emitter::lea32_index (Reg dst, Reg base, Reg index)
+{
+	/* 8D /r: lea r32, m */
+	mem_index (false, 0x8D, dst, base, index, 1);
+}
+
+void
 Emitter::load32 (Reg dst, Reg base, int32_t disp)
 {
 	/* 8B /r: mov r32, r/m32 */
@@ -511,6 +518,16 @@ Emitter::imul32 (Reg dst, Reg src)
 }
 
 void
+Emitter::imul64_imm (Reg dst, Reg src, int32_t imm)
+{
+	/* REX.W 69 /r id */
+	rex (true, dst, src);
+	byte (0x69);
+	byte ((uint8_t) (0xC0 | ((dst & 7) << 3) | (src & 7)));
+	u32 ((uint32_t) imm);
+}
+
+void
 Emitter::imul64 (Reg dst, Reg src)
 {
 	/* REX.W 0F AF /r */
@@ -536,6 +553,16 @@ Emitter::shl64_imm (Reg r, uint8_t count)
 	rex (true, 0, r);
 	byte (0xC1);
 	byte ((uint8_t) (0xC0 | (4 << 3) | (r & 7)));
+	byte (count);
+}
+
+void
+Emitter::shr64_imm (Reg r, uint8_t count)
+{
+	/* REX.W C1 /5 ib */
+	rex (true, 0, r);
+	byte (0xC1);
+	byte ((uint8_t) (0xE8 | (r & 7)));
 	byte (count);
 }
 
@@ -585,6 +612,26 @@ Emitter::shift32_cl (unsigned op, Reg r)
 	rex (false, 0, r);
 	byte (0xD3);
 	byte ((uint8_t) (0xC0 | (op << 3) | (r & 7)));
+}
+
+void
+Emitter::cmov32 (Cond c, Reg dst, Reg src)
+{
+	/* 0F 40+cc /r */
+	rex (false, dst, src);
+	byte (0x0F);
+	byte ((uint8_t) (0x40 | c));
+	byte ((uint8_t) (0xC0 | ((dst & 7) << 3) | (src & 7)));
+}
+
+void
+Emitter::bsr32 (Reg dst, Reg src)
+{
+	/* 0F BD /r */
+	rex (false, dst, src);
+	byte (0x0F);
+	byte (0xBD);
+	byte ((uint8_t) (0xC0 | ((dst & 7) << 3) | (src & 7)));
 }
 
 void
@@ -738,6 +785,25 @@ Emitter::ror64_imm (Reg r, uint8_t count)
 	byte (0xC1);
 	byte ((uint8_t) (0xC8 | (r & 7)));
 	byte (count);
+}
+
+void
+Emitter::store8 (Reg base, int32_t disp, Reg src)
+{
+	/* 88 /r: mov r/m8, r8 */
+	rex (false, src, base, true);
+	byte (0x88);
+	mem (src, base, disp);
+}
+
+void
+Emitter::store16 (Reg base, int32_t disp, Reg src)
+{
+	/* 66 89 /r: mov r/m16, r16 */
+	byte (0x66);
+	rex (false, src, base);
+	byte (0x89);
+	mem (src, base, disp);
 }
 
 void
@@ -920,6 +986,59 @@ void
 Emitter::cvttss2si_mem (Reg r, Reg base, int32_t disp)
 {
 	sse_any_mem (0xF3, 0x2C, r, base, disp);
+}
+
+void
+Emitter::ucomiss_reg (unsigned x, unsigned y)
+{
+	/* 0F 2E /r */
+	rex (false, x, y);
+	byte (0x0F);
+	byte (0x2E);
+	byte ((uint8_t) (0xC0 | ((x & 7) << 3) | (y & 7)));
+}
+
+void
+Emitter::cvttss2si_reg (Reg r, unsigned x)
+{
+	/* F3 0F 2C /r */
+	byte (0xF3);
+	rex (false, r, x);
+	byte (0x0F);
+	byte (0x2C);
+	byte ((uint8_t) (0xC0 | ((r & 7) << 3) | (x & 7)));
+}
+
+void
+Emitter::movaps_reg (unsigned x, unsigned y)
+{
+	/* 0F 28 /r */
+	rex (false, x, y);
+	byte (0x0F);
+	byte (0x28);
+	byte ((uint8_t) (0xC0 | ((x & 7) << 3) | (y & 7)));
+}
+
+void
+Emitter::movd_to_xmm (unsigned x, Reg r)
+{
+	/* 66 0F 6E /r */
+	byte (0x66);
+	rex (false, x, r);
+	byte (0x0F);
+	byte (0x6E);
+	byte ((uint8_t) (0xC0 | ((x & 7) << 3) | (r & 7)));
+}
+
+void
+Emitter::movd_from_xmm (Reg r, unsigned x)
+{
+	/* 66 0F 7E /r: the xmm in reg, r32 in r/m */
+	byte (0x66);
+	rex (false, x, r);
+	byte (0x0F);
+	byte (0x7E);
+	byte ((uint8_t) (0xC0 | ((x & 7) << 3) | (r & 7)));
 }
 
 void

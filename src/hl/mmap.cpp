@@ -20,6 +20,7 @@
 
 #include "hl/mmap.h"
 #include "hl/machine.h"
+#include "hl/profile.h"
 
 #ifdef _WIN32
 #define NOMINMAX
@@ -146,7 +147,183 @@ placeholders (VirtualAlloc2Fn *alloc, MapViewOfFile3Fn *map)
 	*map = (MapViewOfFile3Fn) (void *) GetProcAddress (kernelbase, "MapViewOfFile3");
 	return *alloc && *map;
 }
+
+typedef BOOL (WINAPI *UnmapViewOfFile2Fn) (HANDLE, PVOID, ULONG);
 #endif
+
+uint8_t *
+Mmap::traps () const
+{
+#ifdef _WIN32
+	if (!trap_base && use_pages && !fast_base)
+		build_traps ();
+#endif
+	return trap_base;
+}
+
+void
+Mmap::free_traps () const
+{
+#ifdef _WIN32
+	if (!trap_base)
+		return;
+	for (void *view : trap_views)
+		UnmapViewOfFile (view);
+	trap_views.clear ();
+	for (uint8_t *at = trap_base, *end = trap_base + TRAP_SPACE; at < end;) {
+		MEMORY_BASIC_INFORMATION info;
+
+		if (!VirtualQuery (at, &info, sizeof (info)))
+			break;
+		if (info.State != MEM_FREE)
+			VirtualFree (info.AllocationBase, 0, MEM_RELEASE);
+		at = (uint8_t *) info.BaseAddress + info.RegionSize;
+	}
+	trap_base = NULL;
+	memset (trap_shown, 0, sizeof (trap_shown));
+	memset (trap_writable, 0, sizeof (trap_writable));
+#endif
+}
+
+/* The views again: the reservation kept (the code written reads at its
+ * base), one placeholder again first */
+void
+Mmap::build_traps () const
+{
+#ifdef _WIN32
+	const uint32_t granule = 1u << GRANULE_BITS;
+	HMODULE kernelbase = GetModuleHandleW (L"kernelbase.dll");
+	UnmapViewOfFile2Fn unmap2 = kernelbase ?
+	        (UnmapViewOfFile2Fn) (void *) GetProcAddress (kernelbase, "UnmapViewOfFile2") : NULL;
+	VirtualAlloc2Fn alloc;
+	MapViewOfFile3Fn map;
+	struct Run {
+		uint32_t lo, size;
+		HANDLE	 section;
+		uint64_t offset;
+		bool	 writable;
+	};
+	std::vector<Run> runs;
+
+	if (!placeholders (&alloc, &map) || !unmap2 || !use_pages || fast_base) {
+		free_traps ();
+		return;
+	}
+	if (trap_base) {
+		for (void *view : trap_views)
+			unmap2 (GetCurrentProcess (), view, MEM_PRESERVE_PLACEHOLDER);
+		trap_views.clear ();
+		if (!VirtualFree (trap_base, TRAP_SPACE, MEM_RELEASE | MEM_COALESCE_PLACEHOLDERS)) {
+			free_traps ();
+			return;
+		}
+	} else {
+		/* Below 2 GB where it can (above the system's shared page at
+		 * 7FFE0000): the access's displacement then, no register for
+		 * the base (sh4-x64.cpp, "Traps"); one memory map alone */
+		static bool low_taken = false;
+
+		if (!low_taken)
+			trap_base = (uint8_t *) alloc (NULL, (PVOID) (uintptr_t) TRAP_LOW, TRAP_SPACE,
+			                               MEM_RESERVE | MEM_RESERVE_PLACEHOLDER, PAGE_NOACCESS, NULL, 0);
+		if (trap_base)
+			low_taken = true;
+		else
+			trap_base = (uint8_t *) alloc (NULL, NULL, TRAP_SPACE, MEM_RESERVE | MEM_RESERVE_PLACEHOLDER,
+			                               PAGE_NOACCESS, NULL, 0);
+		if (!trap_base)
+			return;
+		if (hl::Profile::enabled)
+			HL_PRINT ("mmap: the traps at %p", (void *) trap_base);
+	}
+	memset (trap_shown, 0, sizeof (trap_shown));
+	memset (trap_writable, 0, sizeof (trap_writable));
+
+	/* Each granule whose pages the table reads from one region's section,
+	 * one after the other; the runs of them, from a section's run of
+	 * offsets */
+	for (uint32_t g = 0; g < NUM_GRANULES; g++) {
+		const uint32_t lo = g << GRANULE_BITS, hi = lo + (granule - 1);
+		const Region *reader = NULL;
+		bool same = true, writable = true;
+
+		for (const Region &r : regions)
+			if ((r.flags & HL_REGION_R) && r.lo <= hi && r.hi >= lo) {
+				reader = &r;
+				break;
+			}
+		if (!reader || !reader->buf || !reader->buf->shared_section () ||
+		    reader->lo > lo || reader->hi < hi || (reader->mask & (granule - 1)) != granule - 1 ||
+		    (lo & reader->mask) + granule > reader->buf->size ())
+			continue;
+		const uint32_t offs = lo & reader->mask;
+
+		for (uint32_t p = 0; p < (granule >> PAGE_BITS) && same; p++) {
+			const uint32_t page = (lo >> PAGE_BITS) + p;
+
+			same = page < read_pages.size () &&
+			       read_pages[page] == reader->buf->ptr (offs + (p << PAGE_BITS));
+			/* Writable where the table writes it all in place
+			 * (a code page's left to trap_page () below) */
+			writable &= same && page < write_pages.size () && write_pages[page] == read_pages[page];
+		}
+		if (!same)
+			continue;
+		HANDLE section = (HANDLE) reader->buf->shared_section ();
+
+		if (!runs.empty () && runs.back ().section == section && runs.back ().writable == writable &&
+		    runs.back ().lo + runs.back ().size == lo && runs.back ().offset + runs.back ().size == offs)
+			runs.back ().size += granule;
+		else
+			runs.push_back (Run { lo, granule, section, offs, writable });
+		trap_shown[g >> 3] |= (uint8_t) (1u << (g & 7));
+		if (writable)
+			trap_writable[g >> 3] |= (uint8_t) (1u << (g & 7));
+	}
+	for (unsigned k = 0; k < WIDE_ALIASES; k++)
+		for (const Run &r : runs) {
+			uint8_t *at = trap_base + ((uint64_t) k << 29) + r.lo;
+			void *view;
+
+			VirtualFree (at, r.size, MEM_RELEASE | MEM_PRESERVE_PLACEHOLDER);
+			view = map (r.section, GetCurrentProcess (), at, r.offset, r.size,
+			            MEM_REPLACE_PLACEHOLDER, r.writable ? PAGE_READWRITE : PAGE_READONLY, NULL, 0);
+			if (!view) {
+				free_traps ();
+				return;
+			}
+			trap_views.push_back (view);
+		}
+	/* The code pages now, read-only (the pages guarded were left out) */
+	for (uint32_t page = 0; page < code_pages.size (); page++)
+		if (code_pages[page])
+			trap_page (page);
+#endif
+}
+
+void
+Mmap::trap_page (uint32_t page) const
+{
+#ifdef _WIN32
+	const uint32_t g = page >> (GRANULE_BITS - PAGE_BITS);
+	DWORD prot, old;
+
+	if (!trap_base || g >= NUM_GRANULES || !((trap_shown[g >> 3] >> (g & 7)) & 1))
+		return;
+	if (page >= read_pages.size () || !read_pages[page])
+		prot = PAGE_NOACCESS;
+	else if (((trap_writable[g >> 3] >> (g & 7)) & 1) && page < write_pages.size () &&
+	         write_pages[page] == read_pages[page] && !is_code_page (page))
+		prot = PAGE_READWRITE;
+	else
+		prot = PAGE_READONLY;
+	for (unsigned k = 0; k < WIDE_ALIASES; k++)
+		VirtualProtect (trap_base + ((uint64_t) k << 29) + ((uint64_t) page << PAGE_BITS),
+		                (SIZE_T) 1 << PAGE_BITS, prot, &old);
+#else
+	(void) page;
+#endif
+}
 
 bool
 Mmap::set_fastmem (bool on)
@@ -183,6 +360,7 @@ Mmap::set_fastmem (bool on)
 		return true;
 	if (!placeholders (&alloc, &map))
 		return false;
+	free_traps ();
 
 	fast_base = (uint8_t *) alloc (NULL, NULL, space,
 	                               MEM_RESERVE | MEM_RESERVE_PLACEHOLDER,
@@ -257,6 +435,11 @@ Mmap::set_page_table (bool on)
 	}
 	if (wide_read)
 		fill_wide ();
+	/* The traps' views as the table reads */
+	if (trap_base && on)
+		build_traps ();
+	else if (trap_base)
+		free_traps ();
 }
 
 void
@@ -269,11 +452,13 @@ Mmap::make_wide () const
 #ifdef _WIN32
 	wide_read = (intptr_t *) VirtualAlloc (NULL, size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
 	wide_write = (intptr_t *) VirtualAlloc (NULL, size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+	wide_write_all = (intptr_t *) VirtualAlloc (NULL, size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
 #else
 	wide_read = (intptr_t *) calloc (1, size);
 	wide_write = (intptr_t *) calloc (1, size);
+	wide_write_all = (intptr_t *) calloc (1, size);
 #endif
-	if (!wide_read || !wide_write)
+	if (!wide_read || !wide_write || !wide_write_all)
 		HL_ABORT ("out of memory for the page tables");
 	fill_wide ();
 }
@@ -292,7 +477,9 @@ Mmap::fill_wide () const
 			if (r || wide_read[at])
 				wide_read[at] = wide_bias (r, at);
 			if (w || wide_write[at])
-				wide_write[at] = wide_bias (w, at);
+				wide_write[at] = wide_write_entry (w, page, at);
+			if (w || wide_write_all[at])
+				wide_write_all[at] = wide_bias (w, at);
 		}
 }
 
@@ -312,12 +499,14 @@ Mmap::guard (uint32_t lo, uint32_t hi, std::function<void ()> hit)
 			continue;
 		guarded.push_back (Guarded { p, read_pages[p], write_pages[p] });
 		read_pages[p] = write_pages[p] = NULL;
+		trap_page (p);
 		if (wide_read)
 			for (unsigned k = 0; k < WIDE_ALIASES; k++) {
 				const uint32_t at = (k << (29 - PAGE_BITS)) | p;
 
 				wide_read[at] = 0;
 				wide_write[at] = 0;
+				wide_write_all[at] = 0;
 			}
 	}
 	guard_ranges.push_back (std::make_pair (lo, hi));
@@ -326,17 +515,41 @@ Mmap::guard (uint32_t lo, uint32_t hi, std::function<void ()> hit)
 }
 
 void
+Mmap::code_page (uint32_t page, bool on)
+{
+	if (page >= NUM_PAGES)
+		return;
+	if (code_pages.size () < NUM_PAGES)
+		code_pages.assign (NUM_PAGES, 0);
+	code_pages[page] = on ? 1 : 0;
+	if (trap_base)
+		trap_page (page);
+	if (wide_write) {
+		uint8_t *w = use_pages && page < write_pages.size () ? write_pages[page] : NULL;
+
+		for (unsigned k = 0; k < WIDE_ALIASES; k++) {
+			const uint32_t at = (k << (29 - PAGE_BITS)) | page;
+
+			if (w || wide_write[at])
+				wide_write[at] = wide_write_entry (w, page, at);
+		}
+	}
+}
+
+void
 Mmap::unguard ()
 {
 	for (const Guarded &g : guarded) {
 		read_pages[g.page] = g.read;
 		write_pages[g.page] = g.write;
+		trap_page (g.page);
 		if (wide_read)
 			for (unsigned k = 0; k < WIDE_ALIASES; k++) {
 				const uint32_t at = (k << (29 - PAGE_BITS)) | g.page;
 
 				wide_read[at] = wide_bias (g.read, at);
-				wide_write[at] = wide_bias (g.write, at);
+				wide_write[at] = wide_write_entry (g.write, g.page, at);
+				wide_write_all[at] = wide_bias (g.write, at);
 			}
 	}
 	guarded.clear ();
@@ -347,14 +560,18 @@ Mmap::unguard ()
 Mmap::~Mmap ()
 {
 	set_fastmem (false);
+	free_traps ();
 #ifdef _WIN32
 	if (wide_read)
 		VirtualFree (wide_read, 0, MEM_RELEASE);
 	if (wide_write)
 		VirtualFree (wide_write, 0, MEM_RELEASE);
+	if (wide_write_all)
+		VirtualFree (wide_write_all, 0, MEM_RELEASE);
 #else
 	free (wide_read);
 	free (wide_write);
+	free (wide_write_all);
 #endif
 }
 

@@ -666,6 +666,7 @@ Emulator::Stop
 Emulator::run_frame ()
 {
 	/* HR_PROFILE: all but the limiter's wait (hl/profile.h) */
+	Profile::frame_start (mach->frame);
 	HL_PROFILE (FRAME);
 
 	last_stop = STOP_NONE;

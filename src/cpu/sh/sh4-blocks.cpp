@@ -263,6 +263,45 @@ Sh4BlockCache::stamp (const Sh4Block *block)
 		if (page_epochs[a] != ARMED)
 			page_epochs[a] = epoch;
 	stamped++;
+	if (code_page) {
+		const uint32_t first = (block->pc & ADDR_MASK) >> PAGE_BITS;
+		const uint32_t last = ((block->pc + 2 * block->num_words - 1) & ADDR_MASK) >> PAGE_BITS;
+
+		for (uint32_t p = first; p <= last; p++)
+			flag_page (p);
+	}
+}
+
+void
+Sh4BlockCache::flag_page (uint32_t page)
+{
+	if (page >= NUM_PAGES)
+		return;
+	if (page_flagged.empty ())
+		page_flagged.assign (NUM_PAGES, 0);
+	if (page_flagged[page])
+		return;
+	page_flagged[page] = 1;
+	flagged.push_back (page);
+	code_page (page, true);
+}
+
+void
+Sh4BlockCache::unflag_pages ()
+{
+	if (!code_page)
+		return;
+	for (uint32_t p : flagged) {
+		page_flagged[p] = 0;
+		code_page (p, false);
+	}
+	flagged.clear ();
+	for (uint32_t p : watched)
+		for (uint32_t s = 0; s < PAGE_STAMPS; s++)
+			if (page_epochs[p * PAGE_STAMPS + s] == ARMED) {
+				flag_page (p);
+				break;
+			}
 }
 
 bool
@@ -349,6 +388,11 @@ Sh4BlockCache::hit (uint32_t stamp, uint32_t addr, unsigned size)
 
 		std::fill_n (&page_epochs[page * PAGE_STAMPS], PAGE_STAMPS, 0u);
 		hits.push_back (page);
+		if (code_page && page < page_flagged.size () && page_flagged[page]) {
+			page_flagged[page] = 0;
+			flagged.erase (std::find (flagged.begin (), flagged.end (), page));
+			code_page (page, false);
+		}
 		watch_told (page << PAGE_BITS);
 	} else if (covered (addr & ADDR_MASK, size))
 		new_epoch ();
@@ -383,14 +427,19 @@ Sh4BlockCache::watch (uint32_t lo, uint32_t hi, std::function<void (uint32_t)> t
 	for (p = (lo & ADDR_MASK) >> PAGE_BITS; p <= (hi & ADDR_MASK) >> PAGE_BITS; p++) {
 		std::fill_n (&page_epochs[p * PAGE_STAMPS], PAGE_STAMPS, ARMED);
 		watched.push_back (p);
+		if (code_page)
+			flag_page (p);
 	}
 }
 
 void
 Sh4BlockCache::rearm ()
 {
-	for (uint32_t p : hits)
+	for (uint32_t p : hits) {
 		std::fill_n (&page_epochs[p * PAGE_STAMPS], PAGE_STAMPS, ARMED);
+		if (code_page)
+			flag_page (p);
+	}
 	hits.clear ();
 }
 
@@ -412,12 +461,15 @@ Sh4BlockCache::new_epoch ()
 	if (epoch_moved)
 		epoch_moved ();
 	memset (icache.stale, 0, sizeof (icache.stale));
-	if (++epoch < ARMED)
+	if (++epoch < ARMED) {
+		unflag_pages ();
 		return;
+	}
 	epoch = 1;
 	std::fill (page_epochs.get (), page_epochs.get () + NUM_STAMPS, 0u);
 	for (uint32_t p : watched)
 		std::fill_n (&page_epochs[p * PAGE_STAMPS], PAGE_STAMPS, ARMED);
+	unflag_pages ();
 	hits.clear ();
 	for (std::unique_ptr<Page> &page : pages)
 		if (page)

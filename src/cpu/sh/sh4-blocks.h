@@ -250,6 +250,14 @@ public:
 	 * of. Each entry compared all the same, and a rewrite missed told,
 	 * with HR_SH4_EPOCH_CHECK=1 */
 	void			 own (uint32_t lo, uint32_t hi);
+	/* pc (29 bits) in one of them */
+	bool			 own_code (uint32_t pc) const
+	{
+		for (unsigned i = 0; i < num_own; i++)
+			if (pc >= own_lo[i] && pc <= own_hi[i])
+				return true;
+		return false;
+	}
 	bool			 checking = false;
 	uint32_t		 epoch = 1;
 	/* The epoch of each 256 bytes (1 << 21 of them, STAMP_BITS), for the
@@ -260,6 +268,11 @@ public:
 	void			 new_epoch ();
 	/* Told at each new epoch (the translations' links undone) */
 	std::function<void ()>	 epoch_moved;
+	/* Told of each 4 KB page (29-bit address >> 12) that holds code
+	 * compared in this epoch or a page watched (on), and of those that no
+	 * longer do (off): the memory map leaves their stores to the slow path
+	 * (hl::Mmap::code_page ()), the translations test no stamp then */
+	std::function<void (uint32_t page, bool on)> code_page;
 	/* len bytes from addr written by a device (a DMA): a new epoch when
 	 * they fall on code compared in this one, as the CPU's stores; a
 	 * watched page's told */
@@ -305,6 +318,12 @@ private:
 
 	/* A store of size bytes at addr, at or above stamp's epoch */
 	void			 hit (uint32_t stamp, uint32_t addr, unsigned size);
+	/* code_page ()'s pages told on */
+	std::vector<uint8_t>	 page_flagged;
+	std::vector<uint32_t>	 flagged;
+	void			 flag_page (uint32_t page);
+	/* All told off, but the watched pages still armed */
+	void			 unflag_pages ();
 	/* Its code compared now: the stamps it lies on at this epoch */
 	void			 stamp (const Sh4Block *block);
 	/* A block compared in this epoch holds a byte of those; the last

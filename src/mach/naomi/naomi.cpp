@@ -265,6 +265,18 @@ aica_irq (void *user, bool raised)
 	((Board *) user)->holly->set_external (2, raised);
 }
 
+/* Holly::get ()'s 005F7008, the cartridge's (or the link's) data word */
+uint32_t
+Board::pio_data (void *user)
+{
+	Board *b = (Board *) user;
+	uint32_t data = 0;
+
+	if (!b->link || !b->link->g1_get (0x5F7008, &data))
+		data = b->cart->get (0x08);
+	return data;
+}
+
 hl::Mmap *
 Board::setup_mmap ()
 {
@@ -568,6 +580,33 @@ Board::init ()
 	sh = cpu;
 	cpu->user = this;
 	cpu->sq_buffered = true;
+	/* The TA's packets from the store queues straight to the Holly (the
+	 * "TA" region below, its Area4 device's put_words ()) */
+	cpu->sq_direct = &Holly::sq_packet;
+	cpu->sq_direct_user = holly;
+	/* The 32-bit VRAM path's stores, Vram32's (16 MB: map32 () reaches
+	 * all of it) */
+	if (vram->size () == 16 * MB) {
+		cpu->vram32_base = (uint8_t *) vram->ptr (0);
+		cpu->vram32_busy = &holly->vram_behind;
+	}
+	/* The cartridge's PIO data port, read a word at a time in a loop (a
+	 * GD's DIMM board gives its sectors so, thousands a frame): Holly::get
+	 * ()'s word at once (Sh4::hot_read), unless a link's port has it
+	 * (MultiboardPort::hot_read (); HR_NAOMI_HOT_PIO=0: none) */
+	if (cpu->hot_read_addr == ~0u && hl_util_get_bool_option ("HR_NAOMI_HOT_PIO", true)) {
+		cpu->hot_read_addr = 0x005F7008;
+		cpu->hot_read = &Board::pio_data;
+		cpu->hot_read_obj = this;
+	}
+	/* SB_FFST, read before each word the program sends through the G2
+	 * bus (the AICA's registers): Holly::get ()'s word (HR_NAOMI_HOT_FFST=0:
+	 * through the memory map) */
+	if (hl_util_get_bool_option ("HR_NAOMI_HOT_FFST", true)) {
+		cpu->hot_read2_addr = 0x005F688C;
+		cpu->hot_read2 = &Holly::ffst_read;
+		cpu->hot_read2_obj = holly;
+	}
 	cpu->rfcr_counts = true;
 	/* Under the MMU (MMUCR.AT), the Atomiswave's programs map the store
 	 * queues' area alone (E0000000 up to the RAM and the TA): the MMU left

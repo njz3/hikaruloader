@@ -211,6 +211,7 @@ Holly::Holly (Board *board_, hl::Buffer *vram_) :
 	board (board_)
 {
 	building = std::make_shared<Scene> ();
+	ta_defers = hl_util_get_bool_option ("HR_TA_DEFER", true);
 }
 
 void
@@ -719,11 +720,157 @@ Holly::ta_reset_list ()
 	ta.strip_n = 0;
 }
 
+void
+TaReader::reset_list ()
+{
+	ta.list = -1;
+	ta.half = 0;
+	ta.fifo_words = 0;
+	ta.mod = 0;
+	ta.sprite = 0;
+	ta.strip_n = 0;
+}
+
+/* A header's texture words, for keep_textures () (a texture of a polygon
+ * all culled kept too: never drawn) */
+void
+TaReader::note_texture ()
+{
+	std::vector<TaTexture> &t = scene.deferred.textures;
+	const TaTexture n = { ta.isp, ta.tsp, ta.tcw, ta.two_volume ? ta.tsp1 : 0u, ta.two_volume ? ta.tcw1 : 0u,
+	                      ta.two_volume };
+
+	if (!((ta.isp >> 25) & 1))
+		return;
+	if (!t.empty () && t.back ().tsp == n.tsp && t.back ().tcw == n.tcw && t.back ().two_volume == n.two_volume &&
+	    t.back ().tsp1 == n.tsp1 && t.back ().tcw1 == n.tcw1)
+		return;
+	t.push_back (n);
+}
+
+/*
+ * The TA's Vertices Read Later
+ *
+ * A vertex took the machine's thread some 100 host cycles (to floats,
+ * colours, strips to triangles, the scene's vectors): Crazy Taxi sends some
+ * 13000 a frame. From a TA_LIST_INIT on (Scene::Deferred, the Elan's boards
+ * aside), the machine's thread keeps each parameter's 32 bytes and looks at
+ * them as the TA's state machine (TaReader::fsm: the headers' state, the
+ * halves of 64 bytes, the ends of list and their interrupts, the clips; the
+ * headers' textures noted for keep_textures ()); the drawing thread reads
+ * them into the scene before it draws it (ta_realize ()), from the state the
+ * list started with: the same reading, in the same order, with the cull
+ * value, MXCSR (the SH-4's rounding) and the lists started again (LIST_CONT,
+ * a soft reset) as they were from each parameter on. A scene shown and
+ * given more is read at once, then as before; the states save the state its
+ * reading left. HR_TA_DEFER=0: all read as they come */
+
+void
+ta_realize (Scene &s, bool then_at_once)
+{
+	Scene::Deferred &d = s.deferred;
+	std::lock_guard<std::mutex> hold (d.lock);
+
+	if (!d.on)
+		return;
+	if (d.read < d.words.size () || d.resets_read < d.resets.size () || d.culls_read < d.culls.size () ||
+	    d.csrs_read < d.csrs.size ()) {
+		const unsigned saved = _mm_getcsr ();
+		const size_t n = d.words.size () / 8;
+		TaReader r (d.state, s, d.cull, NULL);
+
+		for (size_t k = d.read / 8; ; k++) {
+			while (d.resets_read < d.resets.size () && d.resets[d.resets_read].first <= k) {
+				r.reset_list ();
+				d.resets_read++;
+			}
+			while (d.culls_read < d.culls.size () && d.culls[d.culls_read].first <= k)
+				r.cull_val = d.cull = d.culls[d.culls_read++].second;
+			while (d.csrs_read < d.csrs.size () && d.csrs[d.csrs_read].first <= k)
+				_mm_setcsr (d.csrs[d.csrs_read++].second);
+			if (k >= n)
+				break;
+			try {
+				r.packet (&d.words[k * 8]);
+			} catch (const std::bad_alloc &) {
+				HL_ERROR_FEW ("naomi: no memory left (another program took it?): a parameter dropped");
+			}
+		}
+		d.read = d.words.size ();
+		_mm_setcsr (saved);
+	}
+	if (then_at_once)
+		d.on = false;
+}
+
+void
+Holly::ta_packet (const uint32_t *w)
+{
+	Scene &s = *building;
+
+	if (s.deferred.on) {
+		if (!s.deferred.published) {
+			ta_defer (w);
+			return;
+		}
+		/* Shown already: what was left read, then each as it comes */
+		uint32_t words[8];
+		TaState keep = ta;
+
+		memcpy (words, w, 32);
+		w = words;
+		ta_realize (s, true);
+		ta = s.deferred.state;
+		memcpy (ta.fifo, keep.fifo, 32);
+		ta.fifo_words = keep.fifo_words;
+	}
+	TaReader r = ta_reader ();
+
+	r.from_elan = from_elan;
+	r.packet (w);
+}
+
+void
+Holly::ta_defer (const uint32_t *w)
+{
+	Scene::Deferred &d = building->deferred;
+	const uint32_t csr = _mm_getcsr ();
+
+	if (csr != d.csr) {
+		d.csrs.push_back (std::make_pair ((uint32_t) (d.words.size () / 8), csr));
+		d.csr = csr;
+	}
+	{
+		/* The packet appended: a copy of 32 bytes (insert ()'s general
+		 * range took a twentieth of the deferral) */
+		const size_t k = d.words.size ();
+
+		if (d.words.capacity () < k + 8)
+			d.words.reserve (std::max<size_t> (2 * d.words.capacity (), 1u << 14));
+		d.words.resize (k + 8);
+		memcpy (&d.words[k], w, 32);
+	}
+	TaReader r = ta_reader ();
+
+	r.fsm = true;
+	r.packet (w);
+}
+
+void
+Holly::ta_reset_marked ()
+{
+	Scene::Deferred &d = building->deferred;
+
+	if (d.on)
+		d.resets.push_back (std::make_pair ((uint32_t) (d.words.size () / 8), 0u));
+	ta_reset_list ();
+}
+
 Batch &
-Holly::ta_batch (bool elan)
+TaReader::batch (bool elan)
 {
 	static const unsigned from[5] = { LIST_OPAQUE, LIST_OPAQUE, LIST_TRANSLUCENT, LIST_TRANSLUCENT, LIST_PUNCH };
-	std::vector<Batch> &list = building->batches[from[ta.list & 7]];
+	std::vector<Batch> &list = scene.batches[from[ta.list & 7]];
 	bool clip = (ta.clip_mode & 3) == 2, clip_out = (ta.clip_mode & 3) == 3;
 
 	if (list.empty () || ta.new_batch || list.back ().elan != elan) {
@@ -734,7 +881,7 @@ Holly::ta_batch (bool elan)
 		b.tsp = ta.tsp;
 		b.tcw = ta.tcw;
 		b.elan = elan;
-		b.first = elan ? building->elan.vertices : (uint32_t) building->vertices.size ();
+		b.first = elan ? scene.elan.vertices : (uint32_t) scene.vertices.size ();
 		b.clip_on = clip;
 		b.clip_out = clip_out;
 		b.x0 = ta.clip[0];
@@ -745,7 +892,7 @@ Holly::ta_batch (bool elan)
 		b.two_volume = ta.two_volume;
 		b.tsp1 = ta.tsp1;
 		b.tcw1 = ta.tcw1;
-		b.first1 = (uint32_t) building->vertices1.size ();
+		b.first1 = (uint32_t) scene.vertices1.size ();
 		/* Glued to the last one if the same */
 		if (!list.empty ()) {
 			Batch &last = list.back ();
@@ -763,9 +910,8 @@ Holly::ta_batch (bool elan)
 }
 
 void
-Holly::ta_triangle (Vertex a, Vertex b, Vertex c, const Vertex *second, int *first)
+TaReader::triangle (Vertex a, Vertex b, Vertex c, const Vertex *second, int *first)
 {
-	Scene *scene = building.get ();
 	unsigned cull = (ta.isp >> 27) & 3;
 	Vertex a1 = {}, b1 = {}, c1 = {};
 
@@ -785,7 +931,7 @@ Holly::ta_triangle (Vertex a, Vertex b, Vertex c, const Vertex *second, int *fir
 		return;
 	if (cull) {
 		float area = (b.x - a.x) * (c.y - a.y) - (c.x - a.x) * (b.y - a.y);
-		float limit = to_float (pvr[PVR_CULL_VAL]);
+		float limit = to_float (cull_val);
 
 		if (fabsf (area) < limit)
 			return;
@@ -794,24 +940,24 @@ Holly::ta_triangle (Vertex a, Vertex b, Vertex c, const Vertex *second, int *fir
 		if (cull == 3 && area > 0.0f)
 			return;
 	}
-	Batch &batch = ta_batch ();
+	Batch &into = batch ();
 	if (first)
-		*first = (int) scene->vertices.size ();
-	scene->vertices.push_back (a);
-	scene->vertices.push_back (b);
-	scene->vertices.push_back (c);
+		*first = (int) scene.vertices.size ();
+	scene.vertices.push_back (a);
+	scene.vertices.push_back (b);
+	scene.vertices.push_back (c);
 	if (ta.two_volume) {
-		scene->vertices1.push_back (a1);
-		scene->vertices1.push_back (b1);
-		scene->vertices1.push_back (c1);
+		scene.vertices1.push_back (a1);
+		scene.vertices1.push_back (b1);
+		scene.vertices1.push_back (c1);
 	}
 	/* As std::max ({...}) would, without its call a triangle */
-	scene->max_z = std::max (std::max (std::max (scene->max_z, a.z), b.z), c.z);
-	batch.count += 3;
+	scene.max_z = std::max (std::max (std::max (scene.max_z, a.z), b.z), c.z);
+	into.count += 3;
 }
 
 void
-Holly::ta_store (Vertex v, const Vertex &v1, bool end)
+TaReader::store (Vertex v, const Vertex &v1, bool end)
 {
 	if (ta.strip_n >= 2) {
 		if ((ta.strip_n - 2) & 1) {
@@ -828,12 +974,12 @@ Holly::ta_store (Vertex v, const Vertex &v1, bool end)
 			{
 				Vertex second[3] = { ta.strip1[0], v1, last1 };
 
-				ta_triangle (ta.strip[0], v, last, second);
+				triangle (ta.strip[0], v, last, second);
 			}
 		} else {
 			Vertex second[3] = { ta.strip1[0], ta.strip1[1], v1 };
 
-			ta_triangle (ta.strip[0], ta.strip[1], v, second);
+			triangle (ta.strip[0], ta.strip[1], v, second);
 		}
 	}
 	if (ta.strip_n >= 1) {
@@ -852,7 +998,7 @@ Holly::ta_store (Vertex v, const Vertex &v1, bool end)
 }
 
 void
-Holly::ta_polygon_header (const uint32_t *w)
+TaReader::polygon_header (const uint32_t *w)
 {
 	uint32_t pcw = w[0];
 	unsigned col = (pcw >> 4) & 3;
@@ -922,7 +1068,7 @@ Holly::ta_polygon_header (const uint32_t *w)
 }
 
 void
-Holly::ta_vertex (const uint32_t *w)
+TaReader::vertex (const uint32_t *w)
 {
 	bool end = (w[0] >> 28) & 1;
 	bool uv16 = ta.vertex_type == 4 || ta.vertex_type == 6 || ta.vertex_type == 8 ||
@@ -1011,11 +1157,11 @@ Holly::ta_vertex (const uint32_t *w)
 		v1.u = to_float (w[8]);
 		v1.v = to_float (w[9]);
 	}
-	ta_store (v, v1, end);
+	store (v, v1, end);
 }
 
 void
-Holly::ta_sprite (const uint32_t *w)
+TaReader::sprite (const uint32_t *w)
 {
 	Vertex a = {}, b = {}, c = {}, d = {};
 	bool textured = (ta.isp >> 25) & 1;
@@ -1050,8 +1196,8 @@ Holly::ta_sprite (const uint32_t *w)
 		ta.two_volume = 0;
 		ta.isp |= 1 << 23;
 		ta.isp &= ~(3u << 27);
-		ta_triangle (a, b, c);
-		ta_triangle (a, c, d);
+		triangle (a, b, c);
+		triangle (a, c, d);
 		ta.isp = isp;
 	}
 }
@@ -1064,14 +1210,13 @@ volumes_of (Scene &scene, int list)
 }
 
 void
-Holly::ta_modifier (const uint32_t *w)
+TaReader::modifier (const uint32_t *w)
 {
-	Scene *scene = building.get ();
 	int i;
 
 	for (i = 1; i <= 9; i++)
-		scene->mod_vertices.push_back (to_float (w[i]));
-	if (std::vector<ModVol> *list = volumes_of (*scene, ta.list))
+		scene.mod_vertices.push_back (to_float (w[i]));
+	if (std::vector<ModVol> *list = volumes_of (scene, ta.list))
 		if (!list->empty ())
 			list->back ().count += 3;
 }
@@ -1112,7 +1257,7 @@ Holly::ta_packet_guarded (const uint32_t *w)
 }
 
 void
-Holly::ta_packet (const uint32_t *w)
+TaReader::packet (const uint32_t *w)
 {
 	uint32_t both[16];
 	uint32_t pcw;
@@ -1126,15 +1271,21 @@ Holly::ta_packet (const uint32_t *w)
 		para = pcw >> 29;
 		switch (para) {
 		case 4:
-			ta_polygon_header (both);
+			polygon_header (both);
+			if (fsm)
+				note_texture ();
 			break;
 		default:
-			if (ta.mod)
-				ta_modifier (both);
+			if (fsm) {
+				/* What sprite () leaves of the state */
+				if (!ta.mod && ta.sprite)
+					ta.two_volume = 0;
+			} else if (ta.mod)
+				modifier (both);
 			else if (ta.sprite)
-				ta_sprite (both);
+				sprite (both);
 			else
-				ta_vertex (both);
+				vertex (both);
 			break;
 		}
 		return;
@@ -1148,8 +1299,8 @@ Holly::ta_packet (const uint32_t *w)
 
 		/* After the DMA that brought it says it is done (Kamui's list
 		 * handler goes by that order) */
-		if (ta.list >= 0 && ta.list < 5 && !from_elan)
-			after (2, ist[ta.list]);
+		if (holly && ta.list >= 0 && ta.list < 5 && !from_elan)
+			holly->after (2, ist[ta.list]);
 		ta.list = -1;
 		ta.strip_n = 0;
 		break;
@@ -1175,10 +1326,11 @@ Holly::ta_packet (const uint32_t *w)
 			ta.sprite = 0;
 			/* Bit 26: the volume's last triangles, from the PCW */
 			mv.isp = (w[1] & ~(1u << 26)) | (((pcw >> 6) & 1) << 26);
-			mv.first = (uint32_t) building->mod_vertices.size () / 3;
+			mv.first = (uint32_t) scene.mod_vertices.size () / 3;
 			mv.count = 0;
-			if (std::vector<ModVol> *volumes = volumes_of (*building, list))
-				volumes->push_back (mv);
+			if (!fsm)
+				if (std::vector<ModVol> *volumes = volumes_of (scene, list))
+					volumes->push_back (mv);
 			break;
 		}
 		if ((((pcw >> 4) & 3) == 2 && (((pcw >> 6) & 1) || ((pcw >> 3) & 1 && (pcw >> 2) & 1)))) {
@@ -1186,7 +1338,9 @@ Holly::ta_packet (const uint32_t *w)
 			ta.half = 1;
 			break;
 		}
-		ta_polygon_header (w);
+		polygon_header (w);
+		if (fsm)
+			note_texture ();
 		break;
 	}
 	case 5: {
@@ -1204,6 +1358,8 @@ Holly::ta_packet (const uint32_t *w)
 		ta.mod = 0;
 		ta.new_batch = 1;
 		ta.clip_mode = (pcw >> 16) & 3;
+		if (fsm)
+			note_texture ();
 		break;
 	}
 	case 7: {
@@ -1214,7 +1370,8 @@ Holly::ta_packet (const uint32_t *w)
 			ta.half = 1;
 			break;
 		}
-		ta_vertex (w);
+		if (!fsm)
+			vertex (w);
 		break;
 	}
 	default:
@@ -1415,6 +1572,26 @@ Holly::area4_words (uint32_t addr, const uint32_t *words, unsigned n)
 		area4_put (4, addr + i * 4, words[i]);
 }
 
+uint32_t
+Holly::ffst_read (void *user)
+{
+	return ((Holly *) user)->sb[(0x5F688C - 0x5F6800) / 4];
+}
+
+bool
+Holly::sq_packet (void *user, uint32_t target, const uint32_t *words)
+{
+	Holly *h = (Holly *) user;
+
+	/* Area 4 (10000000-13FFFFFF, the "TA" region), below its YUV and
+	 * VRAM paths: area4_words ()'s packet */
+	if ((target >> 26) != 4 || h->ta.fifo_words != 0 || (target & 0x01FFFFFF) + 32 > 0x00800000)
+		return false;
+	memcpy (h->ta.fifo, words, 32);
+	h->ta_packet_guarded (h->ta.fifo);
+	return true;
+}
+
 void
 Holly::area4_put (unsigned size, uint32_t addr, uint64_t val)
 {
@@ -1468,6 +1645,8 @@ Holly::start_render ()
 	unsigned i;
 
 	d.scene = found->scene;
+	/* Its words closed: read by the drawing thread, under lock */
+	d.scene->deferred.published = true;
 	d.fb_w_sof1 = pvr[PVR_FB_W_SOF1];
 	d.fb_w_ctrl = pvr[PVR_FB_W_CTRL];
 	d.fb_w_linestride = pvr[PVR_FB_W_STRIDE];
@@ -1744,13 +1923,20 @@ Holly::keep_textures (Draw &d)
 			vram_sync (addr, bytes);
 		};
 
-		for (l = 0; l < NUM_LISTS && vram_behind; l++)
-			for (const Batch &b : d.scene->batches[l])
-				if ((b.isp >> 25) & 1) {
-					wait_for (b.tcw, b.tsp);
-					if (b.two_volume)
-						wait_for (b.tcw1, b.tsp1);
-				}
+		if (d.scene->deferred.on) {
+			for (const TaTexture &t : d.scene->deferred.textures) {
+				wait_for (t.tcw, t.tsp);
+				if (t.two_volume)
+					wait_for (t.tcw1, t.tsp1);
+			}
+		} else
+			for (l = 0; l < NUM_LISTS && vram_behind; l++)
+				for (const Batch &b : d.scene->batches[l])
+					if ((b.isp >> 25) & 1) {
+						wait_for (b.tcw, b.tsp);
+						if (b.two_volume)
+							wait_for (b.tcw1, b.tsp1);
+					}
 		if ((d.background_isp >> 25) & 1)
 			wait_for (d.background_tcw, d.background_tsp);
 	}
@@ -1789,13 +1975,21 @@ Holly::keep_textures (Draw &d)
 		d.textures[key] = kept;
 	};
 
-	for (l = 0; l < NUM_LISTS; l++)
-		for (const Batch &b : d.scene->batches[l])
-			if ((b.isp >> 25) & 1) {
-				take (b.tcw, b.tsp);
-				if (b.two_volume)
-					take (b.tcw1, b.tsp1);
-			}
+	if (d.scene->deferred.on) {
+		/* Read later: its headers' textures, as noted */
+		for (const TaTexture &t : d.scene->deferred.textures) {
+			take (t.tcw, t.tsp);
+			if (t.two_volume)
+				take (t.tcw1, t.tsp1);
+		}
+	} else
+		for (l = 0; l < NUM_LISTS; l++)
+			for (const Batch &b : d.scene->batches[l])
+				if ((b.isp >> 25) & 1) {
+					take (b.tcw, b.tsp);
+					if (b.two_volume)
+						take (b.tcw1, b.tsp1);
+				}
 	if ((d.background_isp >> 25) & 1)
 		take (d.background_tcw, d.background_tsp);
 	if (kept_textures.size () > 8192)
@@ -1814,7 +2008,11 @@ Holly::pvr_write (unsigned reg, uint32_t val, uint32_t old)
 		break;
 	case PVR_SOFTRESET:
 		if (val & 1)
-			ta_reset_list ();
+			ta_reset_marked ();
+		break;
+	case PVR_CULL_VAL:
+		if (building->deferred.on)
+			building->deferred.culls.push_back (std::make_pair ((uint32_t) (building->deferred.words.size () / 8), val));
 		break;
 	case PVR_STARTRENDER:
 		start_render ();
@@ -1834,6 +2032,15 @@ Holly::pvr_write (unsigned reg, uint32_t val, uint32_t old)
 			if (board->elan)
 				board->elan->flush_lighting ();
 			building = new_scene ();
+			/* Its vertices read later (see "The TA's Vertices Read
+			 * Later"), from the state as it is */
+			if (ta_defers && !board->elan) {
+				Scene::Deferred &d = building->deferred;
+
+				d.on = true;
+				d.state = ta;
+				d.cull = pvr[PVR_CULL_VAL];
+			}
 			for (Context &c : contexts)
 				if (c.base == base)
 					found = &c;
@@ -1846,7 +2053,7 @@ Holly::pvr_write (unsigned reg, uint32_t val, uint32_t old)
 		break;
 	case PVR_LIST_CONT:
 		if (val >> 31)
-			ta_reset_list ();
+			ta_reset_marked ();
 		pvr[reg] = 0;
 		break;
 	case PVR_YUV_BASE:
@@ -2057,6 +2264,15 @@ Holly::save_state (hl::State *state)
 {
 	int ret = 0;
 
+	/* The parameters left read first: the state as they left it */
+	if (building && building->deferred.on) {
+		TaState keep = ta;
+
+		ta_realize (*building);
+		ta = building->deferred.state;
+		memcpy (ta.fifo, keep.fifo, 32);
+		ta.fifo_words = keep.fifo_words;
+	}
 	SAVE (ta);
 	SAVE (yuv);
 	SAVE (sb);

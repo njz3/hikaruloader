@@ -19,6 +19,7 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <cstring>
 #include <map>
 
 #include "hl/core.h"
@@ -46,6 +47,10 @@ uint64_t Profile::units[NUM_SECTIONS];
 
 /* The time stamp counter's rate, from the wall clock between init and report */
 static uint64_t start_ticks;
+uint64_t Profile::from_frame;
+unsigned Profile::generation;
+/* The frames before from_frame, left out of the report */
+static uint64_t frames_before;
 static std::chrono::steady_clock::time_point start_time;
 
 static const struct {
@@ -74,6 +79,7 @@ static const struct {
 	{ "frame shown",	Profile::RENDER_END,	NULL },
 	{ "interface, swap",	Profile::RENDER_END,	NULL },
 	{ "sound output",	Profile::FRAME,		NULL },
+	{ "loops simulated",	Profile::SH4_MASTER,	"simulation" },
 };
 
 /* HR_SAMPLE=1 (Windows): where the thread that runs the machine is, a
@@ -166,10 +172,22 @@ sample_one (HANDLE thread, std::unordered_map<uint64_t, uint64_t> &at,
 static void
 sample_loop ()
 {
+	unsigned seen = 0;
+
 	while (sampling) {
 		HANDLE o = other.load ();
 
 		Sleep (1);
+		/* HR_PROFILE_FROM: the samples from there too */
+		if (seen != *(volatile unsigned *) &Profile::generation) {
+			seen = *(volatile unsigned *) &Profile::generation;
+			samples.clear ();
+			tops.clear ();
+			master_samples.clear ();
+			slave_samples.clear ();
+			other_samples.clear ();
+			other_tops.clear ();
+		}
 		sample_one (sampled, samples, tops, true);
 		if (o)
 			sample_one (o, other_samples, other_tops);
@@ -273,6 +291,50 @@ report_other (HANDLE process)
 	for (i = 0; i < busy.size () && i < (size_t) hl_util_get_int_option ("HR_SAMPLE_TOP", 48); i++)
 		HL_PRINT ("  %5.1f%%  %s", 100.0 * (double) busy[i].first / (double) (all ? all : 1),
 		          busy[i].second.c_str ());
+
+	/* Its samples outside the program by their callers there */
+	std::unordered_map<std::string, uint64_t> by_caller;
+	std::vector<std::pair<uint64_t, std::string>> callers;
+
+	for (auto &kv : other_tops) {
+		if (kv.first >= program_lo && kv.first < program_hi)
+			continue;
+		char buf[sizeof (SYMBOL_INFO) + 256];
+		SYMBOL_INFO *sym = (SYMBOL_INFO *) buf;
+		DWORD64 disp = 0;
+		std::string name = "?";
+
+		memset (buf, 0, sizeof (buf));
+		sym->SizeOfStruct = sizeof (SYMBOL_INFO);
+		sym->MaxNameLen = 255;
+		if (SymFromAddr (process, kv.first, &disp, sym))
+			name = sym->Name;
+		for (auto &t : kv.second) {
+			std::string label = name;
+
+			for (uint64_t ret : t.first ? chains[t.first - 1] : Chain ()) {
+				char cbuf[sizeof (SYMBOL_INFO) + 256];
+				SYMBOL_INFO *csym = (SYMBOL_INFO *) cbuf;
+				DWORD64 cdisp = 0;
+
+				if (!ret)
+					break;
+				memset (cbuf, 0, sizeof (cbuf));
+				csym->SizeOfStruct = sizeof (SYMBOL_INFO);
+				csym->MaxNameLen = 255;
+				label += " <- " + (SymFromAddr (process, ret, &cdisp, csym) ?
+				                   std::string (csym->Name) : std::string ("?"));
+			}
+			by_caller[label] += t.second;
+		}
+	}
+	for (auto &kv : by_caller)
+		callers.push_back (std::make_pair (kv.second, kv.first));
+	std::sort (callers.begin (), callers.end (), std::greater<> ());
+	HL_PRINT ("samples: the drawing thread's in the DLLs, by their callers in the program:");
+	for (i = 0; i < callers.size () && i < 16; i++)
+		HL_PRINT ("  %5.1f%%  %s", 100.0 * (double) callers[i].first / (double) (all ? all : 1),
+		          callers[i].second.c_str ());
 }
 
 static void
@@ -520,11 +582,25 @@ void
 Profile::init ()
 {
 	enabled = hl_util_get_bool_option ("HR_PROFILE", false);
+	from_frame = (uint64_t) std::max (0, hl_util_get_int_option ("HR_PROFILE_FROM", 0));
 	start_ticks = now ();
 	start_time = std::chrono::steady_clock::now ();
 #ifdef _WIN32
 	sample_start ();
 #endif
+}
+
+void
+Profile::start_again (uint64_t frame)
+{
+	memset (total, 0, sizeof (total));
+	memset (calls, 0, sizeof (calls));
+	memset (units, 0, sizeof (units));
+	frame_cpu_total = 0;
+	frames_before = frame;
+	start_ticks = now ();
+	start_time = std::chrono::steady_clock::now ();
+	generation++;
 }
 
 /* A section's own time: its total less its children's */
@@ -587,6 +663,9 @@ Profile::report (uint64_t frames)
 #ifdef _WIN32
 	sample_report ();
 #endif
+	if (frames <= frames_before)
+		return;
+	frames -= frames_before;
 	if (!enabled || !frames || !total[FRAME])
 		return;
 	HL_PRINT ("profile: %llu frames, %.3f ms each (%.1f a second without the limiter), %.2f GHz counter",

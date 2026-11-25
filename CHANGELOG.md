@@ -5,6 +5,43 @@ What each version brings, for those who play. How the versions are numbered
 and released: [DEVELOPMENT.md](DEVELOPMENT.md), "Versions and releases".
 
 
+In preparation
+--------------
+
+- NAOMI, Atomiswave: the polygons' vertices the game sends read by the
+  drawing thread, the machine's thread keeping their bytes: Crazy Taxi's
+  frames some 7% shorter, the same frames, pictures and save states.
+- SH-4: the stores no longer look for code where a page holds none, the
+  pieces of code go on to each other with fewer instructions, and a loop
+  on itself keeps its registers: 2 to 4% shorter frames again, the same
+  frames to the bit.
+- SH-4: its reads and writes of the memory go straight to it, the PC's
+  processor catching those that reach a device (one instruction an access
+  instead of six); the pieces of code check, as they go on to each other,
+  in place rather than through a call; the interrupts looked for among
+  those raised alone. The sound: the effects' program leaves out what no
+  one reads, its floats worked out in place, the voices' levels computed
+  once. Frames 3 to 10% shorter on the development PC (Metal Slug 6 about
+  10%), the same frames and sound to the bit.
+- SH-4: its floating-point registers kept in the PC's own within a piece of
+  code, the store queues sent to the polygons' reader without a detour.
+- NAOMI, Atomiswave: the drawing thread no longer asks the graphics driver
+  for a picture's size each frame (it waited there for the driver's own
+  thread), and sends the polygons' settings (their textures' filters, the
+  clipping, depth and blending) only when they change: some half of its
+  processor time less, the same pictures. The textures are decoded through
+  tables into a buffer kept from one to the next: Virtua Tennis 6% faster,
+  Beach Spikers' drawing 9% shorter.
+- SH-4: the waits that write to memory (a count down, a call each turn)
+  worked out faster, their instructions kept from one slice to the next
+  (Asian Dynamite's an eighth cheaper); the store queues' polygons straight
+  to the reader. NAOMI: the textures written word by word through the
+  32-bit VRAM path, the GD-ROM's sectors read through the PIO port and the
+  FIFO's status register no longer go through the slow path (Wild Riders'
+  slow accesses twelve times fewer), and the stores into pages that code
+  and data share are looked up once. The same frames to the bit.
+
+
 0.8.14 (2026-11-25)
 -------------------
 

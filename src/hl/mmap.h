@@ -65,6 +65,8 @@ public:
 	/* n words put from addr on, as n puts of 4 bytes one after the other
 	 * (a store queue's burst): the region found once */
 	int	put_words (uint32_t addr, const uint32_t *words, unsigned n);
+	/* Ranges guarded (guard ()): put_words () tells of a store there */
+	bool	guarding () const { return !guard_ranges.empty (); }
 
 	/* The page table: for each 4 KB page of the first 512 MB that one
 	 * RAM or ROM holds whole (no device, no log), where it lies in the
@@ -105,6 +107,31 @@ public:
 	static const unsigned WIDE_ALIASES = 6;
 	const intptr_t *wide_read_table () const { make_wide (); return wide_read; }
 	const intptr_t *wide_write_table () const { make_wide (); return wide_write; }
+	/* The same with the code pages in it (code_page () leaves them out
+	 * of the other): a store there tests the code's stamp itself */
+	const intptr_t *wide_write_all_table () const { make_wide (); return wide_write_all; }
+	/* Traps: 4 GB of the host's address space reserved, the SH-4's 32-bit
+	 * addresses as it sees them without its MMU (the 512 MB at each of
+	 * U0's four, P1, P2; nothing at P3 and P4): each 64 KB the page table
+	 * reads straight from one RAM or ROM in a section (Buffer) shown there,
+	 * writable where it writes there too; each page as the tables say from
+	 * then on (none where they read it no more, a guarded page's or a
+	 * device's bank shown; read-only where they write it no more, a code
+	 * page's). A translation's access goes to base + address unchecked;
+	 * one that faults goes through the tables for good (sh4-x64.cpp,
+	 * "Traps"). Made at the first call, again with the page table; NULL
+	 * where the host cannot (no page table, fastmem, Windows 10 before
+	 * 1803, other systems) */
+	uint8_t	*traps () const;
+	static const uint64_t TRAP_SPACE = 1ull << 32;
+	/* Where the first one goes if it can: an access's displacement */
+	static const uint64_t TRAP_LOW = 0x7FFF0000ull;
+	/* A 4 KB page (29-bit address >> 12) holding an SH-4's code compared
+	 * in its epoch (Sh4BlockCache): its stores through the wide write table
+	 * to the slow path (sh4_write () looks at the code there), the other
+	 * pages' straight (the translations' stores test no code epoch); on
+	 * false, back in the table */
+	void	 code_page (uint32_t page, bool on);
 
 	/* Where addr lies in the host when get () or put () would go straight
 	 * there (fastmem, then the page table), an access not crossing a 4 KB
@@ -129,6 +156,8 @@ public:
 	{
 		if (use_pages && addr < (NUM_PAGES << PAGE_BITS)) {
 			read_pages[addr >> PAGE_BITS] = (uint8_t *) host;
+			if (trap_base)
+				trap_page (addr >> PAGE_BITS);
 			if (wide_read)
 				for (unsigned k = 0; k < WIDE_ALIASES; k++) {
 					const uint32_t at = (k << (29 - PAGE_BITS)) | (addr >> PAGE_BITS);
@@ -195,13 +224,21 @@ private:
 	/* Each page's host address less its own (at its alias's address):
 	 * the host's address of an access, the entry plus the address; 0 for
 	 * none (a page whose difference is 0 as none: the slow path) */
-	mutable intptr_t *wide_read = NULL, *wide_write = NULL;
+	mutable intptr_t *wide_read = NULL, *wide_write = NULL, *wide_write_all = NULL;
 	static intptr_t wide_bias (const uint8_t *host, uint32_t page)
 	{
 		return host ? (intptr_t) host - (intptr_t) ((uintptr_t) page << PAGE_BITS) : 0;
 	}
 	void	 make_wide () const;
 	void	 fill_wide () const;
+	/* code_page ()'s, a byte a page; a page's entry at a wide table's
+	 * place for writes */
+	std::vector<uint8_t> code_pages;
+	bool	 is_code_page (uint32_t page) const { return page < code_pages.size () && code_pages[page]; }
+	intptr_t wide_write_entry (const uint8_t *w, uint32_t page, uint32_t at) const
+	{
+		return is_code_page (page) ? 0 : wide_bias (w, at);
+	}
 
 	/* guard ()'s: the pages taken out of the table (theirs to put back),
 	 * the ranges, the call */
@@ -222,6 +259,16 @@ private:
 				return;
 			}
 	}
+
+	/* traps ()'s: the reservation, its views; the granules shown, those
+	 * writable (a bit each) */
+	mutable uint8_t *trap_base = NULL;
+	mutable std::vector<void *> trap_views;
+	mutable uint8_t trap_shown[NUM_GRANULES / 8] = {}, trap_writable[NUM_GRANULES / 8] = {};
+	void	 build_traps () const;
+	void	 free_traps () const;
+	/* A page of the traps' views as the tables say now */
+	void	 trap_page (uint32_t page) const;
 
 	uint8_t	*fast_base = NULL;
 	unsigned layout_version = 0;

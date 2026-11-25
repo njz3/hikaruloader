@@ -38,6 +38,8 @@
 /* TODO: handle FP exceptions */
 
 #include <algorithm>
+#include <unordered_map>
+#include <vector>
 #include <xmmintrin.h>
 
 #include "hl/core.h"
@@ -1836,14 +1838,25 @@ sh4_sq_put (Sh4 *ctx, unsigned size, uint32_t addr, uint64_t val)
 }
 
 void
+sh4_pref_flush (Sh4 *ctx, uint32_t addr)
+{
+	if (ctx->sq_buffered)
+		ctx->sq_flush (addr);
+}
+
+void
 Sh4::sq_flush (uint32_t addr)
 {
 	Sh4 *ctx = this;
+	static const bool direct_on = hl_util_get_bool_option ("HR_SH4_SQ_DIRECT", true);
 	uint32_t target = get_sq_addr (ctx, addr);
 	unsigned q = (addr >> 5) & 1, i;
+	hl::Mmap *map = ((hl::Cpu *) ctx)->mmap;
 
+	if (sq_direct && direct_on && !map->guarding () && sq_direct (sq_direct_user, target & 0x1FFFFFFF, ctx->sq[q]))
+		return;
 	/* Within 32 bytes, aligned: no 29-bit wrap among them */
-	((hl::Cpu *) ctx)->mmap->put_words (target & 0x1FFFFFFF, ctx->sq[q], 8);
+	map->put_words (target & 0x1FFFFFFF, ctx->sq[q], 8);
 	(void) i;
 }
 
@@ -2079,6 +2092,9 @@ sh4_read (Sh4 *ctx, uint32_t addr)
 	if (sizeof (Word) <= 4 && (addr & ADDR_MASK) == ctx->hot_read_addr && addr < 0xE0000000 &&
 	    !ctx->mmu_exact)
 		return (Word) ctx->hot_read (ctx->hot_read_obj);
+	if (sizeof (Word) <= 4 && (addr & ADDR_MASK) == ctx->hot_read2_addr && addr < 0xE0000000 &&
+	    !ctx->mmu_exact)
+		return (Word) ctx->hot_read2 (ctx->hot_read2_obj);
 
 	uint8_t *p = sh4_direct (ctx, addr, sizeof (Word), false);
 
@@ -2163,12 +2179,20 @@ sh4_update_pending (Sh4 *ctx)
 		return;
 
 	/* Find the highest priority raised IRQ; note that interrupt source
-	 * numbers are sorted from highest to lowest priority. */
+	 * numbers are sorted from highest to lowest priority. Those raised
+	 * alone, in the same order (irq_raised) */
 	priority = 0;
-	for (i = 0; i < SH4_NUM_IESOURCES; i++) {
+	for (uint64_t m = ctx->irq_raised; m; m &= m - 1) {
+#ifdef _MSC_VER
+		unsigned long bit;
+
+		_BitScanForward64 (&bit, m);
+		i = (unsigned) bit;
+#else
+		i = (unsigned) __builtin_ctzll (m);
+#endif
 		/* TODO: handle ties like the hardware does */
-		if (ctx->intc.irqs[i].state == hl::IRQ_STATE_RAISED &&
-		    ctx->intc.irqs[i].priority > priority) {
+		if (ctx->intc.irqs[i].priority > priority) {
 			priority = ctx->intc.irqs[i].priority;
 			maxi = i;
 		}
@@ -2227,6 +2251,10 @@ Sh4::set_irq_state (unsigned num, hl::IrqState state, hl::Device *from)
 		                  state == hl::IRQ_STATE_RAISED);
 
 	ctx->intc.irqs[num].state = state;
+	if (state == hl::IRQ_STATE_RAISED)
+		ctx->irq_raised |= 1ull << num;
+	else
+		ctx->irq_raised &= ~(1ull << num);
 
 	/* Handle NMI */
 	if (num == SH4_IESOURCE_NMI) {
@@ -2286,6 +2314,7 @@ sh4_process_irqs (hl::Cpu *cpu)
 		/* Clear the interrupt source; TODO this is not correct, the
 		 * source should be cleared externally! */
 		ctx->intc.irqs[index].state = hl::IRQ_STATE_CLEAR;
+		ctx->irq_raised &= ~(1ull << index);
 
 		/* Update the pending flag */
 		sh4_update_irqs (ctx);
@@ -2566,6 +2595,18 @@ sh4_read32 (Sh4 *ctx, uint32_t addr)
 	return R32 (ctx, addr);
 }
 
+uint32_t
+sh4_tcnt0_read (Sh4 *ctx)
+{
+	if (ctx->stats)
+		sh4_stats_access (ctx, 0xFFD8000C, 4, false);
+	HL_CPU_LOG (ctx, "IREG R%u %08X", 32, 0xFFD8000Cu);
+	const uint32_t val = ctx->tmu.counter[0];
+
+	sh4_tmu_polled (ctx);
+	return val;
+}
+
 void
 sh4_write32 (Sh4 *ctx, uint32_t addr, uint32_t val)
 {
@@ -2689,9 +2730,14 @@ delay_slot (Sh4 *ctx, uint32_t pc)
  * while profiling or with breakpoints; cpu:option ('idle', 0) turns it
  * off. */
 
+/* For HR_PROFILE: the turns noted, by their loop (tail, head), each CPU's */
+static std::unordered_map<uint64_t, uint64_t> noted_turns[2];
+
 void
 Sh4::IdleLoop::start (Sh4 *ctx, uint32_t tail_, uint32_t head_)
 {
+	if (hl::Profile::enabled)
+		noted_turns[ctx->config.master ? 0 : 1][((uint64_t) tail_ << 32) | head_]++;
 	tail = tail_;
 	head = head_;
 	seen = 0;
@@ -2761,7 +2807,7 @@ Sh4::IdleLoop::back_edge (Sh4 *ctx, uint32_t tail_, uint32_t head_)
 	if ((!tracking || tail_ != tail || head_ != head) && known_one.tail == tail_ && known_one.head == head_ &&
 	    !known_one.simulated &&
 	    known_one.length && !known_one.dead && enabled_sim) {
-		if (run_forward_simulated (ctx, known_one.path, known_one.length) > 0)
+		if (run_forward_simulated (ctx, known_one.path, known_one.length, &known_one) > 0)
 			return;
 	}
 	if (tail_ != tail || head_ != head) {
@@ -2789,7 +2835,7 @@ Sh4::IdleLoop::back_edge (Sh4 *ctx, uint32_t tail_, uint32_t head_)
 	 * noted again from here (the path may have changed) */
 	if (!tracking && known_one.tail == tail_ && known_one.head == head_ && known_one.simulated) {
 		int ran = known_one.length && enabled_sim ?
-		          run_forward_simulated (ctx, known_one.path, known_one.length) : -1;
+		          run_forward_simulated (ctx, known_one.path, known_one.length, &known_one) : -1;
 
 		if (ran >= 0) {
 			if (ran > 0)
@@ -2898,7 +2944,8 @@ bool
 Sh4::IdleLoop::simulate (Sh4 *ctx, Known &k, uint32_t t, uint32_t h)
 {
 	const bool ours = k.tail == t && k.head == h;
-	int ran = enabled_sim ? run_forward_simulated (ctx, path, length) : -1;
+	/* Its kept turn's instructions, when the one noted is it */
+	int ran = enabled_sim ? run_forward_simulated (ctx, path, length, ours && k.simulated ? &k : NULL) : -1;
 
 	if (ran < 0) {
 		if (ours && k.simulated && ++k.sim_fails < 4) {
@@ -2921,6 +2968,9 @@ Sh4::IdleLoop::simulate (Sh4 *ctx, Known &k, uint32_t t, uint32_t h)
 	if (ran > 0)
 		k.sim_fails = 0;
 	/* Its turn kept: simulated again from it at once (back_edge ()) */
+	/* Another path: its instructions read again */
+	if (k.length != length || memcmp (k.path, path, length * sizeof (path[0])))
+		k.ops_epoch = 0;
 	k.length = length;
 	memcpy (k.path, path, length * sizeof (path[0]));
 	/* The next turn noted from here */
@@ -3185,6 +3235,12 @@ struct IdleSimOverlay {
 	static const unsigned MAX = 128;
 	IdleSimAccess w[MAX];
 	unsigned n = 0;
+	/* A bit for each 32-bit word written, by (addr >> 2) & 63: an access
+	 * whose bit is clear shares no word with any, w not looked through
+	 * (the turns' loads went through it all, the stack's pushes with
+	 * them; HR_SH4_SIM_WORDS=0: always looked through) */
+	uint64_t words = 0;
+	static uint64_t bit (uint32_t addr) { return 1ull << ((addr >> 2) & 63); }
 	/* Under the MMU: PTEH's ASID, MMUCR.SV's; the 1 KB pages translated,
 	 * each with its physical page and whether a read or a write would
 	 * fault */
@@ -3294,6 +3350,8 @@ idle_sext (uint32_t v, unsigned size)
 	       size == 2 ? (uint32_t) (int32_t) (int16_t) v : v;
 }
 
+static const bool sim_words_on = hl_util_get_bool_option ("HR_SH4_SIM_WORDS", true);
+
 /* A load: the turns' stores first (the same address and size; one
  * overlapping otherwise, nothing done), then RAM or ROM in place */
 static bool
@@ -3306,7 +3364,9 @@ idle_sim_read (Sh4 *ctx, IdleSimOverlay &ov, IdleSimTurn &turn, uint32_t addr, u
 	if (addr >= 0xE0000000 || (addr & (size - 1)) || turn.nloads == IdleSimTurn::MAX ||
 	    !idle_sim_data (ctx, ov, turn, vaddr, false, &addr))
 		return false;
-	for (i = ov.n; i-- > 0;) {
+	/* Aligned, of 4 bytes at most: a store that overlaps holds the
+	 * same word */
+	for (i = (ov.words & IdleSimOverlay::bit (addr)) || !sim_words_on ? ov.n : 0; i-- > 0;) {
 		const IdleSimAccess &w = ov.w[i];
 
 		if (w.addr == addr && w.size == size) {
@@ -3346,7 +3406,7 @@ idle_sim_write (Sh4 *ctx, IdleSimOverlay &ov, IdleSimTurn &turn, uint32_t addr, 
 	    !idle_sim_data (ctx, ov, turn, addr, true, &addr))
 		return false;
 	val &= idle_sim_mask (size);
-	for (i = 0; i < ov.n; i++) {
+	for (i = (ov.words & IdleSimOverlay::bit (addr)) || !sim_words_on ? 0 : ov.n; i < ov.n; i++) {
 		if (ov.w[i].addr == addr && ov.w[i].size == size) {
 			ov.w[i].value = val;
 			break;
@@ -3358,6 +3418,7 @@ idle_sim_write (Sh4 *ctx, IdleSimOverlay &ov, IdleSimTurn &turn, uint32_t addr, 
 		if (ov.n == IdleSimOverlay::MAX)
 			return false;
 		ov.w[ov.n++] = IdleSimAccess { addr, size, val };
+		ov.words |= IdleSimOverlay::bit (addr);
 	}
 	turn.stores[turn.nstores++] = IdleSimAccess { addr, size, val };
 	return true;
@@ -3367,7 +3428,7 @@ idle_sim_write (Sh4 *ctx, IdleSimOverlay &ov, IdleSimTurn &turn, uint32_t addr, 
  * simulated or the turn leaves the path */
 static bool
 idle_sim_turn (Sh4 *ctx, IdleSimState &s, IdleSimOverlay &ov, IdleSimTurn &turn,
-               const uint32_t *path, unsigned len)
+               const uint32_t *path, unsigned len, const uint16_t *ops = NULL, uint16_t *read = NULL)
 {
 	uint32_t pc = path[0], branch_to = 0;
 	bool delayed = false;
@@ -3383,19 +3444,25 @@ idle_sim_turn (Sh4 *ctx, IdleSimState &s, IdleSimOverlay &ov, IdleSimTurn &turn,
 
 		if (pc != path[i])
 			return false;
-		if ((pc & ~0x3FFu) != page) {
-			uint32_t phys;
+		if (ops)
+			op = ops[i];
+		else {
+			if ((pc & ~0x3FFu) != page) {
+				uint32_t phys;
 
-			page = pc & ~0x3FFu;
-			if (!idle_sim_fetch (ctx, ov, page, &phys))
-				return false;
-			page_phys = phys & ADDR_MASK;
-			page_at = ((hl::Cpu *) ctx)->mmap->direct (page_phys, false);
-			if (!page_at)
-				return false;
+				page = pc & ~0x3FFu;
+				if (!idle_sim_fetch (ctx, ov, page, &phys))
+					return false;
+				page_phys = phys & ADDR_MASK;
+				page_at = ((hl::Cpu *) ctx)->mmap->direct (page_phys, false);
+				if (!page_at)
+					return false;
+			}
+			memcpy (&op, page_at + (pc & 0x3FF), 2);
+			op = (uint16_t) ((hl::Cpu *) ctx)->patch (page_phys | (pc & 0x3FF), op);
+			if (read)
+				read[i] = op;
 		}
-		memcpy (&op, page_at + (pc & 0x3FF), 2);
-		op = (uint16_t) ((hl::Cpu *) ctx)->patch (page_phys | (pc & 0x3FF), op);
 		const unsigned rn = (op >> 8) & 15, rm = (op >> 4) & 15;
 		const int32_t simm = (int8_t) op;
 		const uint32_t uimm = op & 0xFF;
@@ -3809,7 +3876,7 @@ idle_sim_change (const IdleSimTurn::Cmp &c1, const IdleSimTurn::Cmp &c2)
 /* 1 when turns were taken at once, 0 when none could be yet (the slice's
  * end, a change near), -1 when they cannot be simulated */
 int
-Sh4::IdleLoop::run_forward_simulated (Sh4 *ctx, const uint32_t *turn, unsigned turn_length)
+Sh4::IdleLoop::run_forward_simulated (Sh4 *ctx, const uint32_t *turn, unsigned turn_length, Known *known_turn)
 {
 	const uint32_t *path = turn;
 	const unsigned length = turn_length;
@@ -3826,6 +3893,17 @@ Sh4::IdleLoop::run_forward_simulated (Sh4 *ctx, const uint32_t *turn, unsigned t
 
 	if (!length)
 		return -1;
+	/* For HR_PROFILE: the master's simulations, their time */
+	struct Timed {
+		uint64_t from;
+		~Timed ()
+		{
+			if (from) {
+				hl::Profile::add (hl::Profile::SH4_LOOPS, hl::Profile::now () - from);
+				hl::Profile::count (hl::Profile::SH4_LOOPS, 1);
+			}
+		}
+	} timed { hl::Profile::enabled && ctx->config.master ? hl::Profile::now () : 0 };
 	/* No turn to take before the slice's end: not simulated */
 	if (ctx->remaining / (int) length - 1 <= 0)
 		return 0;
@@ -3838,11 +3916,40 @@ Sh4::IdleLoop::run_forward_simulated (Sh4 *ctx, const uint32_t *turn, unsigned t
 	s0.pr = ctx->regs.pr;
 	s0.gbr = ctx->regs.gbr;
 	s0.t = SR.bit.t;
+	/* The known turn's instructions as read in this code epoch, else
+	 * read by the first turn (and kept once taken) */
+	/* The known turn's (its path, or the one just noted the same: each
+	 * slice notes it again, simulate ()) */
+	const bool keep_ops = known_turn && sim_ops && length <= MAX_PATH && known_turn->length == length &&
+	                      (known_turn->path == path || !memcmp (known_turn->path, path, length * sizeof (path[0])));
+	/* Under the MMU, a turn in P1 or P2 alone, privileged (idle_sim_fetch
+	 * () fails it otherwise) */
+	const bool ops_usable = !ctx->mmu_exact || (keep_ops && known_turn->ops_untranslated && SR.bit.md);
+	const uint16_t *ops = keep_ops && ops_usable && known_turn->ops_epoch == ctx->blocks.epoch ?
+	                      known_turn->ops : NULL;
+	uint16_t read[MAX_PATH];
+	/* Kept from the CPU's own RAM and ROM alone: the code elsewhere is
+	 * compared at each entry, no epoch started by a store there */
+	bool fill = keep_ops && !ops, untranslated = true;
+
+	for (i = 0; fill && i < length; i++) {
+		fill = ctx->blocks.own_code (path[i] & ADDR_MASK);
+		untranslated = untranslated && !tlb_translated (path[i]);
+	}
+	/* Under the MMU, a turn that is translated: read each time */
+	if (ctx->mmu_exact && !untranslated)
+		fill = false;
 	s1 = s0;
-	if (!idle_sim_turn (ctx, s1, ov, t1, path, length))
+	if (hl::Profile::enabled) {
+		sim_insts += length;
+		sim_cached += ops != NULL;
+	}
+	if (!idle_sim_turn (ctx, s1, ov, t1, path, length, ops, fill ? read : NULL))
 		return -1;
+	if (fill)
+		ops = read;
 	s2 = s1;
-	if (!idle_sim_turn (ctx, s2, ov, t2, path, length))
+	if (!idle_sim_turn (ctx, s2, ov, t2, path, length, ops))
 		return -1;
 	/* Alike */
 	if (s1.pr != s0.pr || s2.pr != s0.pr || s1.gbr != s0.gbr || s2.gbr != s0.gbr ||
@@ -3921,6 +4028,13 @@ Sh4::IdleLoop::run_forward_simulated (Sh4 *ctx, const uint32_t *turn, unsigned t
 	sim_turns += (uint64_t) k;
 	sim_taken++;
 	sim_new = true;
+	/* Kept: the turn run after this one compares its blocks in this
+	 * epoch (a store over them starts another) */
+	if (fill) {
+		memcpy (known_turn->ops, read, length * sizeof (read[0]));
+		known_turn->ops_epoch = ctx->blocks.epoch;
+		known_turn->ops_untranslated = untranslated;
+	}
 	return 1;
 }
 
@@ -4077,8 +4191,11 @@ sh4_chain (Sh4 *ctx, uint32_t pc0, int n)
 	ctx->chain.n = n;
 	ctx->chain.calls++;
 	if (!ctx->chain.enabled || cpu->state != hl::CPU_STATE_RUN ||
-	    (ctx->mmu_exact && !sh4_mmu_block (ctx, PC)) || ctx->irq_ready)
+	    (ctx->mmu_exact && !sh4_mmu_block (ctx, PC)) || ctx->irq_ready) {
+		if (hl::Profile::enabled)
+			(ctx->irq_ready ? ctx->chain.back_irq : ctx->chain.back_stop)++;
 		return 0;
+	}
 	if (ctx->chain.idle) {
 		idle_look (ctx, pc0, n, ctx->chain.before, true);
 		/* Told: the run loop looks no more */
@@ -4091,16 +4208,25 @@ sh4_chain (Sh4 *ctx, uint32_t pc0, int n)
 		int count = 0;
 
 		body = ctx->jit->near_body (PC, ctx->blocks.epoch, ctx->mmu_exact, ctx->mmu_gen, &count);
-		if (body && cpu->remaining <= count)
+		if (body && cpu->remaining <= count) {
+			if (hl::Profile::enabled)
+				ctx->chain.back_slice++;
 			return 0;
+		}
 	}
 	if (!body) {
 		block = ctx->blocks.peek (PC);
-		if (!block || cpu->remaining <= (int) block->ops.size ())
+		if (!block || cpu->remaining <= (int) block->ops.size ()) {
+			if (hl::Profile::enabled)
+				(block ? ctx->chain.back_slice : ctx->chain.back_none)++;
 			return 0;
+		}
 		body = ctx->jit->body (block);
-		if (!body)
+		if (!body) {
+			if (hl::Profile::enabled)
+				ctx->chain.back_none++;
 			return 0;
+		}
 		ctx->jit->note (PC, block, ctx->blocks.epoch, ctx->mmu_gen);
 	}
 	ctx->chain.stores = ctx->stores;
@@ -4234,6 +4360,10 @@ sh4_run_blocks (Sh4 *ctx, bool skip_idle)
 				ctx->chain.before = cpu->remaining;
 				ctx->chain.links = 0;
 				ctx->mmu_gen_entry = ctx->mmu_gen;
+				if (hl::Profile::enabled) {
+					ctx->chain.runs++;
+					ctx->chain.runs_noting += ctx->idle.noting ();
+				}
 				n = native (ctx, PC);
 				if (skip_idle && n != 0)
 					idle_look (ctx, ctx->chain.pc0, n, ctx->chain.before, false);
@@ -4355,8 +4485,10 @@ Sh4::run (int cycles)
 	cpu->remaining = cycles;
 	slice_cycles = cycles;
 	/* SLEEP ends with the first interrupt it may take */
-	if (cpu->state == hl::CPU_STATE_SLEEP && irq_ready)
+	if (cpu->state == hl::CPU_STATE_SLEEP && irq_ready) {
 		cpu->state = hl::CPU_STATE_RUN;
+		state_set ();
+	}
 	/* The MMU switched: the blocks decoded before, dropped */
 	if (mmu.flush_blocks) {
 		blocks.clear ();
@@ -4408,6 +4540,7 @@ Sh4::set_state (hl::CpuState state)
 	hl::Cpu *cpu = this;
 	/* TODO: standby, deep sleep, etc. */
 	cpu->state = state;
+	state_set ();
 }
 
 /* See Table 19.5, "Interrupt Exception Handling Sources and
@@ -4487,6 +4620,7 @@ Sh4::reset (hl::ResetType type)
 	cpu->state = (ctx->config.master) ?
 	              hl::CPU_STATE_RUN :
 	              hl::CPU_STATE_STOP;
+	ctx->state_set ();
 
 	ctx->in_slot = false;
 	ctx->idle.reset ();
@@ -4539,6 +4673,7 @@ Sh4::reset (hl::ResetType type)
 	ctx->irq_ready = false;
 	HL_ASSERT (sizeof (ctx->intc.irqs) == sizeof (default_irq_state));
 	memcpy (ctx->intc.irqs, default_irq_state, sizeof (default_irq_state));
+	ctx->irq_raised_again ();
 
 	memset ((void *) &ctx->dmac, 0, sizeof (ctx->dmac));
 
@@ -4565,10 +4700,12 @@ Sh4::load_state (hl::State *state)
 
 	/* Running, or asleep */
 	LOAD (ctx->state);
+	ctx->state_set ();
 	LOAD (ctx->in_slot);
 	LOAD (ctx->regs);
 	ctx->idle.reset ();
 	LOAD (ctx->intc);
+	ctx->irq_raised_again ();
 	ctx->irq_ready = ctx->intc.pending &&
 	                 ctx->intc.irqs[ctx->intc.index].priority > SR.bit.i;
 	LOAD (ctx->dmac);
@@ -4676,6 +4813,26 @@ Sh4::~Sh4 ()
 		          jit->translated () ? (double) jit->main_bytes / jit->translated () : 0.0);
 	if (hl::Profile::enabled && jit)
 		jit->print_kinds (config.master ? 'M' : 'S');
+	if (hl::Profile::enabled) {
+		/* The loops whose turns were noted the most */
+		std::vector<std::pair<uint64_t, uint64_t>> top (noted_turns[config.master ? 0 : 1].begin (),
+		                                                noted_turns[config.master ? 0 : 1].end ());
+		uint64_t all = 0;
+
+		for (const auto &kv : top)
+			all += kv.second;
+		std::sort (top.begin (), top.end (), [] (const auto &a, const auto &b) { return a.second > b.second; });
+		if (all)
+			HL_PRINT ("sh4 %c: %llu turns noted, the loops noted the most:", config.master ? 'M' : 'S',
+			          (unsigned long long) all);
+		for (size_t i = 0; i < top.size () && i < 10; i++)
+			HL_PRINT ("sh4 %c:   %08X back to %08X  %llu", config.master ? 'M' : 'S', (uint32_t) (top[i].first >> 32),
+			          (uint32_t) top[i].first, (unsigned long long) top[i].second);
+	}
+	if (hl::Profile::enabled && idle.sim_runs)
+		HL_PRINT ("sh4 %c: a simulated turn %.1f instructions on average, %llu of %llu simulations with "
+		          "their instructions kept", config.master ? 'M' : 'S', (double) idle.sim_insts / (double) idle.sim_runs,
+		          (unsigned long long) idle.sim_cached, (unsigned long long) idle.sim_runs);
 	if (hl::Profile::enabled && idle.sim_turns)
 		HL_PRINT ("sh4 %c: %llu turns of loops that store simulated, taken at once (%u blocks told); "
 		          "%llu simulations, %llu of them run forward",
@@ -4687,12 +4844,22 @@ Sh4::~Sh4 ()
 	if (hl::Profile::enabled && jit && jit->links_made ())
 		HL_PRINT ("sh4 %c: %llu ways out linked to their next block", config.master ? 'M' : 'S',
 		          (unsigned long long) jit->links_made ());
+	if (hl::Profile::enabled && jit && jit->traps_taken ())
+		HL_PRINT ("sh4 %c: %llu accesses sent through the page table by a fault (the traps), each once",
+		          config.master ? 'M' : 'S', (unsigned long long) jit->traps_taken ());
 	if (hl::Profile::enabled && chain.ends)
 		HL_PRINT ("sh4 %c: %llu translated blocks run, %llu of them gone on to the next (%.1f%%); "
 		          "sh4_chain () called %llu times, %llu gone on",
 		          config.master ? 'M' : 'S', (unsigned long long) chain.ends,
 		          (unsigned long long) chain.gone, 100.0 * (double) chain.gone / (double) chain.ends,
 		          (unsigned long long) chain.calls, (unsigned long long) chain.calls_gone);
+	if (hl::Profile::enabled && chain.calls)
+		HL_PRINT ("sh4 %c: sh4_chain () back to the run loop: %llu stopped, %llu interrupts, %llu slice ends, "
+		          "%llu not translated; the run loop's calls of a translation %llu (%llu noting a turn)",
+		          config.master ? 'M' : 'S', (unsigned long long) chain.back_stop,
+		          (unsigned long long) chain.back_irq, (unsigned long long) chain.back_slice,
+		          (unsigned long long) chain.back_none, (unsigned long long) chain.runs,
+		          (unsigned long long) chain.runs_noting);
 }
 
 const char *
@@ -4832,9 +4999,16 @@ Sh4::Sh4 (hl::Machine *mach, hl::Mmap *mmap, bool master, bool le) :
 	if (!hl_util_get_bool_option ("HR_SH4_IDLE", true))
 		idle.enabled = false;
 	idle.enabled_sim = hl_util_get_bool_option ("HR_SH4_IDLE_SIM", true);
+	idle.sim_ops = hl_util_get_bool_option ("HR_SH4_SIM_OPS", true);
 	idle.owner = this;
 	blocks.checking = hl_util_get_bool_option ("HR_SH4_EPOCH_CHECK", false);
 	icache_on = hl_util_get_bool_option ("HR_SH4_ICACHE", false);
+	/* The pages of the code compared in an epoch left out of the
+	 * translations' write table (their stores to the slow path, which looks
+	 * at the code), the other stores testing no stamp; HR_SH4_CODE_PAGES=0:
+	 * each store tests its stamp */
+	if (hl_util_get_bool_option ("HR_SH4_CODE_PAGES", true))
+		blocks.code_page = [this] (uint32_t page, bool on) { ((hl::Cpu *) this)->mmap->code_page (page, on); };
 	/* The translations' links undone at each new code epoch (sh4-x64.cpp,
 	 * "Links") */
 	blocks.epoch_moved = [this] () {

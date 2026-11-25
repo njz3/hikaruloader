@@ -61,6 +61,7 @@ public:
 		RENDER_SHOW,	/* the frame before put in the window */
 		PRESENT,	/* the interface drawn, the buffers swapped */
 		AUDIO,		/* the host's sound output */
+		SH4_LOOPS,	/* the master's loops that store, simulated */
 		NUM_SECTIONS
 	};
 
@@ -76,6 +77,19 @@ public:
 
 	/* frames: the frames run; to the log */
 	static void	 report (uint64_t frames);
+	/* HR_PROFILE_FROM=n: the times counted from the frame n on (the boot
+	 * left out, as the comparisons measure); generation: one more at
+	 * each start again, for the counts kept elsewhere (the drawing
+	 * thread's) */
+	static uint64_t	 from_frame;
+	static unsigned	 generation;
+	/* At the start of the frame frame: the counts zeroed there */
+	static void	 frame_start (uint64_t frame)
+	{
+		if (enabled && from_frame && frame == from_frame)
+			start_again (frame);
+	}
+	static void	 start_again (uint64_t frame);
 	/* The frames' own CPU time on their thread (QueryThreadCycleTime:
 	 * without the time other programs took the core, which the counter's
 	 * times count), at a frame's start and end */

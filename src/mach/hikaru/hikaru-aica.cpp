@@ -188,6 +188,9 @@ struct Aica::Slot {
 	 * in */
 	unsigned ar_rate, d1r_rate, d2r_rate, rr_rate;
 	unsigned far_rate, fd1r_rate, fd2r_rate, frr_rate;
+	/* The direct output's gains, left and right, stereo [0] and mono [1]
+	 * (0 for none: the same sum); the send's to the DSP */
+	int32_t	 direct_l[2], direct_r[2], send;
 };
 
 /* A DSP step's four MPRO words apart, its COEF sign-extended */
@@ -375,6 +378,9 @@ Aica::reg_write (unsigned size, uint32_t offs, uint32_t val)
 		/* The DSP's COEF, MADRS and program */
 		if (reg >= 0x3000 && reg < 0x3C00)
 			dsp_dirty = true;
+		/* The effects' levels and pans, MVOL */
+		if ((reg >= 0x2000 && reg < 0x2048) || reg == REG_MVOL)
+			fx_dirty = true;
 		if (reg >= 0x3400 && reg < 0x3C00)
 			dsp_count_steps ();
 	}
@@ -545,6 +551,23 @@ Aica::read_slot (unsigned ch, Slot &s) const
 	s.fd1r_rate = rate (s.fd1r, s);
 	s.fd2r_rate = rate (s.fd2r, s);
 	s.frr_rate = rate (s.frr, s);
+	/* As mix () took them each sample */
+	for (i = 0; i < 2; i++) {
+		unsigned lvl = (15 - s.disdl) * 32;
+		unsigned side = ((s.dipan & 0xF) == 0xF) ? ATT_STEPS : (s.dipan & 0xF) * 32;
+		unsigned att_l = lvl, att_r = lvl;
+
+		/* 1x: to the left, the right attenuated */
+		if (!i) {
+			if (s.dipan & 0x10)
+				att_r += side;
+			else
+				att_l += side;
+		}
+		s.direct_l[i] = att_l < ATT_STEPS ? att_gain[att_l] : 0;
+		s.direct_r[i] = att_r < ATT_STEPS ? att_gain[att_r] : 0;
+	}
+	s.send = att_gain[(15 - s.imxl) * 32];
 }
 
 const Aica::Slot &
@@ -793,10 +816,44 @@ Aica::lfo_wave (Voice &v, unsigned ws) const
 	}
 }
 
+/* An effect's gains as mix () adds it, 0 for none (EFSDL 0, or attenuated
+ * past the table) */
+void
+Aica::fx_gains (unsigned i, bool mono, int32_t *gain) const
+{
+	uint32_t r = (uint32_t) regs->get (2, 0x2000 + 4 * i);
+	unsigned efsdl = (r >> 8) & 0xF, efpan = r & 0x1F;
+	unsigned lvl, side, att_l, att_r;
+
+	gain[0] = gain[1] = 0;
+	if (!efsdl)
+		return;
+	lvl = (15 - efsdl) * 32;
+	side = ((efpan & 0xF) == 0xF) ? ATT_STEPS : (efpan & 0xF) * 32;
+	att_l = att_r = lvl;
+	if (!mono) {
+		if (efpan & 0x10)
+			att_r += side;
+		else
+			att_l += side;
+	}
+	if (att_l < ATT_STEPS)
+		gain[0] = att_gain[att_l];
+	if (att_r < ATT_STEPS)
+		gain[1] = att_gain[att_r];
+}
+
 void
 Aica::mix ()
 {
-	uint32_t mvol = (uint32_t) regs->get (2, REG_MVOL);
+	/* Read at each sample, unless kept (optimized) */
+	if (!optimized || fx_dirty) {
+		fx_mvol = (uint32_t) regs->get (2, REG_MVOL);
+		for (unsigned k = 0; k < 16; k++)
+			fx_gains (k, (fx_mvol & 0x8000) != 0, fx_gain[k]);
+		fx_dirty = false;
+	}
+	uint32_t mvol = fx_mvol;
 	bool mono = (mvol & 0x8000) != 0;
 	int64_t left = 0, right = 0;
 	unsigned ch, i, active = 0;
@@ -827,27 +884,14 @@ Aica::mix ()
 			att += alfo_att[s.alfos][lfo_wave (v, s.alfows)];
 		amp = (att < ATT_STEPS) ? (int32_t) (((int64_t) smp * att_gain[att]) >> 16) : 0;
 
-		/* The direct output */
+		/* The direct output (its gains read_slot ()'s) */
 		if (s.disdl) {
-			unsigned lvl = (15 - s.disdl) * 32;
-			unsigned side = ((s.dipan & 0xF) == 0xF) ? ATT_STEPS : (s.dipan & 0xF) * 32;
-			unsigned att_l = lvl, att_r = lvl;
-
-			/* 1x: to the left, the right attenuated */
-			if (!mono) {
-				if (s.dipan & 0x10)
-					att_r += side;
-				else
-					att_l += side;
-			}
-			if (att_l < ATT_STEPS)
-				left += ((int64_t) amp * att_gain[att_l]) >> 16;
-			if (att_r < ATT_STEPS)
-				right += ((int64_t) amp * att_gain[att_r]) >> 16;
+			left += ((int64_t) amp * s.direct_l[mono]) >> 16;
+			right += ((int64_t) amp * s.direct_r[mono]) >> 16;
 		}
 		/* To the DSP's input ISEL (20 bits) */
 		if (s.imxl)
-			st.dsp.mixs[s.isel] += (int32_t) (((int64_t) amp * att_gain[(15 - s.imxl) * 32]) >> 12);
+			st.dsp.mixs[s.isel] += (int32_t) (((int64_t) amp * s.send) >> 12);
 
 		envelope (v, s);
 		filter_envelope (v, s);
@@ -868,26 +912,10 @@ Aica::mix ()
 	/* The effects: the DSP's outputs, panned like the channels */
 	if (st.dsp.steps) {
 		dsp_run ();
+		/* A gain of 0 adds 0, as one left out */
 		for (i = 0; i < 16; i++) {
-			uint32_t r = (uint32_t) regs->get (2, 0x2000 + 4 * i);
-			unsigned efsdl = (r >> 8) & 0xF, efpan = r & 0x1F;
-			unsigned lvl, side, att_l, att_r;
-
-			if (!efsdl || !st.dsp.efreg[i])
-				continue;
-			lvl = (15 - efsdl) * 32;
-			side = ((efpan & 0xF) == 0xF) ? ATT_STEPS : (efpan & 0xF) * 32;
-			att_l = att_r = lvl;
-			if (!mono) {
-				if (efpan & 0x10)
-					att_r += side;
-				else
-					att_l += side;
-			}
-			if (att_l < ATT_STEPS)
-				left += ((int64_t) st.dsp.efreg[i] * att_gain[att_l]) >> 16;
-			if (att_r < ATT_STEPS)
-				right += ((int64_t) st.dsp.efreg[i] * att_gain[att_r]) >> 16;
+			left += ((int64_t) st.dsp.efreg[i] * fx_gain[i][0]) >> 16;
+			right += ((int64_t) st.dsp.efreg[i] * fx_gain[i][1]) >> 16;
 		}
 	}
 	memset (st.dsp.mixs, 0, sizeof (st.dsp.mixs));
@@ -1183,8 +1211,14 @@ Aica::dsp_interpret ()
  * (State::Dsp in memory, ACC and DEC in registers while it runs); the ring
  * buffer's floats through aica_dsp_pack () and aica_dsp_unpack (). Made
  * again when the program, COEF or MADRS are written or the steps change
- * (dsp_dirty, State::Dsp::steps). The same samples: HR_DSP_CHECK=1 runs
- * the interpreter after it and tells where the state differs. Windows'
+ * (dsp_dirty, State::Dsp::steps). What no one reads is left out (dead): a
+ * step's ACC that the next step neither shifts (TWT, FRCL, MWT on an odd
+ * step, ADRL from SHIFTED, EWT) nor adds (BSEL), but the last's (kept in
+ * the state for the next sample); its shifter where the step writes none
+ * of these; its input where neither X, YRL nor ADRL takes it. Most of the
+ * programs' steps past their end are such (HR_DSP_DEAD=0: all written).
+ * The same samples: HR_DSP_CHECK=1 runs the interpreter after it and
+ * tells where the state differs. Windows'
  * calling convention: rcx the state, rdx the sound RAM, r8d the ring
  * buffer's mask, r9d its base. Registers: rbx the state, rsi the RAM,
  * r12d ACC, r13d DEC, r14d the mask, r15d the base, edi the step's input,
@@ -1247,6 +1281,74 @@ Aica::dsp_translate ()
 		e.mov_imm32 (r, (uint32_t) hi);
 		e.bind (done);
 	};
+	/* The ring buffer's floats written out (hikaru-aica-math.h), rax,
+	 * rcx, rdx, r8, r9 taken: eax's 16 bits unpacked to eax; ebp's 24
+	 * bits packed to eax */
+	auto unpack = [&] () {
+		e.alu32_reg_reg (Emitter::ALU_XOR, R9, R9);
+		e.mov32 (R8, RAX);
+		e.and32_imm (R8, 0x7FF);
+		e.shl32_imm (R8, 11);
+		e.mov32 (RDX, RAX);
+		e.shr32_imm (RDX, 15);
+		e.mov32 (RCX, RAX);
+		e.shr32_imm (RCX, 11);
+		e.and32_imm (RCX, 15);
+		/* The implied bit: the sign's, else not, past exponent 11 */
+		e.cmp32_imm (RCX, 11);
+		e.setcc (CC_BE, R9);
+		e.alu32_reg_reg (Emitter::ALU_XOR, R9, RDX);
+		e.shl32_imm (R9, 22);
+		e.alu32_reg_reg (Emitter::ALU_OR, R8, R9);
+		e.mov32 (R9, RDX);
+		e.shl32_imm (R9, 23);
+		e.alu32_reg_reg (Emitter::ALU_OR, R8, R9);
+		e.mov_imm32 (R9, 11);
+		e.cmp32_imm (RCX, 11);
+		e.cmov32 (CC_A, RCX, R9);
+		e.shl32_imm (R8, 8);
+		e.rot32 (Emitter::ROT_SAR, R8, 8);
+		e.shift32_cl (Emitter::ROT_SAR, R8);
+		e.mov32 (RAX, R8);
+	};
+	auto pack = [&] () {
+		Label none;
+
+		e.mov32 (RAX, RBP);
+		e.mov32 (RDX, RAX);
+		e.shr32_imm (RDX, 23);
+		e.and32_imm (RDX, 1);
+		/* The leading bits like the sign, 12 at most */
+		e.lea32 (RCX, RAX, 0);
+		e.alu32_reg_reg (Emitter::ALU_ADD, RCX, RAX);
+		e.alu32_reg_reg (Emitter::ALU_XOR, RCX, RAX);
+		e.and32_imm (RCX, 0xFFFFFF);
+		e.mov_imm32 (R8, 12);
+		e.bsr32 (RCX, RCX);
+		e.jcc (CC_E, none);
+		e.mov_imm32 (R8, 23);
+		e.alu32_reg_reg (Emitter::ALU_SUB, R8, RCX);
+		e.mov_imm32 (R9, 12);
+		e.cmp32_imm (R8, 12);
+		e.cmov32 (CC_A, R8, R9);
+		e.bind (none);
+		/* The mantissa: bits 11-21 of the value shifted by the
+		 * exponent, by 11 at 12 */
+		e.mov32 (RCX, R8);
+		e.mov_imm32 (R9, 11);
+		e.cmp32_imm (RCX, 11);
+		e.cmov32 (CC_A, RCX, R9);
+		e.shift32_cl (4, RAX);
+		e.shr32_imm (RAX, 11);
+		e.and32_imm (RAX, 0x7FF);
+		e.shl32_imm (RDX, 15);
+		e.alu32_reg_reg (Emitter::ALU_OR, RAX, RDX);
+		e.shl32_imm (R8, 11);
+		e.alu32_reg_reg (Emitter::ALU_OR, RAX, R8);
+	};
+	static const bool floats_inline = hl_util_get_bool_option ("HR_DSP_FLOATS", true);
+	/* X with B's TEMP word, COEF as an immediate (HR_DSP_LEAN=0: not) */
+	static const bool dsp_lean = hl_util_get_bool_option ("HR_DSP_LEAN", true);
 	/* ecx a TEMP's index: (base + DEC) & 7F */
 	auto temp_index = [&] (unsigned base) {
 		e.mov32 (RCX, R13);
@@ -1273,11 +1375,29 @@ Aica::dsp_translate ()
 	for (i = 0; i < 16; i++)
 		e.store32_imm (RBX, EFREG + 4 * (int32_t) i, 0);
 
+	/* What each step needs (see above) */
+	static const bool dead_out = hl_util_get_bool_option ("HR_DSP_DEAD", true);
+	auto shifts = [&] (unsigned s) {
+		const DspStep &q = dsp_cache[s];
+
+		return q.twt || q.frcl || ((s & 1) && q.mwt) || (q.adrl && q.shift == 3) || q.ewt;
+	};
+	auto acc_read = [&] (unsigned s) {
+		const DspStep &q = dsp_cache[s];
+
+		return shifts (s) || (!q.zero && q.bsel);
+	};
+
 	for (step = 0; step < n; step++) {
 		const DspStep &p = dsp_cache[step];
+		const bool acc_live = !dead_out || step + 1 >= n || acc_read (step + 1);
+		const bool shifter = !dead_out || shifts (step);
+		const bool input = !dead_out || (acc_live && p.xsel) || p.yrl || (p.adrl && p.shift != 3);
 
 		/* The input (edi), the memory's from two steps before */
-		if (p.ira < 0x20)
+		if (!input)
+			;
+		else if (p.ira < 0x20)
 			e.load32 (RDI, RBX, MEMS + 4 * (int32_t) p.ira);
 		else if (p.ira < 0x30) {
 			e.load32 (RDI, RBX, MIXS + 4 * (int32_t) (p.ira - 0x20));
@@ -1291,8 +1411,13 @@ Aica::dsp_translate ()
 			if (p.ira == p.iwa)
 				e.mov32 (RDI, RCX);
 		}
-		/* B (edx), X (r8d), Y (r9d) */
-		if (p.zero)
+		/* B (edx), X (r8d), Y (r9d); X's TEMP word read once with B's
+		 * (the same, before NEGB) */
+		const bool temp_shared = dsp_lean && acc_live && !p.zero && !p.bsel && !p.xsel;
+
+		if (!acc_live)
+			;
+		else if (p.zero)
 			e.alu32_reg_reg (Emitter::ALU_XOR, RDX, RDX);
 		else {
 			if (p.bsel)
@@ -1300,17 +1425,26 @@ Aica::dsp_translate ()
 			else {
 				temp_index (p.tra);
 				e.load32_index (RDX, RBX, RCX, 4);
+				if (temp_shared)
+					e.mov32 (R8, RDX);
 			}
 			if (p.negb)
 				e.neg32 (RDX);
 		}
-		if (p.xsel)
+		if (!acc_live || temp_shared)
+			;
+		else if (p.xsel)
 			e.mov32 (R8, RDI);
 		else {
 			temp_index (p.tra);
 			e.load32_index (R8, RBX, RCX, 4);
 		}
-		switch (p.ysel) {
+		/* COEF: a constant, multiplied by at once below */
+		const bool y_const = dsp_lean && acc_live && p.ysel == 1;
+
+		switch (acc_live && !y_const ? p.ysel : 4) {
+		case 4:
+			break;
 		case 0:
 			e.load32 (R9, RBX, FRC);
 			break;
@@ -1333,8 +1467,11 @@ Aica::dsp_translate ()
 		if (p.yrl)
 			e.store32 (RBX, YREG, RDI);
 		/* The shifter, on the last ACC (ebp) */
-		e.mov32 (RBP, R12);
-		switch (p.shift) {
+		if (shifter)
+			e.mov32 (RBP, R12);
+		switch (shifter ? p.shift : 4) {
+		case 4:
+			break;
 		case 0:
 			clamp (RBP, -0x800000, 0x7FFFFF);
 			break;
@@ -1353,14 +1490,20 @@ Aica::dsp_translate ()
 			break;
 		}
 		/* ACC = sext26 ((int32) (X * Y >> 12) + B) */
-		e.movsxd (R8, R8);
-		e.movsxd (R9, R9);
-		e.imul64 (R8, R9);
-		e.sar64_imm (R8, 12);
-		e.alu32_reg_reg (Emitter::ALU_ADD, R8, RDX);
-		e.shl32_imm (R8, 6);
-		e.rot32 (Emitter::ROT_SAR, R8, 6);
-		e.mov32 (R12, R8);
+		if (acc_live) {
+			e.movsxd (R8, R8);
+			if (y_const)
+				e.imul64_imm (R8, R8, p.coef);
+			else {
+				e.movsxd (R9, R9);
+				e.imul64 (R8, R9);
+			}
+			e.sar64_imm (R8, 12);
+			e.alu32_reg_reg (Emitter::ALU_ADD, R8, RDX);
+			e.shl32_imm (R8, 6);
+			e.rot32 (Emitter::ROT_SAR, R8, 6);
+			e.mov32 (R12, R8);
+		}
 		if (p.twt) {
 			temp_index (p.twa);
 			e.store32_index (RBX, RCX, 4, RBP);
@@ -1399,7 +1542,10 @@ Aica::dsp_translate ()
 				e.load16s_index (RAX, RSI, RCX, 1);
 				if (p.nofl)
 					e.shl32_imm (RAX, 8);
-				else {
+				else if (floats_inline) {
+					e.and32_imm (RAX, 0xFFFF);
+					unpack ();
+				} else {
 					e.and32_imm (RAX, 0xFFFF);
 					e.mov32 (RCX, RAX);
 					e.call ((const void *) dsp_unpack_call);
@@ -1410,7 +1556,9 @@ Aica::dsp_translate ()
 				if (p.nofl) {
 					e.mov32 (RAX, RBP);
 					e.rot32 (Emitter::ROT_SAR, RAX, 8);
-				} else {
+				} else if (floats_inline)
+					pack ();
+				else {
 					e.mov32 (RCX, RBP);
 					e.call ((const void *) dsp_pack_call);
 				}
@@ -1754,6 +1902,7 @@ Aica::reset_pin ()
 	out.clear ();
 	slot_dirty = ~0ull;
 	dsp_dirty = true;
+	fx_dirty = true;
 }
 
 void
@@ -1782,6 +1931,7 @@ Aica::load_state (hl::State *state)
 	/* The registers came back with the machine's buffers */
 	slot_dirty = ~0ull;
 	dsp_dirty = true;
+	fx_dirty = true;
 	return ret;
 }
 
@@ -1823,6 +1973,9 @@ Aica::Aica (hl::Machine *mach, hl::Buffer *ram, bool master) :
 	dsp_cache = new DspStep[128] ();
 	memset (madrs_cache, 0, sizeof (madrs_cache));
 	dsp_dirty = true;
+	fx_dirty = true;
+	fx_mvol = 0;
+	memset (fx_gain, 0, sizeof (fx_gain));
 	dsp_jit_on = hl_util_get_bool_option ("HR_DSP_JIT", true);
 	arm_jit_on = hl_util_get_bool_option ("HR_ARM_JIT", true);
 	dsp_check = hl_util_get_bool_option ("HR_DSP_CHECK", false);

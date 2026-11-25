@@ -63,7 +63,15 @@ same amount, each comparison's outcome known to the turn it changes; then
 the turns up to the third before it are taken at once. Under the MMU, its
 accesses translated without side effects, URC moved as their lookups would
 move it. `HR_SH4_IDLE_SIM=0` turns it off (the same machine either way,
-`tools/regress.py` with it on and off).
+`tools/regress.py` with it on and off). A known loop's instructions are
+kept from one simulation to the next within a code epoch, its code in the
+CPU's own RAM or ROM: the turn run after each simulation has its blocks
+compared in that epoch, so a store over them starts another
+(`HR_SH4_SIM_OPS=0`: read each time). The copy's stores carry a bit a
+word (`IdleSimOverlay::words`): a load or a store whose word has none
+skips the look through them (`HR_SH4_SIM_WORDS=0`). The master's
+simulations have their own line in HR_PROFILE's tree, "loops simulated";
+the loops whose turns were noted the most are listed at the end.
 
 The translations share their probe, `sh4_chain ()`'s call and the way back
 to the run loop (`Sh4X64::emit_stubs ()`, written at each arena's start):
@@ -86,7 +94,65 @@ their instruction cache's fetches are written only where something goes
 to them: 1316 bytes a translation in Crazy Taxi (1334 before the links).
 The run loop, at each line's first block, looks at the near table first
 too (its entry keeps the translation's function): the block table's
-look, a 1 MB table of pages, missed the host's caches there. The page tables the
+look, a 1 MB table of pages, missed the host's caches there. A linked
+way out is 12 bytes, "lea r9; jmp link" until its block is found, then
+"call link_checks; jmp body" (link_checks saves nothing then); the ways
+out to an address known as it runs call their own checks
+(`dyn_checks`), which keep chain.stores and esi for the look's miss.
+By default (`HR_SH4_INLINE_LINKS=0`: as just said) those checks are
+written in each way out instead, no call, the slice's count compared in a
+register, esi from esi; the fixed way's jump goes first to its own slow
+way, to the `link_in` stub, which links it (`link_field ()`). On such a
+linked way after a bt or bf taken or at the block's end, PC is set only on
+the slow ways, the next block needing it not (`HR_SH4_LATE_PC=0`: set
+always). A translation that cannot count a store (no store written, no
+slow path's, handler's, group's or pref's: `may_store`) leaves
+chain.stores alone on its ways out and at its loops' looks, equal to
+stores since its entry (`HR_SH4_STORE_FREE=0`: as any). A `pref` at a store queue's address
+calls `sh4_pref_flush ()` straight, no handler (`HR_SH4_PREF_DIRECT=0`:
+through it); on the NAOMI, a store queue's 32 bytes for the TA's
+polygons go to the Holly straight (`Sh4::sq_direct`, `Holly::sq_packet
+()`, as the Area4 device would take them; `HR_SH4_SQ_DIRECT=0`: through
+the memory map). A store to the NAOMI's 32-bit VRAM path (05000000,
+07000000), which the page table cannot hold (`Holly::map32 ()`'s
+interleave), is written by the table path's code itself while no picture
+drawn to a texture is on its way back (`Sh4::vram32_base`,
+`Holly::vram_behind`; Sports Shooting USA's textures, 3500 words a frame;
+`HR_SH4_VRAM32=0`: the slow path). The hot reads (`Sh4::hot_read`, now two
+of them): the cartridge's PIO data port, which a GD's DIMM board reads its
+sectors through a word at a time (`Board::pio_data ()`,
+`HR_NAOMI_HOT_PIO=0`), unless a link's port has the first, and SB_FFST,
+read before each word sent through the G2 bus (`Holly::ffst_read ()`,
+`HR_NAOMI_HOT_FFST=0`; Wild Riders' slow accesses 6.4 M to 0.55 M in 600
+frames). A trap's store gone through the page table looks in the table
+with the code pages in it and tests the stamp of its 256 bytes, one look
+for both (`HR_SH4_TABLE_ALL=0`: the write table first): Sports Shooting
+USA keeps data in its code's pages, 66000 such stores a frame. HR_PROFILE
+counts them and marks each kind of slow path for HR_SAMPLE ("slow:
+table write", "slow: write"...). A known loop's simulation from a turn
+noted again, the same, takes the kept instructions too, and under the MMU
+those of a turn wholly in P1 or P2. A trap's store sent through the
+table (a code page there)
+writes straight where its 256 bytes hold no code compared in this epoch,
+as `sh4_write ()` would (`Mmap::wide_write_all_table ()`, the code's
+stamp tested in line; `HR_SH4_CODE_STAMPS=0`: the slow path); TCNT0's
+reads, the timer the games poll, call `sh4_tcnt0_read ()` straight
+(`HR_SH4_TCNT_DIRECT=0`). A bt or bf right after the instruction that set
+T branches on its flags (`HR_SH4_T_FLAGS=0`: T tested); T goes into SR
+with a load and a store where rax is free (`HR_SH4_T_STORE=0`: an and and
+an or on SR). irq_ready,
+mmu_exact, the idle loops' noting and the CPU not
+running share one word (`Sh4::chain_stop`, `Sh4::state_set ()`): one test
+of the four. A block whose bt or bf goes
+back to its start keeps its registers (`loop_registers ()`, six at most
+with T) in their host registers through its turns, its way back the same
+looks and checks in line (`HR_SH4_LOOP_REGS=0`: as any way out).
+
+The pages of the code compared in an epoch are left out of the
+translations' write table (`Sh4BlockCache::code_page`,
+`hl::Mmap::code_page ()`): their stores take the slow path, which looks
+at the code's stamps as before; the other stores test no stamp
+(`HR_SH4_CODE_PAGES=0`: each store tests its stamp). The page tables the
 translations read (`Mmap::wide_read_table ()`) hold each page's host
 address less its own, read through `Sh4::jit_tables`. A run of 32-bit
 accesses through one base register (pushes, pops, a vector's `fmov.s`) has
@@ -95,6 +161,25 @@ div1` of the libraries' divisions are worked out with one host division
 when the remainder allows it (`division_pairs ()`), else step by step;
 `ftrv`, `shad` and `shld` are written out. With HR_PROFILE, "bytes a
 translation" and, with HR_SAMPLE too, the bytes by kind of code.
+
+The FPU's singles stay in xmm6-xmm15 within a block (`Sh4FpuCache`, "The
+FPU's Registers" in sh4-x64.cpp), as the GPRs do in theirs: loaded at a
+first read, written back at the ways out, before a handler and before an
+access of ctx's copy (the pairs' moves, the groups of accesses, ftrv's
+vector, frchg); the translations' prologue saves xmm6-xmm15 (its unwind
+codes made from the code it writes, `emit_prologue ()`). The arithmetic
+register to register, the same instructions: the same bits
+(`HR_SH4_FPU_CACHE=0`: each FPU instruction from and to ctx).
+
+Without the MMU, the loads and stores go straight to `base + address` in
+4 GB of the host's address space where `hl::Mmap::traps ()` shows the
+SH-4's 32-bit addresses (sh4-x64.cpp, "Traps"): each 64 KB the page table
+reads from one RAM or ROM in a section, at each of U0's four aliases, P1
+and P2, read-only where the table writes it no more (a ROM, a code page),
+nothing for a device, P3, P4 or a page guarded. An access that faults
+there goes through the page table for good, the vectored handler having
+written a jump over it; the first memory map's base below 2 GB, the access
+one instruction. `HR_SH4_TRAPS=0`: the page table's look for all.
 
 A jump's delay slot is written out with it when it holds an ALU
 instruction, a move to or from memory, the FPU's arithmetic or a `pref`;
@@ -135,7 +220,38 @@ for the words it reads there; a texture of it wholly within those pixels
 the VRAM once they are back and before the machine may go on touching
 them (`Holly::vram_later`, `Renderer::fill_later ()`): what the machine
 would have read after waiting. Virtua Fighter 4 Evolution waited so at
-1242 frames of 1245 drawn to a texture, now 19.
+1242 frames of 1245 drawn to a texture, now 19. The thread asks GL
+nothing a frame (a picture carries its size, `Picture::w`): a query waits
+for the driver's own thread to catch up, a quarter of the drawing thread's
+time in the kernel. A polygon's uniforms and its texture's filters and
+wraps are sent when they change, and so are the batches' scissor, depth,
+stencil and blending states within each run of batches (`gl_forget ()`
+at its start and end; `HR_GL_MEMO=0`: each time). With `HR_GL_MERGE=1`, the
+pieces that need no other state than the one before them are drawn in one
+call (`glMultiDrawArrays`, `gl_flush ()` before any other GL call): a
+fifth fewer calls in Beach Spikers, no faster with NVIDIA's driver, off
+by default. A texture's pixels are decoded into a
+buffer kept from one to the next (`HR_GL_TEXELS=0`: a buffer each time),
+through tables: the twiddled order's by columns and rows, the 16-bit
+colours' and the palette's (`HR_GL_TEX_TABLES=0`: each texel computed).
+`HR_GL_TEXSUB=1` sends them into the texture's storage when its size has
+not changed, instead of a new one: slower in Beach Spikers (the driver
+waits for the GPU to be done with the old pixels). With
+HR_PROFILE, the drawings to textures' read back and conversion times, and
+the polygons' draws (those like the one before them).
+
+The TA's vertices are read by the drawing thread (naomi-holly.cpp, "The
+TA's Vertices Read Later"; `HR_TA_DEFER=0` reads them as they come): from a
+TA_LIST_INIT, the machine's thread keeps each parameter's 32 bytes and
+runs the TA's state machine on them (`TaReader::fsm`: the headers' state,
+the halves of 64 bytes, the ends of list and their interrupts, the
+headers' textures noted for `keep_textures ()`); `ta_realize ()` reads them
+into the scene before it is drawn, from the state the list started with,
+the cull value, MXCSR and the lists started again (LIST_CONT, a soft reset)
+put back at the parameters they came before. The same scenes, the same
+states (read first), a picture shown and given more parameters read at once
+then. Not on the NAOMI 2 (the Elan's lists in the same scenes). Crazy Taxi:
+the frame 7% shorter, the machine's SH-4 section 8%.
 
 Timing two programs against each other on a PC that runs others: both at
 once, each on one half of the cores, the halves and the order of their
@@ -146,7 +262,11 @@ The AICA's DSP runs its program translated to x86-64 too (hikaru-aica.cpp,
 "The DSP Translated"): made again when the program, COEF or MADRS change;
 `HR_DSP_JIT=0` keeps the interpreter's loop, `HR_DSP_CHECK=1` runs the
 interpreter first at each sample, its ring buffer writes undone, then the
-translation, and tells where the state or the writes differ.
+translation, and tells where the state or the writes differ. What no one
+reads is left out: a step's ACC the next step neither shifts nor adds, its
+shifter and its input where nothing takes them (`HR_DSP_DEAD=0`: all
+written); the ring buffer's floats are packed and unpacked in line
+(`HR_DSP_FLOATS=0`: through calls).
 
 The AICAs' ARM7s run their RAM's code translated to x86-64 as well
 (src/cpu/arm/arm7-x64.cpp, `Arm7::jit`): a block up to a branch, a write to
@@ -291,7 +411,9 @@ In the environment:
 - `HR_PROFILE=1` measures each part of the frames (the SH-4s, the NAOMI's master one and its Elan apart, the GPU, the
   MIE, the AICAs and their ARM7s, voices and effects, the renderer and its
   drawing thread, the sound output) and writes the tree to the log on the
-  way out, in milliseconds a frame. `HR_ARM_PROFILE=1` and
+  way out, in milliseconds a frame; `HR_PROFILE_FROM=n` counts from frame
+  n on, the boot left out (the drawing thread's counts and HR_SAMPLE's
+  too). `HR_ARM_PROFILE=1` and
   `HR_Z80_PROFILE=1` add the busiest addresses of the AICAs' ARM7s and of
   the MIE's Z80, for their idle loops (they run them one instruction at a
   time, slower). With `HR_PROFILE`, each SH-4 also logs its cycles, those

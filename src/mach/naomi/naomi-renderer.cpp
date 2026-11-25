@@ -1273,6 +1273,48 @@ rgba_palette (const Draw &d, unsigned index)
 	}
 }
 
+/* decode_level ()'s tables (HR_GL_TEX_TABLES=0: each texel computed) */
+static const bool tex_tables = hl_util_get_bool_option ("HR_GL_TEX_TABLES", true);
+
+/* twiddle ()'s by parts: twiddle (x, y, w, h) is twiddle (x, 0, w, h) |
+ * twiddle (0, y, w, h), the places of x's bits and of y's told by w and h
+ * alone: two tables a level, not a loop a texel (up to 20 turns) */
+struct Twiddles {
+	unsigned w, h;
+	uint32_t cols[1024], rows[1024];
+
+	Twiddles (unsigned w_, unsigned h_) : w (w_), h (h_)
+	{
+		if (!tex_tables || w > 1024 || h > 1024)
+			return;
+		for (unsigned x = 0; x < w; x++)
+			cols[x] = twiddle (x, 0, w, h);
+		for (unsigned y = 0; y < h; y++)
+			rows[y] = twiddle (0, y, w, h);
+	}
+	uint32_t at (unsigned x, unsigned y) const
+	{
+		return tex_tables && w <= 1024 && h <= 1024 ? cols[x] | rows[y] : twiddle (x, y, w, h);
+	}
+};
+
+/* rgba_16 ()'s of each of the 65536 colours, formats 0-2; NULL for the
+ * others, or without the tables */
+static const uint32_t *
+rgba_16_table (unsigned format)
+{
+	static const std::vector<uint32_t> table = [] {
+		std::vector<uint32_t> t ((size_t) 3 << 16);
+
+		for (unsigned f = 0; f < 3; f++)
+			for (unsigned c = 0; c < 65536; c++)
+				t[((size_t) f << 16) | c] = rgba_16 (f, (uint16_t) c);
+		return t;
+	} ();
+
+	return tex_tables && format < 3 ? &table[(size_t) format << 16] : NULL;
+}
+
 /* Where the level of 2^i texels a side starts: in texels after the texture's
  * start (three unused, 1x1, 2x2...), its VQ indices in bytes after the code book
  * (the 1x1's byte, then the 2x2's...) */
@@ -1364,6 +1406,8 @@ decode_level (std::vector<uint32_t> &out, const uint8_t *data, const Draw &d, ui
 	unsigned format = (tcw >> 27) & 7, stride = (d.text_control & 31) * 32, x, y;
 	unsigned line = line_width (tcw, w, stride);
 	uint32_t skip = mipmapped ? mip_texels (mip) : 0;
+	const uint32_t *table = rgba_16_table (format);
+	auto rgba = [&] (uint16_t c) { return table ? table[c] : rgba_16 (format, c); };
 
 	out.resize (w * h);
 	if (vq && mipmapped && mip == 0) {
@@ -1374,46 +1418,56 @@ decode_level (std::vector<uint32_t> &out, const uint8_t *data, const Draw &d, ui
 	} else if (vq) {
 		const uint16_t *book = (const uint16_t *) data;
 		const uint8_t *index = data + 2048 + (mipmapped ? mip_indices (mip) : 0);
+		const Twiddles tw (w / 2, h / 2);
 
 		for (y = 0; y < h; y += 2) {
 			for (x = 0; x < w; x += 2) {
-				const uint16_t *e = &book[index[twiddle (x / 2, y / 2, w / 2, h / 2)] * 4];
+				const uint16_t *e = &book[index[tw.at (x / 2, y / 2)] * 4];
 
-				out[y * w + x] = rgba_16 (format, e[0]);
-				out[(y + 1) * w + x] = rgba_16 (format, e[1]);
-				out[y * w + x + 1] = rgba_16 (format, e[2]);
-				out[(y + 1) * w + x + 1] = rgba_16 (format, e[3]);
+				out[y * w + x] = rgba (e[0]);
+				out[(y + 1) * w + x] = rgba (e[1]);
+				out[y * w + x + 1] = rgba (e[2]);
+				out[(y + 1) * w + x + 1] = rgba (e[3]);
 			}
 		}
 	} else if (format == 5) {
 		unsigned selector = ((tcw >> 21) & 63) << 4;
+		const Twiddles tw (w, h);
+		uint32_t pal[16];
 
+		for (x = 0; x < 16; x++)
+			pal[x] = rgba_palette (d, selector + x);
 		/* In nibbles: the 1x1 level is the fourth one */
 		for (y = 0; y < h; y++) {
 			for (x = 0; x < w; x++) {
-				uint32_t i = skip + twiddle (x, y, w, h);
+				uint32_t i = skip + tw.at (x, y);
 				unsigned value = (i & 1) ? data[i / 2] >> 4 : data[i / 2] & 15;
 
-				out[y * w + x] = rgba_palette (d, selector + value);
+				out[y * w + x] = pal[value];
 			}
 		}
 	} else if (format == 6) {
 		const uint8_t *t = data + skip;
 		unsigned selector = ((tcw >> 25) & 3) << 8;
+		const Twiddles tw (w, h);
+		uint32_t pal[256];
 
+		for (x = 0; x < 256; x++)
+			pal[x] = rgba_palette (d, selector + x);
 		for (y = 0; y < h; y++)
 			for (x = 0; x < w; x++)
-				out[y * w + x] = rgba_palette (d, selector + t[twiddle (x, y, w, h)]);
+				out[y * w + x] = pal[t[tw.at (x, y)]];
 	} else if (format == 3 && mipmapped && mip == 0) {
 		/* A pair of YUV needs two texels: the 1x1 level is RGB565 */
 		out[0] = rgba_16 (1, ((const uint16_t *) data)[skip]);
 	} else if (format == 3) {
 		const uint16_t *t = (const uint16_t *) data + skip;
+		const Twiddles tw (scan ? 0 : w, scan ? 0 : h);
 
 		for (y = 0; y < h; y++) {
 			for (x = 0; x + 1 < w; x += 2) {
-				uint16_t a = scan ? t[y * line + x] : t[twiddle (x, y, w, h)];
-				uint16_t b = scan ? t[y * line + x + 1] : t[twiddle (x + 1, y, w, h)];
+				uint16_t a = scan ? t[y * line + x] : t[tw.at (x, y)];
+				uint16_t b = scan ? t[y * line + x + 1] : t[tw.at (x + 1, y)];
 
 				out[y * w + x] = rgba_yuv (a >> 8, a & 255, b & 255);
 				out[y * w + x + 1] = rgba_yuv (b >> 8, a & 255, b & 255);
@@ -1421,16 +1475,23 @@ decode_level (std::vector<uint32_t> &out, const uint8_t *data, const Draw &d, ui
 		}
 	} else if (scan) {
 		const uint16_t *t = (const uint16_t *) data;
+		const unsigned n = std::min (w, line);
 
-		for (y = 0; y < h; y++)
-			for (x = 0; x < w && x < line; x++)
-				out[y * w + x] = rgba_16 (format, t[y * line + x]);
+		/* Past a line narrower than the texture: none (out may hold the
+		 * last texture's pixels) */
+		for (y = 0; y < h; y++) {
+			for (x = 0; x < n; x++)
+				out[y * w + x] = rgba (t[y * line + x]);
+			for (; x < w; x++)
+				out[y * w + x] = 0;
+		}
 	} else {
 		const uint16_t *t = (const uint16_t *) data + skip;
+		const Twiddles tw (w, h);
 
 		for (y = 0; y < h; y++)
 			for (x = 0; x < w; x++)
-				out[y * w + x] = rgba_16 (format, t[twiddle (x, y, w, h)]);
+				out[y * w + x] = rgba (t[tw.at (x, y)]);
 	}
 }
 
@@ -1455,6 +1516,7 @@ BoardRenderer::texture (uint32_t tcw, uint32_t tsp)
 		h = w;
 	Texture &t = textures[key];
 
+	last_texture = &t;
 	if (t.id && t.seen == frame_count)
 		return t.id;
 	t.seen = frame_count;
@@ -1477,16 +1539,29 @@ BoardRenderer::texture (uint32_t tcw, uint32_t tsp)
 		return t.id;
 	t.hash = hash;
 
-	std::vector<uint32_t> rgba;
+	/* The buffer kept (HR_GL_TEXELS=0: one a texture, as before) */
+	std::vector<uint32_t> own;
+	std::vector<uint32_t> &rgba = texels_kept ? texels : own;
 	const uint8_t *data = kept ? kept->bytes.data () : NULL;
+	const unsigned levels = data && is_mipmapped (tcw) ? log2_of (w) + 1 : 1;
+	/* The same storage: its pixels replaced, not made again
+	 * (HR_GL_TEXSUB=1; else a new one, the driver's to make while the
+	 * GPU may still draw with the old) */
+	static const bool sub_wanted = hl_util_get_bool_option ("HR_GL_TEXSUB", false);
+	const bool same = sub_wanted && t.id && t.w == w && t.h == h && t.levels == levels;
+	auto send = [&] (unsigned level, unsigned lw, unsigned lh) {
+		if (same)
+			glTexSubImage2D (GL_TEXTURE_2D, level, 0, 0, lw, lh, GL_RGBA, GL_UNSIGNED_BYTE, rgba.data ());
+		else
+			glTexImage2D (GL_TEXTURE_2D, level, GL_RGBA8, lw, lh, 0, GL_RGBA, GL_UNSIGNED_BYTE, rgba.data ());
+	};
 
 	if (!t.id)
 		glGenTextures (1, &t.id);
 	glBindTexture (GL_TEXTURE_2D, t.id);
 	if (!data) {
 		rgba.assign (w * h, 0xFFFF00FFu);
-		glTexImage2D (GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, rgba.data ());
-		glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
+		send (0, w, h);
 	} else if (is_mipmapped (tcw)) {
 		/* As they are in the VRAM: GL's level 0 is the largest */
 		unsigned top = log2_of (w), level;
@@ -1495,14 +1570,17 @@ BoardRenderer::texture (uint32_t tcw, uint32_t tsp)
 			unsigned side = 1u << level;
 
 			decode_level (rgba, data, *draw, tcw, side, side, level);
-			glTexImage2D (GL_TEXTURE_2D, top - level, GL_RGBA8, side, side, 0, GL_RGBA, GL_UNSIGNED_BYTE,
-			              rgba.data ());
+			send (top - level, side, side);
 		}
-		glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, top);
 	} else {
 		decode_level (rgba, data, *draw, tcw, w, h, 0);
-		glTexImage2D (GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, rgba.data ());
-		glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
+		send (0, w, h);
+	}
+	if (!same) {
+		glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, levels - 1);
+		t.w = (uint16_t) w;
+		t.h = (uint16_t) h;
+		t.levels = (uint8_t) levels;
 	}
 	return t.id;
 }
@@ -1510,6 +1588,10 @@ BoardRenderer::texture (uint32_t tcw, uint32_t tsp)
 /*
  * The Renderer
  */
+
+const bool BoardRenderer::memo_wanted = hl_util_get_bool_option ("HR_GL_MEMO", true);
+const bool BoardRenderer::texels_kept = hl_util_get_bool_option ("HR_GL_TEXELS", true);
+const bool BoardRenderer::merge_wanted = hl_util_get_bool_option ("HR_GL_MERGE", false);
 
 BoardRenderer::BoardRenderer (Holly *holly_, unsigned width_, unsigned height_) :
 	holly (holly_),
@@ -1809,6 +1891,27 @@ BoardRenderer::set_view_uniforms (const Draw &d, GLint u_view, GLint u_view_c, G
 	glUniformMatrix3fv (u_view_m, 1, GL_TRUE, view.rotated ? view.rot : yaw);
 }
 
+/* For HR_PROFILE: draw_piece ()'s draws, and those like the one before; the
+ * calls that drew them */
+static uint64_t pieces_drawn, pieces_mergeable, draw_calls;
+
+/* The draws held, in one call */
+void
+BoardRenderer::gl_flush ()
+{
+	const size_t n = held_first.size ();
+
+	if (!n)
+		return;
+	if (n == 1)
+		glDrawArrays (GL_TRIANGLES, held_first[0], held_count[0]);
+	else
+		glMultiDrawArrays (GL_TRIANGLES, held_first.data (), held_count.data (), (GLsizei) n);
+	draw_calls++;
+	held_first.clear ();
+	held_count.clear ();
+}
+
 /* A batch, or its part in one of a modifier volume's two areas: its TSP and
  * texture words, its vertices at first, shadowed or not */
 void
@@ -1841,44 +1944,139 @@ BoardRenderer::draw_piece (const Program &p, const Batch &b, uint32_t tsp, uint3
 		flags &= ~4;
 		textured = false;
 	}
-	glUniform1i (p.u_flags, flags | punch_flag);
+	/* The uniforms and the texture's parameters sent when they change
+	 * (HR_GL_MEMO=0: each time) */
+	PieceUniforms &memo = piece_uniforms[&p == &collect ? 1 : 0];
+	const bool memo_on = memo_wanted;
+
+	if (!memo_on || memo.flags != (flags | punch_flag)) {
+		gl_flush ();
+		glUniform1i (p.u_flags, flags | punch_flag);
+		memo.flags = flags | punch_flag;
+	}
 
 	if (textured) {
 		unsigned filter = (tsp >> 13) & 3;
 		bool mip = is_mipmapped (tcw);
 		bool clamp_u = (tsp >> 16) & 1, clamp_v = (tsp >> 15) & 1;
 		bool flip_u = (tsp >> 18) & 1, flip_v = (tsp >> 17) & 1;
-
-		glBindTexture (GL_TEXTURE_2D, texture (tcw, tsp));
-		glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filter ? GL_LINEAR : GL_NEAREST);
+		const GLint mag = filter ? GL_LINEAR : GL_NEAREST;
 		/* One level at a time; tri-linear's two levels are its passes' */
-		glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,
-		                 mip ? (filter ? GL_LINEAR_MIPMAP_NEAREST : GL_NEAREST_MIPMAP_NEAREST) :
-		                 (filter ? GL_LINEAR : GL_NEAREST));
-		glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_S,
-		                 clamp_u ? GL_CLAMP_TO_EDGE : flip_u ? GL_MIRRORED_REPEAT : GL_REPEAT);
-		glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_T,
-		                 clamp_v ? GL_CLAMP_TO_EDGE : flip_v ? GL_MIRRORED_REPEAT : GL_REPEAT);
+		const GLint min = mip ? (filter ? GL_LINEAR_MIPMAP_NEAREST : GL_NEAREST_MIPMAP_NEAREST) :
+		                  (filter ? GL_LINEAR : GL_NEAREST);
+		const GLint wrap_s = clamp_u ? GL_CLAMP_TO_EDGE : flip_u ? GL_MIRRORED_REPEAT : GL_REPEAT;
+		const GLint wrap_t = clamp_v ? GL_CLAMP_TO_EDGE : flip_v ? GL_MIRRORED_REPEAT : GL_REPEAT;
+		const uint32_t params = (filter ? 1u : 0u) | (mip ? 2u : 0u) | (clamp_u ? 4u : flip_u ? 8u : 0u) |
+		                        (clamp_v ? 16u : flip_v ? 32u : 0u);
+
+		{
+			/* The same texture as the last piece's: texture () would
+			 * only give it back (checked once a frame) */
+			const uint64_t key = texture_key (tcw, tsp);
+
+			if (!memo_on || key != gl_states.texture_key) {
+				gl_flush ();
+				const GLuint id = texture (tcw, tsp);
+
+				if (!memo_on || id != gl_states.bound) {
+					glBindTexture (GL_TEXTURE_2D, id);
+					gl_states.bound = id;
+				}
+				gl_states.texture_key = key;
+			}
+		}
+		if (!memo_on || !last_texture || last_texture->params != params) {
+			gl_flush ();
+			glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, mag);
+			glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, min);
+			glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, wrap_s);
+			glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, wrap_t);
+			if (last_texture)
+				last_texture->params = params;
+		}
 		{
 			/* The "MIP-map D adjust", a factor on D of two fractional bits */
 			unsigned bias = (tsp >> 8) & 15;
+			const float lod_bias = bias ? log2f (bias / 4.0f) : 0.0f;
+			const float max_lod = (float) log2_of (8u << ((tsp >> 3) & 7));
+			uint32_t lb, ml;
 
-			glUniform1f (p.u_lod_bias, bias ? log2f (bias / 4.0f) : 0.0f);
-			glUniform1f (p.u_max_lod, (float) log2_of (8u << ((tsp >> 3) & 7)));
+			memcpy (&lb, &lod_bias, 4);
+			memcpy (&ml, &max_lod, 4);
+			if (!memo_on || memo.lod_bias != lb) {
+				gl_flush ();
+				glUniform1f (p.u_lod_bias, lod_bias);
+				memo.lod_bias = lb;
+			}
+			if (!memo_on || memo.max_lod != ml) {
+				gl_flush ();
+				glUniform1f (p.u_max_lod, max_lod);
+				memo.max_lod = ml;
+			}
 		}
 	}
 
 	if (p.u_tag >= 0) {
 		/* The place in the lists: the same for a polygon's two areas */
-		glUniform1ui (p.u_tag, ((tsp >> 29) & 7) | (((tsp >> 26) & 7) << 3) | (((tsp >> 25) & 1) << 6) |
-		              (((tsp >> 24) & 1) << 7) | ((first_of (b) / 3) << 8));
-	} else if (opaque)
-		glDisable (GL_BLEND);
-	else {
-		glEnable (GL_BLEND);
-		glBlendFunc (blend_factor (tsp >> 29, true), blend_factor (tsp >> 26, false));
+		const uint32_t tag = ((tsp >> 29) & 7) | (((tsp >> 26) & 7) << 3) | (((tsp >> 25) & 1) << 6) |
+		                     (((tsp >> 24) & 1) << 7) | ((first_of (b) / 3) << 8);
+
+		if (!memo_on || memo.tag != tag) {
+			gl_flush ();
+			glUniform1ui (p.u_tag, tag);
+			memo.tag = tag;
+		}
+	} else if (opaque) {
+		if (!memo_on || gl_states.blend != 0) {
+			gl_flush ();
+			glDisable (GL_BLEND);
+			gl_states.blend = 0;
+		}
+	} else {
+		const GLenum src = blend_factor (tsp >> 29, true), dst = blend_factor (tsp >> 26, false);
+
+		if (!memo_on || gl_states.blend != 1) {
+			gl_flush ();
+			glEnable (GL_BLEND);
+			gl_states.blend = 1;
+		}
+		if (!memo_on || gl_states.blend_src != src || gl_states.blend_dst != dst) {
+			gl_flush ();
+			glBlendFunc (src, dst);
+			gl_states.blend_src = src;
+			gl_states.blend_dst = dst;
+		}
 	}
+	if (hl::Profile::enabled) {
+		/* For HR_PROFILE: the draws, those that could have gone with
+		 * the one before (the same state, the vertices after its) */
+		static uint64_t last_key = ~0ull;
+		static uint32_t last_end = ~0u;
+		const uint64_t key = ((uint64_t) (flags | punch_flag) << 32) ^ ((uint64_t) tsp << 7) ^ tcw ^
+		                     ((uint64_t) opaque << 63) ^ ((uint64_t) (uintptr_t) &p << 40);
+
+		pieces_drawn++;
+		if (key == last_key && first == last_end)
+			pieces_mergeable++;
+		last_key = key;
+		last_end = first + b.count;
+	}
+	/* Held with those before it, after the last's vertices one draw with
+	 * it (HR_GL_MERGE=1; no faster with NVIDIA's driver: off by default).
+	 * Not the lists' collecting: its
+	 * tag counts the triangles from the piece's first */
+	if (merge_wanted && memo_on && p.u_tag < 0) {
+		if (!held_first.empty () && (GLuint) held_first.back () + (GLuint) held_count.back () == first)
+			held_count.back () += (GLsizei) b.count;
+		else {
+			held_first.push_back ((GLint) first);
+			held_count.push_back ((GLsizei) b.count);
+		}
+		return;
+	}
+	gl_flush ();
 	glDrawArrays (GL_TRIANGLES, first, b.count);
+	draw_calls++;
 }
 
 void
@@ -1886,6 +2084,18 @@ BoardRenderer::draw_batch (const Program &p, const Draw &d, const Batch &b, bool
 {
 	if (!b.count)
 		return;
+
+	/* The states sent when they change (HR_GL_MEMO=0: each time) */
+	const bool memo_on = memo_wanted;
+	GlStates &g = gl_states;
+	auto stencil = [&] (int k, GLenum func, GLint ref, GLuint mask) {
+		if (!memo_on || g.stencil != k) {
+			gl_flush ();
+			glStencilFunc (func, ref, mask);
+			g.stencil = k;
+		}
+	};
+
 	{
 		/* In the target's pixels, its origin at the bottom; the tiles are
 		 * those before the X and Y scalers, the wide picture centred */
@@ -1901,23 +2111,55 @@ BoardRenderer::draw_batch (const Program &p, const Draw &d, const Batch &b, bool
 		}
 
 		if (b.clip_on) {
-			glEnable (GL_SCISSOR_TEST);
-			glScissor ((GLint) x0, (GLint) y0, (GLsizei) (x1 - x0), (GLsizei) (y1 - y0));
-		} else
+			const GLint box[4] = { (GLint) x0, (GLint) y0, (GLsizei) (x1 - x0), (GLsizei) (y1 - y0) };
+
+			if (!memo_on || g.scissor != 1) {
+				gl_flush ();
+				glEnable (GL_SCISSOR_TEST);
+				g.scissor = 1;
+			}
+			if (!memo_on || memcmp (g.box, box, sizeof box)) {
+				gl_flush ();
+				glScissor (box[0], box[1], box[2], box[3]);
+				memcpy (g.box, box, sizeof box);
+			}
+		} else if (!memo_on || g.scissor != 0) {
+			gl_flush ();
 			glDisable (GL_SCISSOR_TEST);
-		if (b.clip_out)
-			glUniform4f (p.u_clip_out, x0, y0, x1, y1);
+			g.scissor = 0;
+		}
+		if (b.clip_out) {
+			PieceUniforms &u = piece_uniforms[&p == &collect ? 1 : 0];
+			const float box[4] = { x0, y0, x1, y1 };
+
+			if (!memo_on || memcmp (u.clip_out, box, sizeof box)) {
+				gl_flush ();
+				glUniform4f (p.u_clip_out, x0, y0, x1, y1);
+				memcpy (u.clip_out, box, sizeof box);
+			}
+		}
 	}
 
 	if (p.u_tag < 0) {
-		glDepthFunc (depth_func (b.isp >> 29));
-		glDepthMask ((!opaque || ((b.isp >> 26) & 1)) ? GL_FALSE : GL_TRUE);
+		const GLenum func = depth_func (b.isp >> 29);
+		const int mask = (!opaque || ((b.isp >> 26) & 1)) ? 0 : 1;
+
+		if (!memo_on || g.depth_func != func) {
+			gl_flush ();
+			glDepthFunc (func);
+			g.depth_func = func;
+		}
+		if (!memo_on || g.depth_mask != mask) {
+			gl_flush ();
+			glDepthMask (mask ? GL_TRUE : GL_FALSE);
+			g.depth_mask = mask;
+		}
 	}
 	if (opaque && volumes_ready && b.shadow) {
 		/* The two areas: outside, then inside the volumes */
-		glStencilFunc (GL_EQUAL, 0, 1);
+		stencil (1, GL_EQUAL, 0, 1);
 		draw_piece (p, b, b.tsp, b.tcw, first_of (b), false, opaque);
-		glStencilFunc (GL_EQUAL, 1, 1);
+		stencil (2, GL_EQUAL, 1, 1);
 		if (b.two_volume)
 			draw_piece (p, b, b.tsp1, b.tcw1, vertices1_at + b.first1, false, opaque);
 		else
@@ -1925,6 +2167,7 @@ BoardRenderer::draw_batch (const Program &p, const Draw &d, const Batch &b, bool
 	} else if (!opaque && p.u_tag >= 0 && collect_areas && b.shadow &&
 	           (b.two_volume || (draw->shad_scale & 0x100))) {
 		/* Both areas into the lists: the volumes will choose, layer by layer */
+		gl_flush ();
 		glUniform1ui (p.u_node_flags, NODE_VOLUMES);
 		draw_piece (p, b, b.tsp, b.tcw, first_of (b), false, opaque);
 		glUniform1ui (p.u_node_flags, NODE_VOLUMES | NODE_AREA1);
@@ -1935,7 +2178,7 @@ BoardRenderer::draw_batch (const Program &p, const Draw &d, const Batch &b, bool
 		glUniform1ui (p.u_node_flags, 0);
 	} else {
 		if (p.u_tag < 0 && !depth_pass)
-			glStencilFunc (GL_ALWAYS, 0, 0);
+			stencil (3, GL_ALWAYS, 0, 0);
 		draw_piece (p, b, b.tsp, b.tcw, first_of (b), false, opaque);
 	}
 }
@@ -2355,6 +2598,7 @@ BoardRenderer::draw_scene (const Draw &d, Target &t, bool to_texture)
 		depth_pass = true;
 		glColorMask (GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
 		punch_flag = 0;
+		gl_forget ();
 		for (const Batch &b : scene.batches[LIST_OPAQUE])
 			draw_batch (program, d, b, true, sx, sy);
 		punch_flag = 1024;
@@ -2362,6 +2606,7 @@ BoardRenderer::draw_scene (const Draw &d, Target &t, bool to_texture)
 			draw_batch (program, d, b, true, sx, sy);
 		punch_flag = 0;
 		depth_pass = false;
+		gl_forget ();
 		glDisable (GL_SCISSOR_TEST);
 		draw_modifiers (d, sx, sy);
 		glColorMask (GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
@@ -2380,7 +2625,9 @@ BoardRenderer::draw_scene (const Draw &d, Target &t, bool to_texture)
 
 	/* The background polygon goes under everything, at its own depth */
 	glDisable (GL_DEPTH_TEST);
+	gl_forget ();
 	draw_batch (program, d, background, true, sx, sy);
+	gl_flush ();
 	glEnable (GL_DEPTH_TEST);
 
 	punch_flag = 0;
@@ -2390,6 +2637,7 @@ BoardRenderer::draw_scene (const Draw &d, Target &t, bool to_texture)
 	for (const Batch &b : scene.batches[LIST_PUNCH])
 		draw_batch (program, d, b, true, sx, sy);
 	punch_flag = 0;
+	gl_forget ();
 
 	volumes_ready = false;
 	glDisable (GL_STENCIL_TEST);
@@ -2399,8 +2647,10 @@ BoardRenderer::draw_scene (const Draw &d, Target &t, bool to_texture)
 	if (per_pixel)
 		draw_translucent_per_pixel ();
 	else {
+		gl_forget ();
 		for (const Batch &b : scene.batches[LIST_TRANSLUCENT])
 			draw_batch (program, d, b, false, sx, sy);
+		gl_forget ();
 	}
 	(void) i;
 
@@ -2413,6 +2663,10 @@ BoardRenderer::draw_scene (const Draw &d, Target &t, bool to_texture)
 	glBindBuffer (GL_ARRAY_BUFFER, 0);
 	glUseProgram (0);
 }
+
+/* For HR_PROFILE: write_back ()'s glReadPixels and its conversion */
+static double wb_read_ms, wb_conv_ms;
+static uint64_t wb_pixels, wb_count;
 
 /* A scene drawn to a texture: its pixels in the VRAM, as FB_W_CTRL packs them */
 void
@@ -2440,8 +2694,26 @@ BoardRenderer::write_back (const Draw &d, Target &t)
 		return std::min (255u, c + level);
 	};
 
+	auto r0 = std::chrono::steady_clock::now ();
+
 	glBindFramebuffer (GL_FRAMEBUFFER, t.fb);
 	glReadPixels (0, 0, t.w, t.h, GL_RGBA, GL_UNSIGNED_BYTE, rgba.data ());
+	auto r1 = std::chrono::steady_clock::now ();
+	struct Timed {
+		std::chrono::steady_clock::time_point from;
+		std::chrono::steady_clock::time_point read;
+		unsigned w, h;
+		~Timed ()
+		{
+			if (!hl::Profile::enabled)
+				return;
+			auto end = std::chrono::steady_clock::now ();
+			wb_read_ms += std::chrono::duration<double, std::milli> (read - from).count ();
+			wb_conv_ms += std::chrono::duration<double, std::milli> (end - read).count ();
+			wb_pixels += (uint64_t) w * h;
+			wb_count++;
+		}
+	} timed { r0, r1, t.w, t.h };
 	if (!stride)
 		stride = t.w * 2;
 	/* Each line straight into the VRAM, the format's loop chosen once; the
@@ -2693,6 +2965,11 @@ BoardRenderer::draw_frame_now (Frame &f)
 	Picture picture;
 
 	view = f.view;
+	/* The TA's parameters left to read (Holly's "The TA's Vertices Read
+	 * Later"), read here, on the drawing thread */
+	for (const Draw &d : draws)
+		if (d.scene)
+			ta_realize (*d.scene);
 	make_target (screen, width * scale, height * scale);
 	for (const Draw &d : draws) {
 		if (d.to_texture) {
@@ -2736,6 +3013,9 @@ BoardRenderer::draw_frame_now (Frame &f)
 
 	if (frames_without < 4 || f.rendered) {
 		picture.texture = shown_color;
+		/* filter_lines ()'s: the screen's, or its copy of the same size */
+		picture.w = (int) screen.w;
+		picture.h = (int) screen.h;
 		picture.depth = screen.depth;
 		picture.depth_unit = shown_depth_unit;
 		for (int k = 0; strips && k < 2; k++) {
@@ -2744,6 +3024,8 @@ BoardRenderer::draw_frame_now (Frame &f)
 		}
 	} else if (show_vram (f)) {
 		picture.texture = vram_tex;
+		picture.w = (int) f.vram_w;
+		picture.h = (int) f.vram_h;
 		picture.flip = true;
 	}
 	draw = NULL;
@@ -3041,6 +3323,9 @@ static uint64_t job_count;
 static double wait_ms_sum, wait_long_ms;
 static uint64_t wait_long;
 
+/* hl::Profile::generation when they were zeroed last */
+static unsigned stats_generation;
+
 
 Renderer::~Renderer ()
 {
@@ -3060,6 +3345,14 @@ Renderer::~Renderer ()
 	if (hl::Profile::enabled && frames_handed)
 		HL_PRINT ("naomi: the machine waited for the drawing thread %.2f ms a frame, %llu waits over 4 ms (%.0f ms in all)",
 		          wait_ms_sum / (double) frames_handed, (unsigned long long) wait_long, wait_long_ms);
+	if (hl::Profile::enabled && pieces_drawn)
+		HL_PRINT ("naomi: %llu polygons' draws, %llu of them like the one before, after its vertices; %llu calls",
+		          (unsigned long long) pieces_drawn, (unsigned long long) pieces_mergeable,
+		          (unsigned long long) draw_calls);
+	if (hl::Profile::enabled && wb_count)
+		HL_PRINT ("naomi: the drawings to textures read back %.3f ms each, turned to the VRAM's format %.3f ms "
+		          "(%llu of %.0f pixels on average)", wb_read_ms / (double) wb_count, wb_conv_ms / (double) wb_count,
+		          (unsigned long long) wb_count, (double) wb_pixels / (double) wb_count);
 
 	if (hl::Profile::enabled && job_count)
 		HL_PRINT ("naomi: the drawing thread's job %.2f ms on average, %.2f at most (%llu)",
@@ -4524,7 +4817,15 @@ Renderer::views (const std::vector<unsigned> &shown, const std::vector<BoardRend
 	std::vector<BoardRenderer::View> v (n);
 	float centre = 240.0f, f = 0.0f, yaw = 0.0f;
 
-	if (!views_wanted (shown) || !steady_views (frames, &yaw, &f, &centre))
+	if (!views_wanted (shown))
+		return v;
+	/* Their scenes read (Holly's "The TA's Vertices Read Later"): the votes
+	 * look at their vertices */
+	for (const BoardRenderer::Frame &fr : frames)
+		for (const Draw &d : fr.draws)
+			if (d.scene)
+				ta_realize (*d.scene);
+	if (!steady_views (frames, &yaw, &f, &centre))
 		return v;
 	float half = atanf (width * 0.5f / f);
 	/* The outer screens' far edges no farther than the boards draw (their
@@ -5084,9 +5385,16 @@ Renderer::draw_job ()
 			c.valid = false;
 		if (!o.valid)
 			continue;
-		glBindTexture (GL_TEXTURE_2D, p.texture);
-		glGetTexLevelParameteriv (GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &w);
-		glGetTexLevelParameteriv (GL_TEXTURE_2D, 0, GL_TEXTURE_HEIGHT, &h);
+		/* Its size as the renderer made it: a query of GL waited for
+		 * the driver's thread to catch up (a quarter of the drawing
+		 * thread's time, in the kernel) */
+		w = p.w;
+		h = p.h;
+		if (!w || !h) {
+			glBindTexture (GL_TEXTURE_2D, p.texture);
+			glGetTexLevelParameteriv (GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &w);
+			glGetTexLevelParameteriv (GL_TEXTURE_2D, 0, GL_TEXTURE_HEIGHT, &h);
+		}
 		if (!o.texture || o.w != w || o.h != h) {
 			if (!o.texture)
 				glGenTextures (1, &o.texture);
@@ -5362,6 +5670,19 @@ Renderer::threaded_end_frame (const std::vector<unsigned> &shown)
 
 	/* The frames before back in the VRAM, which take () reads */
 	rtt_wait ();
+	/* HR_PROFILE_FROM: the counts from there (the thread's own with the
+	 * thread awaited) */
+	if (stats_generation != hl::Profile::generation) {
+		wait_thread (false);
+		stats_generation = hl::Profile::generation;
+		frames_to_texture = frames_handed = frames_to_texture_waited = 0;
+		gpu_ms_sum = 0.0;
+		gpu_ms_count = 0;
+		job_ms_sum = job_ms_max = 0.0;
+		job_count = 0;
+		wait_ms_sum = wait_long_ms = 0.0;
+		wait_long = 0;
+	}
 	/* For want of memory, this frame left out: the last one stays */
 	try {
 		HL_PROFILE (RENDER_COPY);
@@ -5617,8 +5938,10 @@ BoardRenderer::draw_translucent_per_pixel ()
 	glDepthMask (GL_FALSE);
 	glDisable (GL_DEPTH_TEST);
 	glDisable (GL_BLEND);
+	gl_forget ();
 	for (const Batch &b : draw->scene->batches[LIST_TRANSLUCENT])
 		draw_batch (collect, *draw, b, false, pixel_scale_x (), pixel_scale_y ());
+	gl_forget ();
 	/* The last batch's user clip off: the volumes, the copy and the resolve
 	 * cover the whole picture, the resolve emptying every pixel's list for
 	 * the next frame */

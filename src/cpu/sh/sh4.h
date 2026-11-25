@@ -206,12 +206,36 @@ public:
 		/* Overall interrupt state object */
 		sh4_irq_state_t irqs[SH4_NUM_IESOURCES];
 	} intc;
+	/* The sources raised, a bit each (intc.irqs[].state), for
+	 * sh4_update_pending (); not in the state (made again on a load) */
+	uint64_t	irq_raised = 0;
+	void		irq_raised_again ()
+	{
+		irq_raised = 0;
+		for (unsigned i = 0; i < SH4_NUM_IESOURCES; i++)
+			if (intc.irqs[i].state == hl::IRQ_STATE_RAISED)
+				irq_raised |= 1ull << i;
+	}
 
 	/* An interrupt the CPU takes now (intc.pending above SR.I), kept by
 	 * sh4_update_irqs (), which every change of SR.I, of a priority or of
 	 * a source calls: the translations look at it after an access. Not in
-	 * the saved state (made again on a load) */
-	bool		irq_ready = false;
+	 * the saved state (made again on a load). With mmu_exact (the
+	 * translations in use, see sh4_mmu_update ()), the idle loops'
+	 * noting (IdleLoop::tracking) and the CPU not running (Cpu::state, as
+	 * state_set () keeps it) in one word, chain_stop: a translation's way
+	 * out goes on to the next block while it is 0 (one test of the four) */
+	union {
+		struct {
+			bool	irq_ready;
+			bool	mmu_exact;
+			bool	idle_noting;
+			bool	not_running;
+		};
+		uint32_t chain_stop = 0;
+	};
+	/* After each change of Cpu::state */
+	void		state_set () { not_running = ((hl::Cpu *) this)->state != hl::CPU_STATE_RUN; }
 
 	struct {
 		bool	is_running[4];
@@ -254,9 +278,8 @@ public:
 		/* The decoded blocks to drop before running them again */
 		bool	flush_blocks;
 	} mmu;
-	/* The translations in use: MMUCR.AT, unless mmu_trusted lets them be
-	 * left out; see sh4_mmu_update () */
-	bool	mmu_exact = false;
+	/* The translations in use (mmu_exact, with irq_ready above): MMUCR.AT,
+	 * unless mmu_trusted lets them be left out; see sh4_mmu_update () */
 	/* The machine's word that its program never faults under the MMU */
 	bool	mmu_trusted = false;
 	/* The instruction cache modelled (Sh4ICache: code kept as fetched while
@@ -273,6 +296,11 @@ public:
 	uint32_t hot_read_addr = ~0u;
 	uint32_t (*hot_read) (void *obj) = nullptr;
 	void	*hot_read_obj = nullptr;
+	/* A second one, alike (the NAOMI's SB_FFST, read before each word
+	 * sent to the AICA: thousands a frame in Wild Riders) */
+	uint32_t hot_read2_addr = ~0u;
+	uint32_t (*hot_read2) (void *obj) = nullptr;
+	void	*hot_read2_obj = nullptr;
 	/* HR_SH4_STATS=<frame>: where the program leaves the translations' own code
 	 * (their slow accesses, the instructions left to their handlers, those
 	 * the interpreter steps), counted by address, the busiest printed at
@@ -295,7 +323,7 @@ public:
 	uint32_t	mmu_gen = 0, mmu_gen_entry = 0;
 	/* The translations' tables, read through ctx (7 bytes an access, an
 	 * immediate's 10): the page tables (read, write), the code stamps */
-	const void	*jit_tables[3] = {};
+	const void	*jit_tables[4] = {};
 	/* The delay slot run (in_slot): its address, for the exceptions */
 	uint32_t	slot_pc;
 	/* What the SCIF sent since the last line, for the log */
@@ -359,6 +387,20 @@ public:
 	bool		sq_buffered = false;
 	uint32_t	sq[2][8] = {};
 	void		sq_flush (uint32_t addr);
+	/* A store queue's 32 bytes for target (29 bits), true when the
+	 * machine took them itself as put_words () would have given them to
+	 * it (the NAOMI's TA, its polygons' FIFO), else through the memory
+	 * map (HR_SH4_SQ_DIRECT=0: always) */
+	bool		(*sq_direct) (void *user, uint32_t target, const uint32_t *words) = nullptr;
+	void		*sq_direct_user = nullptr;
+	/* The NAOMI's 32-bit path to its 16 MB of VRAM (05000000 and 07000000,
+	 * Holly::map32 ()'s interleave), for the translations' stores there:
+	 * straight into vram32_base while *vram32_busy is false (no picture
+	 * drawn to a texture on its way back, Holly::vram_behind), as the
+	 * Vram32 device would write them; else, or NULL, through the memory
+	 * map (HR_SH4_VRAM32=0: always) */
+	uint8_t		*vram32_base = nullptr;
+	const bool	*vram32_busy = nullptr;
 	/* A DDT transfer a device runs itself (Holly's channel 2): where the
 	 * channel's source is, then the channel done as if it had run */
 	uint32_t	ddt_source (unsigned ch);
@@ -472,12 +514,13 @@ public:
 		}
 		/* For HR_PROFILE: the turns simulated, taken at once; the
 		 * translations whose way back closes such a loop */
-		uint64_t	 sim_turns = 0, sim_runs = 0, sim_taken = 0;
+		uint64_t	 sim_turns = 0, sim_runs = 0, sim_taken = 0, sim_insts = 0, sim_cached = 0;
 		/* Turns simulated since the last block told (tell_block ()) */
 		bool		 sim_new = false;
 		unsigned	 sim_blocks = 0;
 		/* HR_SH4_IDLE_SIM=0 turns the simulations off */
 		bool		 enabled_sim = true;
+		bool		 sim_ops = true;
 		int		 hand_over (uint32_t tail_, uint32_t head_)
 		{
 			Known &k = known_of (tail_, head_);
@@ -527,6 +570,17 @@ public:
 			/* The block its translation's way back is in, told
 			 * (Sh4Block::simulated) */
 			uint32_t sim_pc0 = ~0u;
+			/* Its turn's instructions as the last simulation read
+			 * them (patched), in the code epoch it read them in (0:
+			 * none): read again in another. A store over them starts
+			 * one, the turn run after each simulation having its
+			 * blocks compared in it (HR_SH4_SIM_OPS=0: read each
+			 * time; not under the MMU) */
+			uint32_t ops_epoch = 0;
+			uint16_t ops[MAX_PATH];
+			/* Its turn in P1 or P2 alone, which the MMU leaves as it
+			 * is: its instructions the same under it, privileged */
+			bool	 ops_untranslated = false;
 		} known[64];
 		Known		&known_of (uint32_t t, uint32_t h)
 		{
@@ -541,10 +595,13 @@ public:
 		 * in the block at pc0: told (Sh4Block::simulated) */
 		void		 tell_block (uint32_t pc0, uint32_t tail_, uint32_t head_);
 		Sh4		*owner = NULL;
+
+		explicit IdleLoop (bool &noting) : tracking (noting) { tracking = false; }
 	private:
 
 		uint32_t	 head = 0, tail = ~0u;
-		bool		 tracking = false;
+		/* Sh4::idle_noting (in chain_stop) */
+		bool		&tracking;
 		unsigned	 seen = 0;
 		unsigned	 misses = 0;	/* iterations not alike in a row */
 		/* The stores at the turn's start; those away from the stack at
@@ -572,9 +629,10 @@ public:
 
 		void		 start (Sh4 *ctx, uint32_t tail, uint32_t head);
 		int		 run_forward (Sh4 *ctx, const Known *known_turn, Plan *plan);
-		int		 run_forward_simulated (Sh4 *ctx, const uint32_t *turn, unsigned turn_length);
+		int		 run_forward_simulated (Sh4 *ctx, const uint32_t *turn, unsigned turn_length,
+				                        Known *known_turn = NULL);
 		bool		 simulate (Sh4 *ctx, Known &k, uint32_t t, uint32_t h);
-	} idle;
+	} idle { idle_noting };
 
 	/* A translation's end going straight on to the next block's
 	 * (sh4.cpp, "Chaining"); HR_SH4_CHAIN=0 turns it off */
@@ -596,6 +654,12 @@ public:
 		/* For HR_PROFILE: the translations' ends, those gone on; the
 		 * calls to sh4_chain (), those that went on */
 		uint64_t	 ends = 0, gone = 0, calls = 0, calls_gone = 0;
+		/* And why it went back: the CPU stopped or the MMU, an
+		 * interrupt, the slice's end, no translation there; the run
+		 * loop's calls of a translation, those while the idle loops
+		 * note a turn */
+		uint64_t	 back_stop = 0, back_irq = 0, back_slice = 0, back_none = 0;
+		uint64_t	 runs = 0, runs_noting = 0;
 	} chain;
 	/* A jump's target, kept across its delay slot by its translation
 	 * (sh4-x64.cpp) */
@@ -606,6 +670,14 @@ public:
  * its prologue, to go on to; 0 for the run loop. pc0 and n: the block that
  * ends, the instructions it ran */
 uintptr_t	 sh4_chain (Sh4 *ctx, uint32_t pc0, int n);
+
+/* A translated pref at a store queue's address (sh4-x64.cpp): as its
+ * handler, the queue sent where QACR says */
+void		 sh4_pref_flush (Sh4 *ctx, uint32_t addr);
+
+/* A translated read of TMU's TCNT0 (FFD8000C), the timer the games poll:
+ * as sh4_read32 () reads it, without the way through the map */
+uint32_t	 sh4_tcnt0_read (Sh4 *ctx);
 
 /* At a wait on memory's way back (Sh4Block::poll_loop), its load inst:
  * 1 when the slice's other turns were taken off */

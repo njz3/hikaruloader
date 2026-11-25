@@ -37,6 +37,9 @@ namespace naomi {
  * x0, x1: the part of its width shown */
 struct Picture {
 	GLuint texture = 0;
+	/* Its size, when the renderer knows it (0: asked to GL, which waits
+	 * there for the driver's own thread) */
+	int w = 0, h = 0;
 	bool flip = false;
 	float x0 = 0.0f, x1 = 1.0f;
 	/* Its depth, when drawn from a scene (MULTI_SCREEN_VIEW's strips): a
@@ -175,7 +178,49 @@ private:
 		GLuint id;
 		uint64_t hash;
 		uint64_t seen;	/* the last frame that checked its data */
+		/* Its filters and wraps as last set (draw_piece ()), ~0 none */
+		uint32_t params = ~0u;
+		/* Its storage as GL has it: its largest level's size, its levels
+		 * (0: none yet), for the next pixels sent into it */
+		uint16_t w = 0, h = 0;
+		uint8_t	 levels = 0;
 	};
+	/* texture ()'s pixels, a level at a time: kept from one to the next
+	 * (a vector a texture before, grown level by level: a fifth of the
+	 * drawing thread's time in Virtua Tennis, in moves and page faults) */
+	std::vector<uint32_t> texels;
+	static const bool texels_kept;
+	/* texture ()'s last, for its parameters */
+	Texture	*last_texture = nullptr;
+	/* draw_piece ()'s uniforms as last set in each polygon program
+	 * (program, collect): the same values not sent again (each GL call
+	 * is work for the driver's thread) */
+	struct PieceUniforms {
+		int	 flags = INT32_MIN;
+		uint32_t lod_bias = ~0u, max_lod = ~0u, tag = ~0u;
+		/* u_clip_out's, as their bits (none: NaN) */
+		uint32_t clip_out[4] = { ~0u, ~0u, ~0u, ~0u };
+	} piece_uniforms[2];
+	/* draw_batch ()'s and draw_piece ()'s GL states as last set, from
+	 * gl_forget () (each run of batches, nothing else in between) */
+	struct GlStates {
+		int	 scissor = -1, blend = -1, depth_mask = -1, stencil = -1;
+		GLint	 box[4] = { -1, -1, -1, -1 };
+		GLenum	 depth_func = 0, blend_src = 0, blend_dst = 0;
+		/* The texture bound (unit 0), and the key texture () had it for
+		 * (~0: none) */
+		GLuint	 bound = 0;
+		uint64_t texture_key = ~0ull;
+	} gl_states;
+	/* draw_piece ()'s draws held while the next ones need no other state
+	 * (HR_GL_MERGE): their starts and counts, sent as one (gl_flush ()
+	 * before any other GL call) */
+	std::vector<GLint> held_first;
+	std::vector<GLsizei> held_count;
+	static const bool merge_wanted;
+	void gl_flush ();
+	void gl_forget () { gl_flush (); gl_states = GlStates (); }
+	static const bool memo_wanted;
 
 	/* A polygon program's uniforms */
 	struct Program {

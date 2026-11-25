@@ -66,8 +66,10 @@
  * the block runs. */
 
 #include <algorithm>
+#include <atomic>
 #include <new>
 #include <chrono>
+#include <mutex>
 
 #include "cpu/sh/sh4-x64.h"
 #include "cpu/sh/sh4.h"
@@ -82,6 +84,21 @@
 
 using namespace x64;
 
+#ifdef _WIN32
+/* The translators whose loads read through the traps, by their arenas
+ * (see "Traps") */
+namespace {
+
+struct TrapJit {
+	std::atomic<uintptr_t> lo { 0 }, hi { 0 };
+	std::atomic<Sh4X64 *> jit { nullptr };
+};
+TrapJit trap_jits[32];
+std::once_flag trap_handler_once;
+
+} /* namespace */
+#endif
+
 /* The functions' generations, all backends together: a block keeps one
  * of a backend gone, it is not taken for the new one's */
 static unsigned generations = 0;
@@ -90,6 +107,11 @@ Sh4X64::Sh4X64 (Kind kind, const hl::Mmap *mmap) :
 	backend_kind (kind), layout (mmap->layout ()), arena (ARENA_SIZE),
 	generation (++generations)
 {
+	static const bool fpu_cache = hl_util_get_bool_option ("HR_SH4_FPU_CACHE", true);
+	static const bool tcnt = hl_util_get_bool_option ("HR_SH4_TCNT_DIRECT", true);
+
+	saves_xmm = fpu_cache && kind == PAGES;
+	tcnt_direct = tcnt;
 	start_arena ();
 	clear_near ();
 }
@@ -120,12 +142,75 @@ Sh4X64::fits (const hl::Mmap *mmap) const
 
 Sh4X64::~Sh4X64 ()
 {
+#ifdef _WIN32
+	for (TrapJit &t : trap_jits)
+		if (t.jit.load () == this) {
+			t.lo.store (0);
+			t.hi.store (0);
+			t.jit.store (nullptr);
+		}
+#endif
 	clear ();
 }
 
-/* The shared unwind information first: the prologue pushes rbx, rsi, rdi,
- * rbp, r12-r15 (1 byte each, 2 for r12-r15), then takes 40 bytes (Windows'
- * "x64 exception handling" UNWIND_INFO). Then one function for the whole
+/* The prologue: rbx, rsi, rdi, rbp, r12-r15 pushed (1 byte each, 2 for
+ * r12-r15), 40 bytes taken; with the FPU's registers (saves_xmm), FRAME
+ * bytes and xmm6-xmm15 saved at XMM_AT. Its unwind codes as it goes
+ * (Windows' "x64 exception handling": UWOP_PUSH_NONVOL, UWOP_ALLOC_SMALL or
+ * UWOP_ALLOC_LARGE, UWOP_SAVE_XMM128), the last first */
+unsigned
+Sh4X64::emit_prologue (Emitter &e, std::vector<uint8_t> *codes) const
+{
+	static const Reg pushed[8] = { RBX, RSI, RDI, RBP, R12, R13, R14, R15 };
+	std::vector<std::vector<uint8_t>> each;
+	const int32_t frame = saves_xmm ? FRAME : 40;
+	unsigned k;
+
+	for (k = 0; k < 8; k++) {
+		e.push (pushed[k]);
+		each.push_back ({ (uint8_t) e.length (), (uint8_t) (0x00 | (pushed[k] << 4)) });
+	}
+	e.sub64_imm (RSP, frame);
+	if (frame <= 128)
+		each.push_back ({ (uint8_t) e.length (), (uint8_t) (0x02 | ((frame / 8 - 1) << 4)) });
+	else
+		each.push_back ({ (uint8_t) e.length (), 0x01, (uint8_t) (frame / 8), (uint8_t) ((frame / 8) >> 8) });
+	if (saves_xmm)
+		for (k = 0; k < Sh4FpuCache::NUM; k++) {
+			const int32_t off = XMM_AT + 16 * (int32_t) k;
+
+			e.movups_store (RSP, off, Sh4FpuCache::xmm (k));
+			each.push_back ({ (uint8_t) e.length (), (uint8_t) (0x08 | (Sh4FpuCache::xmm (k) << 4)),
+			                  (uint8_t) (off / 16), (uint8_t) ((off / 16) >> 8) });
+		}
+	if (codes) {
+		codes->clear ();
+		for (auto it = each.rbegin (); it != each.rend (); ++it)
+			codes->insert (codes->end (), it->begin (), it->end ());
+	}
+	return (unsigned) e.length ();
+}
+
+void
+Sh4X64::emit_epilogue (Emitter &e) const
+{
+	if (saves_xmm)
+		for (unsigned k = 0; k < Sh4FpuCache::NUM; k++)
+			e.movups_load (Sh4FpuCache::xmm (k), RSP, XMM_AT + 16 * (int32_t) k);
+	e.add64_imm (RSP, saves_xmm ? FRAME : 40);
+	e.pop (R15);
+	e.pop (R14);
+	e.pop (R13);
+	e.pop (R12);
+	e.pop (RBP);
+	e.pop (RDI);
+	e.pop (RSI);
+	e.pop (RBX);
+	e.ret ();
+}
+
+/* The shared unwind information first: the prologue's (emit_prologue ()).
+ * Then one function for the whole
  * arena: a translation's frame is the same anywhere past its prologue, and
  * only there does it call (or fault, or go on to another's body), so its
  * prologue's codes all apply to any address an unwinding meets. One table
@@ -134,29 +219,31 @@ Sh4X64::~Sh4X64 ()
 bool
 Sh4X64::start_arena ()
 {
-	static const uint8_t unwind[] = {
-		0x01,		/* version 1, no flags */
-		19,		/* prologue size */
-		9,		/* unwind codes */
-		0x00,		/* no frame register */
-		19, 0x42,	/* at 19: UWOP_ALLOC_SMALL, (40 - 8) / 8 */
-		12, 0xF0,	/* at 12: UWOP_PUSH_NONVOL r15 */
-		10, 0xE0,	/* r14 */
-		8, 0xD0,	/* r13 */
-		6, 0xC0,	/* r12 */
-		4, 0x50,	/* rbp */
-		3, 0x70,	/* rdi */
-		2, 0x60,	/* rsi */
-		1, 0x30,	/* rbx */
-		0, 0,		/* padding to an even count */
-	};
-	uint8_t *at;
+	std::vector<uint8_t> codes, unwind;
+	uint8_t scratch[512], *at;
+	unsigned size;
 
+	{
+		Emitter e (scratch, sizeof (scratch));
+
+		size = emit_prologue (e, &codes);
+	}
+	/* Version 1, no flags; the prologue's size; the codes (slots of two
+	 * bytes), an even count of them; no frame register */
+	unwind.push_back (0x01);
+	unwind.push_back ((uint8_t) size);
+	unwind.push_back ((uint8_t) (codes.size () / 2));
+	unwind.push_back (0x00);
+	unwind.insert (unwind.end (), codes.begin (), codes.end ());
+	if ((codes.size () / 2) & 1) {
+		unwind.push_back (0);
+		unwind.push_back (0);
+	}
 	arena.reset ();
 	if (!arena.base ())
 		return false;
-	at = arena.take (sizeof (unwind), 4);
-	memcpy (at, unwind, sizeof (unwind));
+	at = arena.take (unwind.size (), 4);
+	memcpy (at, unwind.data (), unwind.size ());
 	unwind_rva = (uint32_t) (at - arena.base ());
 #ifdef _WIN32
 	RUNTIME_FUNCTION *rf = (RUNTIME_FUNCTION *) arena.take (sizeof (RUNTIME_FUNCTION), 4);
@@ -172,6 +259,95 @@ Sh4X64::start_arena ()
 	return true;
 }
 
+/* Traps
+ *
+ * Without the MMU, an access goes where hl::Mmap::traps () shows the
+ * SH-4's 32-bit address space, at base + address, aligned (else its slow
+ * path, the address error there):
+ *
+ *	test cl, size - 1; jne slow
+ *	mov r9, base
+ *	mov eax, [r9 + rcx]		(mov [r9 + rcx], r10d)
+ *
+ * or "mov eax, [rcx + base]" alone where the base fits the displacement
+ * (below 2 GB: hl::Mmap::TRAP_LOW, the first memory map's). Four or five
+ * instructions less than the page table's look and two loads less
+ * (the table's base and its entry, 8 MB of them), the access's latency
+ * alone on the way. What is not shown there faults: a device, P3 and P4,
+ * a page guarded or a device's bank, a store to a page read-only (a ROM, a
+ * code page: Sh4BlockCache::code_page). The vectored handler below finds
+ * the access by its address (trap_sites), writes "jmp table" over the
+ * base's mov (the access itself, low) and goes on at table: the page table's look, as without the
+ * traps, for good (the access there each time after, its slow path
+ * apart). Once an access, some microseconds; the RAM's never. A store
+ * counted as before (count_store ()). HR_SH4_TRAPS=0: the page table's
+ * look for all */
+#ifdef _WIN32
+namespace {
+
+LONG CALLBACK
+trap_handler (EXCEPTION_POINTERS *x)
+{
+	const EXCEPTION_RECORD *r = x->ExceptionRecord;
+
+	if (r->ExceptionCode != EXCEPTION_ACCESS_VIOLATION || r->NumberParameters < 2)
+		return EXCEPTION_CONTINUE_SEARCH;
+	const uintptr_t rip = (uintptr_t) x->ContextRecord->Rip, addr = (uintptr_t) r->ExceptionInformation[1];
+
+	for (TrapJit &t : trap_jits) {
+		/* A translator alive: its thread runs its code */
+		if (rip < t.lo.load (std::memory_order_acquire) || rip >= t.hi.load (std::memory_order_acquire))
+			continue;
+		Sh4X64 *jit = t.jit.load (std::memory_order_acquire);
+
+		if (jit && jit->trapped (rip, addr, &x->ContextRecord->Rip))
+			return EXCEPTION_CONTINUE_EXECUTION;
+	}
+	return EXCEPTION_CONTINUE_SEARCH;
+}
+
+} /* namespace */
+#endif
+
+void
+Sh4X64::trap_register ()
+{
+#ifdef _WIN32
+	std::call_once (trap_handler_once, [] { AddVectoredExceptionHandler (1, trap_handler); });
+	for (TrapJit &t : trap_jits) {
+		Sh4X64 *none = nullptr;
+
+		if (t.jit.compare_exchange_strong (none, this)) {
+			t.lo.store ((uintptr_t) arena.base (), std::memory_order_release);
+			t.hi.store ((uintptr_t) arena.base () + ARENA_SIZE, std::memory_order_release);
+			return;
+		}
+	}
+#endif
+	/* No room: the page table's look */
+	trap_base = NULL;
+}
+
+bool
+Sh4X64::trapped (uintptr_t rip, uintptr_t addr, uint64_t *new_rip)
+{
+	if (!trap_base || addr < (uintptr_t) trap_base || addr - (uintptr_t) trap_base >= hl::Mmap::TRAP_SPACE)
+		return false;
+	auto it = trap_sites.find ((uint32_t) (rip - (uintptr_t) arena.base ()));
+
+	if (it == trap_sites.end ())
+		return false;
+	uint8_t *patch = arena.base () + it->second.patch, *slow = arena.base () + it->second.slow;
+	const int32_t rel = (int32_t) (slow - (patch + 5));
+
+	patch[0] = 0xE9;
+	memcpy (patch + 1, &rel, 4);
+	trap_sites.erase (it);
+	num_traps++;
+	*new_rip = (uint64_t) (uintptr_t) slow;
+	return true;
+}
+
 void
 Sh4X64::clear ()
 {
@@ -183,8 +359,10 @@ Sh4X64::clear ()
 	num_clears++;
 	generation = ++generations;
 	linked.clear ();
+	linked_in.clear ();
 	cached.clear ();
 	dyn_tries.clear ();
+	trap_sites.clear ();
 	start_arena ();
 	clear_near ();
 }
@@ -213,18 +391,26 @@ Sh4X64::clear ()
  * samples; the frames 1 to 6% shorter). The near table's other conditions
  * hold as long as the code epoch stays: unlink () at each new one
  * (Sh4BlockCache's epoch_moved), the arena's clearing drops them all.
- * Under the MMU and with the instruction cache modelled, the probe */
+ * Under the MMU and with the instruction cache modelled, the probe.
+ *
+ * By default the checks are written in the way out itself (translate ()'s
+ * link_inline: no call, the count compared in a register, esi from esi),
+ * the jump at its end linked (link_field ()), at first to its own slow way
+ * to the link_in stub, which links it as the link stub does */
 void
 Sh4X64::unlink ()
 {
 	const uint32_t none = 1;
 
-	for (uint8_t *site : linked) {
-		const int32_t r = (int32_t) (stubs[0].link - (site + 4));
-
-		memcpy (site, &r, 4);
-	}
+	for (uint8_t *site : linked)
+		site_unlinked (site, stubs[0].link);
 	linked.clear ();
+	for (const auto &f : linked_in) {
+		const int32_t r = (int32_t) (f.second - (f.first + 4));
+
+		memcpy (f.first, &r, 4);
+	}
+	linked_in.clear ();
 	for (uint8_t *field : cached)
 		memcpy (field, &none, 4);
 	cached.clear ();
@@ -271,19 +457,58 @@ Sh4X64::link_dyn (Sh4X64 *jit, uint8_t *cached_at, void *body, uint32_t pc)
 	return body;
 }
 
+/* A way out's 12 bytes: unlinked "lea r9, [rip - 7]; jmp link"; linked
+ * "call link_checks; jmp body; nop" */
+void
+Sh4X64::site_unlinked (uint8_t *site, const uint8_t *link_stub)
+{
+	const int32_t r = (int32_t) (link_stub - (site + 12));
+	static const uint8_t lea[7] = { 0x4C, 0x8D, 0x0D, 0xF9, 0xFF, 0xFF, 0xFF };
+
+	memcpy (site, lea, 7);
+	site[7] = 0xE9;
+	memcpy (site + 8, &r, 4);
+}
+
 void *
 Sh4X64::link (Sh4X64 *jit, uint8_t *site, void *body)
 {
-	const int64_t rel = (int64_t) ((uint8_t *) body - (site + 4));
-	int32_t r = (int32_t) rel;
+	const int64_t to_checks = (int64_t) (jit->stubs[0].link_checks - (site + 5));
+	const int64_t to_body = (int64_t) ((uint8_t *) body - (site + 10));
+	const int32_t c = (int32_t) to_checks, b = (int32_t) to_body;
 
-	if (rel == (int64_t) r) {
-		memcpy (site, &r, 4);
+	if (to_checks == (int64_t) c && to_body == (int64_t) b) {
+		site[0] = 0xE8;
+		memcpy (site + 1, &c, 4);
+		site[5] = 0xE9;
+		memcpy (site + 6, &b, 4);
+		site[10] = 0x66;
+		site[11] = 0x90;
 		jit->linked.push_back (site);
 		jit->num_links++;
 	}
 	return body;
 }
+
+void *
+Sh4X64::link_field (Sh4X64 *jit, uint8_t *field, void *body)
+{
+	const int64_t rel = (int64_t) ((uint8_t *) body - (field + 4));
+	const int32_t r = (int32_t) rel;
+	int32_t was;
+
+	if (rel == (int64_t) r) {
+		memcpy (&was, field, 4);
+		jit->linked_in.push_back (std::make_pair (field, field + 4 + was));
+		memcpy (field, &r, 4);
+		jit->num_links++;
+	}
+	return body;
+}
+
+/* For HR_PROFILE: the traps' stores gone through the page table, those on
+ * a code page's (the stamps looked at) */
+static uint64_t table_writes, table_code_writes;
 
 /* The ways out all translations share, under the MMU (gen checked) and
  * without: written once a generation, at its start */
@@ -291,6 +516,10 @@ void
 Sh4X64::print_kinds (char cpu) const
 {
 	uint64_t total = 0;
+
+	if (table_writes)
+		HL_PRINT ("sh4 %c: %llu stores through the page table (traps), %llu of them on code pages", cpu,
+		          (unsigned long long) table_writes, (unsigned long long) table_code_writes);
 
 	for (const auto &k : kind_bytes)
 		total += k.second;
@@ -310,7 +539,7 @@ Sh4X64::emit_stubs (Sh4 *ctx)
 {
 	const Sh4Offsets o (ctx);
 	const bool counting = hl::Profile::enabled;
-	const size_t max = 1024;
+	const size_t max = 2048;
 	unsigned m;
 
 	for (m = 0; m < 2; m++) {
@@ -358,11 +587,12 @@ Sh4X64::emit_stubs (Sh4 *ctx)
 			e.load32 (RCX, RDX, 8);
 			e.cmp32_mem (RBX, o.remaining, RCX);
 			e.jcc (CC_LE, chain);
-			e.cmp8_mem_imm (RBX, o.irq_ready, 0);
-			e.jcc (CC_NE, chain);
-			e.cmp8_mem_imm (RBX, o.noting, 0);
-			e.jcc (CC_NE, chain);
+			/* An interrupt, the idle loops noting, the CPU not
+			 * running (Sh4::chain_stop's bytes 0, 2, 3); without
+			 * the MMU, it off (byte 1) */
 			if (m) {
+				e.test_mem_imm (RBX, o.chain_stop, (int32_t) 0xFFFF00FF);
+				e.jcc (CC_NE, chain);
 				/* The translations at translated addresses look
 				 * at the gen noted */
 				e.load32 (RCX, RDX, 12);
@@ -370,11 +600,9 @@ Sh4X64::emit_stubs (Sh4 *ctx)
 				e.jcc (CC_NE, chain);
 				e.store32 (RBX, o.mmu_gen_entry, RCX);
 			} else {
-				e.cmp8_mem_imm (RBX, o.mmu_on, 0);
+				e.alu_mem_imm (Emitter::ALU_CMP, RBX, o.chain_stop, 0);
 				e.jcc (CC_NE, chain);
 			}
-			e.alu_mem_imm (Emitter::ALU_CMP, RBX, o.state, (int32_t) hl::CPU_STATE_RUN);
-			e.jcc (CC_NE, chain);
 			e.load64 (RCX, RBX, o.stores);
 			e.store64 (RBX, o.chain_stores, RCX);
 			if (counting)
@@ -389,19 +617,44 @@ Sh4X64::emit_stubs (Sh4 *ctx)
 		if (m == 0 && ctx->chain.enabled) {
 			Label fail, miss;
 
+			/* The checks of a way out linked: the count taken off,
+			 * the probe's checks but the near table's, chain.stores
+			 * and esi as the probe sets them; else back through the
+			 * probe's own checks (the call dropped) */
+			auto checks = [&] (Label &fail_to) {
+				/* The count taken off in eax: its compare without
+				 * a load of the word just stored (its forwarding's
+				 * wait, a third of the stubs' time) */
+				e.load32 (RAX, RBX, o.remaining);
+				e.alu32_reg_reg (Emitter::ALU_SUB, RAX, R8);
+				e.store32 (RBX, o.remaining, RAX);
+				e.cmp32_imm (RAX, Sh4Block::MAX_OPS);
+				e.jcc (CC_LE, fail_to);
+				/* An interrupt, the idle loops noting, the MMU:
+				 * one word (Sh4::chain_stop) */
+				e.alu_mem_imm (Emitter::ALU_CMP, RBX, o.chain_stop, 0);
+				e.jcc (CC_NE, fail_to);
+			};
 			s.link_checks = e.here ();
 			stub_mark ("stub: link checks");
-			e.alu_mem_reg (Emitter::ALU_SUB, RBX, o.remaining, R8);
-			e.alu_mem_imm (Emitter::ALU_CMP, RBX, o.remaining, (int32_t) Sh4Block::MAX_OPS);
-			e.jcc (CC_LE, fail);
-			e.cmp8_mem_imm (RBX, o.irq_ready, 0);
-			e.jcc (CC_NE, fail);
-			e.cmp8_mem_imm (RBX, o.noting, 0);
-			e.jcc (CC_NE, fail);
-			e.cmp8_mem_imm (RBX, o.mmu_on, 0);
-			e.jcc (CC_NE, fail);
-			e.alu_mem_imm (Emitter::ALU_CMP, RBX, o.state, (int32_t) hl::CPU_STATE_RUN);
-			e.jcc (CC_NE, fail);
+			checks (fail);
+			e.load64 (RCX, RBX, o.stores);
+			e.store64 (RBX, o.chain_stores, RCX);
+			if (counting)
+				e.add64_mem_imm (RBX, o.chain_gone, 1);
+			e.load32 (RSI, RBX, o.pc);
+			e.ret ();
+			e.bind (fail);
+			e.add64_imm (RSP, 8);
+			e.jmp_abs (s.checks);
+
+			/* An address known as it runs: the last ones kept in r11
+			 * and r10 (link_dyn's or look's miss puts them back) */
+			Label dyn_fail;
+
+			s.dyn_checks = e.here ();
+			stub_mark ("stub: link checks (address as run)");
+			checks (dyn_fail);
 			e.load64 (R11, RBX, o.chain_stores);
 			e.load64 (RCX, RBX, o.stores);
 			e.store64 (RBX, o.chain_stores, RCX);
@@ -409,18 +662,21 @@ Sh4X64::emit_stubs (Sh4 *ctx)
 				e.add64_mem_imm (RBX, o.chain_gone, 1);
 			e.mov32 (R10, RSI);
 			e.load32 (RSI, RBX, o.pc);
-			/* The way out's jump (unlinked: to link, which wants
-			 * its rel32 field) */
-			e.load64 (R9, RSP, 0);
-			e.add64_imm (R9, 1);
 			e.ret ();
-			e.bind (fail);
+			e.bind (dyn_fail);
 			e.add64_imm (RSP, 8);
 			e.jmp_abs (s.checks);
 
+			/* A way out not linked yet (r9 its 12 bytes): the count
+			 * taken off, the checks, the near table as the probe
+			 * reads it; the block there, the way out linked to it,
+			 * on to it; else sh4_chain () (the probe's miss) */
+			Label link_fail, link_miss;
+
 			s.link = e.here ();
 			stub_mark ("stub: link");
-			e.mov32 (RAX, RSI);
+			checks (link_fail);
+			e.load32 (RAX, RBX, o.pc);
 			e.mov32 (RCX, RAX);
 			e.shr32_imm (RCX, 1);
 			e.and32_imm (RCX, near_mask);
@@ -428,21 +684,61 @@ Sh4X64::emit_stubs (Sh4 *ctx)
 			e.mov_imm64 (RDX, (uint64_t) (uintptr_t) near_table.get ());
 			e.alu64_reg_reg (Emitter::ALU_ADD, RDX, RCX);
 			e.cmp32_mem (RDX, 0, RAX);
-			e.jcc (CC_NE, miss);
+			e.jcc (CC_NE, link_miss);
 			e.load32 (RCX, RDX, 4);
 			e.alu_reg_mem (Emitter::ALU_CMP, RCX, RBX, o.epoch);
-			e.jcc (CC_NE, miss);
+			e.jcc (CC_NE, link_miss);
 			e.load32 (RCX, RDX, 8);
 			e.cmp32_mem (RBX, o.remaining, RCX);
-			e.jcc (CC_LE, miss);
+			e.jcc (CC_LE, link_miss);
+			e.load64 (RCX, RBX, o.stores);
+			e.store64 (RBX, o.chain_stores, RCX);
+			if (counting)
+				e.add64_mem_imm (RBX, o.chain_gone, 1);
 			e.load64 (R8, RDX, 16);
 			e.mov (RDX, R9);
 			e.mov_imm64 (RCX, (uint64_t) (uintptr_t) this);
 			e.call ((const void *) &Sh4X64::link);
+			e.load32 (RSI, RBX, o.pc);
 			e.jmp_reg (RAX);
-			e.bind (miss);
+			e.bind (link_fail);
+			e.jmp_abs (s.checks);
+			e.bind (link_miss);
+			e.jmp (chain);
+
+			/* A way out with its checks in line, not linked yet
+			 * (r9 its jump's field, r8d the count taken off,
+			 * chain.stores set, the last one in r11, esi still the
+			 * block's): the near table as the probe reads it; the
+			 * block there, the jump linked to it, on to it; else
+			 * chain.stores back, sh4_chain () (the probe's miss) */
+			Label in_miss;
+
+			s.link_in = e.here ();
+			stub_mark ("stub: link (checks in line)");
+			e.load32 (RAX, RBX, o.pc);
+			e.mov32 (RCX, RAX);
+			e.shr32_imm (RCX, 1);
+			e.and32_imm (RCX, near_mask);
+			e.shl32_imm (RCX, 5);
+			e.mov_imm64 (RDX, (uint64_t) (uintptr_t) near_table.get ());
+			e.alu64_reg_reg (Emitter::ALU_ADD, RDX, RCX);
+			e.cmp32_mem (RDX, 0, RAX);
+			e.jcc (CC_NE, in_miss);
+			e.load32 (RCX, RDX, 4);
+			e.alu_reg_mem (Emitter::ALU_CMP, RCX, RBX, o.epoch);
+			e.jcc (CC_NE, in_miss);
+			e.load32 (RCX, RDX, 8);
+			e.cmp32_mem (RBX, o.remaining, RCX);
+			e.jcc (CC_LE, in_miss);
+			e.load64 (R8, RDX, 16);
+			e.mov (RDX, R9);
+			e.mov_imm64 (RCX, (uint64_t) (uintptr_t) this);
+			e.call ((const void *) &Sh4X64::link_field);
+			e.load32 (RSI, RBX, o.pc);
+			e.jmp_reg (RAX);
+			e.bind (in_miss);
 			e.store64 (RBX, o.chain_stores, R11);
-			e.mov32 (RSI, R10);
 			if (counting)
 				e.add64_mem_imm (RBX, o.chain_gone, -1);
 			e.jmp (chain);
@@ -466,6 +762,13 @@ Sh4X64::emit_stubs (Sh4 *ctx)
 				e.cmp32_mem (RBX, o.remaining, RCX);
 				e.jcc (CC_LE, away);
 			};
+
+			e.bind (miss);
+			e.store64 (RBX, o.chain_stores, R11);
+			e.mov32 (RSI, R10);
+			if (counting)
+				e.add64_mem_imm (RBX, o.chain_gone, -1);
+			e.jmp (chain);
 
 			s.link_dyn = e.here ();
 			stub_mark ("stub: link (address as run)");
@@ -499,18 +802,12 @@ Sh4X64::emit_stubs (Sh4 *ctx)
 		e.bind (leave);
 		stub_mark ("stub: back to the run loop");
 		e.load32 (RAX, RBX, o.chain_n);
-		e.add64_imm (RSP, 40);
-		e.pop (R15);
-		e.pop (R14);
-		e.pop (R13);
-		e.pop (R12);
-		e.pop (RBP);
-		e.pop (RDI);
-		e.pop (RSI);
-		e.pop (RBX);
-		e.ret ();
-		if (e.overflowed ())
+		emit_epilogue (e);
+		if (e.overflowed ()) {
+			/* Told: the SH-4 would run without its translations */
+			HL_ERROR_FEW ("sh4-x64: the stubs do not fit their %u bytes", (unsigned) max);
 			return false;
+		}
 		arena.trim (buf + e.length ());
 		if (hl::Profile::sampling)
 			hl::Profile::code_written (buf, e.length (), ctx->config.master ? 'M' : 'S', 0, NULL, 0,
@@ -582,6 +879,7 @@ Sh4Offsets::Sh4Offsets (Sh4 *ctx)
 	for (unsigned i = 0; i < 16; i++)
 		r[i] = (int32_t) ((const uint8_t *) &ctx->regs.r[i] - base);
 	rbank = (int32_t) ((const uint8_t *) &ctx->regs.rbank[0] - base);
+	chain_stop = (int32_t) ((const uint8_t *) &ctx->chain_stop - base);
 	fr = (int32_t) ((const uint8_t *) &ctx->regs.f - base);
 	xf = (int32_t) ((const uint8_t *) &ctx->regs.x - base);
 	fpscr = (int32_t) ((const uint8_t *) &ctx->regs.fpscr - base);
@@ -598,6 +896,107 @@ Sh4RegCache::reset (const Sh4Offsets *offsets)
 	o = offsets;
 	forget ();
 	clock = 0;
+}
+
+void
+Sh4RegCache::preload (Emitter &e, const unsigned *regs, unsigned n)
+{
+	for (unsigned i = 0; i < n; i++) {
+		read (e, regs[i]);
+		for (unsigned k = 0; k < NUM; k++)
+			if (held[k] == (int8_t) regs[i])
+				dirty[k] = true;
+	}
+}
+
+bool
+Sh4RegCache::same_places (const Sh4RegCache &other) const
+{
+	for (unsigned k = 0; k < NUM; k++)
+		if (held[k] != other.held[k])
+			return false;
+	return true;
+}
+
+bool
+Sh4RegCache::empty () const
+{
+	for (unsigned k = 0; k < NUM; k++)
+		if (held[k] >= 0)
+			return false;
+	return true;
+}
+
+/* The GPRs a block's instructions may name (their fields, R0 where some
+ * read it), T too: more than it uses at times, never fewer but by mistake
+ * (then a register given up in the loop, its way back as before) */
+static unsigned
+loop_registers (const Sh4Block *block, unsigned *out, unsigned max)
+{
+	bool seen[17] = {};
+	unsigned k = 0;
+	auto add = [&] (unsigned r) {
+		if (!seen[r]) {
+			seen[r] = true;
+			if (k < max)
+				out[k] = r;
+			k++;
+		}
+	};
+
+	for (const Sh4Op &op : block->ops) {
+		const uint16_t i = op.inst;
+		const unsigned n = (i >> 8) & 15, m = (i >> 4) & 15;
+
+		switch (i >> 12) {
+		case 0x0:
+			add (n);
+			add (m);
+			add (0);
+			break;
+		case 0x1: case 0x2: case 0x3: case 0x4: case 0x5: case 0x6:
+			add (n);
+			add (m);
+			break;
+		case 0x7: case 0x9: case 0xD: case 0xE:
+			add (n);
+			break;
+		case 0x8:
+			switch ((i >> 8) & 15) {
+			case 0x0: case 0x1: case 0x4: case 0x5:
+				add (m);
+				add (0);
+				break;
+			case 0x8:
+				add (0);
+				break;
+			default:
+				break;
+			}
+			break;
+		case 0xC:
+			add (0);
+			break;
+		case 0xF:
+			switch (i & 15) {
+			case 0x6: case 0x8: case 0x9:
+				add (m);
+				add (0);
+				break;
+			case 0x7: case 0xA: case 0xB:
+				add (n);
+				add (0);
+				break;
+			default:
+				break;
+			}
+			break;
+		default:
+			break;
+		}
+	}
+	add (Sh4RegCache::T);
+	return k;
 }
 
 void
@@ -644,10 +1043,155 @@ Sh4RegCache::take (Emitter &e, unsigned n, bool load)
 	return (int) pick;
 }
 
+/* The FPU's Registers
+ *
+ * FR0-FR15 (the bank in use: frchg swaps ctx's two) kept in xmm6-xmm15 in
+ * a block as Sh4RegCache keeps the GPRs: loaded at a first read, written
+ * back to ctx at the ways out, before a handler (which may read or change
+ * any; none kept after) and before an access of ctx's copy (the moves of
+ * pairs, the groups of accesses, ftrv's vector, frchg); the slow paths of
+ * the accesses leave them (the calls keep xmm6-xmm15). The arithmetic as
+ * before, register to register: the same bits. HR_SH4_FPU_CACHE=0: each
+ * instruction from and to ctx */
 void
-Sh4RegCache::put_back (Emitter &e, Reg r, int n) const
+Sh4FpuCache::reset (const Sh4Offsets *offsets)
 {
-	if (n == (int) T) {
+	o = offsets;
+	forget ();
+	clock = 0;
+}
+
+int32_t
+Sh4FpuCache::at (unsigned n) const
+{
+	return o->fr + 4 * (int32_t) (n ^ 1);
+}
+
+void
+Sh4FpuCache::forget ()
+{
+	for (unsigned k = 0; k < NUM; k++) {
+		held[k] = -1;
+		dirty[k] = false;
+		used[k] = 0;
+	}
+}
+
+int
+Sh4FpuCache::take (Emitter &e, unsigned n, bool load)
+{
+	unsigned k, pick = 0;
+
+	for (k = 0; k < NUM; k++)
+		if (held[k] == (int8_t) n) {
+			used[k] = ++clock;
+			return (int) k;
+		}
+	for (k = 0; k < NUM; k++) {
+		if (held[k] < 0) {
+			pick = k;
+			break;
+		}
+		if (used[k] < used[pick])
+			pick = k;
+	}
+	if (held[pick] >= 0 && dirty[pick])
+		e.movss_store (RBX, at ((unsigned) held[pick]), xmm (pick));
+	held[pick] = (int8_t) n;
+	dirty[pick] = false;
+	used[pick] = ++clock;
+	if (load)
+		e.movss_load (xmm (pick), RBX, at (n));
+	return (int) pick;
+}
+
+unsigned
+Sh4FpuCache::read (Emitter &e, unsigned n)
+{
+	return xmm ((unsigned) take (e, n, true));
+}
+
+unsigned
+Sh4FpuCache::write (Emitter &e, unsigned n)
+{
+	int k = take (e, n, false);
+
+	dirty[k] = true;
+	return xmm ((unsigned) k);
+}
+
+unsigned
+Sh4FpuCache::modify (Emitter &e, unsigned n)
+{
+	int k = take (e, n, true);
+
+	dirty[k] = true;
+	return xmm ((unsigned) k);
+}
+
+void
+Sh4FpuCache::store_dirty (Emitter &e) const
+{
+	for (unsigned k = 0; k < NUM; k++)
+		if (held[k] >= 0 && dirty[k])
+			e.movss_store (RBX, at ((unsigned) held[k]), xmm (k));
+}
+
+void
+Sh4FpuCache::flush (Emitter &e)
+{
+	store_dirty (e);
+	for (unsigned k = 0; k < NUM; k++)
+		dirty[k] = false;
+}
+
+void
+Sh4FpuCache::give_up (Emitter &e, unsigned n)
+{
+	for (unsigned k = 0; k < NUM; k++)
+		if (held[k] == (int8_t) n) {
+			if (dirty[k])
+				e.movss_store (RBX, at (n), xmm (k));
+			held[k] = -1;
+			dirty[k] = false;
+		}
+}
+
+bool
+Sh4FpuCache::empty () const
+{
+	for (unsigned k = 0; k < NUM; k++)
+		if (held[k] >= 0)
+			return false;
+	return true;
+}
+
+Sh4FpuCache::Spills
+Sh4FpuCache::spills () const
+{
+	Spills v;
+
+	if (!o)
+		return v;
+	for (unsigned k = 0; k < NUM; k++)
+		if (held[k] >= 0 && dirty[k])
+			v.r[v.n++] = std::make_pair (xmm (k), at ((unsigned) held[k]));
+	return v;
+}
+
+void
+Sh4RegCache::put_back (Emitter &e, Reg r, int n, bool rax_free) const
+{
+	static const bool t_one_store = hl_util_get_bool_option ("HR_SH4_T_STORE", true);
+
+	if (n == (int) T && rax_free && t_one_store) {
+		/* One read and one write of SR: the and's write no longer
+		 * forwarded to the or's read (a wait of some cycles) */
+		e.load32 (RAX, RBX, o->sr);
+		e.and32_imm (RAX, ~1u);
+		e.alu32_reg_reg (Emitter::ALU_OR, RAX, r);
+		e.store32 (RBX, o->sr, RAX);
+	} else if (n == (int) T) {
 		e.alu_mem_imm (Emitter::ALU_AND, RBX, o->sr, ~1);
 		e.alu_mem_reg (Emitter::ALU_OR, RBX, o->sr, r);
 	} else
@@ -712,9 +1256,10 @@ Sh4RegCache::peek (unsigned n, Reg &r) const
 void
 Sh4RegCache::store_dirty (Emitter &e) const
 {
+	/* rax free at each call: before a call, a way out */
 	for (unsigned k = 0; k < NUM; k++)
 		if (held[k] >= 0 && dirty[k])
-			put_back (e, cached[k], held[k]);
+			put_back (e, cached[k], held[k], true);
 }
 
 void
@@ -785,6 +1330,7 @@ Sh4X64::count_far (Emitter &e, const Sh4Offsets &o)
 void
 Sh4X64::count_store (Emitter &e, const Sh4Offsets &o)
 {
+	may_store = true;
 	if (!store_counted) {
 		e.add64_mem_imm (RBX, o.stores, 1);
 		store_counted = true;
@@ -801,24 +1347,43 @@ Sh4X64::call_read (Emitter &e, const Sh4Offsets &o, int32_t at, unsigned size, b
 	/* Sh4::hot_read's register (the multiboard port's data, read in a
 	 * loop): its function called here, as sh4_read () would */
 	const bool hot = hot_fn && !mmu_mode && size <= 4;
-	Label normal, done;
+	const bool hot2 = hot2_fn && !mmu_mode && size <= 4;
+	const bool tcnt = tcnt_direct && !mmu_mode && size == 4;
+	Label normal, done, other;
 
 	e.lea32 (R11, RSI, at);
 	e.store32 (RBX, o.pc, R11);
-	if (hot) {
+	if (tcnt) {
+		/* TMU's TCNT0, polled: its read at once (sh4_tcnt0_read ()) */
+		e.cmp32_imm (RCX, 0xFFD8000C);
+		e.jcc (CC_NE, other);
+		e.mov (RCX, RBX);
+		e.call ((const void *) sh4_tcnt0_read);
+		e.jmp (done);
+		e.bind (other);
+	}
+	if (hot || hot2) {
 		e.cmp32_imm (RCX, 0xE0000000);
 		e.jcc (CC_AE, normal);
 		e.mov32 (RAX, RCX);
 		e.and32_imm (RAX, 0x1FFFFFFF);
-		e.cmp32_imm (RAX, hot_addr);
-		e.jcc (CC_NE, normal);
-		e.mov_imm64 (RCX, (uint64_t) (uintptr_t) hot_obj);
-		e.call ((const void *) hot_fn);
-		if (size == 2)
-			e.movsx16 (RAX, RAX);
-		else if (size == 1)
-			e.movsx8 (RAX, RAX);
-		e.jmp (done);
+		/* Each register's function, as sh4_read () calls it */
+		for (int k = 0; k < 2; k++) {
+			if (!(k ? hot2 : hot))
+				continue;
+			Label &miss = label ();
+
+			e.cmp32_imm (RAX, k ? hot2_addr : hot_addr);
+			e.jcc (CC_NE, miss);
+			e.mov_imm64 (RCX, (uint64_t) (uintptr_t) (k ? hot2_obj : hot_obj));
+			e.call ((const void *) (k ? hot2_fn : hot_fn));
+			if (size == 2)
+				e.movsx16 (RAX, RAX);
+			else if (size == 1)
+				e.movsx8 (RAX, RAX);
+			e.jmp (done);
+			e.bind (miss);
+		}
 		e.bind (normal);
 	}
 	call_index (e, o, at, slot);
@@ -830,7 +1395,7 @@ Sh4X64::call_read (Emitter &e, const Sh4Offsets &o, int32_t at, unsigned size, b
 	case 4: e.call ((const void *) sh4_read32); break;
 	default: e.call ((const void *) sh4_read64); break;
 	}
-	if (hot)
+	if (hot || tcnt)
 		e.bind (done);
 	if (slot && mmu_mode)
 		e.store8_imm (RBX, o.in_slot, 0);
@@ -871,6 +1436,58 @@ Sh4X64::sq_store (Emitter &e, const Sh4Offsets &o, unsigned size, Label &back)
 	e.add64_mem_imm (RBX, o.far_stores, 1);
 	e.jmp (back);
 	e.bind (other);
+}
+
+void
+Sh4X64::vram32_store (Emitter &e, const Sh4Offsets &o, unsigned size, Label &done, Label &slow)
+{
+	/* Below P4, in 05000000-05FFFFFF or 07000000-07FFFFFF (any area's
+	 * alias), aligned */
+	e.cmp32_imm (RCX, 0xE0000000);
+	e.jcc (CC_AE, slow);
+	e.mov32 (RAX, RCX);
+	e.and32_imm (RAX, 0x1D000000);
+	e.cmp32_imm (RAX, 0x05000000);
+	e.jcc (CC_NE, slow);
+	if (size > 1) {
+		e.test8_imm (RCX, (uint8_t) (size - 1));
+		e.jcc (CC_NE, slow);
+	}
+	/* No picture on its way back there (Holly::vram_sync () would wait) */
+	e.mov_imm64 (RAX, (uint64_t) (uintptr_t) vram32_busy);
+	e.cmp8_mem_imm (RAX, 0, 0);
+	e.jcc (CC_NE, slow);
+	/* sh4_put ()'s Sh4BlockCache::written (): no code compared there */
+	e.mov32 (RAX, RCX);
+	e.and32_imm (RAX, 0x1FFFFFFF);
+	e.shr32_imm (RAX, Sh4BlockCache::STAMP_BITS);
+	stamp_check (e, o, slow);
+	/* Holly::map32 () of the address within the 16 MB: (a & 800003) |
+	 * ((a & 3FFFFC) << 1) | (bit 22 << 2); a 64-bit store's second word
+	 * 8 bytes on (aligned: never across bit 22) */
+	e.mov32 (RAX, RCX);
+	e.and32_imm (RAX, 0x003FFFFC);
+	e.alu32_reg_reg (Emitter::ALU_ADD, RAX, RAX);
+	e.mov32 (RDX, RCX);
+	e.shr32_imm (RDX, 20);
+	e.and32_imm (RDX, 4);
+	e.alu32_reg_reg (Emitter::ALU_OR, RAX, RDX);
+	e.mov32 (RDX, RCX);
+	e.and32_imm (RDX, 0x00800003);
+	e.alu32_reg_reg (Emitter::ALU_OR, RAX, RDX);
+	e.mov_imm64 (RDX, (uint64_t) (uintptr_t) vram32_base);
+	switch (size) {
+	case 1: e.store8_index (RDX, RAX, 1, R10); break;
+	case 2: e.store16_index (RDX, RAX, 1, R10); break;
+	case 4: e.store32_index (RDX, RAX, 1, R10); break;
+	default:
+		e.store32_index (RDX, RAX, 1, R10);
+		e.alu32_imm (Emitter::ALU_ADD, RAX, 8);
+		e.shr64_imm (R10, 32);
+		e.store32_index (RDX, RAX, 1, R10);
+		break;
+	}
+	e.jmp (done);
 }
 
 void
@@ -948,8 +1565,13 @@ access_store (Emitter &e, unsigned size, Reg index = RDX)
 
 Sh4X64Pages::Sh4X64Pages (const hl::Mmap *mmap) :
 	Sh4X64 (PAGES, mmap),
-	read_table (mmap->wide_read_table ()), write_table (mmap->wide_write_table ())
+	read_table (mmap->wide_read_table ()), write_table (mmap->wide_write_table ()),
+	write_all_table (mmap->wide_write_all_table ())
 {
+	static const bool wanted = hl_util_get_bool_option ("HR_SH4_TRAPS", true);
+
+	if (wanted && (trap_base = mmap->traps ()) != NULL)
+		trap_register ();
 }
 
 /* Under the MMU: ecx in P1 or P2 and SR.MD set, else slow (the TLB) */
@@ -990,7 +1612,7 @@ Sh4X64Pages::lookup (Emitter &e, const Sh4Offsets &o, const intptr_t *table, Lab
 	}
 	if (mmu_mode)
 		mmu_guard (e, o, slow);
-	if (store) {
+	if (store && !code_pages_on) {
 		mark (e, "store: code stamp");
 		e.mov32 (RAX, RCX);
 		e.and32_imm (RAX, 0x1FFFFFFF);
@@ -1012,6 +1634,41 @@ Sh4X64Pages::load (Emitter &e, const Sh4Offsets &o, int32_t at, unsigned size)
 {
 	Label &slow = label (), &back = label ();
 
+	if (trap_base && !mmu_mode) {
+		/* Aligned, then base + address (see "Traps"); the table's look
+		 * apart, where a fault sends it */
+		Label &table = label ();
+
+		mark (e, "load: alignment");
+		if (size > 1) {
+			e.test8_imm (RCX, (uint8_t) (size - 1));
+			e.jcc (CC_NE, slow);
+		}
+		mark (e, "load: trap");
+		uint8_t *patch = e.here ();
+		const bool low = (uintptr_t) trap_base < 0x80000000u;
+
+		if (!low)
+			e.mov_imm64 (R9, (uint64_t) (uintptr_t) trap_base);
+		uint8_t *at_load = e.here ();
+
+		mark (e, "load: access");
+		if (low)
+			switch (size) {
+			case 1: e.movsx8_mem (RAX, RCX, (int32_t) (uintptr_t) trap_base); break;
+			case 2: e.movsx16_mem (RAX, RCX, (int32_t) (uintptr_t) trap_base); break;
+			case 4: e.load32 (RAX, RCX, (int32_t) (uintptr_t) trap_base); break;
+			default: e.load64 (RAX, RCX, (int32_t) (uintptr_t) trap_base); break;
+			}
+		else
+			access_load (e, size, RCX);
+		pending_traps.push_back (PendingTrap { patch, at_load, e.here (), &table });
+		e.bind (back);
+		table_path (table, back, slow, false, at, size);
+		slow_path (slow, back, false, at, size);
+		mark (e, "memory: after");
+		return;
+	}
 	lookup (e, o, read_table, slow, size, false);
 	mark (e, "load: access");
 	access_load (e, size, RCX);
@@ -1024,6 +1681,46 @@ void
 Sh4X64Pages::store (Emitter &e, const Sh4Offsets &o, int32_t at, unsigned size)
 {
 	Label &slow = label (), &back = label ();
+
+	if (trap_base && !mmu_mode && code_pages_on) {
+		/* The same for a store, the code pages read-only there (their
+		 * stores through the table to the slow path, as the table
+		 * leaves them); counted as the table's (to counted) */
+		Label &table = label (), &counted = label ();
+
+		mark (e, "store: alignment");
+		if (size > 1) {
+			e.test8_imm (RCX, (uint8_t) (size - 1));
+			e.jcc (CC_NE, slow);
+		}
+		mark (e, "store: trap");
+		uint8_t *patch = e.here ();
+		const bool low = (uintptr_t) trap_base < 0x80000000u;
+
+		if (!low)
+			e.mov_imm64 (R9, (uint64_t) (uintptr_t) trap_base);
+		uint8_t *at_store = e.here ();
+
+		mark (e, "store: access");
+		if (low)
+			switch (size) {
+			case 1: e.store8 (RCX, (int32_t) (uintptr_t) trap_base, R10); break;
+			case 2: e.store16 (RCX, (int32_t) (uintptr_t) trap_base, R10); break;
+			case 4: e.store32 (RCX, (int32_t) (uintptr_t) trap_base, R10); break;
+			default: e.store64 (RCX, (int32_t) (uintptr_t) trap_base, R10); break;
+			}
+		else
+			access_store (e, size, RCX);
+		pending_traps.push_back (PendingTrap { patch, at_store, e.here (), &table });
+		e.bind (counted);
+		mark (e, "store: counts");
+		count_store (e, o);
+		e.bind (back);
+		table_path (table, counted, slow, true, at, size);
+		slow_path (slow, back, true, at, size);
+		mark (e, "memory: after");
+		return;
+	}
 
 	lookup (e, o, write_table, slow, size, true);
 	mark (e, "store: access");
@@ -1116,6 +1813,48 @@ Sh4X64::fpu_move_op (Emitter &e, const Sh4Offsets &o, uint16_t inst, int32_t at)
 	case 0xF00B: base = rc.modify (e, n); break;
 	case 0xF007: base = rc.read (e, n); index = rc.read (e, 0); break;
 	}
+
+	/* The FPU's registers (see "The FPU's Registers"): a single's
+	 * through them when the size is known; else the pairs' and singles'
+	 * in ctx (each register given up first) */
+	if (fpu_cache_on && move_sz == 0) {
+		const bool loads = kind == 0xF008 || kind == 0xF009 || kind == 0xF006;
+		const bool stores = kind == 0xF00A || kind == 0xF00B || kind == 0xF007;
+
+		if (loads) {
+			const unsigned x = fc.write (e, n);
+
+			if (kind == 0xF006)
+				e.lea32_index (RCX, base, index);
+			else
+				e.mov32 (RCX, base);
+			load (e, o, at, 4);
+			e.movd_to_xmm (x, RAX);
+			if (kind == 0xF009)
+				e.alu32_imm (Emitter::ALU_ADD, base, 4);
+		} else if (stores) {
+			const unsigned x = fc.read (e, m);
+
+			if (kind == 0xF007)
+				e.lea32_index (RCX, base, index);
+			else if (kind == 0xF00B)
+				e.lea32 (RCX, base, -4);
+			else
+				e.mov32 (RCX, base);
+			e.movd_from_xmm (R10, x);
+			store (e, o, at, 4);
+			if (kind == 0xF00B)
+				e.alu32_imm (Emitter::ALU_ADD, base, -4);
+		} else {
+			const unsigned xm = fc.read (e, m);
+
+			e.movaps_reg (fc.write (e, n), xm);
+		}
+		return true;
+	}
+	if (fpu_cache_on)
+		for (unsigned r : { n & ~1u, n | 1u, m & ~1u, m | 1u })
+			fc.give_up (e, r);
 
 	if (move_sz < 0) {
 		e.test_mem_imm (RBX, o.fpscr, 0x00100000);
@@ -1213,11 +1952,21 @@ Sh4X64::memory_op (Emitter &e, const Sh4Offsets &o, uint16_t inst, int32_t at, u
 	store_base = -1;
 	auto address = [&] (unsigned b, int32_t disp, bool indexed) {
 		store_base = indexed ? -1 : (int) b;
-		e.mov32 (RCX, rc.read (e, b));
-		if (indexed)
-			e.alu32_reg_reg (Emitter::ALU_ADD, RCX, rc.read (e, 0));
-		if (disp)
-			e.lea32 (RCX, RCX, disp);
+		/* One lea for the sum (b's register, the one used last, stays
+		 * through the read of R0) */
+		const Reg rb = rc.read (e, b);
+
+		if (indexed && !disp)
+			e.lea32_index (RCX, rb, rc.read (e, 0));
+		else if (!indexed && disp)
+			e.lea32 (RCX, rb, disp);
+		else {
+			e.mov32 (RCX, rb);
+			if (indexed)
+				e.alu32_reg_reg (Emitter::ALU_ADD, RCX, rc.read (e, 0));
+			if (disp)
+				e.lea32 (RCX, RCX, disp);
+		}
 	};
 	auto value = [&] (unsigned v) { e.mov32 (R10, rc.read (e, v)); };
 	auto result = [&] (unsigned d) { e.mov32 (rc.write (e, d), RAX); };
@@ -1399,11 +2148,15 @@ Sh4X64::memory_op (Emitter &e, const Sh4Offsets &o, uint16_t inst, int32_t at, u
 
 /* T = the condition, from the flags of the instruction just written: kept
  * in its host register (Sh4RegCache::T) */
-static void
-set_t (Emitter &e, Sh4RegCache &rc, Cond c)
+void
+Sh4X64::set_t_cond (Emitter &e, Cond c)
 {
 	e.setcc (c, RAX);
 	e.movzx8 (rc.write (e, Sh4RegCache::T), RAX);
+	/* The flags say T still where nothing was written after (a bt or bf
+	 * right after branches on them) */
+	t_flags_at = e.here ();
+	t_flags_cond = c;
 }
 
 /* The instructions written out in x86-64: the registers' and T's alone,
@@ -1442,7 +2195,7 @@ Sh4X64::native_op (Emitter &e, const Sh4Offsets &o, uint16_t inst)
 	switch (inst & 0xFF00) {
 	case 0xC800:				/* tst #imm,R0 */
 		e.test32_imm (rc.read (e, 0), uimm);
-		set_t (e, rc, CC_E);
+		set_t_cond (e, CC_E);
 		return true;
 	case 0xC900:				/* and #imm,R0 */
 		e.alu32_imm (Emitter::ALU_AND, rc.modify (e, 0), (int32_t) uimm);
@@ -1455,7 +2208,7 @@ Sh4X64::native_op (Emitter &e, const Sh4Offsets &o, uint16_t inst)
 		return true;
 	case 0x8800:				/* cmp/eq #imm,R0 */
 		e.cmp32_imm (rc.read (e, 0), (uint32_t) simm);
-		set_t (e, rc, CC_E);
+		set_t_cond (e, CC_E);
 		return true;
 	}
 	switch (inst & 0xF00F) {
@@ -1565,7 +2318,7 @@ Sh4X64::native_op (Emitter &e, const Sh4Offsets &o, uint16_t inst)
 	case 0x2008:				/* tst Rm,Rn */
 		a = rc.read (e, m);
 		e.test32 (rc.read (e, n), a);
-		set_t (e, rc, CC_E);
+		set_t_cond (e, CC_E);
 		return true;
 	case 0x3000:				/* cmp/eq Rm,Rn */
 	case 0x3002:				/* cmp/hs Rm,Rn */
@@ -1577,7 +2330,7 @@ Sh4X64::native_op (Emitter &e, const Sh4Offsets &o, uint16_t inst)
 		};
 		a = rc.read (e, m);
 		e.alu32_reg_reg (Emitter::ALU_CMP, rc.read (e, n), a);
-		set_t (e, rc, conds[inst & 7]);
+		set_t_cond (e, conds[inst & 7]);
 		return true;
 	}
 	case 0x600E:				/* exts.b Rm,Rn */
@@ -1652,7 +2405,7 @@ Sh4X64::native_op (Emitter &e, const Sh4Offsets &o, uint16_t inst)
 		d = rc.modify (e, n);
 		e.neg32 (RAX);				/* CF: T */
 		e.alu32_reg_reg ((inst & 4) ? Emitter::ALU_ADC : Emitter::ALU_SBB, d, a);
-		set_t (e, rc, CC_B);
+		set_t_cond (e, CC_B);
 		return true;
 	}
 	case 0x400C:				/* shad Rm,Rn */
@@ -1695,15 +2448,15 @@ Sh4X64::native_op (Emitter &e, const Sh4Offsets &o, uint16_t inst)
 		return true;
 	case 0x4010:				/* dt Rn */
 		e.alu32_imm (Emitter::ALU_SUB, rc.modify (e, n), 1);
-		set_t (e, rc, CC_E);
+		set_t_cond (e, CC_E);
 		return true;
 	case 0x4000:				/* shll Rn */
 		e.shl32_imm (rc.modify (e, n), 1);
-		set_t (e, rc, CC_B);
+		set_t_cond (e, CC_B);
 		return true;
 	case 0x4001:				/* shlr Rn */
 		e.shr32_imm (rc.modify (e, n), 1);
-		set_t (e, rc, CC_B);
+		set_t_cond (e, CC_B);
 		return true;
 	case 0x4008: e.shl32_imm (rc.modify (e, n), 2); return true;	/* shll2 */
 	case 0x4018: e.shl32_imm (rc.modify (e, n), 8); return true;	/* shll8 */
@@ -1724,14 +2477,14 @@ Sh4X64::native_op (Emitter &e, const Sh4Offsets &o, uint16_t inst)
 		rc.t_to_sr (e);
 		e.bt_mem_imm (RBX, o.sr, 0);
 		e.rot32 ((inst & 1) ? Emitter::ROT_RCR : Emitter::ROT_RCL, d, 1);
-		set_t (e, rc, CC_B);
+		set_t_cond (e, CC_B);
 		return true;
 	case 0x4004:				/* rotl Rn: T the bit out */
 	case 0x4005:				/* rotr Rn */
 	case 0x4021:				/* shar Rn */
 		e.rot32 ((inst & 0x20) ? Emitter::ROT_SAR :
 		         (inst & 1) ? Emitter::ROT_ROR : Emitter::ROT_ROL, rc.modify (e, n), 1);
-		set_t (e, rc, CC_B);
+		set_t_cond (e, CC_B);
 		return true;
 	case 0x002A:				/* sts PR,Rn */
 		e.load32 (rc.write (e, n), RBX, o.pr);
@@ -1760,7 +2513,7 @@ Sh4X64::native_op (Emitter &e, const Sh4Offsets &o, uint16_t inst)
 	case 0x4015:				/* cmp/pl Rn */
 	case 0x4011:				/* cmp/pz Rn */
 		e.cmp32_imm (rc.read (e, n), 0);
-		set_t (e, rc, (inst & 4) ? CC_G : CC_GE);
+		set_t_cond (e, (inst & 4) ? CC_G : CC_GE);
 		return true;
 	/* The FPU's: FPUL, the singles at n ^ 1 (sh4.cpp, FR ()) */
 	case 0x005A:				/* sts FPUL,Rn */
@@ -1770,15 +2523,28 @@ Sh4X64::native_op (Emitter &e, const Sh4Offsets &o, uint16_t inst)
 		e.store32 (RBX, o.fpul, rc.read (e, n));
 		return true;
 	case 0xF00D:				/* fsts FPUL,FRn */
+		if (fpu_cache_on) {
+			e.movss_load (fc.write (e, n), RBX, o.fpul);
+			return true;
+		}
 		e.load32 (RAX, RBX, o.fpul);
 		e.store32 (RBX, o.fr + 4 * (int32_t) (n ^ 1), RAX);
 		return true;
 	case 0xF01D:				/* flds FRm,FPUL */
+		if (fpu_cache_on) {
+			e.movss_store (RBX, o.fpul, fc.read (e, n));
+			return true;
+		}
 		e.load32 (RAX, RBX, o.fr + 4 * (int32_t) (n ^ 1));
 		e.store32 (RBX, o.fpul, RAX);
 		return true;
 	case 0xF08D:				/* fldi0 FRn */
 	case 0xF09D:				/* fldi1 FRn */
+		if (fpu_cache_on) {
+			e.mov_imm32 (RAX, (inst & 0x10) ? 0x3F800000 : 0);
+			e.movd_to_xmm (fc.write (e, n), RAX);
+			return true;
+		}
 		e.store32_imm (RBX, o.fr + 4 * (int32_t) (n ^ 1),
 		               (inst & 0x10) ? 0x3F800000 : 0);
 		return true;
@@ -2008,10 +2774,12 @@ Sh4X64::memory_loop (Emitter &e, const Sh4Offsets &o, const Sh4Block *block)
 	e.test32_imm (RCX, 3);
 	e.jcc (CC_NE, out);
 	if (backend_kind == PAGES) {
-		e.mov32 (RAX, RCX);
-		e.and32_imm (RAX, 0x1FFFFFFF);
-		e.shr32_imm (RAX, Sh4BlockCache::STAMP_BITS);
-		stamp_check (e, o, out);
+		if (!code_pages_on) {
+			e.mov32 (RAX, RCX);
+			e.and32_imm (RAX, 0x1FFFFFFF);
+			e.shr32_imm (RAX, Sh4BlockCache::STAMP_BITS);
+			stamp_check (e, o, out);
+		}
 		e.mov32 (RAX, RCX);
 		e.shr32_imm (RAX, hl::Mmap::TABLE_PAGE_BITS);
 		e.load64 (R8, RBX, o.jit_tables + 8);
@@ -2143,6 +2911,8 @@ Sh4X64::access_group (Emitter &e, const Sh4Offsets &o, const Sh4Block *block, si
 
 	mark (e, "memory: group");
 	rc.flush (e);
+	fc.flush (e);
+	fc.forget ();
 	b = rc.read (e, (unsigned) base);
 	e.mov32 (RCX, b);
 	/* Aligned (the offsets 4's), in one page */
@@ -2182,7 +2952,7 @@ Sh4X64::access_group (Emitter &e, const Sh4Offsets &o, const Sh4Block *block, si
 	e.alu32_reg_reg (Emitter::ALU_XOR, RDX, RAX);
 	e.test32_imm (RDX, ~((1u << hl::Mmap::TABLE_PAGE_BITS) - 1));
 	e.jcc (CC_NE, slow);
-	if (store) {
+	if (store && !code_pages_on) {
 		/* No code compared there in this epoch, at either end (the
 		 * group spans 64 bytes at most: two stamps) */
 		e.and32_imm (RAX, 0x1FFFFFFF);
@@ -2260,19 +3030,26 @@ put_t (Emitter &e, const Sh4Offsets &o, Sh4RegCache &rc)
  * tested again; the tests took two instructions and 16 bytes an FPU
  * instruction. false, nothing written, for the others (FSCA, FSRRA: the
  * handlers) */
-static bool
-fpu_op (Emitter &e, const Sh4Offsets &o, Sh4RegCache &rc, uint16_t inst, Label &slow, bool &fallback,
-        bool &pr_ok, bool &fd_ok)
+bool
+Sh4X64::fpu_op (Emitter &e, const Sh4Offsets &o, Sh4RegCache &rc, uint16_t inst, Label &slow, bool &fallback,
+                bool &pr_ok, bool &fd_ok)
 {
 	const unsigned n = (inst >> 8) & 15, m = (inst >> 4) & 15;
+	const bool cache = fpu_cache_on;
 	unsigned k, r;
 
 	auto fr = [&] (unsigned i) { return o.fr + 4 * (int32_t) (i ^ 1); };
 	auto xf = [&] (unsigned i) { return o.xf + 4 * (int32_t) (i ^ 1); };
+	/* The FPU's registers as at a test (its slow way's spills) */
+	auto checked = [&] () {
+		if (!fallback)
+			fc_checked = fc;
+	};
 	/* FPSCR.PR clear; SR.FD clear */
 	auto singles = [&] () {
 		if (pr_ok)
 			return;
+		checked ();
 		e.test_mem_imm (RBX, o.fpscr, 0x00080000);
 		e.jcc (CC_NE, slow);
 		fallback = true;
@@ -2281,6 +3058,7 @@ fpu_op (Emitter &e, const Sh4Offsets &o, Sh4RegCache &rc, uint16_t inst, Label &
 	auto enabled = [&] () {
 		if (fd_ok)
 			return;
+		checked ();
 		e.test_mem_imm (RBX, o.sr, 0x00008000);
 		e.jcc (CC_NE, slow);
 		fallback = true;
@@ -2290,6 +3068,8 @@ fpu_op (Emitter &e, const Sh4Offsets &o, Sh4RegCache &rc, uint16_t inst, Label &
 	if ((inst & 0xF000) != 0xF000)
 		return false;
 	if (inst == 0xFBFD) {			/* frchg: FPSCR.FR, the banks swapped */
+		fc.flush (e);
+		fc.forget ();
 		e.alu_mem_imm (Emitter::ALU_XOR, RBX, o.fpscr, 0x00200000);
 		for (k = 0; k < 64; k += 8) {
 			e.load64 (RAX, RBX, o.fr + (int32_t) k);
@@ -2308,6 +3088,12 @@ fpu_op (Emitter &e, const Sh4Offsets &o, Sh4RegCache &rc, uint16_t inst, Label &
 			Emitter::SSE_ADD, Emitter::SSE_SUB, Emitter::SSE_MUL, Emitter::SSE_DIV
 		};
 		singles ();
+		if (cache) {
+			const unsigned xm = fc.read (e, m), xn = fc.modify (e, n);
+
+			e.sse_reg (ops[inst & 3], xn, xm);
+			return true;
+		}
 		e.movss_load (0, RBX, fr (n));
 		e.sse_mem (ops[inst & 3], 0, RBX, fr (m));
 		e.movss_store (RBX, fr (n), 0);
@@ -2317,8 +3103,14 @@ fpu_op (Emitter &e, const Sh4Offsets &o, Sh4RegCache &rc, uint16_t inst, Label &
 		Label unordered;
 
 		singles ();
-		e.movss_load (0, RBX, fr (n));
-		e.ucomiss_mem (0, RBX, fr (m));
+		if (cache) {
+			const unsigned xm = fc.read (e, m), xn = fc.read (e, n);
+
+			e.ucomiss_reg (xn, xm);
+		} else {
+			e.movss_load (0, RBX, fr (n));
+			e.ucomiss_mem (0, RBX, fr (m));
+		}
 		e.mov_imm32 (RAX, 0);
 		e.jcc (CC_P, unordered);
 		e.setcc (CC_E, RAX);
@@ -2328,14 +3120,28 @@ fpu_op (Emitter &e, const Sh4Offsets &o, Sh4RegCache &rc, uint16_t inst, Label &
 	}
 	case 0xF005:				/* fcmp/gt FRm,FRn: FRn > FRm */
 		singles ();
-		e.movss_load (0, RBX, fr (n));
-		e.ucomiss_mem (0, RBX, fr (m));
+		if (cache) {
+			const unsigned xm = fc.read (e, m), xn = fc.read (e, n);
+
+			e.ucomiss_reg (xn, xm);
+		} else {
+			e.movss_load (0, RBX, fr (n));
+			e.ucomiss_mem (0, RBX, fr (m));
+		}
 		e.setcc (CC_A, RAX);
 		e.movzx8 (RAX, RAX);
 		put_t (e, o, rc);
 		return true;
 	case 0xF00E:				/* fmac FR0,FRm,FRn */
 		singles ();
+		if (cache) {
+			const unsigned xm = fc.read (e, m), x0 = fc.read (e, 0), xn = fc.modify (e, n);
+
+			e.movaps_reg (0, xm);
+			e.sse_reg (Emitter::SSE_MUL, 0, x0);
+			e.sse_reg (Emitter::SSE_ADD, xn, 0);
+			return true;
+		}
 		e.movss_load (0, RBX, fr (m));
 		e.sse_mem (Emitter::SSE_MUL, 0, RBX, fr (0));
 		e.movss_load (1, RBX, fr (n));
@@ -2348,10 +3154,13 @@ fpu_op (Emitter &e, const Sh4Offsets &o, Sh4RegCache &rc, uint16_t inst, Label &
 		 * order, ((x0 v0 + x1 v1) + x2 v2) + x3 v3, singles (the
 		 * handler leaves PR alone too). The registers in pairs swapped
 		 * (FR (), XF ()): XMTRX's column k, the 16 bytes at xf + 16k,
-		 * lane j its row j ^ 1, as FVn's 16 bytes, its result */
+		 * lane j its row j ^ 1, as FVn's 16 bytes, its result. FVn's
+		 * from ctx (the FPU's registers given up first) */
 		const unsigned v = n & 12;
 
 		enabled ();
+		for (k = 0; k < 4; k++)
+			fc.give_up (e, v + k);
 		for (k = 0; k < 4; k++) {
 			e.movups_load (k ? 1 : 0, RBX, o.xf + 16 * (int32_t) k);
 			e.movss_load (2, RBX, fr (v + k));
@@ -2366,25 +3175,49 @@ fpu_op (Emitter &e, const Sh4Offsets &o, Sh4RegCache &rc, uint16_t inst, Label &
 	switch (inst & 0xF0FF) {
 	case 0xF02D:				/* float FPUL,FRn */
 		singles ();
+		if (cache) {
+			e.cvtsi2ss_mem (fc.write (e, n), RBX, o.fpul);
+			return true;
+		}
 		e.cvtsi2ss_mem (0, RBX, o.fpul);
 		e.movss_store (RBX, fr (n), 0);
 		return true;
 	case 0xF03D:				/* ftrc FRn,FPUL */
 		singles ();
-		e.cvttss2si_mem (RAX, RBX, fr (n));
+		if (cache)
+			e.cvttss2si_reg (RAX, fc.read (e, n));
+		else
+			e.cvttss2si_mem (RAX, RBX, fr (n));
 		e.store32 (RBX, o.fpul, RAX);
 		return true;
 	case 0xF04D:				/* fneg FRn */
-		singles ();
-		e.alu_mem_imm (Emitter::ALU_XOR, RBX, fr (n), (int32_t) 0x80000000u);
-		return true;
 	case 0xF05D:				/* fabs FRn */
 		singles ();
-		e.alu_mem_imm (Emitter::ALU_AND, RBX, fr (n), 0x7FFFFFFF);
+		if (cache) {
+			const unsigned xn = fc.modify (e, n);
+
+			e.movd_from_xmm (RAX, xn);
+			if ((inst & 0xF0FF) == 0xF04D)
+				e.alu32_imm (Emitter::ALU_XOR, RAX, (int32_t) 0x80000000u);
+			else
+				e.and32_imm (RAX, 0x7FFFFFFF);
+			e.movd_to_xmm (xn, RAX);
+			return true;
+		}
+		if ((inst & 0xF0FF) == 0xF04D)
+			e.alu_mem_imm (Emitter::ALU_XOR, RBX, fr (n), (int32_t) 0x80000000u);
+		else
+			e.alu_mem_imm (Emitter::ALU_AND, RBX, fr (n), 0x7FFFFFFF);
 		return true;
 	case 0xF06D:				/* fsqrt FRn */
 		enabled ();
 		singles ();
+		if (cache) {
+			const unsigned xn = fc.modify (e, n);
+
+			e.sse_reg (Emitter::SSE_SQRT, xn, xn);
+			return true;
+		}
 		e.sse_mem (Emitter::SSE_SQRT, 0, RBX, fr (n));
 		e.movss_store (RBX, fr (n), 0);
 		return true;
@@ -2392,6 +3225,23 @@ fpu_op (Emitter &e, const Sh4Offsets &o, Sh4RegCache &rc, uint16_t inst, Label &
 		const unsigned v = n & 12, w = (n & 3) << 2;
 
 		enabled ();
+		if (cache) {
+			unsigned xv[4], xw[4];
+
+			for (k = 0; k < 4; k++) {
+				xv[k] = fc.read (e, v + k);
+				xw[k] = fc.read (e, w + k);
+			}
+			e.movaps_reg (0, xv[0]);
+			e.sse_reg (Emitter::SSE_MUL, 0, xw[0]);
+			for (k = 1; k < 4; k++) {
+				e.movaps_reg (1, xv[k]);
+				e.sse_reg (Emitter::SSE_MUL, 1, xw[k]);
+				e.sse_reg (Emitter::SSE_ADD, 0, 1);
+			}
+			e.movaps_reg (fc.write (e, v + 3), 0);
+			return true;
+		}
 		e.movss_load (0, RBX, fr (v));
 		e.sse_mem (Emitter::SSE_MUL, 0, RBX, fr (w));
 		for (k = 1; k < 4; k++) {
@@ -2403,23 +3253,8 @@ fpu_op (Emitter &e, const Sh4Offsets &o, Sh4RegCache &rc, uint16_t inst, Label &
 		return true;
 	}
 	}
-	if ((inst & 0xF3FF) == 0xF1FD) {	/* ftrv XMTRX,FVn: xmm2-xmm5 */
-		const unsigned v = n & 12;
-
-		enabled ();
-		for (r = 0; r < 4; r++) {
-			e.movss_load (2 + r, RBX, xf (r));
-			e.sse_mem (Emitter::SSE_MUL, 2 + r, RBX, fr (v));
-			for (k = 1; k < 4; k++) {
-				e.movss_load (1, RBX, xf (r + 4 * k));
-				e.sse_mem (Emitter::SSE_MUL, 1, RBX, fr (v + k));
-				e.sse_reg (Emitter::SSE_ADD, 2 + r, 1);
-			}
-		}
-		for (r = 0; r < 4; r++)
-			e.movss_store (RBX, fr (v + r), 2 + r);
-		return true;
-	}
+	(void) xf;
+	(void) r;
 	return false;
 }
 
@@ -2433,9 +3268,10 @@ Sh4X64::slot_writable (const Sh4Offsets &o, uint16_t inst)
 	uint8_t scratch[2048];
 	Emitter e (scratch, sizeof (scratch));
 
-	size_t was = cold.size ();
+	size_t was = cold.size (), traps_was = pending_traps.size ();
 	Sh4RegCache kept = rc;
-	bool counted = store_counted;
+	Sh4FpuCache fkept = fc;
+	bool counted = store_counted, may = may_store;
 	bool ok;
 
 	if ((inst & 0xF000) == 0xD000 || (inst & 0xF000) == 0x9000 || sh4_may_branch (inst))
@@ -2450,8 +3286,11 @@ Sh4X64::slot_writable (const Sh4Offsets &o, uint16_t inst)
 	if (!ok)
 		ok = (inst & 0xF0FF) == 0x0083 && !mmu_mode;
 	cold.resize (was);
+	pending_traps.resize (traps_was);
 	rc = kept;
+	fc = fkept;
 	store_counted = counted;
+	may_store = may;
 	return ok;
 }
 
@@ -2578,6 +3417,7 @@ Sh4X64::jump_op (Emitter &e, const Sh4Offsets &o, const Sh4Block *block, size_t 
 		e.load32 (RAX, RBX, o.target);
 	e.store32 (RBX, o.pc, RAX);
 	rc.store_dirty (e);
+	fc.store_dirty (e);
 	e.jmp (out);
 	fixed_to = fixed;
 	to = at + 4 + 2 * simm12;
@@ -2606,12 +3446,25 @@ Sh4X64::translate (Sh4 *ctx, Sh4Block *block)
 	 * known (bt, bf; bt/s, bf/s, bra, bsr) */
 	int32_t to[Sh4Block::MAX_OPS] = {};
 	bool fixed[Sh4Block::MAX_OPS] = {};
+	/* PC not set yet on the way to done[i] (to esi + to[i]): set by the
+	 * way out, but on the way linked with its checks in line, where the
+	 * next block needs it not (late_pc) */
+	bool pc_late[Sh4Block::MAX_OPS] = {};
+	static const bool late_pc_wanted = hl_util_get_bool_option ("HR_SH4_LATE_PC", true);
+	static const bool inline_links_wanted = hl_util_get_bool_option ("HR_SH4_INLINE_LINKS", true);
+	static const bool store_free_wanted = hl_util_get_bool_option ("HR_SH4_STORE_FREE", true);
+	static const bool pref_direct = hl_util_get_bool_option ("HR_SH4_PREF_DIRECT", true);
+	static const bool code_stamps_inline = hl_util_get_bool_option ("HR_SH4_CODE_STAMPS", true);
+	static const bool t_flags_fused = hl_util_get_bool_option ("HR_SH4_T_FLAGS", true);
+	bool late_pc = false;
 	Label end, probe, probe_checks, chain, icache_miss, icache_done;
 	uint8_t *buf, *body;
 	size_t i;
 
 	if (stubs_generation != generation && !emit_stubs (ctx))
 		return NULL;
+	late_pc = late_pc_wanted && !ctx->mmu_exact && ctx->chain.enabled && !ctx->icache_on &&
+	          stubs[0].link_in && inline_links_wanted;
 	buf = arena.take (max, 16);
 	if (!buf)
 		return NULL;
@@ -2619,22 +3472,40 @@ Sh4X64::translate (Sh4 *ctx, Sh4Block *block)
 	translating = ctx->mmap;
 	translating_cpu = ctx;
 	translating_pc = block->pc;
+	/* The pages holding code left out of the write table: no stamp
+	 * tested (Sh4BlockCache::code_page) */
+	code_pages_on = backend_kind == PAGES && (bool) ctx->blocks.code_page;
 	stamps = ctx->blocks.stamps ();
 	cold.clear ();
+	pending_traps.clear ();
+	t_flags_at = nullptr;
 	labels_used = 0;
 	rc.reset (&o);
 	store_counted = false;
+	may_store = backend_kind != PAGES || block->mem_loop || !store_free_wanted;
 	marks.clear ();
 	mmu_mode = ctx->mmu_exact;
 	virt_mode = mmu_mode && ctx->jit_virtual;
+	fc.reset (&o);
+	fpu_cache_on = saves_xmm && !mmu_mode;
 	sq_inline = ctx->sq_buffered;
+	{
+		static const bool vram32_on = hl_util_get_bool_option ("HR_SH4_VRAM32", true);
+
+		vram32_base = vram32_on && !mmu_mode && ctx->vram32_busy ? ctx->vram32_base : nullptr;
+		vram32_busy = ctx->vram32_busy;
+	}
 	hot_addr = ctx->hot_read_addr;
 	hot_fn = ctx->hot_read;
 	hot_obj = ctx->hot_read_obj;
+	hot2_addr = ctx->hot_read2_addr;
+	hot2_fn = ctx->hot_read2;
+	hot2_obj = ctx->hot_read2_obj;
 	ctx->jit_tables[2] = stamps;
 	if (backend_kind == PAGES) {
 		ctx->jit_tables[0] = ((Sh4X64Pages *) this)->read_table;
 		ctx->jit_tables[1] = ((Sh4X64Pages *) this)->write_table;
+		ctx->jit_tables[3] = ((Sh4X64Pages *) this)->write_all_table;
 	}
 	/* FPSCR.SZ: the FPU's moves written for the size the block is seen
 	 * with as it starts (fschg turns it over), checked by a guard at the
@@ -2650,7 +3521,7 @@ Sh4X64::translate (Sh4 *ctx, Sh4Block *block)
 	/* A way out of the block, taken on c: the GPRs not in ctx written
 	 * there first (apart, after the block) */
 	auto exit_if = [&] (Cond c, Label &out) {
-		if (rc.spills ().empty ()) {
+		if (rc.spills ().empty () && fc.spills ().empty ()) {
 			e.jcc (c, out);
 			return;
 		}
@@ -2667,6 +3538,7 @@ Sh4X64::translate (Sh4 *ctx, Sh4Block *block)
 		const Sh4Op &op = block->ops[i];
 		const int32_t at = (int32_t) (2 * i);
 
+		may_store = true;
 		/* It may change FPSCR.PR, SR.FD: tested again */
 		pr_ok = fd_ok = false;
 		if (keeps)
@@ -2674,6 +3546,14 @@ Sh4X64::translate (Sh4 *ctx, Sh4Block *block)
 		else {
 			rc.flush (e);
 			sz_seen = false;
+		}
+		/* The FPU's: it may read or change any (on a slow way beside,
+		 * out after it: written back alone) */
+		if (keeps)
+			fc.store_dirty (e);
+		else {
+			fc.flush (e);
+			fc.forget ();
 		}
 		if (ctx->stats) {
 			e.mov_imm64 (RAX, (uint64_t) (uintptr_t) sh4_stats_handler (ctx, block->pc + (uint32_t) at, op.inst));
@@ -2713,15 +3593,18 @@ Sh4X64::translate (Sh4 *ctx, Sh4Block *block)
 	auto slot_guards = [&] (size_t i, uint16_t slot) {
 		uint8_t scratch[2048];
 		Emitter s (scratch, sizeof (scratch));
-		const size_t was = cold.size ();
+		const size_t was = cold.size (), traps_was = pending_traps.size ();
 		const Sh4RegCache kept = rc;
+		const Sh4FpuCache fkept = fc;
 		const bool counted = store_counted;
 		Label slow;
 		bool fallback = false, pr = pr_ok, fd = fd_ok;
 		const bool fpu = fpu_op (s, o, rc, slot, slow, fallback, pr, fd);
 
 		cold.resize (was);
+		pending_traps.resize (traps_was);
 		rc = kept;
+		fc = fkept;
 		store_counted = counted;
 		if (!fpu || (pr == pr_ok && fd == fd_ok))
 			return;
@@ -2745,15 +3628,7 @@ Sh4X64::translate (Sh4 *ctx, Sh4Block *block)
 
 	/* Prologue: as the unwind information says */
 	mark (e, "entry: prologue");
-	e.push (RBX);
-	e.push (RSI);
-	e.push (RDI);
-	e.push (RBP);
-	e.push (R12);
-	e.push (R13);
-	e.push (R14);
-	e.push (R15);
-	e.sub64_imm (RSP, 40);
+	emit_prologue (e, NULL);
 	e.mov (RBX, RCX);
 	e.mov (RSI, RDX);
 	body = e.here ();
@@ -2828,6 +3703,86 @@ Sh4X64::translate (Sh4 *ctx, Sh4Block *block)
 		e.bind (none);
 	}
 
+	/* A Loop's Turns. A block whose bt or bf goes back to its start: its
+	 * registers (loop_registers (), six at most, T one of them) loaded
+	 * here, before its head, and kept in their host registers through its
+	 * turns; its way back made here (loop_back below) as the way out it
+	 * replaces makes it, the idle loops' looks and the links' checks in
+	 * the same order, the slow ways (sh4_chain (), the probe's checks)
+	 * with the registers written back first; as before where its
+	 * registers are not where they were at the head (a handler, a group
+	 * of accesses, one more register) */
+	/* HR_SH4_LOOP_REGS=0: each turn's way back as any other */
+	static const bool loop_turns = hl_util_get_bool_option ("HR_SH4_LOOP_REGS", true);
+	Label loop_head;
+	Sh4RegCache head_state;
+	bool loop_regs = false;
+	struct LoopTail { Label *chain, *checks; uint32_t count; };
+	std::vector<LoopTail> loop_tails;
+	{
+		const bool can_link = !mmu_mode && ctx->chain.enabled && !ctx->icache_on && stubs[0].link &&
+		                      !block->delay_loop && !block->poll_loop && rc.empty () && loop_turns;
+		bool back = false;
+
+		for (size_t k = 0; k < n && can_link; k++)
+			if ((block->ops[k].inst & 0xFD00) == 0x8900 &&
+			    2 * (int32_t) k + 4 + 2 * (int32_t) (int8_t) block->ops[k].inst == 0)
+				back = true;
+		if (back) {
+			unsigned regs[Sh4RegCache::NUM];
+			const unsigned k = loop_registers (block, regs, Sh4RegCache::NUM);
+
+			if (k <= Sh4RegCache::NUM) {
+				mark (e, "loop: registers loaded");
+				rc.preload (e, regs, k);
+				head_state = rc;
+				loop_regs = true;
+				e.bind (loop_head);
+			}
+		}
+	}
+	/* The way back of a bt or bf at op i, taken (rc as at the head) */
+	auto loop_back = [&] (size_t i) {
+		const uint32_t count = (uint32_t) (i + 1);
+		Label &no_store = label (), &go = label (), &to_chain = label (), &to_checks = label ();
+		Label &chain_tail = label (), &checks_tail = label ();
+
+		mark (e, "loop: way back");
+		if (hl::Profile::enabled)
+			e.add64_mem_imm (RBX, o.chain_ends, 1);
+		if (may_store) {
+			e.load32 (RAX, RBX, o.stores);
+			e.cmp32_mem (RBX, o.chain_stores, RAX);
+			e.jcc (CC_E, no_store);
+			e.mov_imm64 (RAX, (uint64_t) (uintptr_t) &block->simulated);
+			e.cmp8_mem_imm (RAX, 0, 0);
+			e.jcc (CC_NE, to_chain);
+			e.jmp (go);
+		}
+		e.bind (no_store);
+		e.mov_imm64 (RAX, (uint64_t) (uintptr_t) &block->quiet);
+		e.alu_mem_imm (Emitter::ALU_CMP, RAX, 0, 0);
+		e.jcc (CC_LE, to_chain);
+		e.add32_mem_imm (RAX, 0, -1);
+		e.bind (go);
+		e.load32 (RAX, RBX, o.remaining);
+		e.alu32_imm (Emitter::ALU_SUB, RAX, (int32_t) count);
+		e.store32 (RBX, o.remaining, RAX);
+		e.cmp32_imm (RAX, Sh4Block::MAX_OPS);
+		e.jcc (CC_LE, to_checks);
+		e.alu_mem_imm (Emitter::ALU_CMP, RBX, o.chain_stop, 0);
+		e.jcc (CC_NE, to_checks);
+		e.load64 (RCX, RBX, o.stores);
+		e.store64 (RBX, o.chain_stores, RCX);
+		if (hl::Profile::enabled)
+			e.add64_mem_imm (RBX, o.chain_gone, 1);
+		e.jmp (loop_head);
+		/* The registers written back, then as the way out did */
+		cold_path (Cold::EXIT, to_chain, chain_tail);
+		cold_path (Cold::EXIT, to_checks, checks_tail);
+		loop_tails.push_back (LoopTail { &chain_tail, &checks_tail, count });
+	};
+
 	for (i = 0; i < n; i++) {
 		const Sh4Op &op = block->ops[i];
 		const int32_t at = (int32_t) (2 * i);
@@ -2875,9 +3830,13 @@ Sh4X64::translate (Sh4 *ctx, Sh4Block *block)
 				 * ones written for PR and FD clear) */
 				Label after;
 
+				const Sh4FpuCache now = fc;
+
 				e.jmp (after);
 				e.bind (slow);
+				fc = fc_checked;
 				handler (i, true);
+				fc = now;
 				pr_ok = fd_ok = true;
 				e.jmp (seq[i]);
 				used[i] = true;
@@ -2919,15 +3878,29 @@ Sh4X64::translate (Sh4 *ctx, Sh4Block *block)
 			Label stay;
 			int32_t target = at + 4 + 2 * (int32_t) (int8_t) op.inst;
 
-			{
+			if (t_flags_fused && t_flags_at == e.here ())
+				/* T = the flags' condition: bf stays when it holds,
+				 * bt when it does not */
+				e.jcc ((op.inst & 0x0200) ? t_flags_cond : (Cond) (t_flags_cond ^ 1), stay);
+			else {
 				const Reg t = rc.read (e, Sh4RegCache::T);
 
 				e.test32 (t, t);
+				e.jcc ((op.inst & 0x0200) ? CC_NE : CC_E, stay);
 			}
-			e.jcc ((op.inst & 0x0200) ? CC_NE : CC_E, stay);
-			e.lea32 (RAX, RSI, target);
-			e.store32 (RBX, o.pc, RAX);
+			if (loop_regs && target == 0 && rc.same_places (head_state)) {
+				fc.store_dirty (e);
+				loop_back (i);
+				e.bind (stay);
+				continue;
+			}
+			if (!late_pc) {
+				e.lea32 (RAX, RSI, target);
+				e.store32 (RBX, o.pc, RAX);
+			}
+			pc_late[i] = late_pc;
 			rc.store_dirty (e);
+			fc.store_dirty (e);
 			e.jmp (done[i]);
 			used[i] = true;
 			to[i] = target;
@@ -2951,6 +3924,7 @@ Sh4X64::translate (Sh4 *ctx, Sh4Block *block)
 			}
 			e.jcc ((op.inst & 0x0200) ? CC_NE : CC_E, stay);
 			staying = rc;
+			const Sh4FpuCache fstaying = fc;
 			{
 				/* The slot again on the way not taken: counted
 				 * there as well */
@@ -2962,7 +3936,9 @@ Sh4X64::translate (Sh4 *ctx, Sh4Block *block)
 			e.lea32 (RAX, RSI, target);
 			e.store32 (RBX, o.pc, RAX);
 			rc.store_dirty (e);
+			fc.store_dirty (e);
 			rc = staying;
+			fc = fstaying;
 			e.jmp (jumped[i]);
 			jumped_used[i] = true;
 			fixed[i] = true;
@@ -2992,12 +3968,35 @@ Sh4X64::translate (Sh4 *ctx, Sh4Block *block)
 			Reg rn;
 
 			mark (e, "op: pref");
+			may_store = true;
 			rc.store_dirty (e);
 			rn = rc.read (e, (op.inst >> 8) & 15);
 			e.mov32 (RAX, rn);
 			e.shr32_imm (RAX, 26);
 			e.cmp32_imm (RAX, 0x38);
 			e.jcc (CC_NE, none);
+			if (pref_direct) {
+				/* The queue sent straight (sh4_pref_flush ()): the
+				 * handler's work, no register of the guest read or
+				 * changed (the FPU's left where they are); then the
+				 * interrupt it may have raised */
+				if (ctx->stats) {
+					e.mov_imm64 (RAX, (uint64_t) (uintptr_t) sh4_stats_handler (ctx, block->pc + (uint32_t) at, op.inst));
+					e.add64_mem_imm (RAX, 0, 1);
+				}
+				e.lea32 (RAX, RSI, at);
+				e.store32 (RBX, o.pc, RAX);
+				e.mov32 (RDX, rn);
+				e.mov (RCX, RBX);
+				e.call ((const void *) sh4_pref_flush);
+				if (i + 1 < n) {
+					e.cmp8_mem_imm (RBX, o.irq_ready, 0);
+					exit_if (CC_NE, seq[i]);
+					used[i] = true;
+				}
+				e.bind (none);
+				continue;
+			}
 			{
 				/* Neither FPSCR nor SR changed: the FPU's tests
 				 * kept */
@@ -3017,6 +4016,7 @@ Sh4X64::translate (Sh4 *ctx, Sh4Block *block)
 	/* The end of the block: on to the next instruction */
 	mark (e, "exit: registers back");
 	rc.store_dirty (e);
+	fc.store_dirty (e);
 	e.jmp (seq[n - 1]);
 	used[n - 1] = true;
 
@@ -3053,13 +4053,71 @@ Sh4X64::translate (Sh4 *ctx, Sh4Block *block)
 	const bool linking = !mmu_mode && ctx->chain.enabled && !ctx->icache_on && stubs[0].link;
 	/* r8d the count (link_checks takes it off) */
 	auto link_site = [&] () {
-		e.call_near (stubs[0].link_checks);
-		/* jmp rel32 to link, that form whatever the distance (link
-		 * patches its field) */
+		/* The 12 bytes unlinked (link () rewrites them) */
+		uint8_t *site = e.here ();
+		static const uint8_t lea[7] = { 0x4C, 0x8D, 0x0D, 0xF9, 0xFF, 0xFF, 0xFF };
+
+		for (uint8_t byte : lea)
+			e.byte (byte);
 		e.byte (0xE9);
-		e.u32 ((uint32_t) (int32_t) (stubs[0].link - (e.here () + 4)));
+		e.u32 ((uint32_t) (int32_t) (stubs[0].link - (site + 12)));
 	};
-	auto link_exit = [&] (uint32_t count) {
+	/* A way out linked with its checks in line (HR_SH4_INLINE_LINKS=0:
+	 * through link_checks), PC set to esi + to:
+	 *
+	 *	mov eax, [rbx + remaining]; sub eax, count; mov [rbx + remaining], eax
+	 *	cmp eax, MAX_OPS; jle fail
+	 *	cmp dword [rbx + chain_stop], 0; jne fail	(the state in it)
+	 *	mov r11, [rbx + chain.stores]
+	 *	mov rcx, [rbx + stores]; mov [rbx + chain.stores], rcx
+	 *	lea esi, [rsi + to]
+	 *	jmp rel32			(its body; at first, unlinked)
+	 *
+	 * the same checks and counts as link_checks' without its call, its
+	 * loads of the words just stored; apart, fail ("mov r8d, count", to
+	 * the probe's checks) and unlinked ("lea r9, [field]", the count, esi
+	 * back, to the link_in stub) */
+	static const bool inline_links = hl_util_get_bool_option ("HR_SH4_INLINE_LINKS", true);
+	struct InLink { Label *fail, *unlinked; uint32_t count; int32_t to; uint8_t *field; bool pc_late; };
+	std::vector<InLink> in_links;
+	auto pc_store = [&] (int32_t to_off) {
+		e.lea32 (RAX, RSI, to_off);
+		e.store32 (RBX, o.pc, RAX);
+	};
+	auto link_inline = [&] (uint32_t count, int32_t to_off, bool late) {
+		Label &fail = label (), &unlinked = label ();
+
+		if (counting)
+			e.add64_mem_imm (RBX, o.chain_ends, 1);
+		mark (e, "exit: link in line");
+		e.load32 (RAX, RBX, o.remaining);
+		e.alu32_imm (Emitter::ALU_SUB, RAX, (int32_t) count);
+		e.store32 (RBX, o.remaining, RAX);
+		e.cmp32_imm (RAX, Sh4Block::MAX_OPS);
+		e.jcc (CC_LE, fail);
+		e.alu_mem_imm (Emitter::ALU_CMP, RBX, o.chain_stop, 0);
+		e.jcc (CC_NE, fail);
+		if (may_store) {
+			e.load64 (R11, RBX, o.chain_stores);
+			e.load64 (RCX, RBX, o.stores);
+			e.store64 (RBX, o.chain_stores, RCX);
+		}
+		if (counting)
+			e.add64_mem_imm (RBX, o.chain_gone, 1);
+		e.lea32 (RSI, RSI, to_off);
+		e.jmp (unlinked);
+		/* The jump's rel32 field, the jmp's last 4 bytes (rel32 form
+		 * whatever the distance: Emitter::jmp to a label not bound) */
+		in_links.push_back (InLink { &fail, &unlinked, count, to_off, e.here () - 4, late });
+		mark (e, "exit: ways out");
+	};
+	auto link_exit = [&] (uint32_t count, int32_t to_off, bool late) {
+		if (linking && inline_links && stubs[0].link_in) {
+			link_inline (count, to_off, late);
+			return;
+		}
+		if (late)
+			pc_store (to_off);
 		e.mov_imm32 (R8, count);
 		if (!linking) {
 			e.jmp (probe);
@@ -3071,7 +4129,11 @@ Sh4X64::translate (Sh4 *ctx, Sh4Block *block)
 	};
 	/* A loop's way back to a fixed address, PC set: end's looks (below),
 	 * then linked where end goes to the probe's checks */
-	auto loop_exit = [&] (uint32_t count) {
+	auto loop_exit = [&] (uint32_t count, int32_t to_off, bool late) {
+		if (late && (!linking || !inline_links || !stubs[0].link_in)) {
+			pc_store (to_off);
+			late = false;
+		}
 		e.mov_imm32 (R8, count);
 		if (!linking) {
 			e.jmp (end);
@@ -3081,22 +4143,30 @@ Sh4X64::translate (Sh4 *ctx, Sh4Block *block)
 
 		if (counting)
 			e.add64_mem_imm (RBX, o.chain_ends, 1);
-		e.load32 (RAX, RBX, o.stores);
-		e.cmp32_mem (RBX, o.chain_stores, RAX);
-		e.jcc (CC_E, no_store);
-		e.mov_imm64 (RAX, (uint64_t) (uintptr_t) &block->simulated);
-		e.cmp8_mem_imm (RAX, 0, 0);
-		e.jcc (CC_NE, to_chain);
-		e.jmp (go);
+		/* A block that cannot store stored nothing (see may_store) */
+		if (may_store) {
+			e.load32 (RAX, RBX, o.stores);
+			e.cmp32_mem (RBX, o.chain_stores, RAX);
+			e.jcc (CC_E, no_store);
+			e.mov_imm64 (RAX, (uint64_t) (uintptr_t) &block->simulated);
+			e.cmp8_mem_imm (RAX, 0, 0);
+			e.jcc (CC_NE, to_chain);
+			e.jmp (go);
+		}
 		e.bind (no_store);
 		e.mov_imm64 (RAX, (uint64_t) (uintptr_t) &block->quiet);
 		e.alu_mem_imm (Emitter::ALU_CMP, RAX, 0, 0);
 		e.jcc (CC_LE, to_chain);
 		e.add32_mem_imm (RAX, 0, -1);
 		e.bind (go);
-		link_site ();
+		if (inline_links && stubs[0].link_in)
+			link_inline (count, to_off, late);
+		else
+			link_site ();
 		/* To sh4_chain (), the count taken off as end does */
 		e.bind (to_chain);
+		if (late)
+			pc_store (to_off);
 		e.alu_mem_reg (Emitter::ALU_SUB, RBX, o.remaining, R8);
 		e.jmp (chain);
 	};
@@ -3118,7 +4188,30 @@ Sh4X64::translate (Sh4 *ctx, Sh4Block *block)
 		e.jcc (CC_B, end);
 		if (counting)
 			e.add64_mem_imm (RBX, o.chain_ends, 1);
-		e.call_near (stubs[0].link_checks);
+		if (inline_links) {
+			/* dyn_checks' in line (eax PC, r8d the count): the
+			 * count taken off, the checks, chain.stores and esi as
+			 * it sets them, the last ones in r11 and r10 */
+			mark (e, "exit: link in line (address as run)");
+			e.load32 (RDX, RBX, o.remaining);
+			e.alu32_reg_reg (Emitter::ALU_SUB, RDX, R8);
+			e.store32 (RBX, o.remaining, RDX);
+			e.cmp32_imm (RDX, Sh4Block::MAX_OPS);
+			e.jcc (CC_LE, probe_checks);
+			e.alu_mem_imm (Emitter::ALU_CMP, RBX, o.chain_stop, 0);
+			e.jcc (CC_NE, probe_checks);
+			e.load64 (R11, RBX, o.chain_stores);
+			if (may_store) {
+				e.load64 (RCX, RBX, o.stores);
+				e.store64 (RBX, o.chain_stores, RCX);
+			}
+			if (counting)
+				e.add64_mem_imm (RBX, o.chain_gone, 1);
+			e.mov32 (R10, RSI);
+			e.mov32 (RSI, RAX);
+			mark (e, "exit: ways out");
+		} else
+			e.call_near (stubs[0].dyn_checks);
 		cached_at = e.cmp32_imm_site (RSI, 1);
 		e.jcc (CC_NE, other);
 		jump = e.jmp_site ();
@@ -3133,6 +4226,19 @@ Sh4X64::translate (Sh4 *ctx, Sh4Block *block)
 	};
 
 	mark (e, "exit: ways out");
+	for (const LoopTail &t : loop_tails) {
+		/* As loop_exit ()'s: to sh4_chain () (the count taken off), to
+		 * the probe's checks (taken off already) */
+		e.bind (*t.chain);
+		e.store32 (RBX, o.pc, RSI);
+		e.mov_imm32 (R8, t.count);
+		e.alu_mem_reg (Emitter::ALU_SUB, RBX, o.remaining, R8);
+		e.jmp (chain);
+		e.bind (*t.checks);
+		e.store32 (RBX, o.pc, RSI);
+		e.mov_imm32 (R8, t.count);
+		e.jmp (probe_checks);
+	}
 	for (i = 0; i < n; i++) {
 		const int32_t last = (int32_t) (2 * i);
 
@@ -3141,11 +4247,10 @@ Sh4X64::translate (Sh4 *ctx, Sh4Block *block)
 		 * the translations' bytes */
 		if (used[i] && (referenced (seq[i]) || forced[i])) {
 			e.bind (seq[i]);
-			e.lea32 (RAX, RSI, last + 2);
-			e.store32 (RBX, o.pc, RAX);
 			if (i + 1 == n)
-				link_exit ((uint32_t) (i + 1));
+				link_exit ((uint32_t) (i + 1), last + 2, true);
 			else {
+				pc_store (last + 2);
 				e.mov_imm32 (R8, (uint32_t) (i + 1));
 				e.jmp (probe);
 			}
@@ -3158,6 +4263,11 @@ Sh4X64::translate (Sh4 *ctx, Sh4Block *block)
 		}
 		if (used[i] && referenced (done[i])) {
 			e.bind (done[i]);
+			/* PC set here but where a way linked sets it late */
+			const bool to_link = !way_back (to[i], last) ||
+			                     !(block->delay_loop && i == (size_t) block->delay_len - 1);
+			if (pc_late[i] && ((block->poll_loop && i == 2) || !to_link))
+				pc_store (to[i]);
 			if (block->poll_loop && i == 2) {
 				/* A wait on memory's way back: the slice's
 				 * other turns off, then on (sh4_poll_skip ()) */
@@ -3170,24 +4280,44 @@ Sh4X64::translate (Sh4 *ctx, Sh4Block *block)
 				e.jmp (probe);
 			} else if (way_back (to[i], last) &&
 			           !(block->delay_loop && i == (size_t) block->delay_len - 1)) {
-				loop_exit ((uint32_t) (i + 1));
+				loop_exit ((uint32_t) (i + 1), to[i], pc_late[i]);
 			} else if (way_back (to[i], last)) {
 				e.mov_imm32 (R8, (uint32_t) (i + 1));
 				e.jmp (probe);
 			} else
-				link_exit ((uint32_t) (i + 1));
+				link_exit ((uint32_t) (i + 1), to[i], pc_late[i]);
 		}
 		if (jumped_used[i]) {
 			e.bind (jumped[i]);
 			if (fixed[i] && !way_back (to[i], last + 2))
-				link_exit ((uint32_t) (i + 2));
+				link_exit ((uint32_t) (i + 2), to[i], false);
 			else if (fixed[i])
-				loop_exit ((uint32_t) (i + 2));
+				loop_exit ((uint32_t) (i + 2), to[i], false);
 			else {
 				e.mov_imm32 (R8, (uint32_t) (i + 2));
 				dyn_exit (last + 2);
 			}
 		}
+	}
+
+	/* The ways out with their checks in line: fail, unlinked */
+	mark (e, "exit: links' slow ways");
+	for (const InLink &l : in_links) {
+		e.bind (*l.fail);
+		if (l.pc_late)
+			pc_store (l.to);
+		e.mov_imm32 (R8, l.count);
+		e.jmp (probe_checks);
+		e.bind (*l.unlinked);
+		e.lea_rip (R9, l.field);
+		e.mov_imm32 (R8, l.count);
+		e.lea32 (RSI, RSI, -l.to);
+		if (l.pc_late)
+			pc_store (l.to);
+		/* chain.stores as it was, for link_in's miss */
+		if (!may_store)
+			e.load64 (R11, RBX, o.chain_stores);
+		e.jmp_abs (stubs[0].link_in);
 	}
 
 	/* The probe, its checks, sh4_chain (): the stubs' (emit_stubs ()) */
@@ -3213,14 +4343,16 @@ Sh4X64::translate (Sh4 *ctx, Sh4Block *block)
 		if (ctx->chain.enabled) {
 			Label &no_store = label ();
 
-			e.load32 (RAX, RBX, o.stores);
-			e.cmp32_mem (RBX, o.chain_stores, RAX);
-			e.jcc (CC_E, no_store);
-			/* But a loop whose turns the idle loops simulate */
-			e.mov_imm64 (RAX, (uint64_t) (uintptr_t) &block->simulated);
-			e.cmp8_mem_imm (RAX, 0, 0);
-			e.jcc (CC_NE, chain);
-			e.jmp (probe_checks);
+			if (may_store) {
+				e.load32 (RAX, RBX, o.stores);
+				e.cmp32_mem (RBX, o.chain_stores, RAX);
+				e.jcc (CC_E, no_store);
+				/* But a loop whose turns the idle loops simulate */
+				e.mov_imm64 (RAX, (uint64_t) (uintptr_t) &block->simulated);
+				e.cmp8_mem_imm (RAX, 0, 0);
+				e.jcc (CC_NE, chain);
+				e.jmp (probe_checks);
+			}
 			e.bind (no_store);
 			/* A loop the idle loops let be: its turns counted down here,
 			 * no look (Sh4Block::quiet, idle_look ()) */
@@ -3291,17 +4423,123 @@ Sh4X64::translate (Sh4 *ctx, Sh4Block *block)
 	mark (e, "slow paths");
 	main_bytes += e.length ();
 	for (const Cold &c : cold) {
+		static const char *const kinds[] = { "slow: exit", "slow: read", "slow: write", "slow: handler",
+		                                     "slow: group", "slow: branch", "slow: table read",
+		                                     "slow: table write" };
+		mark (e, kinds[c.kind]);
 		e.bind (*c.from);
+		/* A trap's access gone through the page table (see "Traps"):
+		 * as Sh4X64Pages::lookup () writes it, nothing called */
+		if (c.kind == Cold::TABLE_READ || c.kind == Cold::TABLE_WRITE) {
+			const bool w = c.kind == Cold::TABLE_WRITE;
+
+			if (w && hl::Profile::enabled) {
+				e.mov_imm64 (RAX, (uint64_t) (uintptr_t) &table_writes);
+				e.add64_mem_imm (RAX, 0, 1);
+			}
+			e.mov32 (RAX, RCX);
+			e.shr32_imm (RAX, hl::Mmap::TABLE_PAGE_BITS);
+			/* A store: the table with the code pages in it, its stamp
+			 * looked at in any case (a page the write table holds has
+			 * none at this epoch): the pages that share code and data
+			 * took two looks (Sports Shooting USA, 66000 stores a frame;
+			 * HR_SH4_TABLE_ALL=0: the write table first) */
+			static const bool table_all = hl_util_get_bool_option ("HR_SH4_TABLE_ALL", true);
+
+			if (w && code_pages_on && code_stamps_inline && table_all) {
+				e.load64 (R8, RBX, o.jit_tables + 24);
+				e.load64_index (R9, R8, RAX, 8);
+				e.test64 (R9, R9);
+				if (vram32_base) {
+					Label &none = label ();
+
+					e.jcc (CC_NE, none);
+					mark (e, "slow: VRAM32");
+					vram32_store (e, o, c.size, *c.to, *c.slow);
+					mark (e, "slow: table write");
+					e.bind (none);
+				} else
+					e.jcc (CC_E, *c.slow);
+				e.mov32 (RAX, RCX);
+				e.and32_imm (RAX, 0x1FFFFFFF);
+				e.shr32_imm (RAX, Sh4BlockCache::STAMP_BITS);
+				stamp_check (e, o, *c.slow);
+				access_store (e, c.size, RCX);
+				e.jmp (*c.to);
+				continue;
+			}
+			e.load64 (R8, RBX, o.jit_tables + (w ? 8 : 0));
+			e.load64_index (R9, R8, RAX, 8);
+			e.test64 (R9, R9);
+			if (w && code_pages_on && code_stamps_inline) {
+				/* Not in the table: a code page's (else the slow
+				 * path) whose 256 bytes hold no code compared in
+				 * this epoch, written straight as sh4_write () would
+				 * (Sh4BlockCache::written () has nothing to do then) */
+				Label &code_page = label (), &straight = label ();
+
+				e.jcc (CC_E, code_page);
+				e.bind (straight);
+				access_store (e, c.size, RCX);
+				e.jmp (*c.to);
+				e.bind (code_page);
+				if (hl::Profile::enabled) {
+					e.mov_imm64 (R11, (uint64_t) (uintptr_t) &table_code_writes);
+					e.add64_mem_imm (R11, 0, 1);
+				}
+				e.load64 (R8, RBX, o.jit_tables + 24);
+				e.load64_index (R9, R8, RAX, 8);
+				e.test64 (R9, R9);
+				if (vram32_base) {
+					Label &none = label ();
+
+					e.jcc (CC_NE, none);
+					mark (e, "slow: VRAM32");
+					vram32_store (e, o, c.size, *c.to, *c.slow);
+					mark (e, "slow: table write");
+					e.bind (none);
+				} else
+					e.jcc (CC_E, *c.slow);
+				e.mov32 (RAX, RCX);
+				e.and32_imm (RAX, 0x1FFFFFFF);
+				e.shr32_imm (RAX, Sh4BlockCache::STAMP_BITS);
+				stamp_check (e, o, *c.slow);
+				e.jmp (straight);
+				continue;
+			}
+			if (w && vram32_base) {
+				Label &found = label ();
+
+				e.jcc (CC_NE, found);
+				mark (e, "slow: VRAM32");
+				vram32_store (e, o, c.size, *c.to, *c.slow);
+				mark (e, "slow: table write");
+				e.bind (found);
+			} else
+				e.jcc (CC_E, *c.slow);
+			if (w)
+				access_store (e, c.size, RCX);
+			else
+				access_load (e, c.size, RCX);
+			e.jmp (*c.to);
+			continue;
+		}
 		/* A store queue's word first: it calls nothing, the registers
 		 * kept where they are */
-		if (c.kind == Cold::WRITE && sq_inline)
+		if (c.kind == Cold::WRITE && sq_inline) {
 			sq_store (e, o, c.size, *c.to);
+			mark (e, "slow: write's call");
+		}
 		for (const auto &r : c.spill)
-			if (r.second == o.sr) {
-				e.alu_mem_imm (Emitter::ALU_AND, RBX, o.sr, ~1);
-				e.alu_mem_reg (Emitter::ALU_OR, RBX, o.sr, r.first);
-			} else
+			if (r.second == o.sr)
+				rc.put_back (e, r.first, (int) Sh4RegCache::T, true);
+			else
 				e.store32 (RBX, r.second, r.first);
+		/* The FPU's to ctx, but for an access's slow path (its call
+		 * reads none, keeps xmm6-xmm15) */
+		if (c.kind != Cold::READ && c.kind != Cold::WRITE)
+			for (const auto &r : c.fspill)
+				e.movss_store (RBX, r.second, r.first);
 		switch (c.kind) {
 		case Cold::READ:
 			call_read (e, o, c.at, c.size, c.slot);
@@ -3367,6 +4605,14 @@ Sh4X64::translate (Sh4 *ctx, Sh4Block *block)
 
 	if (e.overflowed ())
 		return NULL;
+	/* The loads through the traps, their slow paths bound now */
+	for (const PendingTrap &t : pending_traps) {
+		if (!t.slow->target || t.end - t.patch < 5)
+			HL_ABORT ("sh4-x64: a trap's load without its slow path");
+		trap_sites[(uint32_t) (t.load - arena.base ())] =
+		        TrapSite { (uint32_t) (t.patch - arena.base ()), (uint32_t) (t.slow->target - arena.base ()) };
+	}
+	pending_traps.clear ();
 	arena.trim (buf + e.length ());
 	code_bytes += e.length ();
 	num_translated++;
